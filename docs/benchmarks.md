@@ -197,7 +197,7 @@ A serial scan has no cold run worth the name: the same four runs give 0.79 s col
 
 ## The width of the output grid
 
-A thread of the engine core integrates while the one python process of the run assembles every result, so the wider the output grid of a point, the less the threads gain. `--steps` scans every model on another equidistant grid, here the same scan of HCTZ, 1000 points on 8 workers, warm, with the two engines taking turns in one process:
+A thread of the engine core integrates while the one python process of the run assembles every result, so the wider the output grid of a point, the more of the run is that assembly. `--steps` scans every model on another equidistant grid, here the same scan of HCTZ, 1000 points on 8 workers, warm, with the two engines taking turns in one process:
 
 ```bash
 # the same scan on four output grids, `steps + 1` output times per point
@@ -209,16 +209,16 @@ done
 
 | output times per point | core s | roadrunner s | roadrunner / core |
 | ---: | ---: | ---: | ---: |
-| 11 | 0.124 | 0.208 | 1.68 |
-| 26 | 0.154 | 0.240 | 1.56 |
-| 101 | 0.229 | 0.281 | 1.23 |
-| 401 | 0.619 | 0.615 | 0.99 |
+| 11 | 0.115 | 0.199 | 1.73 |
+| 26 | 0.125 | 0.219 | 1.75 |
+| 101 | 0.149 | 0.288 | 1.93 |
+| 401 | 0.281 | 0.616 | 2.19 |
 
-Both engines get slower with a wider grid, but not at the same rate, and this is the one measurement on the page where the width alone decides the order. The engine core leads the parallel scan by 1.68 at eleven output times, by 1.23 at a hundred and a dead heat at 401: its lead is eroded by the grid, and a wider one would hand the scan to roadrunner. The serial scans of the same four runs are the other side of it, 0.659, 0.696, 0.808 and 1.32 seconds for the engine core against 1.39, 1.46, 1.81 and 3.28 for roadrunner, where the engine core leads by 2.1 at the narrowest grid and by 2.5 at the widest: serially its lead grows with the width, in parallel it shrinks.
+Both engines get slower with a wider grid, the engine core leads at every width, and its lead now grows with the grid rather than shrinking: 1.73 at eleven output times and 2.19 at 401. Until sbmlsim 0.30.0 this table read 1.68, 1.56, 1.23 and 0.99, a lead the grid ate until the two engines ran level at 401 output times. The serial scans of the same four runs are 0.646, 0.668, 0.722 and 0.960 seconds for the engine core against 1.36, 1.43, 1.77 and 3.08 for roadrunner, a lead of 2.1 to 3.2 which also grows with the width.
 
-The two together name the mechanism. A scan of the engine core runs in one python process: its threads integrate, and that one process assembles every row of every point. Roadrunner's scan is eight worker processes, which assemble their own rows in parallel with each other. Integration is where the engine core is ahead and assembly is where it is alone, so the wider the grid the more of the scan falls into the part it does not parallelize. Serially neither engine has that asymmetry, which is why the same four runs show the opposite trend there.
+What changed is sbmlsim and not the engine. The values of a point went from the solution into the result through four passes, two of which were waste: a selection of every column in order, which copied a whole solution to keep all of it, and a transpose of every chunk into the cube, which a chunk in the layout of the cube does not need. They are gone, and a run in the calling process now writes the values of a point straight into the result, so they are copied once instead of four times: the parallel scan of 401 output times went from 0.619 s to 0.281 s, and the assembly of the result, which was 112 ms of that scan, is 2 ms. roadrunner's serial scan gained a little from the same change, which was in its path too; its parallel scan did not, because its eight worker processes were already copying in parallel with each other. That is the part the engine core could not hide: it runs its threads in one process, so it paid the whole of the assembly in the open, and the measurement which looked like a limit of the engine was three unnecessary passes over 613 MB.
 
-An earlier measurement of this table, with libroadrunner 2.11 and sbmlsim-core 0.2.0, had the engine core ahead up to a hundred output times and behind at 401; the measurement after it, with roadrunner 2.12, had it behind at every width. This run has it ahead everywhere but the widest grid, which is the clearest illustration on this page of why a cell is read with its configuration. The tables at the top use 101 output times for every model. A single simulation has no threads to wait on, so none of this reaches it: there the engine core leads by 2.0 to 3.1 across the same four widths.
+The tables at the top use 101 output times for every model. A single simulation assembles one solution, so none of this reaches it: there the engine core leads by 2.0 to 3.1 across the same four widths.
 
 ## Measuring your own model
 

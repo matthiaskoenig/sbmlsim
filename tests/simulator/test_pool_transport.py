@@ -161,7 +161,7 @@ def test_an_earlier_failure_in_unsubmitted_chunks_still_wins(
 
     monkeypatch.setattr(parallel, "pool", lambda _: FailingPool())
     with pytest.raises(ScanError, match="rate=5"):
-        simulator._run_pool(compiled, chunks, 2, lambda _: None)
+        simulator._run_pool(compiled, chunks, 2, lambda _result, _in_place: None)
     assert 5 in submitted
     assert 11 not in submitted
 

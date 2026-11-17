@@ -400,9 +400,9 @@ class Simulator:
                 else None
             )
 
-            def collect(result: ChunkResult) -> None:
+            def collect(result: ChunkResult, in_place: bool = False) -> None:
                 nonlocal done
-                assembly.add(result)
+                assembly.add(result, in_place)
                 if scanned is not None:
                     scanned.advance(len(result.indices))
                 done += len(result.indices)
@@ -414,7 +414,9 @@ class Simulator:
                 )
 
             if workers == 1:
-                self._run_serial(compiled, chunks, collect, threads)
+                self._run_serial(
+                    compiled, chunks, collect, threads, assembly.destination
+                )
             else:
                 self._run_pool(compiled, chunks, workers, collect)
         return compiled.assemble(
@@ -592,8 +594,9 @@ class Simulator:
         self,
         compiled: _Compiled,
         chunks: Sequence[Chunk],
-        collect: Callable[[ChunkResult], None],
+        collect: Callable[[ChunkResult, bool], None],
         threads: int,
+        destination: Callable[[np.ndarray], np.ndarray | None],
     ) -> None:
         """Run the chunks in the calling process, each result to `collect`.
 
@@ -601,12 +604,23 @@ class Simulator:
         failed, only the chunks which start before it still run: one of them
         may hold a point before it which fails as well.
 
+        A chunk writes its values into the cube of the run where it can
+        (`_Assembly.destination`), so the run copies the values of a point once
+        and not twice; a chunk which was offered no destination answers with
+        values of its own, which `collect` copies in. A chunk which fails
+        wrote nothing of its points, since the error is raised before they
+        are packed, and the points of a chunk which never ran stay unwritten
+        and are filled with `NaN` at the end of the run.
+
         Args:
             compiled: the plans and the models of the run.
             chunks: the points, in the order of their first point.
-            collect: what the result of a chunk goes to.
+            collect: what the result of a chunk goes to, with whether the
+                chunk wrote its values into the cube itself.
             threads: the threads of the engine core a chunk of a model of
                 that engine is batched on, see `_workers`.
+            destination: where a chunk may write its values, `None` for one
+                which keeps them.
 
         Raises:
             ScanError: for the first point in the order of the scan which
@@ -616,12 +630,16 @@ class Simulator:
         for chunk in chunks:
             if failed is not None and int(chunk.indices[0]) > failed.index:
                 break
+            out = destination(chunk.indices)
             try:
-                result = run_chunk(chunk, compiled.models[chunk.model], threads)
+                result = run_chunk(chunk, compiled.models[chunk.model], threads, out)
             except ScanPointError as err:
                 failed = _first(failed, err)
                 continue
-            collect(result)
+            # the chunk reports by its values whether it took the
+            # destination: one which packs no timecourses answers with an
+            # array of its own, and the run then has nothing to mark written
+            collect(result, out is not None and result.values is out)
         if failed is not None:
             raise compiled.error(failed) from failed
 
@@ -630,7 +648,7 @@ class Simulator:
         compiled: _Compiled,
         chunks: Sequence[Chunk],
         workers: int,
-        collect: Callable[[ChunkResult], None],
+        collect: Callable[[ChunkResult, bool], None],
     ) -> None:
         """Run the chunks in the kept pool of `sbmlsim.parallel`.
 
@@ -660,7 +678,7 @@ class Simulator:
         compiled: _Compiled,
         chunks: Sequence[Chunk],
         workers: int,
-        collect: Callable[[ChunkResult], None],
+        collect: Callable[[ChunkResult, bool], None],
         specs: Sequence[ModelSpec],
     ) -> None:
         """Run bounded pending work while its shared snapshots remain available.
@@ -729,7 +747,8 @@ class Simulator:
                     if isinstance(answer, SharedChunkResult):
                         answer = answer.received()
                     unread.discard(stem or "")
-                    collect(answer)
+                    # a worker has no cube to write into, it sends its values
+                    collect(answer, False)
         except BrokenProcessPool as err:
             parallel.stop(executor)
             raise RuntimeError(
@@ -794,25 +813,64 @@ class _Assembly:
         self.status = np.zeros(n, dtype=np.int8)
         self.errors: list[tuple[int, str]] = []
 
-    def add(self, result: ChunkResult) -> None:
-        """Write the arrays of a chunk, or keep it until the rows are known."""
-        at = result.indices - self._start
+    def add(self, result: ChunkResult, in_place: bool = False) -> None:
+        """Write the arrays of a chunk, or keep it until the rows are known.
+
+        Args:
+            result: the values of the points of a chunk.
+            in_place: whether the chunk wrote its values into the cube
+                itself, the destination `destination` gave it, so that they
+                are there already and only the points are marked written.
+        """
+        at = _at(result.indices, self._start)
         self.table[:, at] = result.scalars.T
         self.status[at] = result.status
         self.errors.extend(result.errors)
         if not self._timed:
             return
-        if self._rows is None:
+        if in_place:
+            self._written[at] = True
+        elif self._rows is None:
             self._pending.append(result)
         else:
             self._write(result)
+
+    def destination(self, indices: np.ndarray) -> np.ndarray | None:
+        """Get the slice of the cube a chunk may write its values into.
+
+        A chunk which writes into the cube saves the run a copy of all of its
+        values, which is most of what a wide scan of a fast engine spends:
+        the values go from the solution of a point into the result once, see
+        `sbmlsim.simulator.worker._pack`. It is offered only where it is both
+        possible and a view:
+
+        - the result has a time axis, else there are no values to write;
+        - the rows are known before the run, i.e. a grid was given, since a
+          ragged output has its rows only once every chunk has run;
+        - and the points of the chunk are a slice of the cube, since indexing
+          it with an array of positions gives a copy, which a chunk would
+          write into and the run would then throw away.
+
+        Args:
+            indices: the flat indices of the points of the chunk, in the scan.
+
+        Returns:
+            The view of the cube, or `None` where the chunk allocates its own
+            values and the run copies them in.
+        """
+        if not self._timed or self._rows is None:
+            return None
+        at = _at(indices, self._start)
+        if not isinstance(at, slice):
+            return None
+        return self._allocated()[:, at, :]
 
     def finish(self) -> np.ndarray | None:
         """Write the kept chunks and get the cube, `None` without timecourses."""
         if not self._timed:
             return None
         if self._rows is None:
-            self._rows = max((r.values.shape[1] for r in self._pending), default=0)
+            self._rows = max((r.values.shape[2] for r in self._pending), default=0)
         while self._pending:
             # released once written, the last kept first
             self._write(self._pending.pop())
@@ -828,13 +886,45 @@ class _Assembly:
         return self._cube
 
     def _write(self, result: ChunkResult) -> None:
-        """Write the rows of the points of a chunk, padded with `NaN`."""
+        """Write the rows of the points of a chunk, padded with `NaN`.
+
+        A chunk carries its values in the layout of the cube, `(column, point,
+        row)`, so they are copied into it without moving an axis, and the
+        points of a chunk are consecutive, so they are written through a slice
+        rather than through an index array (`_at`): both of them are a copy of
+        the whole chunk, and a transposing or scattered one costs about twice
+        a contiguous one, see `sbmlsim.simulator.worker`.
+        """
         cube = self._allocated()
-        rows = result.values.shape[1]
-        at = result.indices - self._start
-        cube[:, at, :rows] = np.moveaxis(result.values, 2, 0)
+        rows = result.values.shape[2]
+        at = _at(result.indices, self._start)
+        cube[:, at, :rows] = result.values
         cube[:, at, rows:] = np.nan
         self._written[at] = True
+
+
+def _at(indices: np.ndarray, start: int) -> slice | np.ndarray:
+    """Get where the points of a chunk sit in the arrays of a block.
+
+    The points of a chunk are consecutive in the order of the scan, so their
+    positions are a slice, which numpy copies into as a contiguous block; an
+    index array would make every write of a chunk a scattered one. A chunk
+    whose indices are not consecutive, which no caller produces today, keeps
+    the index array, so the positions are right whatever the chunking.
+
+    Args:
+        indices: the flat indices of the points of the chunk, in the scan.
+        start: the first flat index of the block.
+
+    Returns:
+        The slice of the positions, or the array of them.
+    """
+    at = indices - start
+    # the positions must be the ascending run of a slice, not merely span it:
+    # a permutation of one would reorder the points of the chunk
+    if at.size and np.array_equal(at, np.arange(at[0], at[0] + at.size)):
+        return slice(int(at[0]), int(at[0]) + at.size)
+    return at
 
 
 def _check_coordinates(scan: Scan, outputs: set[str]) -> None:

@@ -22,6 +22,7 @@ from sbmlsim.result import ScanResult, TimecourseResult
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation, SteadyState
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.simulator.simulator import _at
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
@@ -102,9 +103,15 @@ def test_the_time_is_selected_once(
     columns: list[tuple[str, ...]] = []
     run_chunk = simulator_module.run_chunk
 
-    def recording(chunk: Any, loaded: RoadrunnerSBMLModel, threads: int = 1) -> Any:
-        result = run_chunk(chunk, loaded, threads)
+    def recording(
+        chunk: Any,
+        loaded: RoadrunnerSBMLModel,
+        threads: int = 1,
+        out: Any = None,
+    ) -> Any:
+        result = run_chunk(chunk, loaded, threads, out)
         columns.append(chunk.selections)
+        # the rows of the chunk, `(column, point, row)`
         assert result.values.shape[2] == 3
         return result
 
@@ -732,10 +739,13 @@ def test_the_chunks_share_a_plan_and_are_bounded(
     run_chunk = simulator_module.run_chunk
 
     def recording(
-        chunk: object, model: RoadrunnerSBMLModel, threads: int = 1
+        chunk: object,
+        model: RoadrunnerSBMLModel,
+        threads: int = 1,
+        out: object = None,
     ) -> object:
         sizes.append((id(chunk.plan), len(chunk.indices)))  # ty: ignore[missing-attribute]
-        return run_chunk(chunk, model, threads)  # ty: ignore[invalid-argument-type]
+        return run_chunk(chunk, model, threads, out)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(simulator_module, "run_chunk", recording)
     simulations = {"a": Simulation(end=1, steps=2), "b": Simulation(end=2, steps=2)}
@@ -1512,3 +1522,134 @@ def test_the_common_grid_of_many_output_times_is_built_once_per_output() -> None
     times = np.linspace(0.0, end, steps + 1)
     expected = np.sort(np.concatenate([times, [10.0, 15.0, 20.0]]))
     np.testing.assert_array_equal(grid, expected)
+
+
+def test_the_points_of_a_chunk_are_written_through_a_slice() -> None:
+    """`_at` gives a slice for consecutive points and the array otherwise.
+
+    The points of a chunk are consecutive, so the run copies it into the cube
+    as a contiguous block; an index array would scatter every write. A
+    permutation spans the same range and must not be taken for it.
+    """
+    consecutive = _at(np.array([10, 11, 12]), 10)
+    assert consecutive == slice(0, 3)
+    assert _at(np.array([7]), 7) == slice(0, 1)
+    for indices in (np.array([10, 12, 11]), np.array([10, 12, 14])):
+        at = _at(indices, 10)
+        assert not isinstance(at, slice)
+        np.testing.assert_array_equal(at, indices - 10)
+    empty = _at(np.array([], dtype=int), 0)
+    assert not isinstance(empty, slice)
+    # the slice and the array select the same points of an array
+    target = np.arange(20.0)
+    np.testing.assert_array_equal(target[consecutive], target[np.array([0, 1, 2])])
+
+
+def test_a_chunk_writes_into_the_cube_of_a_run_in_this_process(
+    simulator: Simulator, model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run in the calling process hands its chunks the cube to write into.
+
+    The values of a point are then copied once, from its solution into the
+    result, instead of into the chunk and from there into the cube.
+    """
+    taken: list[bool] = []
+    run_chunk = simulator_module.run_chunk
+
+    def recording(chunk: Any, loaded: Any, threads: int = 1, out: Any = None) -> Any:
+        result = run_chunk(chunk, loaded, threads, out)
+        taken.append(out is not None and result.values is out)
+        return result
+
+    monkeypatch.setattr(simulator_module, "run_chunk", recording)
+    scan = Scan(
+        Simulation(end=1, steps=2),
+        [Dimension("d", values={"k1": [0.1, 0.2, 0.3]})],
+    )
+    res = simulator.run(model, scan)
+    assert taken and all(taken)
+    assert np.isfinite(res.ds["[A]"].values).all()
+
+
+def test_a_chunk_of_a_pool_run_keeps_its_own_values(
+    model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A worker has no cube of the run, so it answers with its values.
+
+    The destination is a view of the cube of the parent, which a worker
+    process cannot write into.
+    """
+    offered: list[Any] = []
+    assembly_destination = simulator_module._Assembly.destination
+
+    def destination(self: Any, indices: np.ndarray) -> Any:
+        out = assembly_destination(self, indices)
+        offered.append(out)
+        return out
+
+    monkeypatch.setattr(simulator_module._Assembly, "destination", destination)
+    scan = Scan(
+        Simulation(end=1, steps=2),
+        [Dimension("d", values={"k1": [0.1, 0.2, 0.3, 0.4]})],
+    )
+    pooled = Simulator(n_workers=2)
+    res = pooled.run(pooled.load(model), scan)
+    # a pool run never asks for one
+    assert offered == []
+    assert np.isfinite(res.ds["[A]"].values).all()
+
+
+def _compiled_for_destination() -> Any:
+    """Get a compiled scan of a grid, for the destination of an assembly."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    model.set_selections(SEL)
+    simulator = Simulator(n_workers=1)
+    loaded = simulator.load(model)
+    scan = Scan(
+        Simulation(end=1, steps=2),
+        [Dimension("d", values={"k1": [0.1 * k for k in range(1, 7)]})],
+    )
+    return simulator._compile(loaded, scan, np.linspace(0.0, 1.0, 3))
+
+
+def test_a_destination_is_only_offered_where_it_is_a_view() -> None:
+    """`_Assembly.destination` gives a view of the cube or nothing.
+
+    Indexing the cube with an array of positions gives a copy, which a chunk
+    would write into and the run would throw away, so a chunk whose points
+    are not a slice of the cube is given nothing and keeps its own values.
+    """
+    compiled = _compiled_for_destination()
+    assembly = simulator_module._Assembly(compiled, range(6))
+    consecutive = assembly.destination(np.array([2, 3, 4]))
+    assert consecutive is not None
+    assert consecutive.base is not None
+    # it writes through to the cube
+    consecutive[...] = 7.0
+    assert (assembly._allocated()[:, 2:5, :] == 7.0).all()
+    # a scattered chunk would not, so it is not offered one
+    assert assembly.destination(np.array([0, 2, 4])) is None
+    assert assembly.destination(np.array([4, 3, 2])) is None
+
+
+def test_a_chunk_whose_points_all_failed_writes_the_rows_of_the_run(
+    simulator: Simulator, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A chunk which packs nothing still fills its points of the cube.
+
+    Its own rows are 0, since no point of it ran, while the cube has the rows
+    of the run: the destination carries them, so the chunk writes `NaN` over
+    the points it owns instead of a block of the wrong shape.
+    """
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    scan = Scan(
+        Simulation(end=1, steps=4), [Dimension("rate", values={"k": [2.0, 2.0]})]
+    )
+    try:
+        res = simulator.run(blowup, scan, on_error="flag", time=np.linspace(0, 1, 5))
+    finally:
+        _c_output(capfd)
+    assert int(res["status"].sum()) == 2
+    values = res.ds["[S]"].values
+    assert values.shape[-1] == 5
+    assert np.isnan(values).all()
