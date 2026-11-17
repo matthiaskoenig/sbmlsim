@@ -24,7 +24,7 @@ from sbmlsim.engine import (
 )
 
 #: the requirement of the package, as `pyproject.toml` has it
-REQUIREMENT = "libroadrunner>=2.11.1.dev655"
+REQUIREMENT = "libroadrunner>=2.12.0.dev683"
 
 
 def test_the_release_of_pypi_is_reported() -> None:
@@ -37,7 +37,7 @@ def test_the_release_of_pypi_is_reported() -> None:
 
 
 @pytest.mark.parametrize(
-    "version", ["2.11.1.dev655", "2.11.1.dev700", "2.11.1.post0.dev12", "2.12.0"]
+    "version", ["2.12.0.dev683", "2.12.0.dev700", "2.12.0.post0.dev12", "2.12.1"]
 )
 def test_a_build_of_the_index_is_no_problem(version: str) -> None:
     """A later build, a build after a release and a release itself satisfy it."""
@@ -119,13 +119,13 @@ def test_an_import_with_the_variable_set_does_not_check(
 @pytest.mark.parametrize(
     ("installed", "requirement", "satisfied"),
     [
-        ("2.11.1.dev655", REQUIREMENT, True),
+        ("2.12.0.dev683", REQUIREMENT, True),
         ("2.11.0", REQUIREMENT, False),
         # a requirement of another form, parsed with `packaging.requirements`
-        ("2.11.1.dev655", "libroadrunner>=2.11.1.dev655,<3", True),
-        ("3.0.0", "libroadrunner>=2.11.1.dev655,<3", False),
-        ("2.11.1.dev655", "libroadrunner==2.11.1.dev655", True),
-        ("2.11.1.dev700", "libroadrunner==2.11.1.dev655", False),
+        ("2.12.0.dev683", "libroadrunner>=2.12.0.dev683,<3", True),
+        ("3.0.0", "libroadrunner>=2.12.0.dev683,<3", False),
+        ("2.12.0.dev683", "libroadrunner==2.12.0.dev683", True),
+        ("2.11.1.dev700", "libroadrunner==2.12.0.dev683", False),
     ],
 )
 def test_the_comparison_of_a_requirement(

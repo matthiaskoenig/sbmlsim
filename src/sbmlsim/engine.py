@@ -50,7 +50,7 @@ def roadrunner_requirement() -> str | None:
     """Get the requirement of libroadrunner of the package.
 
     The requirement of the metadata of the installed sbmlsim, e.g.
-    `libroadrunner>=2.11.1.dev655`, so the requirement of `pyproject.toml` is
+    `libroadrunner>=2.12.0.dev683`, so the requirement of `pyproject.toml` is
     the only place the build is named.
 
     :return: the requirement, `None` when the metadata of sbmlsim or the
@@ -91,7 +91,7 @@ def roadrunner_problem(installed: str | None, requirement: str) -> str | None:
     :param installed: the version of the installed libroadrunner, `None` when
         it is not installed
     :param requirement: the requirement of the package, e.g.
-        `libroadrunner>=2.11.1.dev655`
+        `libroadrunner>=2.12.0.dev683`
     :return: the message which names the install, `None` when the installed
         version satisfies the requirement
     """
@@ -123,12 +123,12 @@ def satisfies_requirement(installed: str, requirement: str) -> bool:
     compared with `packaging.version`, which costs 2 ms of the import of the
     package; a requirement of another form is parsed with
     `packaging.requirements`, which imports `packaging.tags` and costs 30 ms.
-    A development version satisfies a floor which is one (`>=2.11.1.dev655`
-    is satisfied by `2.11.1.dev655`, by a later build and by the release
+    A development version satisfies a floor which is one (`>=2.12.0.dev683`
+    is satisfied by `2.12.0.dev683`, by a later build and by the release
     `2.11.1`), which is why the comparison is not a comparison of the texts.
 
     :param installed: the installed version
-    :param requirement: the requirement, e.g. `libroadrunner>=2.11.1.dev655`
+    :param requirement: the requirement, e.g. `libroadrunner>=2.12.0.dev683`
     :return: whether the installed version satisfies the requirement
     """
     from packaging.version import InvalidVersion, Version
