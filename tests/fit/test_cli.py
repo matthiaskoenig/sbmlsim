@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import (
     ALGORITHMS,
@@ -624,3 +625,81 @@ def test_report_from_records_of_a_fit_of_some_studies(
         mapping_figures=False,
     )
     assert sids(report.problem.mapping_collections) == studies
+
+
+def test_the_definition_names_the_engine_of_its_problem(
+    definition_hctz_pk: FitDefinition,
+) -> None:
+    """A definition with an engine creates problems which optimize on it."""
+    assert definition_hctz_pk.engine is None
+    assert definition_hctz_pk.problem(opid="default").engine is Engine.ROADRUNNER
+    definition = dataclasses.replace(definition_hctz_pk, engine="core")
+    assert definition.engine is Engine.CORE
+    assert definition.problem(opid="core").engine is Engine.CORE
+
+
+def test_the_definition_refuses_an_unknown_engine(
+    definition_hctz_pk: FitDefinition,
+) -> None:
+    """The name of an engine which does not exist is an error."""
+    with pytest.raises(ValueError, match="Unknown engine"):
+        dataclasses.replace(definition_hctz_pk, engine="nonexistent")
+
+
+def test_the_fits_of_a_project_run_on_its_engine() -> None:
+    """A definition without an engine takes the engine of the project."""
+    from sbmlsim.project import SimulatorSettings
+    from tests.project_toy import PROJECT
+
+    base = PROJECT.load_fit_definitions()
+    assert base
+    assert {d.problem(opid="x").engine for d in base.values()} == {Engine.ROADRUNNER}
+
+    project = PROJECT.replace(simulator=SimulatorSettings(engine="core"))
+    definitions = project.load_fit_definitions()
+    assert {d.problem(opid="x").engine for d in definitions.values()} == {Engine.CORE}
+
+
+def test_the_engine_of_a_definition_wins_over_the_one_of_the_project() -> None:
+    """The engine a definition states is kept by the project."""
+    from sbmlsim.project import SimulatorSettings
+    from tests.project_toy import PROJECT
+
+    stated = {
+        subset: dataclasses.replace(definition, engine=Engine.COPASI)
+        for subset, definition in PROJECT.load_fit_definitions().items()
+    }
+    project = PROJECT.replace(fits=stated, simulator=SimulatorSettings(engine="core"))
+    definitions = project.load_fit_definitions()
+    assert {d.problem(opid="x").engine for d in definitions.values()} == {Engine.COPASI}
+
+
+@pytest.mark.parametrize("n_cores", [1, 2])
+def test_a_project_on_the_engine_core_fits_on_it(tmp_path: Path, n_cores: int) -> None:
+    """The fit of a project whose simulator is the engine core optimizes on it.
+
+    One core runs the optimization in the process, two cores in a pool whose
+    workers evaluate the residuals with the engine of the problem.
+    """
+    from sbmlsim.project import SimulatorSettings
+    from tests.project_toy import PROJECT
+
+    project = PROJECT.replace(simulator=SimulatorSettings(engine="core"))
+    runs = run_fit(
+        definition=project.fit("DECAY"),
+        opid="core",
+        size=n_cores,
+        n_cores=n_cores,
+        seed=1234,
+    )
+    run = runs["core"]
+    assert run.problem.engine is Engine.CORE
+    assert run.result.size == n_cores
+    assert all(fit.success for fit in run.result.fits)
+    assert min(fit.cost for fit in run.result.fits) < 1e-3
+    results_dir = run.report(output_dir=tmp_path, mapping_figures=False)
+    stored = json.loads(
+        (results_dir / "optimization_result.json").read_text(encoding="utf-8")
+    )
+    # the versions of a fit name the packages of its engine: sbmlsim-core
+    assert "sbmlsim-core" in stored["provenance"]["versions"]

@@ -2080,7 +2080,10 @@ class Project(BaseModel):
 
         A definition without an optimization level gets the one of the
         simulator of the project (`SimulatorSettings.jit_optimization`), so its
-        problems compile their models at it in every process.
+        problems compile their models at it in every process. A definition
+        without an engine gets the engine of the simulator
+        (`SimulatorSettings.engine`), so its problems optimize on it (roadrunner is what a definition without
+        an engine runs on, so it stays without).
 
         Returns:
             The definitions by subset, empty for a project without fits.
@@ -2105,13 +2108,24 @@ class Project(BaseModel):
                 f"The project '{self.name}' has a fit subset '{ALL_SUBSETS}', the "
                 "name of every adopted fit of a report: rename the subset."
             )
-        level = self.simulator.jit_optimization
-        return {
-            subset: definition
-            if level is None or definition.jit_optimization is not None
-            else dataclasses.replace(definition, jit_optimization=level)
-            for subset, definition in fits.items()
-        }
+        simulator = self.simulator
+        defaults: dict[str, Any] = {}
+        if simulator.jit_optimization is not None:
+            defaults["jit_optimization"] = simulator.jit_optimization
+        if simulator.engine is not Engine.ROADRUNNER:
+            # roadrunner is what a definition without an engine runs on anyway
+            defaults["engine"] = simulator.engine
+        resolved = {}
+        for subset, definition in fits.items():
+            missing = {
+                key: value
+                for key, value in defaults.items()
+                if getattr(definition, key) is None
+            }
+            resolved[subset] = (
+                dataclasses.replace(definition, **missing) if missing else definition
+            )
+        return resolved
 
     def fit(self, subset: str) -> FitDefinition:
         """Get a fit problem.
