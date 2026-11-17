@@ -698,6 +698,8 @@ def test_a_project_on_the_engine_core_fits_on_it(tmp_path: Path, n_cores: int) -
     assert all(fit.success for fit in run.result.fits)
     assert min(fit.cost for fit in run.result.fits) < 1e-3
     results_dir = run.report(output_dir=tmp_path, mapping_figures=False)
-    stored = json.loads((results_dir / "optimization_result.json").read_text())
+    stored = json.loads(
+        (results_dir / "optimization_result.json").read_text(encoding="utf-8")
+    )
     # the versions of a fit name the packages of its engine: sbmlsim-core
     assert "sbmlsim-core" in stored["provenance"]["versions"]
