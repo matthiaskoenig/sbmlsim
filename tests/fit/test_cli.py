@@ -672,3 +672,32 @@ def test_the_engine_of_a_definition_wins_over_the_one_of_the_project() -> None:
     project = PROJECT.replace(fits=stated, simulator=SimulatorSettings(engine="core"))
     definitions = project.load_fit_definitions()
     assert {d.problem(opid="x").engine for d in definitions.values()} == {Engine.COPASI}
+
+
+@pytest.mark.parametrize("n_cores", [1, 2])
+def test_a_project_on_the_engine_core_fits_on_it(tmp_path: Path, n_cores: int) -> None:
+    """The fit of a project whose simulator is the engine core optimizes on it.
+
+    One core runs the optimization in the process, two cores in a pool whose
+    workers evaluate the residuals with the engine of the problem.
+    """
+    from sbmlsim.project import SimulatorSettings
+    from tests.project_toy import PROJECT
+
+    project = PROJECT.replace(simulator=SimulatorSettings(engine="core"))
+    runs = run_fit(
+        definition=project.fit("DECAY"),
+        opid="core",
+        size=n_cores,
+        n_cores=n_cores,
+        seed=1234,
+    )
+    run = runs["core"]
+    assert run.problem.engine is Engine.CORE
+    assert run.result.size == n_cores
+    assert all(fit.success for fit in run.result.fits)
+    assert min(fit.cost for fit in run.result.fits) < 1e-3
+    results_dir = run.report(output_dir=tmp_path, mapping_figures=False)
+    stored = json.loads((results_dir / "optimization_result.json").read_text())
+    # the versions of a fit name the packages of its engine: sbmlsim-core
+    assert "sbmlsim-core" in stored["provenance"]["versions"]
