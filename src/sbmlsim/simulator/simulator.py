@@ -796,7 +796,7 @@ class _Assembly:
 
     def add(self, result: ChunkResult) -> None:
         """Write the arrays of a chunk, or keep it until the rows are known."""
-        at = result.indices - self._start
+        at = _at(result.indices, self._start)
         self.table[:, at] = result.scalars.T
         self.status[at] = result.status
         self.errors.extend(result.errors)
@@ -812,7 +812,7 @@ class _Assembly:
         if not self._timed:
             return None
         if self._rows is None:
-            self._rows = max((r.values.shape[1] for r in self._pending), default=0)
+            self._rows = max((r.values.shape[2] for r in self._pending), default=0)
         while self._pending:
             # released once written, the last kept first
             self._write(self._pending.pop())
@@ -828,13 +828,45 @@ class _Assembly:
         return self._cube
 
     def _write(self, result: ChunkResult) -> None:
-        """Write the rows of the points of a chunk, padded with `NaN`."""
+        """Write the rows of the points of a chunk, padded with `NaN`.
+
+        A chunk carries its values in the layout of the cube, `(column, point,
+        row)`, so they are copied into it without moving an axis, and the
+        points of a chunk are consecutive, so they are written through a slice
+        rather than through an index array (`_at`): both of them are a copy of
+        the whole chunk, and a transposing or scattered one costs about twice
+        a contiguous one, see `sbmlsim.simulator.worker`.
+        """
         cube = self._allocated()
-        rows = result.values.shape[1]
-        at = result.indices - self._start
-        cube[:, at, :rows] = np.moveaxis(result.values, 2, 0)
+        rows = result.values.shape[2]
+        at = _at(result.indices, self._start)
+        cube[:, at, :rows] = result.values
         cube[:, at, rows:] = np.nan
         self._written[at] = True
+
+
+def _at(indices: np.ndarray, start: int) -> slice | np.ndarray:
+    """Get where the points of a chunk sit in the arrays of a block.
+
+    The points of a chunk are consecutive in the order of the scan, so their
+    positions are a slice, which numpy copies into as a contiguous block; an
+    index array would make every write of a chunk a scattered one. A chunk
+    whose indices are not consecutive, which no caller produces today, keeps
+    the index array, so the positions are right whatever the chunking.
+
+    Args:
+        indices: the flat indices of the points of the chunk, in the scan.
+        start: the first flat index of the block.
+
+    Returns:
+        The slice of the positions, or the array of them.
+    """
+    at = indices - start
+    # the positions must be the ascending run of a slice, not merely span it:
+    # a permutation of one would reorder the points of the chunk
+    if at.size and np.array_equal(at, np.arange(at[0], at[0] + at.size)):
+        return slice(int(at[0]), int(at[0]) + at.size)
+    return at
 
 
 def _check_coordinates(scan: Scan, outputs: set[str]) -> None:

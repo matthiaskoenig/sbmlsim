@@ -291,8 +291,10 @@ class ChunkResult:
 
     Attributes:
         indices: the flat indices of the points, those of the chunk.
-        values: the kept timecourses, `(point, row, column)` with the time
-            first and the timecourses of the graph, padded with `NaN`.
+        values: the kept timecourses, `(column, point, row)` with the time
+            first and the timecourses of the graph, padded with `NaN`. It is
+            the layout of the cube of the run, so a chunk is written into it
+            without moving an axis, see `sbmlsim.simulator.simulator`.
         scalars: the kept values per simulation, `(point, column)` with the
             scalars of the graph.
         status: `0` for a point which ran, `1` for one which failed.
@@ -380,7 +382,9 @@ def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
             solutions.append(result.values)
             plans.append(plan)
         else:
-            solutions.append(_on_grid(chunk.time, result.values[:, columns].T, plan))
+            solutions.append(
+                _on_grid(chunk.time, _timecourses_of(result.values, columns), plan)
+            )
     return _finish(chunk, points, solutions, plans, failures)
 
 
@@ -412,9 +416,13 @@ def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkRe
     batch carries its own values in its request.
 
     The engine answers with the table of every point of the batch at once, so
-    a chunk of it holds the tables of its points, each released as soon as it
-    is read, and not the grid of one point at a time as the loop does: the
-    points of such a chunk are capped at `CORE_MAX_CHUNK` for that. Measured
+    a chunk of it holds the tables of its points, and not the grid of one
+    point at a time as the loop does: the points of such a chunk are capped
+    at `CORE_MAX_CHUNK` for that. A chunk without observables keeps the kept
+    timecourses of a table as a view of it (`_timecourses_of`), so the tables
+    are held until `_pack` copies them and the chunk copies the values once
+    rather than twice; the peak is the same, the tables and the values of the
+    chunk, where it was the copies and the values before. Measured
     on the midazolam model with a grid of 200 output times and all 268
     selections, the widest scan of the package (2000 points, a result of 815
     MiB): the process peaks at 1.45 GiB in the chunks of 250 points of the
@@ -487,12 +495,15 @@ def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkRe
             failures.append((k, f"{type(err).__name__}: {err}", err))
             continue
         # the time is shifted in the array the bindings own, which
-        # `output.values` gives out again by every access: it is read once
+        # `output.values` answers with as it is, the same array on every
+        # access, so it is read once and the chunk holds it until `_pack`
         values = output_time(output.values, columns, plan, model.symbols)
         points.append(k)
         ran.append(plan)
         solutions.append(
-            values if observed else _on_grid(chunk.time, values[:, kept].T, plan)
+            values
+            if observed
+            else _on_grid(chunk.time, _timecourses_of(values, kept), plan)
         )
     return _finish(chunk, points, solutions, ran, failures)
 
@@ -605,6 +616,30 @@ def _finish(
         status[k] = 1
         errors.append((index, message))
     return _pack(chunk, points, n_rows, rows, scalars, status, errors)
+
+
+def _timecourses_of(values: np.ndarray, columns: list[int]) -> np.ndarray:
+    """Get the kept columns of a solution as `(column, row)`, the time first.
+
+    `values[:, columns].T` would copy the whole solution to select from it,
+    also when `columns` is every column of it in order, which is what a run
+    without observables keeps of a model whose selections are its outputs.
+    The transpose of the solution is a view of it, so the common case copies
+    nothing at all and the chunk copies the values exactly once, in `_pack`.
+    Measured on the HCTZ model with 401 output times and 191 selections, a
+    chunk of 250 points: 47.7 ms for the selecting copy against 0.0 ms for
+    the view.
+
+    Args:
+        values: the solution, `(row, column)`.
+        columns: the kept columns, the time first.
+
+    Returns:
+        The kept timecourses, `(column, row)`; a view where it can be one.
+    """
+    if len(columns) == values.shape[1] and columns == list(range(values.shape[1])):
+        return values.T
+    return values[:, columns].T
 
 
 def _on_grid(grid: np.ndarray | None, rows: np.ndarray, plan: Plan) -> np.ndarray:
@@ -795,20 +830,39 @@ def _pack(
             table[k] = point_scalars
         return ChunkResult(
             indices=chunk.indices,
-            values=np.empty((n, 0, 0)),
+            values=np.empty((0, n, 0)),
             scalars=table,
             status=status,
             errors=tuple(sorted(errors)[:MAX_ERRORS]),
         )
     if chunk.time is not None:
         n_rows = chunk.time.size
-    values = np.full((n, n_rows, 1 + len(chunk.graph.timecourses)), np.nan)
-    if chunk.time is not None:
-        values[:, :, 0] = chunk.time
+    # the values are filled in full below, point by point: a point which ran
+    # writes its rows and the `NaN` of the rows it does not have, and the
+    # points which failed are filled after them, so a chunk whose points all
+    # ran and are all as long as the grid, the common case, never pays for a
+    # pass of `NaN` over the whole array it then overwrites (measured on the
+    # HCTZ model, 1000 points of 401 rows and 191 selections: 66 ms of a run
+    # of 485 ms)
+    values = np.empty((1 + len(chunk.graph.timecourses), n, n_rows))
     table = np.full((n, len(chunk.graph.scalars)), np.nan)
+    written = np.zeros(n, dtype=bool)
     for k, point_rows, point_scalars in zip(points, rows, scalars, strict=True):
-        values[k, : point_rows.shape[1]] = point_rows.T
+        # `point_rows` is `(column, row)`, the layout of the cube, so the rows
+        # of a point are written without transposing them
+        kept = point_rows.shape[1]
+        values[:, k, :kept] = point_rows
+        if kept < n_rows:
+            values[:, k, kept:] = np.nan
+            if chunk.time is not None:
+                values[0, k, kept:] = chunk.time[kept:]
+        written[k] = True
         table[k] = point_scalars
+    if not written.all():
+        # a point which failed is `NaN`, with the time of the grid if there is one
+        values[:, ~written] = np.nan
+        if chunk.time is not None:
+            values[0, ~written] = chunk.time
     return ChunkResult(
         indices=chunk.indices,
         values=values,

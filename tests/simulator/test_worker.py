@@ -27,6 +27,7 @@ from sbmlsim.simulator.worker import (
     ModelSpec,
     OnError,
     ScanPointError,
+    _timecourses_of,
     observe,
     run_chunk,
     run_chunk_in_worker,
@@ -49,6 +50,16 @@ SEL = ("time", "[A]", "[B]", "k1")
 @pytest.fixture
 def model() -> RoadrunnerSBMLModel:
     return RoadrunnerSBMLModel(source=sbml())
+
+
+def _by_point(values: np.ndarray) -> np.ndarray:
+    """Read the values of a chunk as `(point, row, column)`.
+
+    A chunk holds them as `(column, point, row)`, the layout of the cube of
+    the run, so it is written into it without moving an axis. These
+    assertions are about one point at a time, which reads better per point.
+    """
+    return np.moveaxis(values, 0, 2)
 
 
 def _chunk(
@@ -86,8 +97,8 @@ def test_every_point_is_its_simulation(model: RoadrunnerSBMLModel) -> None:
         timed={1.0: {"k1": np.array([0.1, 3.0])}},
     )
     result = run_chunk(chunk, model)
-    # the time 1 of the change twice
-    assert result.values.shape == (2, 6, 4)
+    # the time 1 of the change twice; the chunk is `(column, point, row)`
+    assert result.values.shape == (4, 2, 6)
     assert result.status.tolist() == [0, 0]
     for k, (b0, k1) in enumerate([(0.0, 0.1), (2.0, 3.0)]):
         simulation = Simulation(
@@ -98,16 +109,87 @@ def test_every_point_is_its_simulation(model: RoadrunnerSBMLModel) -> None:
         )
         plan = compile_simulation(simulation, model.symbols, model.uinfo)
         np.testing.assert_allclose(
-            result.values[k], execute(plan, model, SEL).values, rtol=1e-12
+            _by_point(result.values)[k],
+            execute(plan, model, SEL).values,
+            rtol=1e-12,
         )
+
+
+def test_the_kept_timecourses_of_a_solution_are_a_view(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """`_timecourses_of` does not copy when every column is kept.
+
+    Selecting with a list of every column copies the whole solution, which is
+    most of the python of a wide scan. The kept columns of such a solution
+    are the transpose, a view, and the chunk copies the values once, in
+    `_pack`.
+    """
+    values = np.arange(12.0).reshape(4, 3)
+    every = _timecourses_of(values, [0, 1, 2])
+    assert np.shares_memory(every, values)
+    np.testing.assert_array_equal(every, values.T)
+    some = _timecourses_of(values, [0, 2])
+    assert not np.shares_memory(some, values)
+    np.testing.assert_array_equal(some, values[:, [0, 2]].T)
+    # the order is kept, so a reordering selection is not taken for the identity
+    swapped = _timecourses_of(values, [0, 2, 1])
+    np.testing.assert_array_equal(swapped, values[:, [0, 2, 1]].T)
+
+
+def test_an_engine_does_not_reuse_the_buffer_of_its_result(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """Two simulations of one model answer with arrays of their own.
+
+    A chunk keeps the kept timecourses of its points as views until `_pack`
+    copies them, so an engine which wrote its next result into the buffer of
+    the one before would corrupt the points already held.
+    """
+    first = None
+    kept = None
+    for k1 in (0.1, 0.9):
+        simulation = Simulation(end=2, steps=4, preinit_changes={"k1": k1})
+        plan = compile_simulation(simulation, model.symbols, model.uinfo)
+        values = execute(plan, model, SEL).values
+        if first is None:
+            first, kept = values, values.copy()
+    np.testing.assert_array_equal(first, kept)
+
+
+def test_a_chunk_is_packed_in_the_layout_of_the_cube(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """The values of a chunk are `(column, point, row)`, what the cube holds.
+
+    The run copies a chunk into the cube without moving an axis, so a change
+    of either layout which forgets the other is caught here and not by a
+    slower scan which still agrees.
+    """
+    chunk = _chunk(
+        model, Simulation(end=2, steps=4), values={"k1": np.array([0.1, 0.2])}
+    )
+    result = run_chunk(chunk, model)
+    n_columns, n_points, n_rows = result.values.shape
+    assert n_points == len(chunk.indices) == 2
+    assert n_columns == 1 + len(chunk.graph.timecourses)
+    # the time is the first column of every point, not the first point
+    for k in range(n_points):
+        assert np.isfinite(result.values[0, k]).sum() <= n_rows
+        np.testing.assert_array_equal(result.values[0, k], result.values[0, 0])
+    # the cube of a run is `(column, point, row)` and takes a chunk as it is
+    cube = np.empty((n_columns, n_points, n_rows))
+    cube[:, 0:n_points, :n_rows] = result.values
+    np.testing.assert_array_equal(cube, result.values)
 
 
 def test_the_points_are_padded_to_the_longest(model: RoadrunnerSBMLModel) -> None:
     chunk = _chunk(model, Simulation(end=2), values={"k1": np.array([0.1, 30.0])})
     result = run_chunk(chunk, model)
-    rows = [int(np.isfinite(result.values[k, :, 0]).sum()) for k in range(2)]
-    assert rows[0] < rows[1] == result.values.shape[1]
-    assert np.isnan(result.values[0, rows[0] :]).all()
+    values = _by_point(result.values)
+    rows = [int(np.isfinite(values[k, :, 0]).sum()) for k in range(2)]
+    assert rows[0] < rows[1] == values.shape[1]
+    assert np.isnan(values[0, rows[0] :]).all()
 
 
 def test_a_grid_of_times_is_interpolated(model: RoadrunnerSBMLModel) -> None:
@@ -119,11 +201,12 @@ def test_a_grid_of_times_is_interpolated(model: RoadrunnerSBMLModel) -> None:
         time=grid,
     )
     result = run_chunk(chunk, model)
-    assert result.values.shape == (2, 4, 4)
-    np.testing.assert_array_equal(result.values[0, :, 0], grid)
+    assert result.values.shape == (4, 2, 4)
+    values = _by_point(result.values)
+    np.testing.assert_array_equal(values[0, :, 0], grid)
     # the value after the change and none after the end
-    assert result.values[0, 2, 1] == pytest.approx(5.0)
-    assert np.isnan(result.values[0, 3, 1])
+    assert values[0, 2, 1] == pytest.approx(5.0)
+    assert np.isnan(values[0, 3, 1])
 
 
 def _blowup_chunk(
@@ -162,10 +245,11 @@ def test_a_failed_point_is_flagged(capfd) -> None:
     chunk, blowup = _blowup_chunk("flag")
     result = _run_failing(chunk, blowup, capfd)
     assert result.status.tolist() == [0, 1, 0]
-    assert np.isnan(result.values[1, :, 1]).all()
-    assert np.isfinite(result.values[[0, 2]]).all()
+    values = _by_point(result.values)
+    assert np.isnan(values[1, :, 1]).all()
+    assert np.isfinite(values[[0, 2]]).all()
     # the point after a failure is the point it would be alone
-    np.testing.assert_array_equal(result.values[2], result.values[0])
+    np.testing.assert_array_equal(values[2], values[0])
     assert result.errors[0][0] == 5
     assert "CVODE" in result.errors[0][1]
 
@@ -186,8 +270,9 @@ def test_a_failed_point_has_the_grid_as_time(capfd) -> None:
     chunk, blowup = _blowup_chunk("flag", time=grid)
     result = _run_failing(chunk, blowup, capfd)
     assert result.status.tolist() == [0, 1, 0]
-    np.testing.assert_array_equal(result.values[1, :, 0], grid)
-    assert np.isnan(result.values[1, :, 1]).all()
+    values = _by_point(result.values)
+    np.testing.assert_array_equal(values[1, :, 0], grid)
+    assert np.isnan(values[1, :, 1]).all()
 
 
 @posix
@@ -251,7 +336,7 @@ def test_a_worker_sees_a_rewritten_model(
     run_chunk_in_worker(spec, chunk)
     result = run_chunk_in_worker(other, chunk)
     assert isinstance(result, ChunkResult)
-    assert result.values[0, 0, 1] == pytest.approx(0.5)
+    assert _by_point(result.values)[0, 0, 1] == pytest.approx(0.5)
 
 
 def test_the_spec_of_a_model_loads_it_with_the_settings(
@@ -323,10 +408,10 @@ def test_a_change_of_a_dimension_wins_at_its_time(model: RoadrunnerSBMLModel) ->
     )
     plan = compile_simulation(simulation, model.symbols, model.uinfo)
     np.testing.assert_allclose(
-        result.values[0], execute(plan, model, SEL).values, rtol=1e-12
+        _by_point(result.values)[0], execute(plan, model, SEL).values, rtol=1e-12
     )
-    assert result.values[0, -1, 3] == pytest.approx(3.0)
-    assert result.values[1, -1, 3] == pytest.approx(0.1)
+    assert _by_point(result.values)[0, -1, 3] == pytest.approx(3.0)
+    assert _by_point(result.values)[1, -1, 3] == pytest.approx(0.1)
 
 
 def fails_for_middle_k(time: np.ndarray, values: dict[str, np.ndarray]) -> float:
@@ -374,10 +459,11 @@ def test_a_custom_which_fails_flags_only_its_point(model: RoadrunnerSBMLModel) -
     assert result.status.tolist() == [0, 1, 0]
     assert [index for index, _ in result.errors] == [11]
     assert "k1 is too large" in result.errors[0][1]
-    assert np.isnan(result.values[1]).all()
+    values = _by_point(result.values)
+    assert np.isnan(values[1]).all()
     assert np.isnan(result.scalars[1]).all()
     for k in (0, 2):
-        assert np.isfinite(result.values[k]).all()
+        assert np.isfinite(values[k]).all()
         assert result.scalars[k].tolist() == [0.0]
 
 
@@ -388,8 +474,12 @@ def test_the_points_which_ran_do_not_depend_on_a_failing_one(
     chunk = _large_k1(model, "flag")
     chunk.values["k1"] = np.array([0.5, 0.7, 0.7])
     healthy = run_chunk(chunk, model)
-    np.testing.assert_array_equal(both.values[0], healthy.values[0])
-    np.testing.assert_array_equal(both.values[2], healthy.values[2])
+    np.testing.assert_array_equal(
+        _by_point(both.values)[0], _by_point(healthy.values)[0]
+    )
+    np.testing.assert_array_equal(
+        _by_point(both.values)[2], _by_point(healthy.values)[2]
+    )
 
 
 def test_a_custom_which_fails_raises_its_point(model: RoadrunnerSBMLModel) -> None:
@@ -445,7 +535,7 @@ def test_the_scalars_of_a_chunk_are_filled(model: RoadrunnerSBMLModel) -> None:
     result = run_chunk(chunk, model)
     assert chunk.graph.scalars == ("amax", "alast")
     assert result.scalars.shape == (2, 2)
-    a = result.values[:, :, 1]
+    a = _by_point(result.values)[:, :, 1]
     np.testing.assert_allclose(result.scalars[:, 0], a.max(axis=1))
     np.testing.assert_allclose(result.scalars[:, 1], a[:, -1])
 

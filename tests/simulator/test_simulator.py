@@ -22,6 +22,7 @@ from sbmlsim.result import ScanResult, TimecourseResult
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation, SteadyState
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.simulator.simulator import _at
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
@@ -1512,3 +1513,24 @@ def test_the_common_grid_of_many_output_times_is_built_once_per_output() -> None
     times = np.linspace(0.0, end, steps + 1)
     expected = np.sort(np.concatenate([times, [10.0, 15.0, 20.0]]))
     np.testing.assert_array_equal(grid, expected)
+
+
+def test_the_points_of_a_chunk_are_written_through_a_slice() -> None:
+    """`_at` gives a slice for consecutive points and the array otherwise.
+
+    The points of a chunk are consecutive, so the run copies it into the cube
+    as a contiguous block; an index array would scatter every write. A
+    permutation spans the same range and must not be taken for it.
+    """
+    consecutive = _at(np.array([10, 11, 12]), 10)
+    assert consecutive == slice(0, 3)
+    assert _at(np.array([7]), 7) == slice(0, 1)
+    for indices in (np.array([10, 12, 11]), np.array([10, 12, 14])):
+        at = _at(indices, 10)
+        assert not isinstance(at, slice)
+        np.testing.assert_array_equal(at, indices - 10)
+    empty = _at(np.array([], dtype=int), 0)
+    assert not isinstance(empty, slice)
+    # the slice and the array select the same points of an array
+    target = np.arange(20.0)
+    np.testing.assert_array_equal(target[consecutive], target[np.array([0, 1, 2])])
