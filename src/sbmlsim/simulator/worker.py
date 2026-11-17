@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -54,7 +55,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import roadrunner
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.engine import Engine, amici_cache, import_core, using_amici_cache
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
@@ -73,6 +74,16 @@ if TYPE_CHECKING:
 
 #: what a run does about a point which fails: raise its error or flag it
 OnError = Literal["raise", "flag"]
+
+#: the values of a chunk from which `_pack` writes its points on threads; a
+#: smaller chunk is written by the calling thread, which costs no pool
+PACK_THREAD_BYTES = 16 * 1024 * 1024
+
+#: the threads `_pack` writes the points of a chunk with at the most. The
+#: copy is bound by the memory of the machine and not by the threads: on the
+#: HCTZ model, a chunk of 250 points of 401 rows and 190 selections (152 MB),
+#: 18.4 ms with one thread, 12.8 with four, 10.9 with six and 11.1 with eight
+PACK_MAX_THREADS = 6
 
 
 class ScanPointError(RuntimeError):
@@ -811,6 +822,53 @@ def _timecourses(
         yield _on_grid(chunk.time, rows, plans[r])
 
 
+def _pack_threads(nbytes: int, n_points: int) -> int:
+    """Get the threads `_pack` writes the points of a chunk with.
+
+    The copy of a point is bound by the memory of the machine, so the threads
+    help a chunk which is large enough to pay for them and saturate well
+    below one per CPU (`PACK_MAX_THREADS`). A worker of a pool writes with the
+    calling thread: it has the cores of one worker and the other workers are
+    copying beside it, as a run of the engine core, which writes in the
+    calling process, has no pool at all.
+
+    Args:
+        nbytes: the values of the chunk.
+        n_points: the points which ran.
+
+    Returns:
+        The number of threads, `1` to write with the calling thread.
+    """
+    if nbytes < PACK_THREAD_BYTES or n_points < 2 or parallel.in_worker():
+        return 1
+    return max(1, min(PACK_MAX_THREADS, cgroup.available_cpus(), n_points))
+
+
+def _write_point(
+    values: np.ndarray, chunk: Chunk, n_rows: int, k: int, rows: np.ndarray
+) -> None:
+    """Write the rows of one point of a chunk into its values, see `_pack`.
+
+    `rows` is `(column, row)`, the layout of the cube, so the rows of a point
+    are written without transposing them. A point shorter than the values,
+    which a ragged output has, is padded with `NaN` and keeps the time of the
+    grid of the chunk where it has one.
+
+    Args:
+        values: the values of the chunk, `(column, point, row)`.
+        chunk: the chunk.
+        n_rows: the rows of the values.
+        k: the position of the point in the chunk.
+        rows: the time and the kept timecourses of the point.
+    """
+    kept = rows.shape[1]
+    values[:, k, :kept] = rows
+    if kept < n_rows:
+        values[:, k, kept:] = np.nan
+        if chunk.time is not None:
+            values[0, k, kept:] = chunk.time[kept:]
+
+
 def _pack(
     chunk: Chunk,
     points: Sequence[int],
@@ -888,17 +946,33 @@ def _pack(
         values = out
     table = np.full((n, len(chunk.graph.scalars)), np.nan)
     written = np.zeros(n, dtype=bool)
-    for k, point_rows, point_scalars in zip(points, rows, scalars, strict=True):
-        # `point_rows` is `(column, row)`, the layout of the cube, so the rows
-        # of a point are written without transposing them
-        kept = point_rows.shape[1]
-        values[:, k, :kept] = point_rows
-        if kept < n_rows:
-            values[:, k, kept:] = np.nan
-            if chunk.time is not None:
-                values[0, k, kept:] = chunk.time[kept:]
-        written[k] = True
-        table[k] = point_scalars
+    # the points of a chunk with observables are interpolated one at a time
+    # as they are written (`_timecourses`), so they are not held twice and
+    # there is nothing to spread over threads
+    held = rows if isinstance(rows, Sequence) else None
+    threads = 1 if held is None else _pack_threads(values.nbytes, len(points))
+    if held is not None and threads > 1:
+
+        def write(part: Iterable[int]) -> None:
+            """Write the points of one part, which no other thread writes."""
+            for i in part:
+                _write_point(values, chunk, n_rows, points[i], held[i])
+
+        # a part writes the points `i`, `i + threads`, ... and the points of
+        # two parts are disjoint, so no two threads write into one cell and
+        # the values are the ones of a write by the calling thread, bitwise
+        parts = [range(i, len(points), threads) for i in range(threads)]
+        with ThreadPoolExecutor(threads) as pool:
+            for _ in pool.map(write, parts):
+                pass
+        for i, k in enumerate(points):
+            written[k] = True
+            table[k] = scalars[i]
+    else:
+        for k, point_rows, point_scalars in zip(points, rows, scalars, strict=True):
+            _write_point(values, chunk, n_rows, k, point_rows)
+            written[k] = True
+            table[k] = point_scalars
     if not written.all():
         # a point which failed is `NaN`, with the time of the grid if there is one
         values[:, ~written] = np.nan

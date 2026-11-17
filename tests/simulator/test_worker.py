@@ -6,10 +6,12 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import numpy as np
 import pytest
 
+import sbmlsim.simulator.worker as worker_module
 from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -22,11 +24,14 @@ from sbmlsim.simulator.plan import Plan, compile_simulation
 from sbmlsim.simulator.simulator import scan_point_plans
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
+    PACK_MAX_THREADS,
+    PACK_THREAD_BYTES,
     Chunk,
     ChunkResult,
     ModelSpec,
     OnError,
     ScanPointError,
+    _pack_threads,
     _timecourses_of,
     observe,
     run_chunk,
@@ -590,3 +595,105 @@ def test_observe_reports_a_failing_point_and_keeps_the_others() -> None:
     np.testing.assert_allclose(
         outputs["cmax"], [solutions[0][:, 1].max(), solutions[2][:, 1].max()]
     )
+
+
+def test_a_small_chunk_is_packed_by_the_calling_thread() -> None:
+    """Threads cost a pool, which a chunk too small to gain from it does not pay.
+
+    The copy of a narrow scan is a few milliseconds, where starting the
+    threads is a fraction of one, so it is written by the calling thread.
+    """
+    assert _pack_threads(PACK_THREAD_BYTES - 1, 250) == 1
+    # and a chunk of one point has nothing to spread
+    assert _pack_threads(PACK_THREAD_BYTES * 8, 1) == 1
+
+
+def test_a_large_chunk_is_packed_on_threads() -> None:
+    """A chunk large enough to gain from the threads is written with them."""
+    threads = _pack_threads(PACK_THREAD_BYTES * 8, 250)
+    assert 1 < threads <= PACK_MAX_THREADS
+
+
+def test_a_worker_of_a_pool_packs_with_its_own_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker writes with the calling thread, it has the cores of one worker.
+
+    The other workers of the pool are copying beside it, so a worker which
+    started threads of its own would take their cores and not gain.
+    """
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    assert _pack_threads(PACK_THREAD_BYTES * 8, 250) == 1
+
+
+def test_the_threaded_pack_writes_what_the_calling_thread_writes(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """The threads write the values the calling thread writes, bitwise.
+
+    Every thread writes points no other thread writes, so the values do not
+    depend on which thread got there first, and a scan is reproducible
+    whatever the machine runs it.
+    """
+    chunk = _chunk(
+        model,
+        Simulation(end=2, steps=4),
+        values={"k1": np.linspace(0.1, 0.5, 8)},
+        indices=np.arange(8),
+    )
+    serial = run_chunk(chunk, model)
+    # every chunk takes the threaded path, whatever its size
+    with mock.patch.object(worker_module, "PACK_THREAD_BYTES", 0):
+        threaded = run_chunk(chunk, model)
+    assert threaded.values.shape == serial.values.shape
+    np.testing.assert_array_equal(threaded.values, serial.values)
+    np.testing.assert_array_equal(threaded.scalars, serial.scalars)
+    np.testing.assert_array_equal(threaded.status, serial.status)
+
+
+def test_a_ragged_chunk_is_padded_the_same_on_threads(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """A point shorter than the values is padded with `NaN` on threads too."""
+    chunk = _chunk(
+        model,
+        Simulation(end=2),
+        values={"k1": np.array([0.1, 30.0, 0.2, 20.0])},
+        indices=np.arange(4),
+    )
+    serial = run_chunk(chunk, model)
+    with mock.patch.object(worker_module, "PACK_THREAD_BYTES", 0):
+        threaded = run_chunk(chunk, model)
+    np.testing.assert_array_equal(threaded.values, serial.values)
+    assert np.isnan(serial.values).any()
+
+
+def test_a_chunk_with_observables_is_packed_by_the_calling_thread(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    """The points of a chunk with observables are not held to be spread.
+
+    They are interpolated one at a time as they are written, so there is no
+    sequence of them to hand to the threads, and `_pack_threads` is not asked.
+    """
+    asked: list[int] = []
+    chunk = _observed_chunk(
+        model,
+        [Formula("a", "[A]"), Formula("double", "2 * [A]")],
+        {"k1": np.array([0.1, 0.2])},
+        "raise",
+        np.arange(2),
+        Simulation(end=2, steps=4),
+    )
+
+    def spy(nbytes: int, n_points: int) -> int:
+        asked.append(n_points)
+        return worker_module._pack_threads(nbytes, n_points)
+
+    with (
+        mock.patch.object(worker_module, "PACK_THREAD_BYTES", 0),
+        mock.patch.object(worker_module, "_pack_threads", spy),
+    ):
+        result = run_chunk(chunk, model)
+    assert asked == []
+    assert result.values.shape[0] == 1 + len(chunk.graph.timecourses)

@@ -197,7 +197,7 @@ A serial scan has no cold run worth the name: the same four runs give 0.79 s col
 
 ## The width of the output grid
 
-A thread of the engine core integrates while the one python process of the run assembles every result, so the wider the output grid of a point, the less the threads gain. `--steps` scans every model on another equidistant grid, here the same scan of HCTZ, 1000 points on 8 workers, warm, with the two engines taking turns in one process:
+A thread of the engine core integrates while the one python process of the run assembles every result, so the wider the output grid of a point, the more of the run is that assembly. `--steps` scans every model on another equidistant grid, here the same scan of HCTZ, 1000 points on 8 workers, warm, with the two engines taking turns in one process:
 
 ```bash
 # the same scan on four output grids, `steps + 1` output times per point
@@ -209,14 +209,14 @@ done
 
 | output times per point | core s | roadrunner s | roadrunner / core |
 | ---: | ---: | ---: | ---: |
-| 11 | 0.118 | 0.213 | 1.81 |
-| 26 | 0.135 | 0.218 | 1.61 |
-| 101 | 0.198 | 0.321 | 1.62 |
-| 401 | 0.373 | 0.576 | 1.55 |
+| 11 | 0.115 | 0.199 | 1.73 |
+| 26 | 0.125 | 0.219 | 1.75 |
+| 101 | 0.149 | 0.288 | 1.93 |
+| 401 | 0.281 | 0.616 | 2.19 |
 
-Both engines get slower with a wider grid and the engine core leads at every width, by 1.81 at eleven output times and by 1.55 at 401. The width still costs it something, since a scan of the engine core runs in one python process where roadrunner's runs in eight, but the margin no longer depends on the grid the way it did: until sbmlsim 0.30.0 this table read 1.68, 1.56, 1.23 and 0.99, a lead which the grid ate until the two engines ran level at 401 output times. The serial scans of the same four runs are 0.650, 0.669, 0.745 and 1.05 seconds for the engine core against 1.37, 1.44, 1.79 and 3.15 for roadrunner, a lead of 2.1 to 3.0 which grows with the width.
+Both engines get slower with a wider grid, the engine core leads at every width, and its lead now grows with the grid rather than shrinking: 1.73 at eleven output times and 2.19 at 401. Until sbmlsim 0.30.0 this table read 1.68, 1.56, 1.23 and 0.99, a lead the grid ate until the two engines ran level at 401 output times. The serial scans of the same four runs are 0.646, 0.668, 0.722 and 0.960 seconds for the engine core against 1.36, 1.43, 1.77 and 3.08 for roadrunner, a lead of 2.1 to 3.2 which also grows with the width.
 
-What changed is sbmlsim and not the engine. The values of a point went from the solution into the result through four passes, two of which were waste: a selection of every column in order, which copied a whole solution to keep all of it, and a transpose of every chunk into the cube, which a chunk in the layout of the cube does not need. They are gone, the values are copied once, and the parallel scan of 401 output times went from 0.619 s to 0.373 s. roadrunner's serial scan gained a little from the same change, which was in its path too; its parallel scan did not, because its eight worker processes were already copying in parallel with each other. That is the part the engine core could not hide: it runs its threads in one process, so it paid the whole of the assembly in the open, and the measurement which looked like a limit of the engine was three unnecessary passes over 613 MB.
+What changed is sbmlsim and not the engine. The values of a point went from the solution into the result through four passes, two of which were waste: a selection of every column in order, which copied a whole solution to keep all of it, and a transpose of every chunk into the cube, which a chunk in the layout of the cube does not need. They are gone, and a run in the calling process now writes the values of a point straight into the result, so they are copied once instead of four times: the parallel scan of 401 output times went from 0.619 s to 0.281 s, and the assembly of the result, which was 112 ms of that scan, is 2 ms. roadrunner's serial scan gained a little from the same change, which was in its path too; its parallel scan did not, because its eight worker processes were already copying in parallel with each other. That is the part the engine core could not hide: it runs its threads in one process, so it paid the whole of the assembly in the open, and the measurement which looked like a limit of the engine was three unnecessary passes over 613 MB.
 
 The tables at the top use 101 output times for every model. A single simulation assembles one solution, so none of this reaches it: there the engine core leads by 2.0 to 3.1 across the same four widths.
 

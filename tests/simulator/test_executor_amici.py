@@ -1222,21 +1222,26 @@ def test_the_cost_is_linear_in_the_number_of_events(times: list[float] | None) -
     `X` is set back to 0 at 0.001: 1000 events per unit of the time. The
     integrations of a run are counted, so the test does not depend on the
     speed of the machine (about three per event, and one per piece between
-    two events which checks the refinement of the steps); the time of 200
-    events is at most a few times the time of 100.
+    two events which checks the refinement of the steps).
+
+    The counts are the whole assertion. A wall clock here compared the
+    seconds of 200 events with the seconds of 100, which the load of the
+    other tests of a parallel run stretches by more than the margin it
+    allowed, so it failed now and then on a busy machine while the engine
+    was doing exactly what the counts say. A cost which grows faster than
+    the events shows in the integrations, which are counted exactly.
     """
     model = "model sawtooth\n  X = 0\n  X' = 1\n  n = 0\n"
     model += "  E: at (X >= 0.001), t0=true: X = 0, n = n + 1\nend"
     source = sbml(model)
-    hundred, t_hundred = _integrations(
+    hundred, _ = _integrations(
         source, Simulation(end=0.1, times=None if times is None else [0, 0.05, 0.1])
     )
-    two_hundred, t_two_hundred = _integrations(
+    two_hundred, _ = _integrations(
         source, Simulation(end=0.2, times=None if times is None else [0, 0.1, 0.2])
     )
     assert hundred <= 4 * 100 + 10
     assert two_hundred <= 2 * hundred + 10
-    assert t_two_hundred <= 4.0 * t_hundred + 0.05
 
 
 @pytest.mark.parametrize("times", [list(range(0, 43, 3)), None])
