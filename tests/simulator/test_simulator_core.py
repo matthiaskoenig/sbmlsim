@@ -28,7 +28,7 @@ from sbmlsim.simulation import (
     Simulation,
     SteadyState,
 )
-from sbmlsim.simulator import IntegratorSettings, Simulator
+from sbmlsim.simulator import IntegratorSettings, Simulator, executor_core
 from sbmlsim.simulator.executor import SteadyStateError
 from sbmlsim.simulator.executor_core import (
     CONTRACT,
@@ -75,6 +75,20 @@ model dose_state
   ke = 0.3
   PODOSE_ra' = -ka * PODOSE_ra
   Ac' = ka * PODOSE_ra - ke * Ac
+end
+"""
+
+#: an event of the time which adds to the state `x`, the model of the
+#: disagreement a formula at a change would hide: the executor of roadrunner
+#: reads `x` before the event of the time of the change fires and a request of
+#: the engine answers it after
+EVENT_AT_FIVE = """
+model event_at_five
+  x = 0
+  k = 0.1
+  x' = -k*x + 0.01
+  p = 0
+  E1: at (time >= 5), t0=false: x = x + 10
 end
 """
 
@@ -433,32 +447,33 @@ def test_a_formula_at_a_change_at_the_start_reads_its_target() -> None:
     _compare(core, roadrunner)
 
 
-@pytest.mark.parametrize(
-    "formula", ["A + 1", "[A] + 1"], ids=["an amount", "a concentration"]
-)
+@pytest.mark.parametrize("symbol", ["A", "[A]"], ids=["an amount", "a concentration"])
 def test_a_formula_at_a_change_reads_a_species(
-    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, formula: str
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, symbol: str
 ) -> None:
     """A formula which reads the amount or the concentration of a species is folded.
 
     The outputs of the engine are the selections of roadrunner, `A` the amount
     of a species and `[A]` its concentration, which is what `apply_changes`
     reads of the model of roadrunner: both are folded with the state at the
-    time of the change.
+    time of the change. The compartment of the probe model has the size 2, so
+    the two differ by that factor and the value of the change says which of
+    them was read.
     """
     simulation = Simulation(
         end=20,
-        changes=[Change(5, {"X": formula})],
+        changes=[Change(5, {"X": f"{symbol} + 1"})],
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
     roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
-    # the compartment of the probe model has the size 2, so the amount and the
-    # concentration of `A` differ and a change of the one is no change of the
-    # other
-    assert core["X"][core.values[:, 0] == 5.0][-1] != pytest.approx(
-        3.0, rel=1e-3, abs=0.0
-    )
+    at_five = core.values[:, 0] == 5.0
+    read = core[symbol][at_five][0]
+    other = core["[A]" if symbol == "A" else "A"][at_five][0]
+    # the value of the change is the symbol it reads and not the other one, up
+    # to the error of the integration of the segment it is folded with
+    assert core["X"][at_five][-1] == pytest.approx(read + 1.0, rel=1e-9)
+    assert read == pytest.approx(2.0 * other if symbol == "A" else other / 2.0)
     _compare(core, roadrunner)
 
 
@@ -483,6 +498,128 @@ def test_a_repeated_dose_of_a_dose_state_matches_roadrunner() -> None:
     rest = core["PODOSE_ra"][times == 24.0]
     assert rest[1] == pytest.approx(rest[0] + 2.0)
     assert rest[0] == pytest.approx(2.0 * np.exp(-0.1 * 24.0))
+    _compare(core, roadrunner)
+
+
+def test_ten_relative_doses_match_roadrunner() -> None:
+    """Ten doses a day apart match roadrunner, a protocol towards a steady state.
+
+    Every segment of the fold resumes from the state of the one before it, so a
+    protocol of many doses costs one pass over the simulation and not one from
+    the start per dose, see `_state_at` of the executor.
+    """
+    source = sbml(DOSE_STATE)
+    doses = [24.0 * k for k in range(10)]
+    simulation = Simulation(
+        end=240,
+        changes=[Change(doses, {"PODOSE_ra": "PODOSE_ra + 2.0"})],
+        times=np.linspace(0, 240, 121).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    times = core.values[:, 0]
+    # the doses accumulate towards the steady state of the protocol
+    first = core["PODOSE_ra"][times == 24.0]
+    last = core["PODOSE_ra"][times == 216.0]
+    assert first[1] == pytest.approx(first[0] + 2.0)
+    assert last[1] == pytest.approx(last[0] + 2.0)
+    assert last[1] > first[1]
+    _compare(core, roadrunner)
+
+
+def test_the_fold_of_a_state_the_executor_cannot_set_matches_roadrunner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model whose state the executor cannot hand to the engine folds from the start.
+
+    Every segment then starts at the start of the simulation with the
+    pre-initialization and the presimulation of the plan, which is correct and
+    costs one request from the start per change, see `_state_targets`: no
+    packaged model has such a state, so the path is measured here with the
+    targets taken away.
+    """
+    source = sbml(DOSE_STATE)
+    monkeypatch.setattr(executor_core, "_state_targets", lambda model: None)
+    simulation = Simulation(
+        end=72,
+        changes=[Change([0, 24, 48], {"PODOSE_ra": "PODOSE_ra + 2.0"})],
+        times=np.linspace(0, 72, 37).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    rest = core["PODOSE_ra"][core.values[:, 0] == 48.0]
+    assert rest[1] == pytest.approx(rest[0] + 2.0)
+    _compare(core, roadrunner)
+
+
+def test_a_relative_change_on_the_steps_of_the_integrator_matches_roadrunner() -> None:
+    """A simulation without times or steps folds on the steps of the integrator.
+
+    Every simulation of pkdb_models takes this path, a `Simulation` without
+    `steps`: the segment of a change is then the steps of the integrator up to
+    the change, whose last row is the state there.
+    """
+    source = sbml(RELATIVE)
+    simulation = Simulation(end=30, changes=[Change([10, 20], {"p": "p + 2"})])
+    model = load_model(source, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    # the output of the request and of every segment of the fold is the steps
+    # of the integrator and no grid of times
+    assert request_of(plan, model, ["time", "p"])["output"] == INTEGRATOR_STEPS
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    times = core.values[:, 0]
+    assert core["p"][times == 10.0].tolist() == [0.0, 2.0]
+    assert core["p"][times == 20.0].tolist() == [2.0, 4.0]
+    # `X` integrates `p`: 0 until 10, then 2 per unit of time, then 4
+    assert core["X"][-1] == pytest.approx(60.0)
+    assert core.columns == roadrunner.columns
+    np.testing.assert_allclose(
+        core.values[-1], roadrunner.values[-1], rtol=1e-6, atol=1e-9
+    )
+
+
+def test_a_change_which_reads_the_state_of_a_model_with_an_event_is_refused() -> None:
+    """A formula at a change is refused for a model with an event of its own.
+
+    The engine answers the state of a time after the events of that time have
+    fired and the executor of roadrunner reads it before they fire, so the two
+    would disagree without an error: the model `EVENT_AT_FIVE` adds 10 to `x`
+    at 5, where roadrunner reads 0.0067 and a request of the engine 10.0067.
+    """
+    source = sbml(EVENT_AT_FIVE)
+    simulation = Simulation(
+        end=10, changes=[Change(5, {"p": "x"})], times=[0.0, 5.0, 10.0]
+    )
+    with pytest.raises(UnsupportedModelError, match="formula") as failure:
+        Simulator(engine="core").simulate(source, simulation)
+    message = str(failure.value)
+    assert "'E1'" in message
+    assert "'p'" in message
+    assert "'x'" in message
+    assert "5.0" in message
+    assert "after the events" in message
+    # roadrunner reads the state before the event of the time fires
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    assert roadrunner["p"][roadrunner.values[:, 0] == 5.0][-1] < 1.0
+
+
+def test_a_change_of_numbers_runs_on_a_model_with_an_event() -> None:
+    """A model with an event and a change of numbers is no refusal."""
+    source = sbml(EVENT_AT_FIVE)
+    simulation = Simulation(
+        end=10,
+        changes=[Change(3, {"p": 1.0})],
+        times=[0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    times = core.values[:, 0]
+    assert core["p"][-1] == 1.0
+    # the event of the time fired at 5, which added 10 to `x`
+    assert core["x"][times == 4.0][-1] < 1.0
+    assert core["x"][times == 6.0][-1] > 9.0
     _compare(core, roadrunner)
 
 
