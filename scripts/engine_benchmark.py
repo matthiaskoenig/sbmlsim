@@ -225,11 +225,12 @@ DISTRIBUTIONS: Final[dict[Engine, str]] = {
 REPETITIONS: Final[int] = 20
 
 #: the rounds of the timed simulations and the scans, whose medians are the
-#: sample the mean and the standard deviation of a cell are taken over, so a
-#: cell is `rounds` measurements and never fewer than `MIN_ROUNDS`
+#: sample the median of a cell is taken over, so a cell is `rounds`
+#: measurements and never fewer than `MIN_ROUNDS`
 ROUNDS: Final[int] = 5
 
-#: the rounds below which a standard deviation says nothing
+#: the rounds below which a median has too small a sample to ignore a round
+#: which was slow because the machine was doing something else
 MIN_ROUNDS: Final[int] = 3
 
 #: the simulations before the timed ones of a round, which are not measured
@@ -432,7 +433,7 @@ MODELS: Final[dict[str, ModelBenchmark]] = {
     # the flow of the pump, the input of such an experiment. One simulation of
     # it is tens of seconds in COPASI, so it is scanned over as many points as
     # the parallel scan has workers, one per worker, and measured in fewer and
-    # shorter rounds; `MIN_ROUNDS` keeps the standard deviation meaningful
+    # shorter rounds; `MIN_ROUNDS` keeps the median a median of three
     "perfusion": ModelBenchmark(
         source=PERFUSION_SBML,
         simulation=Simulation(end=60, steps=100),
@@ -1110,8 +1111,8 @@ def figure(result: BenchmarkResult, path: Path) -> None:
     """Write the figure which compares the engines of every model.
 
     One panel per model and measure, a row of panels per model and a column
-    per measure: the dot of an engine is the mean of its rounds and the
-    whisker its standard deviation, on a logarithmic axis of its own, so the
+    per measure: the dot of an engine is the median of its rounds, on a
+    logarithmic axis of its own, so the
     engines of a model are read against each other, which is what the figure
     is for. The panels of a column do not share their axis: the models of
     this benchmark are five orders of magnitude apart, so a shared axis would
@@ -1181,8 +1182,7 @@ def figure(result: BenchmarkResult, path: Path) -> None:
         fontsize=9,
     )
     figure.suptitle(
-        "The simulation engines of sbmlsim: the median of the rounds of a cell "
-        "and their standard deviation",
+        "The simulation engines of sbmlsim: the median of the rounds of a cell",
         fontsize=10,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1694,7 +1694,7 @@ def _rounds[K](
     warmups: int,
     rounds: int,
 ) -> dict[K, Measurement]:
-    """Get the mean and the standard deviation of the rounds of every function.
+    """Get the median of the rounds of every function.
 
     A round is the median of its timed calls (`_turns`), so one slow call does
     not move it, and the rounds are the sample, see `Measurement`.
@@ -1928,9 +1928,9 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"{name} {version}" for name, version in result.versions.items()
     )
     lines = [
-        f"Measured with {versions}: every cell is the mean and the sample "
-        f"standard deviation of its rounds, a round the median of its timed "
-        f"calls after its warm ups, and the engines take turns within a "
+        f"Measured with {versions}: every cell is the median of its rounds, "
+        f"a round the median of its timed calls after its warm ups, and the "
+        f"engines take turns within a "
         f"model, so a change of the load of the machine reaches every engine "
         f"of a comparison alike. The run measured "
         f"{_count(result.repetitions, 'simulation')} after "
