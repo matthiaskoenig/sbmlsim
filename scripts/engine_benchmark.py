@@ -170,7 +170,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from importlib import metadata
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 import numpy as np
 
@@ -1159,10 +1159,12 @@ def figure(result: BenchmarkResult, path: Path) -> None:
             panel = axes[row_index][column]
             _draw_panel(panel, result, name, engines, measure, ticks=column == 0)
             _label_axis(panel)
+            # every panel names its unit, so a panel read on its own is never
+            # taken for the measure of another column
+            panel.set_xlabel(f"{measure.unit}, logarithmic", fontsize=8)
         axes[row_index][0].set_ylabel(name, fontsize=9)
     for column, measure in enumerate(measures):
         axes[0][column].set_title(measure.title, fontsize=10)
-        axes[-1][column].set_xlabel(f"{measure.unit}, logarithmic", fontsize=9)
     figure.legend(
         handles=[
             Line2D(
@@ -1302,6 +1304,81 @@ def json_payload(result: BenchmarkResult) -> dict[str, object]:
     }
 
 
+def result_from_json(payload: dict[str, object]) -> BenchmarkResult:
+    """Read a measurement back from the JSON of `--json`.
+
+    The tables and the figure of a run are written from its result, so a
+    measurement which was stored is rendered again without measuring again.
+
+    Args:
+        payload: what `json_payload` wrote.
+
+    Returns:
+        The measurement.
+
+    Raises:
+        ValueError: if a row names an engine which is not known.
+    """
+
+    def measurement(value: object) -> Measurement | None:
+        if value is None:
+            return None
+        fields = cast(dict[str, object], value)
+        return Measurement(
+            median=float(cast(float, fields["median"])),
+            rounds=int(cast(int, fields["rounds"])),
+        )
+
+    def number(value: object) -> float | None:
+        return None if value is None else float(cast(float, value))
+
+    rows: dict[tuple[str, Engine], BenchmarkRow] = {}
+    for item in cast(list[dict[str, object]], payload["rows"]):
+        model = str(item["model"])
+        name = str(item["engine"])
+        try:
+            engine = Engine(name)
+        except ValueError as error:
+            raise ValueError(f"{name} is no engine of the benchmark") from error
+        note = item.get("note")
+        rows[(model, engine)] = BenchmarkRow(
+            load_s=measurement(item.get("load_s")),
+            compile_s=measurement(item.get("compile_s")),
+            instantiate_s=measurement(item.get("instantiate_s")),
+            first_compile_s=number(item.get("first_compile_s")),
+            simulate_s=measurement(item.get("simulate_s")),
+            scan_serial_s=measurement(item.get("scan_serial_s")),
+            scan_serial_cold_s=number(item.get("scan_serial_cold_s")),
+            scan_parallel_s=measurement(item.get("scan_parallel_s")),
+            scan_parallel_cold_s=number(item.get("scan_parallel_cold_s")),
+            max_relative_difference=number(item.get("max_relative_difference")),
+            max_absolute_difference=number(item.get("max_absolute_difference")),
+            note=None if note is None else str(note),
+        )
+    configurations = {
+        name: ModelConfiguration(**cast(dict[str, int], fields))
+        for name, fields in cast(dict[str, object], payload["configurations"]).items()
+    }
+    skipped = {
+        Engine(name): str(reason)
+        for name, reason in cast(dict[str, object], payload["skipped"]).items()
+    }
+    steps = payload["steps"]
+    return BenchmarkResult(
+        rows=rows,
+        repetitions=int(cast(int, payload["repetitions"])),
+        rounds=int(cast(int, payload["rounds"])),
+        warmups=int(cast(int, payload["warmups"])),
+        points=int(cast(int, payload["points"])),
+        workers=int(cast(int, payload["workers"])),
+        cold=bool(payload["cold"]),
+        steps=None if steps is None else int(cast(int, steps)),
+        configurations=configurations,
+        versions=cast(dict[str, str], payload["versions"]),
+        skipped=skipped,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the command line tool.
 
@@ -1365,6 +1442,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--json", type=Path, help="write the measurement as JSON into this file"
     )
+    parser.add_argument(
+        "--from-json",
+        type=Path,
+        help="write the table and the figure of a measurement which "
+        "`--json` stored, without measuring again",
+    )
     parser.add_argument("--out", type=Path, help="write the table into this file")
     parser.add_argument(
         "--figure",
@@ -1373,17 +1456,22 @@ def main(argv: list[str] | None = None) -> int:
         "docs/images/benchmarks/engines.png",
     )
     args = parser.parse_args(argv)
-    result = measure(
-        args.models,
-        [resolve_engine(engine) for engine in args.engines],
-        repetitions=args.repetitions,
-        rounds=args.rounds,
-        warmups=WARMUPS,
-        points=args.points,
-        workers=args.workers,
-        cold=args.cold,
-        steps=args.steps,
-    )
+    if args.from_json:
+        result = result_from_json(
+            json.loads(args.from_json.read_text(encoding="utf-8"))
+        )
+    else:
+        result = measure(
+            args.models,
+            [resolve_engine(engine) for engine in args.engines],
+            repetitions=args.repetitions,
+            rounds=args.rounds,
+            warmups=WARMUPS,
+            points=args.points,
+            workers=args.workers,
+            cold=args.cold,
+            steps=args.steps,
+        )
     table = markdown(result)
     print(table)
     if args.out:
