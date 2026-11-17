@@ -309,7 +309,12 @@ class ChunkResult:
     errors: tuple[tuple[int, str], ...]
 
 
-def run_chunk(chunk: Chunk, model: SBMLModel, threads: int = 1) -> ChunkResult:
+def run_chunk(
+    chunk: Chunk,
+    model: SBMLModel,
+    threads: int = 1,
+    out: np.ndarray | None = None,
+) -> ChunkResult:
     """Run the points of a chunk on a loaded model, see the module.
 
     Args:
@@ -318,6 +323,8 @@ def run_chunk(chunk: Chunk, model: SBMLModel, threads: int = 1) -> ChunkResult:
         threads: the threads of the engine core a chunk of a model of that
             engine is batched on, see `_run_chunk_core`; every other engine
             runs the points of a chunk one after the other in this process.
+        out: where to write the values of the chunk, see `_pack`; only a run
+            in the calling process has the cube of the run to offer.
 
     Returns:
         The values of every point.
@@ -330,15 +337,17 @@ def run_chunk(chunk: Chunk, model: SBMLModel, threads: int = 1) -> ChunkResult:
     """
     chunk.plan.check_model(model.symbols, model.uinfo)
     if model.engine is Engine.CORE:
-        return _run_chunk_core(chunk, core_model(model), threads)
+        return _run_chunk_core(chunk, core_model(model), threads, out)
     quiet: AbstractContextManager[None] = (
         quiet_roadrunner() if model.engine is Engine.ROADRUNNER else nullcontext()
     )
     with quiet:
-        return _run_chunk(chunk, model)
+        return _run_chunk(chunk, model, out)
 
 
-def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
+def _run_chunk(
+    chunk: Chunk, model: SBMLModel, out: np.ndarray | None = None
+) -> ChunkResult:
     """Run the points of a chunk one after the other, see `run_chunk`.
 
     A chunk of a model of the engine core runs as one batch of its threads
@@ -385,10 +394,12 @@ def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
             solutions.append(
                 _on_grid(chunk.time, _timecourses_of(result.values, columns), plan)
             )
-    return _finish(chunk, points, solutions, plans, failures)
+    return _finish(chunk, points, solutions, plans, failures, out)
 
 
-def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkResult:
+def _run_chunk_core(
+    chunk: Chunk, model: CoreSBMLModel, threads: int, out: np.ndarray | None = None
+) -> ChunkResult:
     """Run the points of a chunk of the engine core as one batch, see the module.
 
     The engine simulates a batch of requests on threads of its own and
@@ -436,6 +447,7 @@ def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkRe
         chunk: the points.
         model: the loaded model of the chunk.
         threads: the threads of the engine the batch runs on.
+        out: where to write the values of the chunk, see `_pack`.
 
     Returns:
         The values of every point.
@@ -505,7 +517,7 @@ def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkRe
             if observed
             else _on_grid(chunk.time, _timecourses_of(values, kept), plan)
         )
-    return _finish(chunk, points, solutions, ran, failures)
+    return _finish(chunk, points, solutions, ran, failures, out)
 
 
 def _batch(
@@ -563,6 +575,7 @@ def _finish(
     solutions: list[np.ndarray],
     plans: Sequence[Plan],
     failures: list[tuple[int, str, BaseException]],
+    out: np.ndarray | None = None,
 ) -> ChunkResult:
     """Build the result of a chunk from the points which ran, see `_run_chunk`.
 
@@ -582,6 +595,7 @@ def _finish(
             does not need them.
         failures: the points which failed with their message and error, which
             the observables of the chunk extend and which is sorted here.
+        out: where to write the values, see `_pack`.
 
     Returns:
         The values of every point.
@@ -615,7 +629,7 @@ def _finish(
             raise ScanPointError(index, message) from cause
         status[k] = 1
         errors.append((index, message))
-    return _pack(chunk, points, n_rows, rows, scalars, status, errors)
+    return _pack(chunk, points, n_rows, rows, scalars, status, errors, out)
 
 
 def _timecourses_of(values: np.ndarray, columns: list[int]) -> np.ndarray:
@@ -805,10 +819,18 @@ def _pack(
     scalars: np.ndarray,
     status: np.ndarray,
     errors: list[tuple[int, str]],
+    out: np.ndarray | None = None,
 ) -> ChunkResult:
     """Write the outputs of the points which ran into the arrays of a chunk.
 
     A failed point is `NaN`, with the time of the grid if the chunk has one.
+
+    With `out` the values are written where the run keeps them, the slice of
+    its cube which holds the points of the chunk, instead of into an array of
+    the chunk which the run then copies into that slice: a run in the calling
+    process copies the values of a point exactly once, from the solution into
+    the result. The chunk answers with that slice as its values, and the run
+    knows not to write them again, see `sbmlsim.simulator.simulator`.
 
     Args:
         chunk: the chunk.
@@ -821,6 +843,12 @@ def _pack(
             `(point, column)`.
         status: `0` for a point which ran, `1` for one which failed.
         errors: the flat index and the error of every point which failed.
+        out: where to write the values, a view of the cube of the run; `None`
+            allocates the values of the chunk, which a run in a pool sends
+            back and a run of a ragged output keeps until its rows are known.
+
+    Raises:
+        ValueError: if `out` is not the shape the chunk writes.
     """
     n = len(chunk.indices)
     timed = bool(chunk.graph.timecourses) or not chunk.graph.nodes
@@ -835,7 +863,11 @@ def _pack(
             status=status,
             errors=tuple(sorted(errors)[:MAX_ERRORS]),
         )
-    if chunk.time is not None:
+    if out is not None:
+        # the destination carries the rows of the run, which a chunk whose
+        # points all failed does not know: its own count would be 0
+        n_rows = out.shape[2]
+    elif chunk.time is not None:
         n_rows = chunk.time.size
     # the values are filled in full below, point by point: a point which ran
     # writes its rows and the `NaN` of the rows it does not have, and the
@@ -844,7 +876,16 @@ def _pack(
     # pass of `NaN` over the whole array it then overwrites (measured on the
     # HCTZ model, 1000 points of 401 rows and 191 selections: 66 ms of a run
     # of 485 ms)
-    values = np.empty((1 + len(chunk.graph.timecourses), n, n_rows))
+    shape = (1 + len(chunk.graph.timecourses), n, n_rows)
+    if out is None:
+        values = np.empty(shape)
+    elif out.shape != shape:
+        raise ValueError(
+            f"The run gave the chunk a destination of the shape {out.shape} "
+            f"for values of the shape {shape}."
+        )
+    else:
+        values = out
     table = np.full((n, len(chunk.graph.scalars)), np.nan)
     written = np.zeros(n, dtype=bool)
     for k, point_rows, point_scalars in zip(points, rows, scalars, strict=True):
