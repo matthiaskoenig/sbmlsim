@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sbmlsim import log
+from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import DerivedChanges, hook_summaries
 from sbmlsim.fit.evaluation import Grouping
@@ -132,6 +133,12 @@ class FitDefinition:
         prior_correlation: the correlation of the normal scores of the priors
             of some parameters, `Covariance.correlation` by their pids, see
             `sbmlsim.fit.priors`; the priors are independent without.
+        engine: the engine the problems of the definition optimize on, an
+            `Engine` or its name, e.g. `"core"`; `None` if the definition does
+            not state one. A project gives the definitions of its fits the
+            engine of its simulator, see
+            `sbmlsim.project.Project.load_fit_definitions`, and a problem
+            without either runs on roadrunner.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -144,15 +151,19 @@ class FitDefinition:
     groupings: Sequence[Grouping] = ()
     jit_optimization: JitOptimization | None = None
     prior_correlation: Covariance | None = None
+    engine: Engine | None = None
 
     def __post_init__(self) -> None:
-        """Check the optimization level, a name of a level becomes the level.
+        """Check the optimization level and the engine, a name becomes the member.
 
         Raises:
-            ValueError: if the level is no `JitOptimization`.
+            ValueError: if the level is no `JitOptimization` or the engine
+                is no `Engine`.
         """
         if self.jit_optimization is not None:
             self.jit_optimization = resolve_jit_optimization(self.jit_optimization)
+        if self.engine is not None:
+            self.engine = resolve_engine(self.engine)
 
     def collections(
         self, study_ids: Sequence[str] | None = None
@@ -209,6 +220,7 @@ class FitDefinition:
             hybridizations=self.hybridizations,
             jit_optimization=self.jit_optimization,
             prior_correlation=self.prior_correlation,
+            engine=self.engine or Engine.ROADRUNNER,
         )
 
 

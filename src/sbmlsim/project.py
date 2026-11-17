@@ -2080,7 +2080,9 @@ class Project(BaseModel):
 
         A definition without an optimization level gets the one of the
         simulator of the project (`SimulatorSettings.jit_optimization`), so its
-        problems compile their models at it in every process.
+        problems compile their models at it in every process. A definition
+        without an engine gets the engine of the simulator
+        (`SimulatorSettings.engine`), so its problems optimize on it.
 
         Returns:
             The definitions by subset, empty for a project without fits.
@@ -2106,10 +2108,17 @@ class Project(BaseModel):
                 "name of every adopted fit of a report: rename the subset."
             )
         level = self.simulator.jit_optimization
+        engine = self.simulator.engine
         return {
-            subset: definition
-            if level is None or definition.jit_optimization is not None
-            else dataclasses.replace(definition, jit_optimization=level)
+            subset: dataclasses.replace(
+                definition,
+                jit_optimization=(
+                    level
+                    if definition.jit_optimization is None
+                    else definition.jit_optimization
+                ),
+                engine=engine if definition.engine is None else definition.engine,
+            )
             for subset, definition in fits.items()
         }
 
