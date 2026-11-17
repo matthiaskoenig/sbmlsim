@@ -9,6 +9,7 @@ command line of the script, see its module docstring.
 
 import json
 import math
+import statistics
 from pathlib import Path
 
 import numpy as np
@@ -109,17 +110,17 @@ def _cells(text: str) -> list[dict[str, str]]:
     return list(merged.values())
 
 
-def _measurement(mean: float, sd: float | None = None) -> Measurement:
+def _measurement(median: float, rounds: int = 1) -> Measurement:
     """Get a measurement of a handmade result.
 
     Args:
-        mean: the mean of its rounds.
-        sd: their standard deviation, `None` for a cell of one round.
+        median: the median of its rounds.
+        rounds: the rounds it was taken over.
 
     Returns:
         The measurement.
     """
-    return Measurement(mean=mean, sd=sd, rounds=1 if sd is None else MIN_ROUNDS)
+    return Measurement(median=median, rounds=rounds)
 
 
 def _handmade() -> BenchmarkResult:
@@ -133,7 +134,7 @@ def _handmade() -> BenchmarkResult:
                 first_compile_s=0.122,
                 simulate_s=_measurement(0.00289),
                 scan_serial_s=_measurement(1.137),
-                scan_parallel_s=_measurement(0.258, 0.0121),
+                scan_parallel_s=_measurement(0.258, MIN_ROUNDS),
                 max_relative_difference=2.4e-11,
             ),
             ("hctz", Engine.ROADRUNNER): BenchmarkRow(
@@ -173,9 +174,9 @@ def test_the_benchmark_measures_every_engine_it_finds() -> None:
         workers=1,
     )
     row = result.rows[("repressilator", Engine.ROADRUNNER)]
-    assert row.load_s is not None and row.load_s.mean > 0
-    assert row.simulate_s is not None and row.simulate_s.mean > 0
-    assert row.scan_serial_s is not None and row.scan_serial_s.mean > 0
+    assert row.load_s is not None and row.load_s.median > 0
+    assert row.simulate_s is not None and row.simulate_s.median > 0
+    assert row.scan_serial_s is not None and row.scan_serial_s.median > 0
     assert row.first_compile_s is not None and row.first_compile_s > 0
     assert row.note is None
 
@@ -307,7 +308,7 @@ def test_a_parallel_scan_is_measured_on_the_workers_of_the_run() -> None:
         workers=2,
     )
     row = result.rows[("repressilator", Engine.ROADRUNNER)]
-    assert row.scan_parallel_s is not None and row.scan_parallel_s.mean > 0
+    assert row.scan_parallel_s is not None and row.scan_parallel_s.median > 0
     assert "2 python processes" in markdown(result)
 
 
@@ -462,7 +463,7 @@ def test_the_command_line_writes_the_table_and_the_json(tmp_path: Path) -> None:
     assert [(row["model"], row["engine"]) for row in written["rows"]] == [
         ("repressilator", "roadrunner")
     ]
-    assert written["rows"][0]["load_s"]["mean"] > 0
+    assert written["rows"][0]["load_s"]["median"] > 0
     assert written["configurations"]["repressilator"]["points"] == 2
 
 
@@ -515,7 +516,7 @@ def test_cold_reports_the_first_run_of_every_scan() -> None:
     # the cold run of a parallel scan starts the pool and loads the model in
     # every worker, which the warm median does not pay
     assert row.scan_parallel_s is not None
-    assert row.scan_parallel_cold_s > row.scan_parallel_s.mean
+    assert row.scan_parallel_cold_s > row.scan_parallel_s.median
     text = markdown(result)
     cells = _cells(text)[0]
     assert cells["scan serial cold s"] != ""
@@ -644,36 +645,44 @@ def test_the_command_line_takes_the_cold_runs_and_the_output_grid(
     assert written["rows"][0]["scan_serial_cold_s"] > 0
 
 
-def test_a_measurement_is_the_mean_and_the_deviation_of_its_rounds() -> None:
-    """A cell is the mean of its rounds and their sample standard deviation."""
+def test_a_measurement_is_the_median_of_its_rounds() -> None:
+    """A cell is the median of its rounds, which one slow round does not move."""
     measurement = Measurement.of([1.0, 2.0, 3.0])
-    assert measurement.mean == 2.0
-    assert measurement.sd == pytest.approx(1.0)
+    assert measurement.median == 2.0
     assert measurement.rounds == 3
-    # the unit of a cell is the renderer's, which scales both
+    # the unit of a cell is the renderer's
     scaled = measurement.scaled(1e3)
-    assert (scaled.mean, scaled.sd, scaled.rounds) == (2000.0, pytest.approx(1000.0), 3)
+    assert (scaled.median, scaled.rounds) == (2000.0, 3)
 
 
-def test_a_measurement_of_too_few_rounds_has_no_deviation() -> None:
-    """Below `MIN_ROUNDS` rounds a cell is its mean alone: a deviation would say nothing."""
-    assert MIN_ROUNDS == 3
-    for values in ([1.0], [1.0, 2.0]):
-        measurement = Measurement.of(values)
-        assert measurement.sd is None
-        assert measurement.rounds == len(values)
+def test_a_slow_round_does_not_move_the_median() -> None:
+    """The reason the cells are medians: a disturbed round moves a mean, not a median."""
+    quiet = [1.0, 1.0, 1.05, 1.1, 1.15]
+    disturbed = [*quiet[:-1], 10.0]
+    assert Measurement.of(disturbed).median == Measurement.of(quiet).median
+    assert statistics.fmean(disturbed) > 2 * statistics.fmean(quiet)
     with pytest.raises(ValueError, match="at least one round"):
         Measurement.of([])
 
 
-def test_a_cell_is_rendered_as_its_mean_and_its_deviation() -> None:
-    """A cell with a deviation is `mean ± sd`, one without is the mean alone."""
+def test_a_cell_is_rendered_as_its_median() -> None:
+    """A cell is the median of its rounds with three significant digits and no deviation."""
     rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
-    # the parallel scan of the engine core, 0.258 s ± 0.0121 s
-    assert rows["core"]["scan parallel s"] == "0.258 ± 0.012"
-    # every other cell of the handmade result is one round
+    assert rows["core"]["scan parallel s"] == "0.258"
     assert rows["core"]["scan serial s"] == "1.14"
     assert rows["roadrunner"]["load s"] == "0.215"
+    assert "±" not in markdown(_handmade())
+
+
+def test_the_ratios_are_taken_against_the_engine_core() -> None:
+    """Every speed of an engine is also given as its ratio to the engine core."""
+    rows = {
+        cells["engine"]: cells
+        for cells in _table(markdown(_handmade()), "Against the engine core")
+    }
+    assert rows["core"]["one simulation"] == "1"
+    # roadrunner simulates in 0.00357 s against the core's 0.00289 s
+    assert rows["roadrunner"]["one simulation"] == "1.24"
 
 
 def test_the_tables_say_what_every_model_was_measured_with() -> None:

@@ -42,9 +42,11 @@ move by tens of percent between runs. Pinning the process to one core while
 its scans run on several workers measures nothing: every worker would run on
 that core.
 
-Every timed cell is `mean ± sd`: a round is the median of its timed calls,
-the rounds are the sample, and the cell is their mean and their sample
-standard deviation (`Measurement`, the mean alone below `MIN_ROUNDS` rounds).
+Every timed cell is a median of medians: a round is the median of its timed
+calls and the cell is the median of its rounds (`Measurement`). A mean
+carries a round which was slow because the machine was doing something else
+into the cell; a median of enough rounds does not, which is what makes a
+measurement on a machine which is not perfectly idle worth reading.
 The engines take turns within a model and a model is measured on its own, so
 a change of the load of the machine reaches every engine of a comparison
 alike, and a large model carries fewer points and shorter rounds of its own
@@ -101,10 +103,9 @@ tens of seconds in some engines.
 
 The tables are narrow and the rows of every one of them are the same in the
 same order (`markdown`): what every model was measured with, the loads, the
-simulation and the scans, the agreement, and the cells which were not
-measured. `--figure` draws the speeds of them, a panel per model and
-measure, the dot of an engine its mean and the whisker its standard
-deviation (`figure`).
+simulation and the scans, the ratio of every engine to the engine core, the
+agreement, and the cells which were not measured. `--figure` draws the speeds of them, a panel per model and
+measure, the dot of an engine its median (`figure`).
 
 **The workers of a parallel scan are not the same thing in every engine**, so
 the legend of the tables says what they are: python processes
@@ -200,6 +201,11 @@ ENGINES: Final[tuple[Engine, ...]] = (
 #: is part of every measurement, see `_versions`
 REFERENCE: Final[Engine] = Engine.ROADRUNNER
 
+#: the engine the ratios of the speeds are taken against, see `_ratio_table`:
+#: the engine core, the first engine of `ENGINES` and the one the
+#: documentation names first
+REFERENCE_RATIO: Final[Engine] = Engine.CORE
+
 #: the settings of the integrator at which the engines agree, see `agreement`
 #: and the section Engines of `docs/simulation.md`
 TIGHT: Final[IntegratorSettings] = {
@@ -219,11 +225,12 @@ DISTRIBUTIONS: Final[dict[Engine, str]] = {
 REPETITIONS: Final[int] = 20
 
 #: the rounds of the timed simulations and the scans, whose medians are the
-#: sample the mean and the standard deviation of a cell are taken over, so a
-#: cell is `rounds` measurements and never fewer than `MIN_ROUNDS`
+#: sample the median of a cell is taken over, so a cell is `rounds`
+#: measurements and never fewer than `MIN_ROUNDS`
 ROUNDS: Final[int] = 5
 
-#: the rounds below which a standard deviation says nothing
+#: the rounds below which a median has too small a sample to ignore a round
+#: which was slow because the machine was doing something else
 MIN_ROUNDS: Final[int] = 3
 
 #: the simulations before the timed ones of a round, which are not measured
@@ -426,7 +433,7 @@ MODELS: Final[dict[str, ModelBenchmark]] = {
     # the flow of the pump, the input of such an experiment. One simulation of
     # it is tens of seconds in COPASI, so it is scanned over as many points as
     # the parallel scan has workers, one per worker, and measured in fewer and
-    # shorter rounds; `MIN_ROUNDS` keeps the standard deviation meaningful
+    # shorter rounds; `MIN_ROUNDS` keeps the median a median of three
     "perfusion": ModelBenchmark(
         source=PERFUSION_SBML,
         simulation=Simulation(end=60, steps=100),
@@ -443,21 +450,21 @@ MODELS: Final[dict[str, ModelBenchmark]] = {
 
 @dataclass(frozen=True)
 class Measurement:
-    """A timing as the mean and the standard deviation of its rounds.
+    """A timing as the median of its rounds.
 
     A round is the median of the timed calls of that round (`_turns`), so one
-    slow call does not move it, and the rounds are the sample the mean and
-    the sample standard deviation are taken over, see the module.
+    slow call does not move it, and the cell is the median of the rounds, so
+    one slow round does not move it either. A measurement taken while the
+    machine is doing something else is a few slow rounds among the others,
+    which a mean carries into the cell and a median does not, so the median
+    is what this benchmark reports, see the module.
 
     Attributes:
-        mean: the mean of the rounds.
-        sd: the sample standard deviation of the rounds, `None` for fewer
-            than `MIN_ROUNDS` rounds, where it says nothing.
-        rounds: the rounds the two were taken over.
+        median: the median of the rounds.
+        rounds: the rounds it was taken over.
     """
 
-    mean: float
-    sd: float | None
+    median: float
     rounds: int
 
     @classmethod
@@ -468,33 +475,25 @@ class Measurement:
             values: the time of every round, at least one.
 
         Returns:
-            The mean and, from `MIN_ROUNDS` rounds, the standard deviation.
+            The median of the rounds.
 
         Raises:
             ValueError: if there is not one round.
         """
         if not values:
             raise ValueError("A measurement needs the time of at least one round.")
-        return cls(
-            mean=statistics.fmean(values),
-            sd=statistics.stdev(values) if len(values) >= MIN_ROUNDS else None,
-            rounds=len(values),
-        )
+        return cls(median=statistics.median(values), rounds=len(values))
 
     def scaled(self, factor: float) -> Measurement:
         """Get the measurement in another unit, e.g. milliseconds.
 
         Args:
-            factor: what the mean and the standard deviation are multiplied by.
+            factor: what the median is multiplied by.
 
         Returns:
             The scaled measurement.
         """
-        return replace(
-            self,
-            mean=self.mean * factor,
-            sd=None if self.sd is None else self.sd * factor,
-        )
+        return replace(self, median=self.median * factor)
 
 
 @dataclass(frozen=True)
@@ -510,7 +509,7 @@ class ModelConfiguration:
         points: the points of its scans.
         repetitions: the timed simulations of a round.
         warmups: the simulations before them.
-        rounds: the rounds the mean and the standard deviation are over.
+        rounds: the rounds the median is over.
     """
 
     output_times: int
@@ -833,6 +832,7 @@ def markdown(result: BenchmarkResult) -> str:
                 *_configuration_table(result),
                 *_loading_table(result),
                 *_simulating_table(result),
+                *_ratio_table(result),
                 *_agreement_table(result),
                 *_notes_table(result),
                 *_legend(result),
@@ -969,6 +969,75 @@ def _simulating_table(result: BenchmarkResult) -> list[str]:
     return ["### One simulation and a scan", "", *_table(header, aligned, rows)]
 
 
+#: the measures of the table of the ratios, the field of a row and its column
+RATIO_MEASURES: Final[tuple[tuple[str, str], ...]] = (
+    ("load_s", "load"),
+    ("simulate_s", "one simulation"),
+    ("scan_serial_s", "a serial scan"),
+    ("scan_parallel_s", "a parallel scan"),
+)
+
+
+def _ratio(value: Measurement | None, reference: Measurement | None) -> str:
+    """Render the ratio of a measurement to the one of the engine core.
+
+    Args:
+        value: the measurement of the engine, `None` where it was not measured.
+        reference: the measurement of the engine core, `None` where the core
+            was not measured or its median is 0.
+
+    Returns:
+        The ratio with three significant digits, `1` for the core itself and
+        an empty cell where either side is missing.
+    """
+    if value is None or reference is None or not reference.median:
+        return ""
+    return f"{value.median / reference.median:.3g}"
+
+
+def _ratio_table(result: BenchmarkResult) -> list[str]:
+    """Render every measure of every engine as its ratio to the engine core.
+
+    The time of an engine divided by the time of the engine core on the same
+    model and measure, so the core is 1, a number above it is that many times
+    the time of the core and a number below it is a cell the core loses. The
+    ratios are what carries over from one machine to another, which the
+    seconds of the tables above do not.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table, empty where the engine core was not measured.
+    """
+    if not any(engine is REFERENCE_RATIO for _name, engine in result.rows):
+        return []
+    header = ["model", "engine", *(column for _field, column in RATIO_MEASURES)]
+    aligned = ["---", "---", *("---:" for _measure in RATIO_MEASURES)]
+    rows = []
+    for (name, engine), row in result.rows.items():
+        reference = result.rows.get((name, REFERENCE_RATIO))
+        if reference is None:
+            continue
+        rows.append(
+            [
+                name,
+                engine.value,
+                *(
+                    _ratio(getattr(row, field), getattr(reference, field))
+                    for field, _column in RATIO_MEASURES
+                ),
+            ]
+        )
+    if not rows:
+        return []
+    return [
+        f"### Against the engine {REFERENCE_RATIO.value}",
+        "",
+        *_table(header, aligned, rows),
+    ]
+
+
 def _agreement_table(result: BenchmarkResult) -> list[str]:
     """Render the agreement of every cell with roadrunner.
 
@@ -1022,30 +1091,28 @@ def _notes_table(result: BenchmarkResult) -> list[str]:
 
 
 def _measurement(value: Measurement | None, factor: float = 1.0) -> str:
-    """Render a measurement as its mean and standard deviation.
+    """Render a measurement as its median.
 
     Args:
         value: the measurement, `None` for one which was not made.
         factor: what it is scaled by, e.g. `1e3` for milliseconds.
 
     Returns:
-        `mean ± sd`, the mean alone for fewer rounds than a deviation needs,
+        The median of the rounds,
         and an empty cell for a measurement which was not made.
     """
     if value is None:
         return ""
     scaled = value.scaled(factor)
-    if scaled.sd is None:
-        return f"{scaled.mean:.3g}"
-    return f"{scaled.mean:.3g} ± {scaled.sd:.2g}"
+    return f"{scaled.median:.3g}"
 
 
 def figure(result: BenchmarkResult, path: Path) -> None:
     """Write the figure which compares the engines of every model.
 
     One panel per model and measure, a row of panels per model and a column
-    per measure: the dot of an engine is the mean of its rounds and the
-    whisker its standard deviation, on a logarithmic axis of its own, so the
+    per measure: the dot of an engine is the median of its rounds, on a
+    logarithmic axis of its own, so the
     engines of a model are read against each other, which is what the figure
     is for. The panels of a column do not share their axis: the models of
     this benchmark are five orders of magnitude apart, so a shared axis would
@@ -1115,8 +1182,7 @@ def figure(result: BenchmarkResult, path: Path) -> None:
         fontsize=9,
     )
     figure.suptitle(
-        "The simulation engines of sbmlsim: the mean of the rounds of a cell "
-        "and their standard deviation",
+        "The simulation engines of sbmlsim: the median of the rounds of a cell",
         fontsize=10,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1181,16 +1247,13 @@ def _draw_panel(
         if value is None:
             continue
         scaled = value.scaled(measure.factor)
-        axes.errorbar(
-            scaled.mean,
+        axes.plot(
+            scaled.median,
             positions[engine],
-            xerr=0.0 if scaled.sd is None else scaled.sd,
             color=ENGINE_COLOURS[engine],
             marker="o",
             markersize=5,
             linestyle="none",
-            elinewidth=1.2,
-            capsize=2.5,
             zorder=3,
         )
     axes.set_xscale("log")
@@ -1466,7 +1529,7 @@ def _loads(
     Args:
         cells: the cells of one model.
         repetitions: the loads of a cell in a round.
-        rounds: the rounds the mean and the standard deviation are over.
+        rounds: the rounds the median is over.
 
     Returns:
         The row of every cell with its loads.
@@ -1511,7 +1574,7 @@ def _core_compilation(
     Args:
         cell: the cell of the engine core.
         repetitions: the compilations of a round.
-        rounds: the rounds the mean and the standard deviation are over.
+        rounds: the rounds the median is over.
 
     Returns:
         The compilation and the instantiation.
@@ -1573,7 +1636,7 @@ def _simulations(
         cells: the cells of one model, which take turns.
         repetitions: the timed simulations of a round.
         warmups: the simulations before them.
-        rounds: the rounds the mean and the standard deviation are over.
+        rounds: the rounds the median is over.
 
     Returns:
         The measurement of one simulation of every cell.
@@ -1631,7 +1694,7 @@ def _rounds[K](
     warmups: int,
     rounds: int,
 ) -> dict[K, Measurement]:
-    """Get the mean and the standard deviation of the rounds of every function.
+    """Get the median of the rounds of every function.
 
     A round is the median of its timed calls (`_turns`), so one slow call does
     not move it, and the rounds are the sample, see `Measurement`.
@@ -1865,9 +1928,9 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"{name} {version}" for name, version in result.versions.items()
     )
     lines = [
-        f"Measured with {versions}: every cell is the mean and the sample "
-        f"standard deviation of its rounds, a round the median of its timed "
-        f"calls after its warm ups, and the engines take turns within a "
+        f"Measured with {versions}: every cell is the median of its rounds, "
+        f"a round the median of its timed calls after its warm ups, and the "
+        f"engines take turns within a "
         f"model, so a change of the load of the machine reaches every engine "
         f"of a comparison alike. The run measured "
         f"{_count(result.repetitions, 'simulation')} after "
@@ -1877,11 +1940,17 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"otherwise, and the parallel scans ran on "
         f"{_count(result.workers, 'worker')}.",
         "",
-        "- A cell is `mean ± sd` over the rounds of its model and the mean "
-        f"alone below {MIN_ROUNDS} rounds, where a deviation of so small a "
-        "sample says nothing. A deviation which is a large part of its mean "
-        "is a cell to measure again on an idle machine rather than one to "
-        "read.",
+        "- A cell is the median of the rounds of its model, each round the "
+        "median of its timed calls: a round which was slow because the "
+        "machine was doing something else moves a mean and not a median, "
+        "which is why the tables report medians and no deviation.",
+        f"- The table against the engine {REFERENCE_RATIO.value} is the "
+        f"median of an engine divided by the median of the engine "
+        f"{REFERENCE_RATIO.value} on the same model and measure, so the "
+        f"engine {REFERENCE_RATIO.value} is 1, a number above it is that "
+        "many times its time and a number below it is a cell it loses. The "
+        "ratios are what carries from one machine to another; the seconds "
+        "of the tables above belong to this one.",
         "- `load s` is `load_model` with the model already compiled, "
         "`first compile s` the first load of that model in this process, "
         "the one which compiles it (the LLJIT of roadrunner, the module of "
