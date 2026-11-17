@@ -502,6 +502,11 @@ def _batch(
 ) -> list[Any]:
     """Simulate the requests of a chunk as one batch of the engine core.
 
+    The batch runs on the executor of the model (`CoreSBMLModel.batch_executor`,
+    one per number of threads), which keeps the pool of its threads and the
+    instance of every one of them across the chunks of a run and across the
+    runs of a model, so a chunk pays for neither.
+
     Args:
         model: the loaded model of the chunk.
         requests: the request of every point of the batch, in their order.
@@ -518,7 +523,7 @@ def _batch(
             `n_workers` of the simulator says.
     """
     try:
-        return model.loaded.simulate_many(requests, threads=threads)
+        return model.batch_executor(threads).simulate_many(requests)
     except ValueError as err:
         raise ValueError(
             f"The engine 'core' refused the batch of a chunk on {threads} "
