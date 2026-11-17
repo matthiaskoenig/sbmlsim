@@ -85,7 +85,10 @@ def check_plan(plan: Plan, model: SBMLModel) -> None:
     `sbmlsim.simulator.executor_amici.check_supported`. The engine core
     refuses a plan which one request of its contract cannot carry, a steady
     state after the end of the simulation and a formula it cannot fold into a
-    number, and a pre-initialization of the concentration of a species whose
+    number (a formula at a change of a model with an event of its own among
+    them, whose state the engine answers after the events of a time have fired
+    where roadrunner reads it before), and a pre-initialization of the
+    concentration of a species whose
     volume it changes, which the engine converts with the volume at the
     moment of the assignment, see
     `sbmlsim.simulator.executor_core.check_supported`.
