@@ -61,6 +61,21 @@ def _fail(message: str) -> Callable[..., Any]:
     return refuse
 
 
+class _Executor:
+    """An executor of batches which records the ones it runs, see `_Batches`."""
+
+    def __init__(self, spy: _Batches, executor: Any, threads: int | None) -> None:
+        """Record the batches of an executor of the loaded model."""
+        self._spy = spy
+        self._executor = executor
+        self._threads = threads
+
+    def simulate_many(self, requests: Sequence[dict[str, Any]]) -> list[Any]:
+        """Record the points and the threads of a batch and run it."""
+        self._spy.batches.append((len(requests), self._threads))
+        return self._executor.simulate_many(requests)
+
+
 class _Batches:
     """A `LoadedModel` which records the batches of a run, see `_spy`."""
 
@@ -68,6 +83,10 @@ class _Batches:
         """Record the batches of the loaded model of a core model."""
         self.loaded = loaded
         self.batches: list[tuple[int, int | None]] = []
+
+    def batch_executor(self, *, threads: int | None = None) -> _Executor:
+        """Get an executor which records the batches it runs."""
+        return _Executor(self, self.loaded.batch_executor(threads=threads), threads)
 
     def simulate_many(
         self, requests: Sequence[dict[str, Any]], *, threads: int | None = None
@@ -81,6 +100,9 @@ def _spy(model: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch) -> _Batches:
     """Record the batches of the model of a scan, which no point may run alone."""
     batches = _Batches(model.loaded)
     monkeypatch.setattr(model, "loaded", batches)
+    # the executors of the model are the ones of the spy, also when the model
+    # ran a batch before it was watched
+    monkeypatch.setattr(model, "_executors", {})
     monkeypatch.setattr(executor_core, "execute", _fail("a point ran on its own"))
     return batches
 

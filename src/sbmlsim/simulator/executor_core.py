@@ -245,7 +245,7 @@ def execute(
     # was simulated, see `CoreSBMLModel.initialize`
     model.initialize(preinit_targets(plan))
     try:
-        output = model.loaded.instance().simulate(request)
+        output = model.instance().simulate(request)
     except core.SimulationError as err:
         raise _failed(err, model, core) from err
     finally:
@@ -614,33 +614,18 @@ def _changes(
 def _state_targets(model: CoreSBMLModel) -> list[str] | None:
     """Get the targets a segment of the fold resumes from, or `None`.
 
-    A segment which resumes sets the state of the model at its start with a
-    change there, so it integrates its own interval instead of the one from
-    the start of the simulation, see `_state_at`. The targets are every
-    parameter, every compartment and the amount of every species which is not
-    the variable of an assignment rule, which follows the others, so every
-    species is a target of such a change and the rule that a compartment
-    keeps the concentrations of the species in it (PEtab v2) keeps none of
-    them, see `apply_changes` of `sbmlsim.simulator.changes`. A reaction is an
-    output of the engine and no target.
+    `CoreSBMLModel.resume_targets`, which computes them once per model and
+    selections: they are the same for every point of a scan, which called
+    this for each of them. It stays a function of this module because it is
+    the seam the tests replace to run the fold without resuming.
 
     Args:
         model: the model.
 
     Returns:
-        The targets, sorted, or `None` if the model has a state which is none
-        of them, e.g. a species reference which is not constant: such a state
-        would silently keep the value of the model as loaded, so the segments
-        of that model start at the start of the simulation instead.
+        The targets, sorted, or `None`, see `CoreSBMLModel.resume_targets`.
     """
-    symbols = model.symbols
-    entities = symbols.parameters | symbols.compartments | symbols.species
-    targets = sorted(
-        t for t in entities - symbols.assignment_rules if model.has_selection(t)
-    )
-    if not set(model.state_ids()) <= set(targets):
-        return None
-    return targets
+    return model.resume_targets()
 
 
 def _resume_values(
@@ -828,7 +813,7 @@ def _state_at(
             *(c for c in changes if c["time"] > start),
         ]
     try:
-        output = model.loaded.instance().simulate(segment)
+        output = model.instance().simulate(segment)
     except core.SimulationError as err:
         raise _failed(err, model, core) from err
     row = output.values[-1 if time > start else 0]

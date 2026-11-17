@@ -256,6 +256,22 @@ class CoreSBMLModel(SBMLModel):
         self._loaded_values: dict[str, float] = dict(self.loaded.initial_values())
         self.assignments: tuple[Assignment, ...] = ()
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
+        #: the instance of the engine the simulations of this model run on,
+        #: made at the first one and kept, see `instance`
+        self._instance: Any = None
+        #: the executors of the batches of this model by their threads, see
+        #: `batch_executor`
+        self._executors: dict[int, Any] = {}
+        #: the absolute tolerance `_tolerance_values` was computed for
+        self._tolerance_of: AbsoluteTolerance | None = None
+        #: the absolute tolerance of every state, see `_request_tolerance`
+        self._tolerance_values: list[float] | None = None
+        #: the targets of `resume_targets` with the selections they were
+        #: computed for, `_selections_version`
+        self._resume_targets: tuple[int, list[str] | None] | None = None
+        #: counts the times the selections of the model were set, which is
+        #: what `resume_targets` depends on
+        self._selections_version: int = 0
         #: the settings of the integrator of a request which were set, by
         #: their names in roadrunner, see `request_settings`
         self._settings: dict[str, float | int | bool] = {}
@@ -402,6 +418,8 @@ class CoreSBMLModel(SBMLModel):
             )
         self.selections = chosen
         self.selections_given = selections is not None
+        # `resume_targets` reads the selections, so its cache is dropped
+        self._selections_version += 1
 
     @override
     def set_integrator_settings(self, **settings: IntegratorSetting) -> None:
@@ -459,15 +477,114 @@ class CoreSBMLModel(SBMLModel):
         }
 
     def _request_tolerance(self) -> dict[str, object]:
-        """Get the absolute tolerance of a request, see `request_settings`."""
-        states = state_tolerances(
-            self.state_ids(),
-            self.symbols,
-            self._initial_volumes(),
-            self.absolute_tolerance,
-            initial_values=self._loaded_values,
+        """Get the absolute tolerance of a request, see `request_settings`.
+
+        The tolerances are computed once per `absolute_tolerance` of the
+        model: everything else they read is the model as loaded, which does
+        not change, so only `set_integrator_settings` moves them. Every
+        request gets a list of its own, so a caller which changes the values
+        of its request does not reach the ones of the next.
+
+        Returns:
+            The tolerance of every state in the order of `state_ids`.
+        """
+        if (
+            self._tolerance_values is None
+            or self._tolerance_of != self.absolute_tolerance
+        ):
+            states = state_tolerances(
+                self.state_ids(),
+                self.symbols,
+                self._initial_volumes(),
+                self.absolute_tolerance,
+                initial_values=self._loaded_values,
+            )
+            self._tolerance_values = [state.absolute_tolerance for state in states]
+            self._tolerance_of = self.absolute_tolerance
+        return {"per_state": list(self._tolerance_values)}
+
+    def resume_targets(self) -> list[str] | None:
+        """Get the targets a segment which resumes sets the state with, or `None`.
+
+        A segment of the fold of the executor which resumes sets the state of
+        the model at its start with a change there, so it integrates its own
+        interval instead of the one from the start of the simulation, see
+        `_state_at` of `sbmlsim.simulator.executor_core`. The targets are
+        every parameter, every compartment and the amount of every species
+        which is not the variable of an assignment rule, which follows the
+        others, so every species is a target of such a change and the rule
+        that a compartment keeps the concentrations of the species in it
+        (PEtab v2) keeps none of them, see `apply_changes` of
+        `sbmlsim.simulator.changes`. A reaction is an output of the engine
+        and no target.
+
+        They are the same for every point of a scan, so they are computed
+        once per model and selections, which is what they read.
+
+        Returns:
+            The targets, sorted, or `None` if the model has a state which is
+            none of them, e.g. a species reference which is not constant:
+            such a state would silently keep the value of the model as
+            loaded, so the segments of that model start at the start of the
+            simulation instead.
+        """
+        cached = self._resume_targets
+        if cached is not None and cached[0] == self._selections_version:
+            return cached[1]
+        symbols = self.symbols
+        entities = symbols.parameters | symbols.compartments | symbols.species
+        targets: list[str] | None = sorted(
+            t for t in entities - symbols.assignment_rules if self.has_selection(t)
         )
-        return {"per_state": [state.absolute_tolerance for state in states]}
+        if targets is not None and not set(self.state_ids()) <= set(targets):
+            targets = None
+        self._resume_targets = (self._selections_version, targets)
+        return targets
+
+    def instance(self) -> Any:
+        """Get the instance of the engine the simulations of this model run on.
+
+        The engine holds no state between two requests (the contract
+        `simulation/1`, see the module), so one instance is made and kept
+        instead of one per simulation: the result is the one of a new
+        instance bitwise and making one costs more than a simulation of a
+        small model (0.33 ms against 0.25 ms of one simulation of the HCTZ
+        model, which is why it is kept). The instance lives as long as the
+        model, as its compiled module does.
+
+        Returns:
+            The instance, made at the first simulation.
+        """
+        if self._instance is None:
+            self._instance = self.loaded.instance()
+        return self._instance
+
+    def batch_executor(self, threads: int) -> Any:
+        """Get the executor the batches of `threads` threads of this model run on.
+
+        The executor of the bindings keeps the pool of its threads and the
+        instance of every one of them across its calls, where
+        `LoadedModel.simulate_many` builds both for every batch, which is
+        most of the time of a chunk of a small model (a chunk of 250 points
+        of the demo model takes 5.0 ms against 3.1 ms). An executor runs on
+        at most the threads it was made with, so one is kept per number of
+        threads, and it holds one instance per thread for as long as the
+        model does.
+
+        Args:
+            threads: the threads of the batch, at least one.
+
+        Returns:
+            The executor, made at the first batch of that number of threads.
+
+        Raises:
+            ValueError: if the engine refuses an executor of these threads.
+        """
+        executor = self._executors.get(threads)
+        if executor is None:
+            executor = self.loaded.batch_executor(threads=threads)
+            self._executors[threads] = executor
+        return executor
 
     def _initial_volumes(self) -> dict[str, float]:
         """Get the initial volume of every compartment of the model as loaded.
