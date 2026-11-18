@@ -767,7 +767,7 @@ def test_the_engines_of_the_table_begin_with_the_engine_core() -> None:
 
 
 def test_the_command_line_draws_the_figure(tmp_path: Path) -> None:
-    """`--figure` writes the comparison of the engines, which is a PNG file."""
+    """`--figure` writes a PNG per model and mode of the documentation."""
     drawn = tmp_path / "figures" / "engines.png"
     code = main(
         [
@@ -788,8 +788,17 @@ def test_the_command_line_draws_the_figure(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    # the directory of the figure is created and the file is a PNG
-    assert drawn.read_bytes().startswith(b"\x89PNG\r\n")
+    # the directory of the figure is created and every file is a PNG; the
+    # models have a figure each, written once per mode, and the file
+    # `--figure` names is itself never written, see `figure_paths`
+    written = sorted(path.name for path in drawn.parent.iterdir())
+    assert written == [
+        "engines-repressilator-dark.png",
+        "engines-repressilator-light.png",
+    ]
+    for path in drawn.parent.iterdir():
+        assert path.read_bytes().startswith(b"\x89PNG\r\n")
+    assert not drawn.exists()
 
 
 def test_a_figure_of_nothing_which_was_measured_is_refused(tmp_path: Path) -> None:

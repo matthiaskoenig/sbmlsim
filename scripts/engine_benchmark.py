@@ -185,6 +185,7 @@ from sbmlsim.simulator import IntegratorSettings, Simulator
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 #: the engines in the order the table shows them, the engine core first, as
 #: the documentation names them (`docs/simulation.md`); `Engine` declares them
@@ -240,16 +241,52 @@ WARMUPS: Final[int] = 3
 #: points replaces (`ModelBenchmark.points`)
 POINTS: Final[int] = 1000
 
-#: the colour of every engine in the figure, the first four slots of a
-#: categorical palette whose adjacent pairs are far enough apart under
-#: protanopia and tritanopia; the engine of every row is named next to it, so
-#: a mark is never told apart by its colour alone
-ENGINE_COLOURS: Final[dict[Engine, str]] = {
-    Engine.CORE: "#2a78d6",
-    Engine.ROADRUNNER: "#eb6834",
-    Engine.COPASI: "#1baf7a",
-    Engine.AMICI: "#eda100",
+#: the colour of every engine in the figure, one step per mode of the
+#: documentation, which are the slots of the categorical theme the benchmark
+#: of sbmlsim-core draws with (`scripts/bench_figure.py` of that repository):
+#: the engine core is its blue and roadrunner is the pink it has there, so one
+#: engine is one colour across both projects, and COPASI and AMICI follow in
+#: the order of the theme. The adjacent pairs are far enough apart under
+#: protanopia and tritanopia, and the engine of every row is named next to it,
+#: so a mark is never told apart by its colour alone
+ENGINE_COLOURS: Final[dict[str, dict[Engine, str]]] = {
+    "light": {
+        Engine.CORE: "#2a78d6",
+        Engine.ROADRUNNER: "#e87ba4",
+        Engine.COPASI: "#eb6834",
+        Engine.AMICI: "#1baf7a",
+    },
+    "dark": {
+        Engine.CORE: "#3987e5",
+        Engine.ROADRUNNER: "#d55181",
+        Engine.COPASI: "#d95926",
+        Engine.AMICI: "#199e70",
+    },
 }
+
+#: the ink of every mode of the documentation, the surface, the text, the grid
+#: and the axes of a figure, as the benchmark of sbmlsim-core uses them, so a
+#: figure of either project sits on the page of its mode without a box around
+#: it which is the wrong white
+INK: Final[dict[str, dict[str, str]]] = {
+    "light": {
+        "surface": "#ffffff",
+        "primary": "#0b0b0b",
+        "secondary": "#52514e",
+        "grid": "#dededc",
+    },
+    "dark": {
+        "surface": "#1a1a19",
+        "primary": "#f0efec",
+        "secondary": "#c3c2b7",
+        "grid": "#3a3a38",
+    },
+}
+
+#: the modes of the documentation a figure is written for, the suffix of its
+#: file: the page shows `<name>-<model>-light.png#only-light` and its dark
+#: sibling, which the stylesheet shows one of, see `docs/stylesheets/extra.css`
+FIGURE_MODES: Final[tuple[str, ...]] = ("light", "dark")
 
 #: the resolution of the figure
 FIGURE_DPI: Final[int] = 200
@@ -1107,35 +1144,55 @@ def _measurement(value: Measurement | None, factor: float = 1.0) -> str:
     return f"{scaled.median:.3g}"
 
 
-def figure(result: BenchmarkResult, path: Path) -> None:
-    """Write the figure which compares the engines of every model.
+def figure_paths(path: Path, models: Sequence[str]) -> list[Path]:
+    """Get the file of every model and mode a figure is written to.
 
-    One panel per model and measure, a row of panels per model and a column
-    per measure: the dot of an engine is the median of its rounds, on a
-    logarithmic axis of its own, so the
-    engines of a model are read against each other, which is what the figure
-    is for. The panels of a column do not share their axis: the models of
-    this benchmark are five orders of magnitude apart, so a shared axis would
-    squeeze the engines of a small model into one point, and the models are
-    not comparable with each other anyway, since each of them is its own
-    simulation over its own number of points. A dot and not a bar, since a
-    bar on a logarithmic axis encodes its length as the logarithm of its
-    value; the engine of every row is named next to it, so the identity of a
-    mark is never its colour alone, and the numbers are the tables of
-    `markdown`.
+    Args:
+        path: the file `--figure` names, whose stem and suffix the files share.
+        models: the models in order.
+
+    Returns:
+        The files, a model and a mode each, in the order they are written.
+    """
+    return [
+        path.with_name(f"{path.stem}-{model}-{mode}{path.suffix}")
+        for model in models
+        for mode in FIGURE_MODES
+    ]
+
+
+def figure(result: BenchmarkResult, path: Path) -> None:
+    """Write the figures which compare the engines, one per model and mode.
+
+    A model gets a figure of its own, since the models of this benchmark are
+    five orders of magnitude apart and are not comparable with each other
+    anyway: each is its own simulation over its own number of points. Within
+    a figure a panel is a measure and a row is an engine, on a logarithmic
+    axis of its own, so the engines of a model are read against each other,
+    which is what the figure is for.
+
+    The dot of an engine is the median of its rounds and carries no whisker,
+    which is the one way these figures differ from the ones of the benchmark
+    of sbmlsim-core: a `Measurement` of this benchmark keeps the median of
+    its rounds and not their spread, see the section The run of
+    `docs/benchmarks.md`. A dot and not a bar, since a bar on a logarithmic
+    axis encodes its length as the logarithm of its value; the engine of
+    every row is named next to it, so the identity of a mark is never its
+    colour alone, and the numbers are the tables of `markdown`.
+
+    Each figure is written once per mode of the documentation
+    (`FIGURE_MODES`), with the ink of that mode, so the page shows the one
+    which belongs to the palette the reader has.
 
     Args:
         result: the measurement.
-        path: the file the figure is written to, whose suffix is its format;
-            its directory is created.
+        path: the file `--figure` names; the files of the models and modes are
+            named after its stem and suffix, see `figure_paths`, and its
+            directory is created.
 
     Raises:
         ValueError: for a measurement without a cell which was measured.
     """
-    # imported here: the measurement itself needs no matplotlib
-    from matplotlib.figure import Figure
-    from matplotlib.lines import Line2D
-
     measures = [
         measure
         for measure in MEASURES
@@ -1149,28 +1206,65 @@ def figure(result: BenchmarkResult, path: Path) -> None:
     if not measures or not models:
         raise ValueError("The measurement has no cell to draw.")
     engines = list(dict.fromkeys(engine for _, engine in result.rows))
-    figure = Figure(
-        figsize=(1.6 + 2.5 * len(measures), 0.9 + 1.15 * len(models)),
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for model in models:
+        for mode in FIGURE_MODES:
+            drawn = _model_figure(result, model, engines, measures, mode)
+            drawn.savefig(
+                path.with_name(f"{path.stem}-{model}-{mode}{path.suffix}"),
+                dpi=FIGURE_DPI,
+                facecolor=drawn.get_facecolor(),
+            )
+
+
+def _model_figure(
+    result: BenchmarkResult,
+    model: str,
+    engines: Sequence[Engine],
+    measures: Sequence[_Measure],
+    mode: str,
+) -> Figure:
+    """Draw the figure of one model and one mode of the documentation.
+
+    Args:
+        result: the measurement.
+        model: the model of the figure.
+        engines: the engines in the order of the rows, the first one on top.
+        measures: the measures, a panel each.
+        mode: `light` or `dark`, a key of `INK` and of `ENGINE_COLOURS`.
+
+    Returns:
+        The figure, a panel per measure.
+    """
+    # imported here: the measurement itself needs no matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    ink = INK[mode]
+    drawn = Figure(
+        figsize=(1.9 + 2.3 * len(measures), 1.1 + 0.34 * len(engines)),
         layout="constrained",
+        facecolor=ink["surface"],
     )
-    axes = figure.subplots(len(models), len(measures), squeeze=False)
-    for row_index, name in enumerate(models):
-        for column, measure in enumerate(measures):
-            panel = axes[row_index][column]
-            _draw_panel(panel, result, name, engines, measure, ticks=column == 0)
-            _label_axis(panel)
-            # every panel names its unit, so a panel read on its own is never
-            # taken for the measure of another column
-            panel.set_xlabel(f"{measure.unit}, logarithmic", fontsize=8)
-        axes[row_index][0].set_ylabel(name, fontsize=9)
+    axes = drawn.subplots(1, len(measures), squeeze=False)[0]
     for column, measure in enumerate(measures):
-        axes[0][column].set_title(measure.title, fontsize=10)
-    figure.legend(
+        panel = axes[column]
+        _draw_panel(
+            panel, result, model, engines, measure, mode=mode, ticks=column == 0
+        )
+        _label_axis(panel)
+        # every panel names its unit, so a panel read on its own is never
+        # taken for the measure of another column
+        panel.set_xlabel(
+            f"{measure.unit}, logarithmic", fontsize=8, color=ink["secondary"]
+        )
+        panel.set_title(measure.title, fontsize=9.5, color=ink["primary"])
+    drawn.legend(
         handles=[
             Line2D(
                 [],
                 [],
-                color=ENGINE_COLOURS[engine],
+                color=ENGINE_COLOURS[mode][engine],
                 marker="o",
                 markersize=5,
                 linestyle="none",
@@ -1181,14 +1275,17 @@ def figure(result: BenchmarkResult, path: Path) -> None:
         loc="outside lower center",
         ncols=len(engines),
         frameon=False,
-        fontsize=9,
+        fontsize=8.5,
+        labelcolor=ink["primary"],
     )
-    figure.suptitle(
-        "The simulation engines of sbmlsim: the median of the rounds of a cell",
+    configuration = result.configurations.get(model)
+    points = f", {configuration.points} points" if configuration else ""
+    drawn.suptitle(
+        f"{model}{points}: the median of the rounds of a cell",
         fontsize=10,
+        color=ink["primary"],
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(path, dpi=FIGURE_DPI)
+    return drawn
 
 
 def _label_axis(axes: Axes) -> None:
@@ -1207,7 +1304,7 @@ def _label_axis(axes: Axes) -> None:
     Args:
         axes: the panel.
     """
-    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+    from matplotlib.ticker import FuncFormatter, LogLocator, NullLocator
 
     # room for the whisker of a mark at the end of the range
     axes.margins(x=0.1)
@@ -1220,7 +1317,10 @@ def _label_axis(axes: Axes) -> None:
     subs = (1.0,) if decades > DENSE_DECADES else (1.0, 2.0, 5.0)
     axes.xaxis.set_major_locator(LogLocator(subs=subs, numticks=99))
     axes.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-    axes.xaxis.set_minor_formatter(NullFormatter())
+    # the minor ticks of a logarithmic axis are a row of dashes along the
+    # spine which carries no number of its own, and over four decades they
+    # run together, so the panel keeps the stops it labels and no others
+    axes.xaxis.set_minor_locator(NullLocator())
 
 
 def _draw_panel(
@@ -1230,6 +1330,7 @@ def _draw_panel(
     engines: Sequence[Engine],
     measure: _Measure,
     *,
+    mode: str,
     ticks: bool,
 ) -> None:
     """Draw the engines of one model and one measure into one panel.
@@ -1240,10 +1341,13 @@ def _draw_panel(
         name: the model of the panel.
         engines: the engines in the order of the rows, the first one on top.
         measure: the measure of the panel.
+        mode: `light` or `dark`, a key of `INK` and of `ENGINE_COLOURS`.
         ticks: whether the engines are named, i.e. whether this is the first
             panel of its row.
     """
+    ink, colours = INK[mode], ENGINE_COLOURS[mode]
     positions = {engine: len(engines) - index for index, engine in enumerate(engines)}
+    axes.set_facecolor(ink["surface"])
     for engine in engines:
         value = getattr(result.rows.get((name, engine), BenchmarkRow()), measure.field)
         if value is None:
@@ -1252,9 +1356,11 @@ def _draw_panel(
         axes.plot(
             scaled.median,
             positions[engine],
-            color=ENGINE_COLOURS[engine],
+            color=colours[engine],
             marker="o",
-            markersize=5,
+            markersize=5.5,
+            markeredgecolor=ink["surface"],
+            markeredgewidth=1.0,
             linestyle="none",
             zorder=3,
         )
@@ -1262,15 +1368,21 @@ def _draw_panel(
     axes.set_ylim(0.4, len(engines) + 0.6)
     axes.set_yticks([positions[engine] for engine in engines])
     axes.set_yticklabels(
-        [engine.value if ticks else "" for engine in engines], fontsize=8
+        [engine.value if ticks else "" for engine in engines],
+        fontsize=8,
+        color=ink["primary"],
     )
-    axes.tick_params(axis="x", labelsize=8, length=2)
+    axes.tick_params(
+        axis="x", labelsize=8, length=3, width=0.8, colors=ink["secondary"]
+    )
     # the engine of a row is named beside it, so its tick mark adds nothing
     axes.tick_params(axis="y", length=0)
-    axes.grid(axis="x", linewidth=0.4, alpha=0.4, zorder=0)
+    axes.grid(axis="x", color=ink["grid"], linewidth=0.6, zorder=0)
+    axes.set_axisbelow(True)
     for side in ("top", "right", "left"):
         axes.spines[side].set_visible(False)
-    axes.spines["bottom"].set_linewidth(0.6)
+    axes.spines["bottom"].set_color(ink["grid"])
+    axes.spines["bottom"].set_linewidth(0.8)
 
 
 def json_payload(result: BenchmarkResult) -> dict[str, object]:

@@ -29,7 +29,7 @@ other settings of roadrunner are ignored with one report per model
 request, with the absolute tolerance of every state as roadrunner computes its
 vector of CVODE, see `sbmlsim.model.tolerances`.
 
-A model the compiler refuses, e.g. one with an algebraic rule, the delay
+A model the compiler refuses, e.g. one with the delay
 csymbol, a fast reaction or a package it requires, raises
 `UnsupportedModelError` with the message of the compiler, which names the
 feature, and so does a model the engine cannot load, so that nothing of the
@@ -219,7 +219,7 @@ class CoreSBMLModel(SBMLModel):
 
         Raises:
             UnsupportedModelError: for a model the compiler of the engine
-                refuses, e.g. one with an algebraic rule.
+                refuses, e.g. one with the `delay` csymbol.
             ValueError: for a selection the model has not, or an unknown
                 setting.
             ImportError: if the bindings of sbmlsim-core are not installed.

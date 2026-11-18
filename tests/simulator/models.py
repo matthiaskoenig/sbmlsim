@@ -397,3 +397,29 @@ def roadrunner_model(model: SBMLModel) -> RoadrunnerSBMLModel:
     """Get a model which a simulator of roadrunner loaded as a model of roadrunner."""
     assert isinstance(model, RoadrunnerSBMLModel)
     return model
+
+
+#: a model with an algebraic rule, which the engine core simulates with IDA
+#: since sbmlsim-core 0.10.0 and roadrunner does not load: a rate rule
+#: integrates `x` from 1 at the rate 1 and `y - x = 0` determines `y`, so
+#: `x(t) = 1 + t` and `y(t) = x(t)` is the solution to compare against
+ALGEBRAIC = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="algebraic">
+    <listOfParameters>
+      <parameter id="x" value="1" constant="false"/>
+      <parameter id="y" value="2" constant="false"/>
+    </listOfParameters>
+    <listOfRules>
+      <rateRule variable="x">
+        <math xmlns="http://www.w3.org/1998/Math/MathML"><cn>1</cn></math>
+      </rateRule>
+      <algebraicRule>
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><minus/><ci>y</ci><ci>x</ci></apply>
+        </math>
+      </algebraicRule>
+    </listOfRules>
+  </model>
+</sbml>
+"""

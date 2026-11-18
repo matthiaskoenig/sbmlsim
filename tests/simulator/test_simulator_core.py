@@ -39,7 +39,13 @@ from sbmlsim.simulator.executor_core import (
 )
 from sbmlsim.simulator.plan import Assignment, PlanEvent, compile_simulation
 from sbmlsim.simulator.worker import ModelSpec, core_threads
-from tests.simulator.models import INDIRECT_VOLUME, PROBE, TOLERANCE_PROBE, sbml
+from tests.simulator.models import (
+    ALGEBRAIC,
+    INDIRECT_VOLUME,
+    PROBE,
+    TOLERANCE_PROBE,
+    sbml,
+)
 
 #: a model whose parameter `tt` the test renames to `time`, an entity of the
 #: name of the clock, as in case 01820 of the SBML Test Suite
@@ -1089,3 +1095,20 @@ def test_the_threads_of_a_batch_are_the_workers_of_the_run(
     assert core_threads(3, n_points=1) == 3
     monkeypatch.setattr(parallel, "in_worker", lambda: True)
     assert core_threads(None, n_points=1000) == 1
+
+
+def test_an_algebraic_rule_is_solved_against_its_analytic_solution() -> None:
+    """The engine integrates a DAE with IDA since sbmlsim-core 0.10.0.
+
+    Every other test of this file compares the engine with roadrunner, which
+    does not load a model with an algebraic rule, so the reference here is the
+    solution of the equations: a rate rule takes `x` from 1 at the rate 1 and
+    the constraint `y - x = 0` determines `y`, so `x(t) = 1 + t` and `y = x`.
+    """
+    result = Simulator(engine="core", **TIGHT).simulate(
+        ALGEBRAIC, Simulation(end=10, steps=10)
+    )
+    time = result.values[:, 0]
+    np.testing.assert_allclose(result["x"], 1.0 + time, rtol=1e-8)
+    # the constraint holds at every output time and not only at the end
+    np.testing.assert_allclose(result["y"], result["x"], rtol=1e-8)

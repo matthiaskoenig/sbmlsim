@@ -35,11 +35,11 @@ keywords = [
 ]
 dependencies = [
 	# SBML, its formulas and COMBINE archives
-	"sbmlutils>=0.16.0",
-	"pymetadata>=0.8.1",
+	"sbmlutils>=0.17.2",
+	"pymetadata>=0.8.3",
 	# the differential equations of a model as markdown, written into the
 	# COMBINE archive of a release (`sbmlsim.release.archive`)
-	"sbmlode>=0.3.0",
+	"sbmlode>=0.3.2",
 	"python-libsbml>=5.21.2",
 	# simulation
 	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
@@ -81,7 +81,7 @@ dependencies = [
 	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
 	# when a PK observable is compiled
-	"pkpdutils>=1.3.0",
+	"pkpdutils>=1.5.0",
 	# the files of the PEtab test suite, the benchmark collection and the networks
 	"pyyaml>=6.0.3",
 	# plots and reports
@@ -94,7 +94,7 @@ dependencies = [
 	"jinja2>=3.1.6",
 	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
 	# the runtime of its engine and the inline build of its JavaScript host
-	"sbmlsim-core>=0.9.0",
+	"sbmlsim-core>=0.10.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

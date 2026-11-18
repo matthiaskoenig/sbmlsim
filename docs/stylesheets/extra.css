@@ -1,0 +1,13 @@
+/* A figure of two files, one per mode: `image.png#only-light` and `image.png#only-dark`.
+   Material for MkDocs carries this rule, zensical 0.1.0 does not, so without it both files
+   of a figure are shown one above the other. The scheme of the light palette of
+   `zensical.toml` is `default` and of the dark one `slate`, and the attribute is on `<body>`,
+   which the toggle of the theme and the preference of the system both set.
+
+   The figures of the page Benchmarks are written once per mode by
+   `scripts/engine_benchmark.py`, with the ink of that mode, as the benchmark of
+   sbmlsim-core writes its own. */
+[data-md-color-scheme="default"] img[src$="#only-dark"],
+[data-md-color-scheme="slate"] img[src$="#only-light"] {
+  display: none;
+}

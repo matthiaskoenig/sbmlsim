@@ -389,7 +389,7 @@ The engine is stateless: a simulation is one request which carries the values be
 
 The engine core refuses:
 
-- A model the compiler refuses, e.g. one with an algebraic rule, the `delay` csymbol, a fast reaction or a package it requires, raises a `ValueError` with the message of the compiler, which names the feature, and so does a model the engine cannot load.
+- A model the compiler refuses, e.g. one with the `delay` csymbol, a fast reaction or a package it requires, raises a `ValueError` with the message of the compiler, which names the feature, and so does a model the engine cannot load.
 - A simulation with a steady state after its end, i.e. the output of a steady state which follows the simulation, since the steady state of a request is the pre-equilibration before the start alone.
 - A value before the initialization which a plan sets by a formula, unless the formula can be evaluated without the model: a request carries numbers, and a formula of a parameter whose symbols are the values of the model as loaded or the numbers the same pre-initialization sets is folded into one. No request answers the values before the initialization, so nothing else is.
 - A formula at a change which reads a symbol that is no output of the engine, i.e. neither a parameter, a compartment nor the amount `S` or the concentration `[S]` of a species.

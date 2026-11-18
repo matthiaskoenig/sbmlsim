@@ -19,29 +19,7 @@ from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import HCTZ_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulator.plan import Assignment
-
-#: a model with an algebraic rule, which the compiler of the engine refuses:
-#: `y` follows `x`, which a rate rule integrates
-ALGEBRAIC = """<?xml version="1.0" encoding="UTF-8"?>
-<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
-  <model id="algebraic">
-    <listOfParameters>
-      <parameter id="x" value="1" constant="false"/>
-      <parameter id="y" value="2" constant="false"/>
-    </listOfParameters>
-    <listOfRules>
-      <rateRule variable="x">
-        <math xmlns="http://www.w3.org/1998/Math/MathML"><cn>1</cn></math>
-      </rateRule>
-      <algebraicRule>
-        <math xmlns="http://www.w3.org/1998/Math/MathML">
-          <apply><minus/><ci>y</ci><ci>x</ci></apply>
-        </math>
-      </algebraicRule>
-    </listOfRules>
-  </model>
-</sbml>
-"""
+from tests.simulator.models import ALGEBRAIC
 
 #: a model whose assignment rule reads the delay csymbol, which the compiler
 #: of the engine refuses
@@ -182,14 +160,23 @@ def test_a_model_with_added_parameters_is_compiled_on_its_own() -> None:
     assert not plain.has_selection("noise")
 
 
-@pytest.mark.parametrize(
-    ("sbml", "match"),
-    [(ALGEBRAIC, "algebraic"), (DELAYED, "delay")],
-)
+@pytest.mark.parametrize(("sbml", "match"), [(DELAYED, "delay")])
 def test_a_model_the_compiler_refuses_names_its_feature(sbml: str, match: str) -> None:
     """A model the compiler of the engine refuses raises with its message."""
     with pytest.raises(UnsupportedModelError, match=match):
         load_model(AbstractModel(source=sbml), Engine.CORE)
+
+
+def test_a_model_with_an_algebraic_rule_loads() -> None:
+    """An algebraic rule was refused until sbmlsim-core 0.10.0, which solves it.
+
+    The matched unknown `y` is appended to the state vector as the algebraic
+    suffix, so both parameters of the model are selections of it.
+    """
+    model = load_model(AbstractModel(source=ALGEBRAIC), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    assert model.has_selection("x")
+    assert model.has_selection("y")
 
 
 def test_a_model_the_engine_cannot_load_is_refused(
