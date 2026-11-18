@@ -169,7 +169,7 @@ class UnsupportedModelError(ValueError, NotImplementedError):
     """An engine does not simulate a model or a plan as roadrunner does.
 
     The feature checks of COPASI and AMICI raise it before the engine loads,
-    compiles or runs what it would simulate otherwise, e.g. an algebraic rule
+    compiles or runs what it would simulate otherwise, e.g. a fast reaction
     or a delayed event; it is a limitation of the engine, not an error of the
     model. It is a `ValueError` (the checks of a model) and a
     `NotImplementedError` (the checks of a plan) alike.

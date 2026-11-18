@@ -19,6 +19,7 @@ from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import HCTZ_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulator.plan import Assignment
+from tests.simulator.models import ALGEBRAIC
 
 #: a model with a cycle of assignment rules, which the compiler of the engine
 #: refuses: `x` reads `y` and `y` reads `x`
@@ -183,6 +184,18 @@ def test_a_model_the_compiler_refuses_names_its_feature(sbml: str, match: str) -
     """A model the compiler of the engine refuses raises with its message."""
     with pytest.raises(UnsupportedModelError, match=match):
         load_model(AbstractModel(source=sbml), Engine.CORE)
+
+
+def test_a_model_with_an_algebraic_rule_loads() -> None:
+    """An algebraic rule was refused until sbmlsim-core 0.10.0, which solves it.
+
+    The matched unknown `y` is appended to the state vector as the algebraic
+    suffix, so both parameters of the model are selections of it.
+    """
+    model = load_model(AbstractModel(source=ALGEBRAIC), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    assert model.has_selection("x")
+    assert model.has_selection("y")
 
 
 def test_a_model_the_engine_cannot_load_is_refused(

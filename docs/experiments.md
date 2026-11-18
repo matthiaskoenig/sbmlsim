@@ -165,7 +165,7 @@ print(f"peak: {res.q['cp'].max():~.1f}")
 ```
 
 ```text title="Output"
-ScanResult(_point: 867; cp)
+ScanResult(_point: 870; cp)
 {'time': 'min', 'cp': 'nanogram / milliliter'}
 end: 36.0 h
 peak: 134.6 ng / ml

@@ -9,6 +9,7 @@ copyright = 'Copyright &copy; 2019-2026 <a href="https://livermetabolism.com">Ma
 repo_url = "https://github.com/matthiaskoenig/sbmlsim"
 repo_name = "matthiaskoenig/sbmlsim"
 edit_uri = "edit/develop/docs/"
+extra_css = ["stylesheets/extra.css"]
 
 nav = [
   { "Home" = "index.md" },

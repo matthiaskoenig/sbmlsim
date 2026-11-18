@@ -65,8 +65,8 @@ print(res)
 ```
 
 ```text title="Output"
-0.29.0
-ScanResult(_point: 1084; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
+0.30.0
+ScanResult(_point: 1082; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
 ```
 
 Now continue with the [Tutorial](tutorial.md).

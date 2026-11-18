@@ -2288,7 +2288,7 @@ wheels = [
 
 [[package]]
 name = "pkpdutils"
-version = "1.4.0"
+version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -2296,14 +2296,31 @@ dependencies = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "pint" },
+    { name = "pkpdutils-core" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/60/2d/71d1f1f526d10fa14b6ffadabea92561fe4d003ee8dd50a5544e14c9fc95/pkpdutils-1.4.0.tar.gz", hash = "sha256:4db5f4797b4455024a115607e9e11d9c1f10aa9cbe3e97de4d59a0a69cca50d3", size = 2841748, upload-time = "2026-11-01T22:54:36.083Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/7a/6aaf2996ad8bf7f5b7f097bc270617e473dc93f5a5f8402f7a40c17cfd7d/pkpdutils-1.7.0.tar.gz", hash = "sha256:12be47d590878d7d7b6460720b474bdff1bd148025c009e75fa3de1a6f5dc7f4", size = 2952204, upload-time = "2026-11-18T19:27:29.492Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/3b/45a1135a47dfe210fa4d4312fc8e77c8ac192d4ea9dc2427dce19b7ed5ee/pkpdutils-1.4.0-py3-none-any.whl", hash = "sha256:4707b7979c07718bdc7f30cf1805a641a0d6793d273c99fef740837766966ad3", size = 365047, upload-time = "2026-11-01T22:54:33.974Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/fd/659e3e3a986dd0d6e0bc903374c0d1be388ebcb76eb25a66733faaf993fa/pkpdutils-1.7.0-py3-none-any.whl", hash = "sha256:d283b9826e1005c86b36d6b4a180d2d1483c01ce0b90e97e436c8ddb57cb727a", size = 398260, upload-time = "2026-11-18T19:27:27.749Z" },
+]
+
+[[package]]
+name = "pkpdutils-core"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7d/ed/023e9638cbe14c4e2b6e5ea578abf3a1412c25430b1fac409bd651f881fd/pkpdutils_core-0.6.0.tar.gz", hash = "sha256:034a8a0f02944e2375725719f0d69e9cdec7b8e608eb444dc9ee75e8055cdc28", size = 504303, upload-time = "2026-11-18T19:15:31.01Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/66/6ba1a29bcc6d88e226e5676d7c765bcf1066cbada6bed324d0587c6abb2a/pkpdutils_core-0.6.0-cp313-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9d6c3353f73d5c96456de109355464604fc22e17ae9beac443f046f99f7ab795", size = 614516, upload-time = "2026-11-18T19:15:23.954Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/69/86efc852048e3d4f48291d76865d880bd7bbfc3f3196f3599707041bbb47/pkpdutils_core-0.6.0-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:87e6d3593b91268377f07ebeb32f86d78cfb7e875ac29de51d80e60f9b643ac8", size = 591076, upload-time = "2026-11-18T19:15:25.389Z" },
+    { url = "https://files.pythonhosted.org/packages/76/de/1d8ed7dc9c4d27ae936d1ed3cc37c6917ea15e07534b36b283216b5e58f7/pkpdutils_core-0.6.0-cp313-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:b5de2dc29ca99492f14a54fff70a5a690574c89290b64019355c2aa511dd68f1", size = 741281, upload-time = "2026-11-18T19:15:26.95Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/cd/5f3c22a0830333f5abf11b8ed09f2dc5992f314d0e9d0329651cea0ed68a/pkpdutils_core-0.6.0-cp313-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:d55ea1b72d31c1bb4867686d51a0fa623e80c7a3674740d04c141d4f33efa223", size = 715586, upload-time = "2026-11-18T19:15:28.316Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/85/787ecc2ee45ababeee5400e0eca460ed14772f05ade25f237ec31b65665d/pkpdutils_core-0.6.0-cp313-abi3-win_amd64.whl", hash = "sha256:b0212d9fd32ea13e28d81a2ab9e4510ddb6306d6f726bcaf4d8e1b97ff94b4db", size = 546357, upload-time = "2026-11-18T19:15:29.752Z" },
 ]
 
 [[package]]
@@ -3096,15 +3113,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/6d/2a/ac44ff69317579485
 
 [[package]]
 name = "sbmlode"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
     { name = "python-libsbml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/79/f81d31f9b81671ac279f9dfa1cd8d675d37334325b2d042069deed05e446/sbmlode-0.3.1.tar.gz", hash = "sha256:49dee5a4e66db1decf0281a5ef2ee15d4072a43330ec9b97dd4ec7f14f8163b0", size = 300701, upload-time = "2026-10-22T01:18:57.281Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/97/2149891168d7f9e0b19ff41dc7ff1ef43141b9ec01ff471e19f9c66d8782/sbmlode-0.3.2.tar.gz", hash = "sha256:51ae1c180be1c1aa1ef24380204e19e55691388b21841f5e888939ab03332744", size = 302068, upload-time = "2026-11-10T23:29:03.786Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/6e/b79e4036c8ccb163c46cd5a587da3912eb41292c333a710f74d6bdfc001c/sbmlode-0.3.1-py3-none-any.whl", hash = "sha256:1a8f4399b27395393a09d5e41c17122fe22c79d17f3d61f4b559034cd06b2f3c", size = 132763, upload-time = "2026-10-22T01:18:55.541Z" },
+    { url = "https://files.pythonhosted.org/packages/db/3f/72694867aff6027a45241085830a5303ed37477195045eb573831f44d59f/sbmlode-0.3.2-py3-none-any.whl", hash = "sha256:0855c3254af83c8e90d419d7349cbef94897e2b280a3c01fca4e6b8b18e175f5", size = 133431, upload-time = "2026-11-10T23:29:02.134Z" },
 ]
 
 [[package]]
@@ -3219,11 +3236,11 @@ requires-dist = [
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pint", specifier = ">=0.26.1" },
-    { name = "pkpdutils", specifier = ">=1.3.0" },
+    { name = "pkpdutils", specifier = ">=1.7.0" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.14.1" },
-    { name = "pymetadata", specifier = ">=0.8.1" },
+    { name = "pymetadata", specifier = ">=0.8.3" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.21.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },
@@ -3235,9 +3252,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.10" },
     { name = "salib", specifier = ">=1.6.0" },
     { name = "sbmlmath", specifier = ">=0.4.1,<0.5" },
-    { name = "sbmlode", specifier = ">=0.3.0" },
+    { name = "sbmlode", specifier = ">=0.3.2" },
     { name = "sbmlsim-core", specifier = ">=0.11.0" },
-    { name = "sbmlutils", specifier = ">=0.16.0" },
+    { name = "sbmlutils", specifier = ">=0.17.2" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.3.2" },

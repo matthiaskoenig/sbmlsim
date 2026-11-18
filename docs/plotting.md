@@ -110,9 +110,9 @@ for task, res in experiment.results.items():
 ```
 
 ```text title="Output"
-task_po25 ScanResult(_point: 867; cp, Aurine_hctz)
+task_po25 ScanResult(_point: 870; cp, Aurine_hctz)
 task_doses ScanResult(dose: 4, _point: 1009; cp, pk.cmax)
-task_patients ScanResult(patient: 50, _point: 904; cp)
+task_patients ScanResult(patient: 50, _point: 902; cp)
 ```
 
 In a real project the figures are returned by the `figures()` method of the experiment, with `Figure(experiment=self, ...)`, and the runner writes them into the output folder (see [Simulation experiments](experiments.md)). While you design a figure it is quicker to draw it on an experiment that already ran: `MatplotlibFigureSerializer.to_figure(experiment, figure)` returns a matplotlib figure, which a notebook shows. A figure drawn this way can only read data the run recorded, which is why the experiment lists the variables in `data()`.

@@ -302,7 +302,7 @@ print(
             sid           kind compartment   volume  absolute_tolerance        scale
 3   IVDOSE_hctz          other         NaN      NaN        1.000000e-10          NaN
 7            na  concentration         ECF  13.6125        1.905750e-07  1905.750000
-19     Cve_hctz  concentration         Vve   2.9321        1.325555e-13     0.001326
+19     Cve_hctz  concentration         Vve   2.9321        1.325556e-13     0.001326
 25  Aurine_hctz         amount      Vurine      NaN        5.101054e-12     0.051011
 ```
 
@@ -337,9 +337,9 @@ res.to_netcdf(Path("hctz.nc"))
 68.65 μmol excreted after 12 hours
               time  [Cve_hctz]  Aurine_hctz  Ri_hctz
 _point
-696     700.596589    0.000127     0.068160      0.0
-697     713.069526    0.000125     0.068479      0.0
-698     720.000000    0.000123     0.068654      0.0
+695     695.657551    0.000128     0.068032      0.0
+696     708.570722    0.000126     0.068365      0.0
+697     720.000000    0.000123     0.068654      0.0
 ```
 
 With the steps of the integrator the table has the index `_point` and the time as a column. `simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of the engine with its column names.
@@ -507,9 +507,9 @@ copasi
 equal: True
              copasi    core
 time        0.0e+00 0.0e+00
-Aurine_hctz 4.4e-10 2.2e-11
+Aurine_hctz 4.5e-10 2.2e-11
 Ri_hctz     0.0e+00 0.0e+00
-[Cve_hctz]  7.4e-09 6.2e-11
+[Cve_hctz]  7.5e-09 6.2e-11
 ```
 
 `is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences, the largest of each column per engine in the table. With `"amici"` among the engines, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. The engine core agrees with roadrunner the most closely of the three at these tolerances: on the packaged models the largest relative difference is `2.4e-11` on the HCTZ model and `1.7e-8` on the midazolam model, a factor of 16 to 660 below COPASI and AMICI, because the engine core integrates with the vector of absolute tolerances which roadrunner computes per state while the other two have a single one, see [Benchmarks](benchmarks.md) and [Absolute tolerances](#absolute-tolerances). Agreeing with roadrunner closely is not the same as being more accurate: the error of the engine core is not bounded by roadrunner's, see [core](#core). With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
