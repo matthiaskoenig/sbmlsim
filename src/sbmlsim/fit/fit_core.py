@@ -162,6 +162,31 @@ def loaded_model(problem: OptimizationProblem) -> Any:
     return loaded
 
 
+def fits_requests(loaded: Any) -> bool:
+    """Whether a loaded model of the bindings fits a request of `fit/1` itself.
+
+    `LoadedModel.fit` is new in sbmlsim-core 0.12.0 and the floor of sbmlsim
+    is older, so a fit of the engine is a gap of the older bindings and the
+    optimizer in python fits the problem as it did before.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            the engine core.
+
+    Returns:
+        Whether the engine of the bindings fits a request.
+    """
+    return loaded is not None and hasattr(loaded, "fit")
+
+
+def _loaded_of(problem: OptimizationProblem) -> Any:
+    """Get the loaded model of a problem, `None` if it has not exactly one."""
+    models = _models_of(problem)
+    if len(models) != 1:
+        return None
+    return getattr(models[0], "loaded", None)
+
+
 def gaps_of(problem: OptimizationProblem) -> list[Gap]:
     """Get what keeps the fit of a problem out of the engine.
 
@@ -186,6 +211,16 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
             )
         )
         return gaps
+    if not fits_requests(_loaded_of(problem)):
+        import sbmlsim_core
+
+        return [
+            Gap(
+                "bindings",
+                f"the bindings of sbmlsim-core {sbmlsim_core.__version__} do not "
+                f"fit a request of '{CONTRACT}', which 0.12.0 is the first to do",
+            )
+        ]
     settings = problem.settings_initialized
     if settings.objective is not ObjectiveType.LEAST_SQUARES:
         return [

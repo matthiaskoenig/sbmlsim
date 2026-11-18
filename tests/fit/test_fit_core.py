@@ -17,6 +17,7 @@ and the errors of the data).
 
 import dataclasses
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -27,6 +28,7 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fit_core import (
     CONVERGED,
     fit_request,
+    fits_requests,
     gaps_of,
     loaded_model,
     run,
@@ -294,3 +296,10 @@ def test_a_fit_which_must_run_in_the_engine_names_the_gaps_of_the_problem(
             show_progress=False,
             engine_fit=True,
         )
+
+
+def test_bindings_which_cannot_fit_a_request_are_a_gap() -> None:
+    """A fit of the engine needs `LoadedModel.fit`, which 0.12.0 is the first to have."""
+    assert not fits_requests(None)
+    assert not fits_requests(SimpleNamespace(simulate_many=lambda requests: []))
+    assert fits_requests(SimpleNamespace(fit=lambda request, threads=None: {}))
