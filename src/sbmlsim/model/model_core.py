@@ -29,11 +29,13 @@ other settings of roadrunner are ignored with one report per model
 request, with the absolute tolerance of every state as roadrunner computes its
 vector of CVODE, see `sbmlsim.model.tolerances`.
 
-A model the compiler refuses, e.g. one with an algebraic rule, the delay
-csymbol, a fast reaction or a package it requires, raises
-`UnsupportedModelError` with the message of the compiler, which names the
-feature, and so does a model the engine cannot load, so that nothing of the
-bindings reaches a caller of `load_model`.
+A model the compiler refuses, e.g. one with a fast reaction, a package it
+requires, a cycle of assignment rules or a draw of a distribution of distrib,
+raises `UnsupportedModelError` with the message of the compiler, which names
+the feature, and so does a model the engine cannot load, so that nothing of
+the bindings reaches a caller of `load_model`. Algebraic rules and the delay
+csymbol are simulated since sbmlsim-core 0.10.0 and 0.11.0, with IDA and with
+the integrator of the delays of the engine.
 """
 
 from __future__ import annotations
@@ -219,7 +221,7 @@ class CoreSBMLModel(SBMLModel):
 
         Raises:
             UnsupportedModelError: for a model the compiler of the engine
-                refuses, e.g. one with an algebraic rule.
+                refuses, e.g. one with a fast reaction.
             ValueError: for a selection the model has not, or an unknown
                 setting.
             ImportError: if the bindings of sbmlsim-core are not installed.

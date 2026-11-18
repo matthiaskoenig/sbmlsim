@@ -41,6 +41,7 @@ import numpy as np
 from scipy.optimize import OptimizeResult
 
 from sbmlsim import cgroup, parallel
+from sbmlsim.engine import Engine
 from sbmlsim.events import emit
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
@@ -370,12 +371,18 @@ def run_optimization(
     if evaluation_workers > 1:
         # the runs run one after another and evaluate on all workers
         evolution = algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+        # the engine core simulates the vectors of a batch at once on threads
+        # of its own, so the generation of a population and the points of a
+        # jacobian are one task of one worker which runs on the cores of the
+        # fit, see `_EvaluationPool._evaluate_together`
+        batched = problem.engine is Engine.CORE
         display.key_values(
             {
                 "runs": _runs_label(size, selected),
                 "workers": (
                     f"{evaluation_workers} "
-                    f"({'population' if evolution else 'jacobian'} of a run)"
+                    f"({'threads' if batched else 'processes'}, "
+                    f"{'population' if evolution else 'jacobian'} of a run)"
                 ),
             }
         )
@@ -383,7 +390,12 @@ def run_optimization(
             optimization_progress(
                 "optimizing", len(selected), show_progress
             ) as progress,
-            worker_pool(problem, settings, evaluation_workers) as pool,
+            worker_pool(
+                problem,
+                settings,
+                1 if batched else evaluation_workers,
+                threads=evaluation_workers if batched else 1,
+            ) as pool,
         ):
             opt_result = _run_optimization_serial(
                 problem=problem,
@@ -596,6 +608,70 @@ def _worker_residuals(
         return worker_problem(token, problem, settings).evaluate_residuals(task["x"])
 
 
+def _worker_costs(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> list[float]:
+    """Evaluate the cost of every member of a generation in a worker process.
+
+    The simulations of the whole generation run as one batch of the engine,
+    which the engine core fans out over threads of its own, so the generation
+    is one task of one worker, see
+    `OptimizationProblem.evaluate_cost_many` and
+    `_EvaluationPool._evaluate_together`.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: the members `vectors`, in the space the optimizer searches, and
+            the `threads` of the engine their batch runs on.
+
+    Returns:
+        The cost of every member, in the order of the members.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    with worker_progress():
+        return worker_problem(token, problem, settings).evaluate_cost_many(
+            task["vectors"], task["threads"]
+        )
+
+
+def _worker_residuals_many(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> list[tuple[np.ndarray, float]]:
+    """Evaluate every point of the jacobian of a run in a worker process.
+
+    The simulations of the whole jacobian run as one batch of the engine, see
+    `_worker_costs` and `OptimizationProblem.evaluate_residuals_many`.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: the points `vectors`, in the space the optimizer searches, and
+            the `threads` of the engine their batch runs on.
+
+    Returns:
+        The residuals of every point and their cost, in the order of the
+        points.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    with worker_progress():
+        return worker_problem(token, problem, settings).evaluate_residuals_many(
+            task["vectors"], task["threads"]
+        )
+
+
 def _worker_warm(
     token: str,
     problem: OptimizationProblem,
@@ -691,6 +767,10 @@ class FitPool:
         problem: the problem, pickled into every task as its definition.
         settings: the settings the workers initialize the problem with.
         n_cores: the number of workers.
+        threads: the threads of the engine one batch of parameter vectors
+            runs on in a worker, see `_EvaluationPool._evaluate_together`:
+            more than one for the engine core, which simulates a batch on
+            threads of its own, so the batch is one task of one worker.
         preload: the modules the forkserver imports, see `_preload`.
         restarts: how often the pool was started again after a crash, for the
             cap `MAX_POOL_RESTARTS`.
@@ -707,6 +787,7 @@ class FitPool:
     problem: OptimizationProblem
     settings: FitSettings
     n_cores: int = 1
+    threads: int = 1
     preload: Sequence[str] = ()
     initializer: Callable[..., object] | None = None
     initargs: tuple[Any, ...] = ()
@@ -970,7 +1051,10 @@ def _preload(problem: OptimizationProblem) -> list[str]:
 
 @contextmanager
 def worker_pool(
-    problem: OptimizationProblem, settings: FitSettings, n_cores: int
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    n_cores: int,
+    threads: int = 1,
 ) -> Generator[FitPool]:
     """Start the workers of a fit and stop them after it.
 
@@ -982,6 +1066,8 @@ def worker_pool(
         problem: the problem of the fit.
         settings: the settings of the fit.
         n_cores: the number of workers.
+        threads: the threads of the engine one batch of vectors runs on in a
+            worker, see `FitPool.threads`.
 
     Yields:
         The workers of the fit.
@@ -1017,6 +1103,7 @@ def worker_pool(
         problem=problem,
         settings=settings,
         n_cores=n_cores,
+        threads=threads,
         preload=preload,
         initializer=_set_progress if events is not None else None,
         initargs=(events,) if events is not None else (),
@@ -1079,6 +1166,13 @@ class _EvaluationPool:
         """
         raise NotImplementedError
 
+    def _batch_function(self) -> Callable[..., Any]:
+        """Get the function a worker runs for a whole batch of vectors.
+
+        It is read at the call, as `_function` is.
+        """
+        raise NotImplementedError
+
     def _alone(self, k: int) -> Any:
         """Get the value of a vector which killed its worker when it ran alone.
 
@@ -1133,6 +1227,17 @@ class _EvaluationPool:
             FitTimeout: if the deadline passed before every vector was evaluated.
             PoolError: if the workers failed, see the class.
         """
+        if self.pool.threads > 1 and len(vectors) > 1:
+            # the engine simulates the whole batch at once on its threads
+            values = self._evaluate_together(vectors, deadline)
+            if values is not None:
+                yield from enumerate(values)
+                return
+            logger.warning(
+                "The worker of the %s died, its %s are evaluated one per task.",
+                self.batch,
+                self.items,
+            )
         # the cap of the restarts counts per batch
         self.pool.restarts = 0
         outcomes = self.pool.run(
@@ -1179,6 +1284,71 @@ class _EvaluationPool:
                 f"its budget."
             )
 
+    def _evaluate_together(
+        self, vectors: Sequence[np.ndarray], deadline: float | None
+    ) -> list[Any] | None:
+        """Evaluate every vector of a batch in one task of one worker.
+
+        The simulations of the whole batch run as one batch of the engine,
+        which the engine core fans out over the `FitPool.threads` threads of
+        a worker: the points of a jacobian and the members of a generation
+        are then simulated at once instead of one simulation per task, see
+        `OptimizationProblem.evaluate_residuals_many` and `split_cores`.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer
+                searches.
+            deadline: the time of `time.monotonic` at which the batch is
+                given up, no limit if `None`.
+
+        Returns:
+            The value of every vector, in the order of the vectors, or `None`
+            if the worker of the batch died: the vectors are then evaluated
+            one per task, so a vector which kills its worker fails alone or
+            ends the run as it does without the batch, see `_evaluate`.
+
+        Raises:
+            FitTimeout: if the deadline passed before the batch was evaluated.
+            PoolError: if the worker failed with an error of its own.
+        """
+        self.pool.restarts = 0
+        outcomes = self.pool.run(
+            self._batch_function(),
+            {0: {"vectors": list(vectors), "threads": self.pool.threads}},
+            deadline=deadline,
+        )
+        values: list[Any] | None = None
+        timed_out = finished = False
+        try:
+            # the batch takes the steps of the activity of the progress when
+            # the engine answers with its simulations
+            with progress_activity(
+                self.batch, total=len(vectors), workers=self.pool.threads
+            ) as evaluated:
+                for _, outcome in outcomes:
+                    if isinstance(outcome, TimeoutError):
+                        timed_out = True
+                        break
+                    if isinstance(outcome, WorkerDied):
+                        break
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    values = list(outcome)
+                    evaluated.advance(len(vectors))
+                    finished = True
+        finally:
+            outcomes.close()
+            if not finished:
+                # the batch would hold the worker of the next one after a
+                # deadline, an error or an interrupt
+                self.pool.stop()
+        if timed_out:
+            raise FitTimeout(
+                f"'{self.pool.problem.opid}': the optimization did not finish in "
+                f"its budget."
+            )
+        return values
+
 
 @dataclass
 class PopulationPool(_EvaluationPool):
@@ -1201,6 +1371,11 @@ class PopulationPool(_EvaluationPool):
     def _function(self) -> Callable[..., Any]:
         """Get the function which evaluates the cost of a member."""
         return _worker_cost
+
+    @override
+    def _batch_function(self) -> Callable[..., Any]:
+        """Get the function which evaluates the costs of a whole generation."""
+        return _worker_costs
 
     @override
     def _alone(self, k: int) -> float:
@@ -1258,6 +1433,11 @@ class JacobianPool(_EvaluationPool):
     def _function(self) -> Callable[..., Any]:
         """Get the function which evaluates the residuals of a point."""
         return _worker_residuals
+
+    @override
+    def _batch_function(self) -> Callable[..., Any]:
+        """Get the function which evaluates the whole jacobian."""
+        return _worker_residuals_many
 
     def __call__(
         self, points: Sequence[np.ndarray], deadline: float | None

@@ -1,12 +1,14 @@
 """Tests of the Fisher information of a fit."""
 
 import logging
+from typing import Any
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from sbmlsim import progress
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fisher import (
     DEFAULT_STEP,
@@ -329,6 +331,46 @@ def test_the_jacobian_on_workers_is_the_jacobian_of_this_process(
         assert evaluate is not None
         on_workers = jacobian(problem, x, evaluate=evaluate)
     assert np.array_equal(serial, on_workers)
+
+
+def test_the_jacobian_of_the_engine_core_is_one_batch_in_one_worker(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The points of a jacobian of the engine core run on the threads of a worker.
+
+    The engine simulates them at once, so the cores of the jacobian are the
+    threads of one worker and the jacobian is the one of this process, see
+    `sbmlsim.fit.runner.FitPool.threads`.
+    """
+    from sbmlsim.fit import runner
+
+    problem = OptimizationProblem(
+        opid=op_hctz_iv.opid,
+        mapping_collections=op_hctz_iv.mapping_collections,
+        fit_parameters=op_hctz_iv.parameters,
+        base_path=op_hctz_iv.base_path,
+        data_path=op_hctz_iv.data_path,
+        engine=Engine.CORE,
+    )
+    problem.initialize(fit_settings)
+    x = problem.to_scale(np.asarray(problem.x0, dtype=float))
+    serial = jacobian(problem, x)
+    sized: list[tuple[int, int]] = []
+    real = runner.worker_pool
+
+    def worker_pool(problem: Any, settings: Any, n_cores: int, threads: int = 1) -> Any:
+        sized.append((n_cores, threads))
+        return real(problem, settings, n_cores, threads)
+
+    monkeypatch.setattr(runner, "worker_pool", worker_pool)
+    with evaluator(problem, fit_settings, n_cores=2) as evaluate:
+        assert evaluate is not None
+        batched = jacobian(problem, x, evaluate=evaluate)
+
+    assert sized == [(1, 2)]
+    assert np.array_equal(serial, batched)
 
 
 def test_the_points_of_a_jacobian_report_their_progress(

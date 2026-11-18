@@ -20,52 +20,45 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import HCTZ_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulator.plan import Assignment
 
-#: a model with an algebraic rule, which the compiler of the engine refuses:
-#: `y` follows `x`, which a rate rule integrates
-ALGEBRAIC = """<?xml version="1.0" encoding="UTF-8"?>
+#: a model with a cycle of assignment rules, which the compiler of the engine
+#: refuses: `x` reads `y` and `y` reads `x`
+CYCLIC = """<?xml version="1.0" encoding="UTF-8"?>
 <sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
-  <model id="algebraic">
+  <model id="cyclic">
     <listOfParameters>
       <parameter id="x" value="1" constant="false"/>
       <parameter id="y" value="2" constant="false"/>
     </listOfParameters>
     <listOfRules>
-      <rateRule variable="x">
-        <math xmlns="http://www.w3.org/1998/Math/MathML"><cn>1</cn></math>
-      </rateRule>
-      <algebraicRule>
-        <math xmlns="http://www.w3.org/1998/Math/MathML">
-          <apply><minus/><ci>y</ci><ci>x</ci></apply>
-        </math>
-      </algebraicRule>
+      <assignmentRule variable="x">
+        <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>y</ci></math>
+      </assignmentRule>
+      <assignmentRule variable="y">
+        <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>x</ci></math>
+      </assignmentRule>
     </listOfRules>
   </model>
 </sbml>
 """
 
-#: a model whose assignment rule reads the delay csymbol, which the compiler
-#: of the engine refuses
-DELAYED = """<?xml version="1.0" encoding="UTF-8"?>
-<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
-  <model id="delayed">
+#: a model whose rate rule draws from a distribution of distrib, which the
+#: compiler of the engine refuses: a simulation of it is not deterministic
+DRAWN = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core"
+  xmlns:distrib="http://www.sbml.org/sbml/level3/version1/distrib/version1"
+  level="3" version="2" distrib:required="true">
+  <model id="drawn">
     <listOfParameters>
       <parameter id="x" value="1" constant="false"/>
-      <parameter id="y" value="2" constant="false"/>
     </listOfParameters>
     <listOfRules>
       <rateRule variable="x">
-        <math xmlns="http://www.w3.org/1998/Math/MathML"><cn>1</cn></math>
-      </rateRule>
-      <assignmentRule variable="y">
         <math xmlns="http://www.w3.org/1998/Math/MathML">
-          <apply>
-            <csymbol encoding="text"
-              definitionURL="http://www.sbml.org/sbml/symbols/delay">delay</csymbol>
-            <ci>x</ci>
-            <cn>1</cn>
-          </apply>
+          <apply><csymbol encoding="text"
+            definitionURL="http://www.sbml.org/sbml/symbols/distrib/normal">normal
+            </csymbol><cn>0</cn><cn>1</cn></apply>
         </math>
-      </assignmentRule>
+      </rateRule>
     </listOfRules>
   </model>
 </sbml>
@@ -184,7 +177,7 @@ def test_a_model_with_added_parameters_is_compiled_on_its_own() -> None:
 
 @pytest.mark.parametrize(
     ("sbml", "match"),
-    [(ALGEBRAIC, "algebraic"), (DELAYED, "delay")],
+    [(CYCLIC, "cycle of assignment rules"), (DRAWN, "distrib/normal")],
 )
 def test_a_model_the_compiler_refuses_names_its_feature(sbml: str, match: str) -> None:
     """A model the compiler of the engine refuses raises with its message."""

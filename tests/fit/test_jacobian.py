@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -29,11 +30,13 @@ from sbmlsim.fit.optimization import OptimizationProblem, PoolError
 from sbmlsim.fit.options import OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
+from tests.engines import require
 
 DE = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
 LSQ = OptimizationAlgorithmType.LEAST_SQUARE
 
 _REAL_WORKER_RESIDUALS = runner._worker_residuals
+_REAL_WORKER_RESIDUALS_MANY = runner._worker_residuals_many
 _REAL_WORKER_WARM = runner._worker_warm
 
 #: the last point of the jacobian of the reference problem, which has three
@@ -56,6 +59,14 @@ def residuals_with_pid(
     """Evaluate a point and leave the process id behind, the token is a path."""
     Path(f"{token}.{os.getpid()}.pid").touch()
     return _REAL_WORKER_RESIDUALS(token, problem, settings, task)
+
+
+def residuals_many_with_pid(
+    token: str, problem: Any, settings: Any, task: dict[str, Any]
+) -> Any:
+    """Evaluate a whole jacobian and leave the process id behind, the token is a path."""
+    Path(f"{token}.{os.getpid()}.pid").touch()
+    return _REAL_WORKER_RESIDUALS_MANY(token, problem, settings, task)
 
 
 def die_once(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
@@ -121,6 +132,19 @@ def _lsq(
         "max_nfev": 3,
     }
     return run_optimization(**{**arguments, **kwargs})
+
+
+def _core(op: OptimizationProblem) -> OptimizationProblem:
+    """Get the definition of a problem on the engine core, see `tests.engines`."""
+    require(Engine.CORE)
+    return OptimizationProblem(
+        opid=op.opid,
+        mapping_collections=op.mapping_collections,
+        fit_parameters=op.parameters,
+        base_path=op.base_path,
+        data_path=op.data_path,
+        engine=Engine.CORE,
+    )
 
 
 def _assert_same_fits(pooled: OptimizationResult, serial: OptimizationResult) -> None:
@@ -337,8 +361,13 @@ def test_a_point_is_evaluated_without_a_record(
     assert cost == op_hctz_pk.cost_least_square(xlog)
 
 
-def _fake_pool(*outcomes: Any) -> Any:
-    """A pool whose run hands out the given outcomes of the points."""
+def _fake_pool(*outcomes: Any, threads: int = 1) -> Any:
+    """A pool whose run hands out the given outcomes of the points.
+
+    `threads` is the threads of the engine one batch runs on, see
+    `runner.FitPool.threads`: more than one evaluates the whole batch in one
+    task, whose outcome is the value of every vector of the batch.
+    """
 
     def run(function: Any, tasks: Any, deadline: Any = None) -> Any:
         yield from enumerate(outcomes)
@@ -352,7 +381,88 @@ def _fake_pool(*outcomes: Any) -> Any:
         start=lambda: None,
         executor=None,
         n_cores=1,
+        threads=threads,
     )
+
+
+def test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    fit_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fit of the engine core evaluates the points of a jacobian in one batch.
+
+    The engine simulates them at once on the threads of one worker, see
+    `runner.FitPool.threads`, where the other engines evaluate one point per
+    worker, and the fit is the serial one bitwise either way.
+    """
+    problem = _core(op_hctz_pk)
+
+    serial = _lsq(problem, fit_settings, n_cores=1)
+    monkeypatch.setattr(runner, "_worker_residuals_many", residuals_many_with_pid)
+    # a point of its own would fail the fit, so the jacobians of the fit ran
+    # in the batch and the equality below is the one of the batch
+    monkeypatch.setattr(runner, "_worker_residuals", fail_always)
+    batched = _lsq(problem, fit_settings, n_cores=4)
+
+    _assert_same_fits(batched, serial)
+    assert len(_processes(fit_token)) == 1
+    assert not multiprocessing.active_children()
+
+
+def test_a_jacobian_on_the_threads_of_the_engine_is_one_task() -> None:
+    """A jacobian of a pool with threads is one task, its points the outcome.
+
+    The engine core simulates the points of the whole jacobian at once on its
+    threads, so the jacobian is one task of one worker, see
+    `runner.FitPool.threads`.
+    """
+    points = [(np.zeros(2), 1.0), (np.ones(2), 2.0)]
+    jacobian = runner.JacobianPool(_fake_pool(points, threads=4))
+
+    evaluated = list(jacobian([np.zeros(1)] * 2, None))
+
+    assert [k for k, _ in evaluated] == [0, 1]
+    for (_, (residuals, cost)), (expected, expected_cost) in zip(
+        evaluated, points, strict=True
+    ):
+        np.testing.assert_array_equal(residuals, expected)
+        assert cost == expected_cost
+
+
+def test_a_jacobian_whose_batch_died_evaluates_its_points_one_per_task() -> None:
+    """A batch whose worker died is evaluated point by point.
+
+    A point which kills its worker then ends the run alone, as it does
+    without the batch: which point it was is known again.
+    """
+    runs: list[list[Any]] = [
+        [runner.WorkerDied("the worker of the batch died", alone=True)],
+        [(np.zeros(2), 1.0), (np.ones(2), 2.0)],
+    ]
+    functions: list[Any] = []
+
+    def run(function: Any, tasks: Any, deadline: Any = None) -> Any:
+        functions.append(function)
+        yield from enumerate(runs.pop(0))
+
+    pool: Any = SimpleNamespace(
+        run=run,
+        restarts=0,
+        stopped=False,
+        problem=SimpleNamespace(opid="p"),
+        stop=lambda: None,
+        start=lambda: None,
+        executor=None,
+        n_cores=1,
+        threads=4,
+    )
+
+    evaluated = list(runner.JacobianPool(pool)([np.zeros(1)] * 2, None))
+
+    assert [k for k, _ in evaluated] == [0, 1]
+    assert functions == [runner._worker_residuals_many, runner._worker_residuals]
 
 
 def test_a_point_which_died_alone_ends_the_jacobian() -> None:
@@ -458,6 +568,41 @@ def test_a_profile_splits_its_cores_between_scans_and_the_jacobian(
     assert recorded["size"] == 2
     # one parameter is fixed, the others are re-optimized
     assert recorded["n_parameters"] == len(op_hctz_pk.parameters) - 1
+
+
+def test_a_profile_of_the_engine_core_batches_the_jacobian_of_a_re_optimization(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The jacobian of a re-optimization of a profile is one batch of the engine.
+
+    The cores of the jacobian are the threads of one worker for the engine
+    core, as they are for the jacobian of a fit, and the profile is the
+    serial one; the split is forced as it is in the test above.
+    """
+    problem = _core(op_hctz_pk)
+    serial = _profile_of(problem, fit_settings, n_cores=1, serial=True)
+    monkeypatch.setattr(runner, "split_cores", lambda *args, **kwargs: (1, 2))
+    sized: list[tuple[int, int]] = []
+    real = runner.worker_pool
+
+    def worker_pool(problem: Any, settings: Any, n_cores: int, threads: int = 1) -> Any:
+        sized.append((n_cores, threads))
+        return real(problem, settings, n_cores, threads)
+
+    monkeypatch.setattr(runner, "worker_pool", worker_pool)
+    pooled = _profile_of(problem, fit_settings, n_cores=2)
+
+    assert sized == [(1, 2)]
+    pid = problem.pids[0]
+    np.testing.assert_array_equal(
+        pooled.profiles[pid].values, serial.profiles[pid].values
+    )
+    np.testing.assert_array_equal(
+        pooled.profiles[pid].costs, serial.profiles[pid].costs
+    )
+    assert not multiprocessing.active_children()
 
 
 def test_a_profile_with_the_jacobian_on_workers_equals_the_serial_profile(

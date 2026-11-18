@@ -115,6 +115,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy.stats import chi2
 
+from sbmlsim.engine import Engine
 from sbmlsim.events import emit
 from sbmlsim.fit import display, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
@@ -1343,10 +1344,19 @@ def profile_likelihood(
             with ExitStack() as stack:
                 jacobian: runner.JacobianPool | None = None
                 if parallel_jacobian:
-                    # the scans run here, their re-optimizations on the workers
+                    # the scans run here, their re-optimizations on the
+                    # workers; the engine core simulates the points of a
+                    # jacobian at once on the threads of one worker, see
+                    # `runner.FitPool.threads`
+                    batched = problem.engine is Engine.CORE
                     jacobian = runner.JacobianPool(
                         stack.enter_context(
-                            runner.worker_pool(problem, settings, jacobian_workers)
+                            runner.worker_pool(
+                                problem,
+                                settings,
+                                1 if batched else jacobian_workers,
+                                threads=jacobian_workers if batched else 1,
+                            )
                         )
                     )
                     jacobian.start()

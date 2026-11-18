@@ -258,6 +258,132 @@ def execute(
     return TimecourseResult(columns=tuple(columns), values=values)
 
 
+def execute_many(
+    points: Sequence[tuple[Plan, Sequence[str]]],
+    model: CoreSBMLModel,
+    threads: int,
+) -> list[TimecourseResult | Exception]:
+    """Run the plans of a batch on a model of the engine core as one batch.
+
+    What `execute` is for one plan: the engine simulates the requests of a
+    batch on threads of its own and answers with the output of every point or
+    with the error which failed it, so the points of the batch run at once in
+    this process rather than one after the other, see
+    `sbmlsim.simulator.worker._run_chunk_core` for the points of a chunk of a
+    scan and `sbmlsim.fit.optimization.OptimizationProblem._simulate_batch`
+    for the simulations of an evaluation of a fit.
+
+    The result is the one of the plans run one by one, bitwise: every thread
+    of the batch simulates on an instance of its own and the engine holds no
+    state between two requests. The model records no pre-initialization,
+    unlike `execute`: the engine is stateless and every point of the batch
+    carries the values of its simulation in its request.
+
+    The points are simulated in chunks of at most `CORE_MAX_CHUNK`, so a
+    batch of thousands of points holds the tables of one chunk and not the
+    ones of the batch; the threads of the batch are the ones of every chunk.
+
+    Args:
+        points: the plan of every point and the columns of its output, in
+            their order.
+        model: the model of every point of the batch.
+        threads: the threads of the engine the batch runs on, at least one.
+
+    Returns:
+        The output of every point in the order of the points, the error which
+        failed it instead: the error of its integration, of its presimulation
+        or of the request which could not be built for it, see `point_error`
+        and `_failed`, which an evaluation of a fit handles as the one of a
+        simulation of its own.
+
+    Raises:
+        NotImplementedError: for a plan the engine does not support, which
+            fails for every value of the parameters of a fit and for every
+            point of a scan, see `check_supported`.
+        ValueError: if the engine refuses the batch, e.g. for more threads
+            than it runs on.
+    """
+    # the cap of the points of one batch, which the simulator of a scan
+    # chunks its points with as well; imported here, as the simulator imports
+    # the executors
+    from sbmlsim.simulator.simulator import CORE_MAX_CHUNK
+
+    core = import_core()
+    # the tolerance of every state is computed once for the whole batch
+    settings = model.request_settings()
+    results: list[TimecourseResult | Exception] = []
+    for start in range(0, len(points), CORE_MAX_CHUNK):
+        chunk = points[start : start + CORE_MAX_CHUNK]
+        of_point: dict[int, TimecourseResult | Exception] = {}
+        requests: list[dict[str, Any]] = []
+        built: list[tuple[int, Plan, Sequence[str]]] = []
+        for k, (plan, selections) in enumerate(chunk):
+            columns = output_columns(selections)
+            try:
+                requests.append(request_of(plan, model, columns, settings))
+            except NotImplementedError:
+                # a feature the engine does not simulate fails every point
+                raise
+            except Exception as err:  # the point fails alone
+                of_point[k] = err
+                continue
+            built.append((k, plan, columns))
+        outputs = _batch(model, requests, threads)
+        # the requests of the batch are released with it, the engine has read them
+        del requests
+        for position, (k, plan, columns) in enumerate(built):
+            output = outputs[position]
+            # the table of the point is released once its values are read
+            outputs[position] = None
+            if isinstance(output, core.PointError):
+                err = point_error(output, model)
+                if isinstance(err, NotImplementedError):
+                    raise err
+                of_point[k] = err
+                continue
+            # the time is shifted in the array the bindings own, which
+            # `output.values` answers with as it is, so it is read once here
+            values = output_time(output.values, columns, plan, model.symbols)
+            of_point[k] = TimecourseResult(columns=tuple(columns), values=values)
+        # every point of the chunk has an output or the error which failed it
+        results.extend(of_point[k] for k in range(len(chunk)))
+    return results
+
+
+def _batch(
+    model: CoreSBMLModel, requests: list[dict[str, Any]], threads: int
+) -> list[Any]:
+    """Simulate the requests of a batch on the executor of a model.
+
+    The batch runs on the executor of the model (`CoreSBMLModel.batch_executor`,
+    one per number of threads), which keeps the pool of its threads and the
+    instance of every one of them across the batches of a model, so a batch
+    pays for neither.
+
+    Args:
+        model: the model of the batch.
+        requests: the request of every point of the batch, in their order.
+        threads: the threads of the engine the batch runs on.
+
+    Returns:
+        The output of every request in the order of the requests, the
+        `PointError` of a point which failed among them.
+
+    Raises:
+        ValueError: if the engine refuses the batch, e.g. for more threads
+            than it runs on.
+    """
+    if not requests:
+        return []
+    try:
+        return model.batch_executor(threads).simulate_many(requests)
+    except ValueError as err:
+        raise ValueError(
+            f"The engine 'core' refused a batch of {len(requests)} points on "
+            f"{threads} threads: {err}"
+        ) from err
+
+
 def request_of(
     plan: Plan,
     model: CoreSBMLModel,

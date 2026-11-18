@@ -72,6 +72,57 @@ def execute_plan(
     raise ValueError(f"The engine '{model.engine}' has no executor.")
 
 
+def execute_plans(
+    points: Sequence[tuple[Plan, Sequence[str]]],
+    model: SBMLModel,
+    threads: int,
+) -> list[TimecourseResult | Exception]:
+    """Run the plans of a batch on a loaded model, one batch of the engine core.
+
+    The engine core simulates a batch of plans on threads of its own, so the
+    points of the batch run at once in this process, see
+    `sbmlsim.simulator.executor_core.execute_many`. The other engines
+    simulate one plan per call, so the batch is the loop over the plans for
+    them: a caller gains the threads of the batch with the engine core and
+    the same results with every engine, see
+    `sbmlsim.fit.optimization.OptimizationProblem.evaluate_residuals_many`.
+
+    Args:
+        points: the plan of every point of the batch and the columns of its
+            output, in their order.
+        model: the loaded model of every point of the batch.
+        threads: the threads of the engine the batch runs on, which only the
+            engine core uses.
+
+    Returns:
+        The output of every point in the order of the points, the error which
+        failed it instead: the error of its integration or of its
+        presimulation.
+
+    Raises:
+        NotImplementedError: for a feature the engine does not simulate, the
+            same for every point of the model, see `check_plan`.
+        TypeError: if the model is not a model of its engine.
+        ValueError: for an engine without an executor, or if the engine
+            refuses the batch.
+    """
+    if model.engine is Engine.CORE:
+        # imports the bindings of sbmlsim-core, see `execute_plan`
+        from sbmlsim.simulator import executor_core
+
+        return executor_core.execute_many(points, core_model(model), threads)
+    results: list[TimecourseResult | Exception] = []
+    for plan, selections in points:
+        try:
+            results.append(execute_plan(plan, model, selections))
+        except NotImplementedError:
+            # a feature the engine does not simulate fails every point
+            raise
+        except Exception as err:  # the point fails alone
+            results.append(err)
+    return results
+
+
 def check_plan(plan: Plan, model: SBMLModel) -> None:
     """Check that the engine of a model simulates a plan, before it runs.
 
