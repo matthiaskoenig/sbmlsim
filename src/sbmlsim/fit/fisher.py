@@ -43,6 +43,7 @@ import pandas as pd
 from scipy.stats import norm
 from scipy.stats import t as student_t
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
@@ -526,10 +527,19 @@ def evaluator(
     # fit (a report, a record) does not pull in the runner of the fits
     from sbmlsim.fit.runner import JacobianPool, resolve_n_cores, worker_pool
 
-    if resolve_n_cores(n_cores) <= 1:
+    cores = resolve_n_cores(n_cores)
+    if cores <= 1:
         yield None
         return
-    with worker_pool(problem, settings, resolve_n_cores(n_cores)) as pool:
+    # the engine core simulates the points of a jacobian at once on threads of
+    # its own, so they are one task of one worker, see `runner.FitPool.threads`
+    batched = problem.engine is Engine.CORE
+    with worker_pool(
+        problem,
+        settings,
+        1 if batched else cores,
+        threads=cores if batched else 1,
+    ) as pool:
         points_pool = JacobianPool(pool)
         points_pool.start()
 

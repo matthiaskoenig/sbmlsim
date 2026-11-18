@@ -131,8 +131,8 @@ def test_the_uncertainties_change_nothing_of_the_compiled_model() -> None:
 
 
 def test_a_model_the_compiler_refuses_raises_with_its_message() -> None:
-    algebraic = DISTRIB.replace('<rateRule variable="S">', "<algebraicRule>").replace(
-        "</rateRule>", "</algebraicRule>"
-    )
+    cyclic = DISTRIB.replace(
+        '<rateRule variable="S">', '<assignmentRule variable="S">'
+    ).replace("</rateRule>", "</assignmentRule>")
     with pytest.raises(WebAppError, match="sbmlsim-core cannot compile"):
-        compile_sbml(algebraic)
+        compile_sbml(cyclic)
