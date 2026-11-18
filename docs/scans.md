@@ -186,7 +186,7 @@ ax.legend()
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, _point: 2644; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+ScanResult(regimen: 2, _point: 2642; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
 ![Output figure](images/outputs/scans-06.png)
@@ -268,7 +268,7 @@ print(res.ds[["cmax", "cmean"]].to_pandas().round(1))
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, _point: 2644; cp, cmax, cmean)
+ScanResult(regimen: 2, _point: 2642; cp, cmax, cmean)
                     cmax  cmean
 regimen
 50 mg once daily   285.4  100.0

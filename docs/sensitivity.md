@@ -38,7 +38,7 @@ print(local.index("normalized").to_pandas().round(3))
 observable  px_max  px_mean
 parameter
 n            5.811    3.303
-tau_prot    -0.465    0.562
+tau_prot    -0.466    0.562
 ps_a         0.465    0.280
 ```
 
@@ -171,14 +171,14 @@ print(at_100.index("normalized").to_pandas().round(3))
 leak         low   high
 parameter
 n          5.811 -0.458
-tau_prot  -0.465  0.304
+tau_prot  -0.466  0.304
 ps_a       0.465  0.157
 ('parameter', 'leak', 'time')
 observable     px  px_max  px_mean
 parameter
 n          -5.866   5.811    3.303
-tau_prot   -7.546  -0.465    0.562
-ps_a        1.205   0.465    0.280
+tau_prot   -7.544  -0.466    0.562
+ps_a        1.206   0.465    0.280
 ```
 
 The plots select one label of every other dimension by keyword:
