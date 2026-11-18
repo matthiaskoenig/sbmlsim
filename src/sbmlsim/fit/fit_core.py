@@ -66,6 +66,11 @@ if TYPE_CHECKING:  # pragma: no cover
     from sbmlsim.fit.result import OptimizationResult
     from sbmlsim.model.model_core import CoreSBMLModel
 
+if TYPE_CHECKING:
+    # `sbmlsim.fit.identifiability` imports the runner, which imports this
+    # module, so the settings of a profile are a type and no import of its own
+    from sbmlsim.fit.identifiability import ProfileSettings
+
 logger = logging.getLogger(__name__)
 
 #: the contract of a fit of the engine
@@ -84,6 +89,12 @@ ALGORITHMS: dict[OptimizationAlgorithmType, str] = {
     OptimizationAlgorithmType.LEAST_SQUARE: "trust_region",
     OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: "differential_evolution",
 }
+
+#: the iterations of the optimizer of a point of a profile, which fits the
+#: other parameters while one of them is held at a value: the fit of the
+#: request takes none of its own, so that the profiles are walked around the
+#: optimum the caller gives, see `profile_points`
+MAX_ITERATIONS_OF_A_POINT: int = 100
 
 #: the codes a run of the engine stops with which are a point its optimizer
 #: cannot improve on (`basin::TerminationCode`), i.e. the `success` of a run
@@ -889,3 +900,162 @@ def gaps_of_a_fit(
     if evolution:
         settings["evolution"] = evolution
     return gaps, settings
+
+
+def walk_of(settings: ProfileSettings) -> dict[str, Any]:
+    """Get the walk of the engine of the settings of a profile likelihood.
+
+    The walk of the engine is the walk of `sbmlsim.fit.identifiability`: it
+    steps away from the optimum until the cost reaches the threshold of the
+    parameter, reducing a step which raises the cost by more than
+    `max_cost_fraction` of the distance to the threshold and enlarging one
+    which raises it by little, so the fields are the ones of the settings. The
+    `delta` of the engine is the rise of the cost which bounds a parameter,
+    i.e. half the quantile of the chi square distribution, which is what
+    `ProfileSettings.threshold` adds to the cost of the optimum.
+
+    Args:
+        settings: the settings of the analysis.
+
+    Returns:
+        The `walk` of the identifiability of a request.
+    """
+    return {
+        "points": settings.max_points,
+        "step": settings.initial_step,
+        "min_step": settings.min_step,
+        "max_step": settings.max_step,
+        "factor": settings.step_factor,
+        "rise": settings.max_cost_fraction,
+        "delta": settings.delta / 2.0,
+    }
+
+
+def gaps_of_the_profiles(
+    problem: OptimizationProblem, settings: ProfileSettings
+) -> list[Gap]:
+    """Get the gaps of a profile likelihood of the engine.
+
+    The objective of the problem has to be a request (`gaps_of`), and the
+    walk of the analysis has to be the walk of the engine (`walk_of`): a scan
+    which holds the other parameters at the optimum instead of fitting them
+    again is none of it, and neither is an argument of the optimizer of a
+    point which is no setting of the engine.
+
+    Args:
+        problem: the initialized problem.
+        settings: the settings of the analysis.
+
+    Returns:
+        The gaps of the analysis, empty for one the engine walks.
+    """
+    gaps = gaps_of(problem)
+    if not settings.reoptimize:
+        gaps.append(
+            Gap(
+                "reoptimize",
+                "the analysis scans the cost with the other parameters at the "
+                "optimum, where a profile of the engine fits them again at "
+                "every point",
+            )
+        )
+    for key in settings.optimizer_kwargs:
+        if key not in {"gtol"}:
+            gaps.append(
+                Gap(
+                    "optimizer",
+                    f"the argument '{key}' of the optimizer of a point is no "
+                    f"setting of the optimizer of the engine",
+                )
+            )
+    return gaps
+
+
+def profile_points(
+    problem: OptimizationProblem,
+    settings: ProfileSettings,
+    at: Sequence[float] | np.ndarray,
+    pids: Sequence[str],
+    *,
+    threads: int | None = None,
+    jacobian: str | None = None,
+) -> dict[str, tuple[list[tuple[np.ndarray, float, bool]], ...]]:
+    """Walk the profiles of the parameters of a problem in the engine.
+
+    The engine walks the two sides of every profile next to each other on the
+    threads of one batch, so the whole analysis is one call and not a process
+    per scan. The optimum is the one of the caller: the fit of the request
+    takes no iteration of its own, it is the point the profiles are walked
+    around.
+
+    Args:
+        problem: the initialized problem, of the engine core.
+        settings: the settings of the analysis.
+        at: the optimum, in the space the parameters are searched.
+        pids: the parameters to profile, in the order of the profiles.
+        threads: the threads of the batch of the analysis, all cores of the
+            machine without.
+        jacobian: where the jacobian of a step of a point comes from, see
+            `fit_request`.
+
+    Returns:
+        The points of the two sides of every profile by parameter id, from the
+        optimum outward, as the scans of `sbmlsim.fit.identifiability` carry
+        them: the parameters of a point in the space the search runs in, its
+        cost and whether the optimizer of the point converged.
+    """
+    at = np.asarray(at, dtype=float)
+    points: dict[str, Any] = {"max_iterations": MAX_ITERATIONS_OF_A_POINT}
+    if "gtol" in settings.optimizer_kwargs:
+        points["gradient_tolerance"] = float(settings.optimizer_kwargs["gtol"])
+    request = fit_request(
+        problem,
+        # the starts of a request are the values of the parameters, the walk
+        # and the optimum of the caller are in the space they are searched
+        starts=[np.asarray(problem.from_scale(at), dtype=float)],
+        # the optimum is the one of the caller, the engine does not look for
+        # another one: the fit of no iteration answers with that point and the
+        # points of the profiles fit the other parameters themselves
+        max_iterations=0,
+        jacobian=jacobian,
+        identifiability={
+            "parameters": list(pids),
+            "walk": walk_of(settings),
+            "profiles": True,
+            "fisher": False,
+            "optimizer": points,
+        },
+    )
+    answer = loaded_model(problem).fit(request, threads=threads)
+    walked: dict[str, tuple[list[tuple[np.ndarray, float, bool]], ...]] = {}
+    for profile in answer["profiles"]:
+        index = problem.pids.index(profile["id"])
+        below: list[tuple[np.ndarray, float, bool]] = []
+        above: list[tuple[np.ndarray, float, bool]] = []
+        for point in profile["points"]:
+            side = above if point["x"] > at[index] else below
+            side.append(
+                (
+                    _theta_of(problem, index, point),
+                    float(point["cost"]),
+                    point["status"] in CONVERGED,
+                )
+            )
+        # the points of the engine ascend, the scan of a side runs outward
+        below.reverse()
+        walked[profile["id"]] = (below, above)
+    return walked
+
+
+def _theta_of(
+    problem: OptimizationProblem, index: int, point: Mapping[str, Any]
+) -> np.ndarray:
+    """Get the parameters of a point of a profile in the space of the search.
+
+    A point of the engine carries the value the parameter is held at and the
+    values the other parameters reached, in their order in the fit, which is
+    the order of the problem without the one which is held.
+    """
+    values = list(point["values"])
+    values.insert(index, float(point["value"]))
+    return np.asarray(problem.to_scale(np.asarray(values, dtype=float)), dtype=float)

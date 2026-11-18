@@ -537,7 +537,13 @@ def test_the_jacobian_map_embeds_a_point(
 def _profile_of(
     problem: OptimizationProblem, settings: FitSettings, **kwargs: Any
 ) -> IdentifiabilityResult:
-    """Profile the first parameter of the problem with re-optimization."""
+    """Profile the first parameter of the problem with re-optimization.
+
+    The scans run in python, which is what the cores of an analysis and the
+    jacobian of a point are about: an analysis of a problem of the engine core
+    walks its profiles in the engine itself, which has no workers and no
+    jacobian of its own, see `sbmlsim.fit.fit_core`.
+    """
     problem.initialize(settings)
     return profile_likelihood(
         problem=problem,
@@ -546,6 +552,7 @@ def _profile_of(
         profile_settings=PROFILE_SETTINGS,
         pids=[problem.pids[0]],
         show_progress=False,
+        engine_profiles=False,
         **kwargs,
     )
 

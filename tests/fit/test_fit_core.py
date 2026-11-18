@@ -24,15 +24,18 @@ import numpy as np
 import pytest
 
 from sbmlsim.engine import Engine
-from sbmlsim.fit import FitSettings
+from sbmlsim.fit import FitSettings, fit_core
 from sbmlsim.fit.fit_core import (
     CONVERGED,
     fit_request,
     fits_requests,
     gaps_of,
+    gaps_of_the_profiles,
     loaded_model,
     run,
+    walk_of,
 )
+from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import LossFunctionType, ObjectiveType, ResidualType
@@ -303,3 +306,122 @@ def test_bindings_which_cannot_fit_a_request_are_a_gap() -> None:
     assert not fits_requests(None)
     assert not fits_requests(SimpleNamespace(simulate_many=lambda requests: []))
     assert fits_requests(SimpleNamespace(fit=lambda request, threads=None: {}))
+
+
+def test_the_walk_of_the_engine_is_the_settings_of_the_analysis() -> None:
+    """The fields of the walk of the engine are the ones of `ProfileSettings`."""
+    settings = ProfileSettings(
+        alpha=0.9,
+        degrees_of_freedom=2,
+        initial_step=0.2,
+        min_step=0.05,
+        max_step=0.5,
+        step_factor=3.0,
+        max_cost_fraction=0.1,
+        max_points=11,
+    )
+
+    walk = walk_of(settings)
+
+    assert walk == {
+        "points": 11,
+        "step": 0.2,
+        "min_step": 0.05,
+        "max_step": 0.5,
+        "factor": 3.0,
+        "rise": 0.1,
+        # the delta of the engine is the rise of the cost which bounds a parameter
+        "delta": settings.delta / 2.0,
+    }
+    assert settings.threshold(1.0) == pytest.approx(1.0 + walk["delta"])
+
+
+def test_a_scan_which_holds_the_other_parameters_is_a_gap_of_the_profiles(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The engine fits the other parameters at every point of a profile."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    assert gaps_of_the_profiles(problem, ProfileSettings()) == []
+    gaps = gaps_of_the_profiles(problem, ProfileSettings(reoptimize=False))
+
+    assert [gap.code for gap in gaps] == ["reoptimize"]
+
+
+def test_the_profiles_of_the_engine_are_the_profiles_of_python(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The walk of the engine is the walk of `profile_likelihood`, point for point."""
+    problem = on_core(op_hctz_iv, fit_settings)
+    settings = ProfileSettings(max_points=8)
+    parameter_set = problem.parameter_set_model()
+    walked = {
+        where: profile_likelihood(
+            problem,
+            fit_settings,
+            parameter_set,
+            settings,
+            show_progress=False,
+            engine_profiles=where == "engine",
+        )
+        for where in ("engine", "python")
+    }
+
+    assert walked["engine"].cost == pytest.approx(walked["python"].cost, rel=1e-9)
+    for pid, profile in walked["engine"].profiles.items():
+        expected = walked["python"].profiles[pid]
+        assert len(profile) == len(expected), pid
+        np.testing.assert_allclose(profile.values, expected.values, rtol=1e-4)
+        np.testing.assert_allclose(profile.costs, expected.costs, rtol=1e-4)
+        assert profile.index_optimum == expected.index_optimum
+        assert profile.converged.all() == expected.converged.all()
+        assert profile.identifiability == expected.identifiability, pid
+        for bound, other in (
+            (profile.ci_lower, expected.ci_lower),
+            (profile.ci_upper, expected.ci_upper),
+        ):
+            assert (bound is None) == (other is None), pid
+            if bound is not None and other is not None:
+                assert bound == pytest.approx(other, rel=1e-3)
+
+
+def test_the_profiles_may_be_held_out_of_the_engine(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`engine_profiles=False` scans in python, which does not reach for the engine."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    def refuse(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the analysis walked in the engine")
+
+    monkeypatch.setattr(fit_core, "profile_points", refuse)
+
+    result = profile_likelihood(
+        problem,
+        fit_settings,
+        problem.parameter_set_model(),
+        ProfileSettings(max_points=2),
+        show_progress=False,
+        engine_profiles=False,
+    )
+
+    assert len(result.profiles) == len(problem.pids)
+
+
+def test_profiles_which_must_be_walked_in_the_engine_name_their_gaps(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """`engine_profiles=True` refuses an analysis the engine cannot walk."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    with pytest.raises(ValueError, match="reoptimize"):
+        profile_likelihood(
+            problem,
+            fit_settings,
+            problem.parameter_set_model(),
+            ProfileSettings(reoptimize=False),
+            show_progress=False,
+            engine_profiles=True,
+        )
