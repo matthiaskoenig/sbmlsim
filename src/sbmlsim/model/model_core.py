@@ -130,7 +130,9 @@ def runtime() -> Any:
     Raises:
         ImportError: if the bindings of sbmlsim-core are not installed.
     """
-    return import_core().Runtime()
+    return import_core().Runtime(
+        cache=False
+    )  # EXPERIMENT: no persistent wasmtime cache
 
 
 def compiled_model(
