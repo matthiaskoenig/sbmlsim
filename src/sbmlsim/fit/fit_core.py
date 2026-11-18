@@ -55,9 +55,15 @@ from sbmlsim.fit.options import (
     ParameterScaleType,
     ResidualType,
 )
+from sbmlsim.fit.sampling import SamplingType
 
 if TYPE_CHECKING:  # pragma: no cover
+    from scipy.optimize import OptimizeResult
+
     from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.options import FitSettings
+    from sbmlsim.fit.provenance import FitProvenance
+    from sbmlsim.fit.result import OptimizationResult
     from sbmlsim.model.model_core import CoreSBMLModel
 
 logger = logging.getLogger(__name__)
@@ -78,6 +84,23 @@ ALGORITHMS: dict[OptimizationAlgorithmType, str] = {
     OptimizationAlgorithmType.LEAST_SQUARE: "trust_region",
     OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: "differential_evolution",
 }
+
+#: the codes a run of the engine stops with which are a convergence of its
+#: optimizer (`basin::TerminationCode`), what the `success` of a run of scipy
+#: says; a code which is a budget, a safeguard or a failure is none of them
+CONVERGED: frozenset[str] = frozenset(
+    {
+        "GradientTolerance",
+        "RelativeGradientTolerance",
+        "ProjectedGradientTolerance",
+        "ParamTolerance",
+        "RelativeParamTolerance",
+        "CostTolerance",
+        "RelativeCostTolerance",
+        "TargetCost",
+        "SolverConverged",
+    }
+)
 
 #: the residuals the engine computes, the ones which are a weight of a point
 RESIDUALS: frozenset[ResidualType] = frozenset(
@@ -211,7 +234,7 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
 def fit_request(
     problem: OptimizationProblem,
     *,
-    starts: Sequence[Sequence[float]] = (),
+    starts: Sequence[Sequence[float] | np.ndarray] = (),
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     max_iterations: int = 100,
     max_seconds: float | None = None,
@@ -318,7 +341,9 @@ def _parameters(problem: OptimizationProblem) -> list[dict[str, Any]]:
     return parameters
 
 
-def _start(problem: OptimizationProblem, start: Sequence[float]) -> list[float]:
+def _start(
+    problem: OptimizationProblem, start: Sequence[float] | np.ndarray
+) -> list[float]:
     """Get a start of a request, the values of the parameters in the model."""
     values = np.asarray(start, dtype=float)
     if values.shape != (len(problem.parameters),):
@@ -603,3 +628,144 @@ def _gaps_at_the_changes(
             f"it, where the engine reads the state before it",
         )
     ]
+
+
+def run(
+    problem: OptimizationProblem,
+    settings: FitSettings | None = None,
+    *,
+    size: int = 1,
+    algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+    seed: int | None = None,
+    sampling: SamplingType = SamplingType.LOGUNIFORM_LHS,
+    threads: int | None = None,
+    timeout: float | None = None,
+    max_iterations: int = 100,
+    gradient_tolerance: float | None = None,
+    evolution: Mapping[str, Any] | None = None,
+    jacobian: str | None = None,
+    identifiability: Mapping[str, Any] | None = None,
+    provenance: FitProvenance | None = None,
+) -> OptimizationResult:
+    """Run the fit of a problem in the engine and get the result of the fit.
+
+    The whole fit is one request: the engine runs the `size` starts of the fit
+    next to each other on the threads of one batch, every one of them an
+    optimizer of its own, and answers with every run and with the best of
+    them. The starts are the ones of the problem
+    (`OptimizationProblem.start_values`), so a fit of a seed starts where the
+    fit of that seed in python starts.
+
+    Args:
+        problem: the initialized problem, without gaps (`gaps_of`).
+        settings: the settings of the fit, which the result is stored with;
+            the ones the problem is initialized with by default. Settings
+            which differ from them initialize the problem again.
+        size: the number of runs of the fit, one per start.
+        algorithm: the optimizer of every run.
+        seed: the seed of the sampling of the starts.
+        sampling: the sampling of the starts.
+        threads: the threads of the batch of an evaluation; the CPUs of the
+            machine without.
+        timeout: the seconds a single run may take, after which its optimizer
+            stops at its best point; no limit without.
+        max_iterations: the largest number of iterations of a run.
+        gradient_tolerance: the tolerance of the scaled gradient a step
+            converges at; the one of the optimizer without.
+        evolution: the population of a differential evolution and how it is
+            drawn, see `fit_request`.
+        jacobian: where the jacobian of a step comes from, see `fit_request`.
+        identifiability: the identifiability of the optimum, see
+            `fit_request`; none of it without.
+        provenance: what the fit ran with, stored with the result.
+
+    Returns:
+        The result of the fit, the runs of its starts sorted by their cost.
+
+    Raises:
+        ValueError: if the problem is not initialized, if it has no model or
+            more than one, or if a differential evolution of more than one run
+            is asked for: the population of a request is drawn from one seed,
+            so the runs of such a fit would be the same run.
+        FitError: if the engine refuses the request or a run of it fails, see
+            the bindings of sbmlsim-core.
+    """
+    from sbmlsim.fit.result import OptimizationResult
+
+    if settings is not None:
+        problem.initialize(settings)
+    settings = problem.settings_initialized
+    if algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION and size > 1:
+        raise ValueError(
+            f"'{problem.opid}': a differential evolution of the engine draws its "
+            f"population from one seed, so the {size} runs of the fit would be "
+            f"the same run; a fit of several runs is a least squares one."
+        )
+    starts = problem.start_values(size, algorithm, sampling, seed)
+    request = fit_request(
+        problem,
+        starts=[start for start in starts if start is not None],
+        algorithm=algorithm,
+        max_iterations=max_iterations,
+        max_seconds=timeout,
+        gradient_tolerance=gradient_tolerance,
+        evolution=evolution,
+        identifiability=identifiability,
+        jacobian=jacobian,
+        threads=threads,
+    )
+    answer = loaded_model(problem).fit(request, threads=threads)
+    return OptimizationResult(
+        parameters=problem.parameters,
+        fits=_fits_of(problem, answer, algorithm, request),
+        # the engine answers with the cost of every run and not with the cost
+        # of its steps, so a result of the engine has no trace of a run
+        trajectories=[[] for _ in answer["runs"]],
+        sid=problem.opid,
+        opid=problem.opid,
+        settings=settings,
+        units=problem.parameter_units,
+        provenance=provenance,
+        prior_correlation=problem.prior_correlation,
+    )
+
+
+def _fits_of(
+    problem: OptimizationProblem,
+    answer: Mapping[str, Any],
+    algorithm: OptimizationAlgorithmType,
+    request: Mapping[str, Any],
+) -> list[OptimizeResult]:
+    """Get the runs of an answer of the engine as the runs of a fit.
+
+    A run of the engine is a run of scipy with the keys a report reads
+    (`RESULT_KEYS`): the values of its optimum and of its start in the units
+    of the parameters, its cost, whether its optimizer converged (`CONVERGED`)
+    and what it took. The engine reports no gradient of its optimum, so a run
+    has no `optimality`.
+    """
+    from scipy.optimize import OptimizeResult
+
+    factors = np.asarray(_factors_of(problem), dtype=float)
+    optimizer = dict(request.get("optimizer", {}))
+    fits: list[OptimizeResult] = []
+    for run in answer["runs"]:
+        status = str(run["status"])
+        fits.append(
+            OptimizeResult(
+                x=np.asarray(run["values"], dtype=float) / factors,
+                x0=np.asarray(run["start"], dtype=float) / factors,
+                cost=float(run["cost"]),
+                success=status in CONVERGED,
+                message=status,
+                duration=float(run["seconds"]),
+                nfev=int(run["evaluations"]),
+                algorithm=algorithm.name,
+                optimizer_kwargs={
+                    **optimizer,
+                    "jacobian": answer["jacobian"],
+                    "engine": "core",
+                },
+            )
+        )
+    return fits

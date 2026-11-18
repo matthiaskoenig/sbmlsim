@@ -16,6 +16,7 @@ and the errors of the data).
 """
 
 import dataclasses
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -23,10 +24,12 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.fit_core import fit_request, gaps_of, loaded_model
+from sbmlsim.fit.fit_core import fit_request, gaps_of, loaded_model, run
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import LossFunctionType, ObjectiveType, ResidualType
+from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator import Simulator
 from tests.engines import require_core_fit
 
@@ -153,3 +156,68 @@ def test_a_problem_without_gaps_builds_a_request(
     problem = on_core(op_hctz_iv, fit_settings)
 
     assert gaps_of(problem) == []
+
+
+def test_the_cost_of_the_optimum_of_the_engine_is_the_cost_of_the_problem(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The engine minimizes the objective of the problem and reports its cost."""
+    problem = on_core(op_hctz_iv, fit_settings)
+    (start,) = problem.start_values(1, sampling=SamplingType.START)
+    assert start is not None
+    residuals = np.asarray(problem.residuals(problem.to_scale(start)), dtype=float)
+    cost_of_the_start = 0.5 * float(np.sum(np.square(residuals)))
+
+    result = run(
+        problem,
+        fit_settings,
+        size=1,
+        sampling=SamplingType.START,
+        max_iterations=10,
+        threads=2,
+    )
+
+    assert len(result.fits) == 1
+    fit = result.fits[0]
+    assert fit.cost < cost_of_the_start
+    assert fit.duration > 0.0
+    assert isinstance(fit.message, str) and fit.message
+    optimum = np.asarray(problem.residuals(problem.to_scale(fit.x)), dtype=float)
+    assert fit.cost == pytest.approx(0.5 * float(np.sum(np.square(optimum))), rel=1e-9)
+    np.testing.assert_allclose(fit.x0, np.asarray(start, dtype=float), rtol=1e-12)
+
+
+def test_a_fit_of_the_engine_of_many_starts_is_a_run_per_start(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Every start of a multi start fit is a run of the result, the best of them first."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    result = run(problem, fit_settings, size=3, seed=1234, max_iterations=2, threads=2)
+
+    assert len(result.fits) == 3
+    starts = problem.start_values(3, seed=1234)
+    for fit, start in zip(result.fits, starts, strict=True):
+        np.testing.assert_allclose(fit.x0, np.asarray(start, dtype=float), rtol=1e-12)
+    costs = list(result.df_fits["cost"])
+    assert costs == sorted(costs)
+    assert len(result.df_traces) == 0
+
+
+def test_the_result_of_a_fit_of_the_engine_is_the_result_of_a_fit(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """The result of the engine is an `OptimizationResult` like any other."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    result = run(problem, fit_settings, size=1, max_iterations=2, threads=2)
+
+    assert result.opid == problem.opid
+    assert [p.pid for p in result.parameters] == problem.pids
+    assert result.settings == fit_settings
+    path = tmp_path / "result.json"
+    result.to_json(path)
+    read = OptimizationResult.from_json(path)
+    np.testing.assert_allclose(read.fits[0].x, result.fits[0].x, rtol=1e-12)
+    assert read.fits[0].cost == pytest.approx(result.fits[0].cost)
+    assert read.settings == fit_settings
