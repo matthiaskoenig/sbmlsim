@@ -81,7 +81,7 @@ dependencies = [
 	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
 	# when a PK observable is compiled
-	"pkpdutils>=1.5.0",
+	"pkpdutils>=1.4.0,<1.5.0",
 	# the files of the PEtab test suite, the benchmark collection and the networks
 	"pyyaml>=6.0.3",
 	# plots and reports

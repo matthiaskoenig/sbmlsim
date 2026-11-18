@@ -2288,7 +2288,7 @@ wheels = [
 
 [[package]]
 name = "pkpdutils"
-version = "1.5.0"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -2296,31 +2296,14 @@ dependencies = [
     { name = "pandas" },
     { name = "pillow" },
     { name = "pint" },
-    { name = "pkpdutils-core" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/dd/68a60df5381198c8ce065aa7d0eb17161bee4f1fb98473d708c431e72d7d/pkpdutils-1.5.0.tar.gz", hash = "sha256:3b67f218f862731204e6675a6a010162c03846b0818bb31c72f7b6bf6698044a", size = 2939059, upload-time = "2026-11-17T23:21:56.922Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/2d/71d1f1f526d10fa14b6ffadabea92561fe4d003ee8dd50a5544e14c9fc95/pkpdutils-1.4.0.tar.gz", hash = "sha256:4db5f4797b4455024a115607e9e11d9c1f10aa9cbe3e97de4d59a0a69cca50d3", size = 2841748, upload-time = "2026-11-01T22:54:36.083Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/75/5c4e82994983787ccd86e46f7119ecdbf6caa5e6e6219b70bdb250829a36/pkpdutils-1.5.0-py3-none-any.whl", hash = "sha256:c25d6a0fedc02032963cd76ba030d4e0c97e3e02d41261c1cffddee23c8e7941", size = 393387, upload-time = "2026-11-17T23:21:55.574Z" },
-]
-
-[[package]]
-name = "pkpdutils-core"
-version = "0.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/f1/fef36a84069b1508e11290f7677fae005fd95bac2e4d094bd761e5cb98cc/pkpdutils_core-0.4.1.tar.gz", hash = "sha256:1407f7693e1472b9a047d4b66f18a5e6366fc43c7fce5f0c1f2b22e9053b574d", size = 343440, upload-time = "2026-11-17T23:11:13.315Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/e1/b56b0364c200bf01b7f0fd1328927e917499c8c80644673d196faa41d2cc/pkpdutils_core-0.4.1-cp313-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4f39c8ae671364dce1d695cf25d695098801d29b517377b239afe41f5a0043d4", size = 588923, upload-time = "2026-11-17T23:11:06.781Z" },
-    { url = "https://files.pythonhosted.org/packages/74/45/4abfde203aaaccde896cb015257da9d215d8b6706c2b72f99c6219af06b8/pkpdutils_core-0.4.1-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:b86b6316794203c15fbe28886330b075776b673c6f035300ad6b697870911149", size = 566458, upload-time = "2026-11-17T23:11:08.157Z" },
-    { url = "https://files.pythonhosted.org/packages/18/be/af7dc631a67dbc1cdb3f736b1290e13b3a4997a99d1c9356a34bc33db4d9/pkpdutils_core-0.4.1-cp313-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2df9dc3059f4fc16bf6b45506e53cbeab57802acdcafaf1b057301d5f98f0eb2", size = 653088, upload-time = "2026-11-17T23:11:09.577Z" },
-    { url = "https://files.pythonhosted.org/packages/50/8e/a1eb1b20114b746edb7185a221efbfc14b09511a11687df39d9d7a9ed1b0/pkpdutils_core-0.4.1-cp313-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:2f3eff0b5168bae4698d73df25321bbbc33e477ab2eba7169bb892ded4861982", size = 626626, upload-time = "2026-11-17T23:11:10.828Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/a0/1e8f95050aab4d79e87f3051f03103b60c173d11380d935bc5be94ad6229/pkpdutils_core-0.4.1-cp313-abi3-win_amd64.whl", hash = "sha256:abe94038049b0d0330b63014e9c29a971146096d368d0b001c4ce34195d88bf8", size = 467333, upload-time = "2026-11-17T23:11:12.086Z" },
+    { url = "https://files.pythonhosted.org/packages/11/3b/45a1135a47dfe210fa4d4312fc8e77c8ac192d4ea9dc2427dce19b7ed5ee/pkpdutils-1.4.0-py3-none-any.whl", hash = "sha256:4707b7979c07718bdc7f30cf1805a641a0d6793d273c99fef740837766966ad3", size = 365047, upload-time = "2026-11-01T22:54:33.974Z" },
 ]
 
 [[package]]
@@ -3236,7 +3219,7 @@ requires-dist = [
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pint", specifier = ">=0.26.1" },
-    { name = "pkpdutils", specifier = ">=1.5.0" },
+    { name = "pkpdutils", specifier = ">=1.4.0,<1.5.0" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.14.1" },
