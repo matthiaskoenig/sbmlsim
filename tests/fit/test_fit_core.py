@@ -24,11 +24,18 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.fit_core import fit_request, gaps_of, loaded_model, run
+from sbmlsim.fit.fit_core import (
+    CONVERGED,
+    fit_request,
+    gaps_of,
+    loaded_model,
+    run,
+)
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import LossFunctionType, ObjectiveType, ResidualType
 from sbmlsim.fit.result import OptimizationResult
+from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator import Simulator
 from tests.engines import require_core_fit
@@ -221,3 +228,69 @@ def test_the_result_of_a_fit_of_the_engine_is_the_result_of_a_fit(
     np.testing.assert_allclose(read.fits[0].x, result.fits[0].x, rtol=1e-12)
     assert read.fits[0].cost == pytest.approx(result.fits[0].cost)
     assert read.settings == fit_settings
+
+
+def test_a_fit_of_a_problem_of_the_engine_runs_in_the_engine(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The runner fits a problem without gaps in the engine itself."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    result = run_optimization(
+        problem, fit_settings, size=2, seed=1234, show_progress=False
+    )
+
+    assert len(result.fits) == 2
+    for fit in result.fits:
+        assert fit.optimizer_kwargs["engine"] == "core"
+        assert fit.message in CONVERGED or "Max" in fit.message
+
+
+def test_a_fit_which_the_engine_cannot_run_stays_in_python(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A gap of the problem or of the optimizer keeps the fit in python."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    # `max_nfev` is a budget of evaluations, which the engine has not
+    result = run_optimization(
+        problem, fit_settings, size=1, seed=1234, show_progress=False, max_nfev=3
+    )
+
+    assert "engine" not in result.fits[0].optimizer_kwargs
+
+
+def test_a_fit_may_be_held_out_of_the_engine(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """`engine_fit=False` fits with the optimizer in python."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    result = run_optimization(
+        problem,
+        fit_settings,
+        size=1,
+        seed=1234,
+        show_progress=False,
+        engine_fit=False,
+    )
+
+    assert "engine" not in result.fits[0].optimizer_kwargs
+
+
+def test_a_fit_which_must_run_in_the_engine_names_the_gaps_of_the_problem(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """`engine_fit=True` refuses a fit the engine cannot run, with its gaps."""
+    problem = on_core(
+        op_hctz_iv, dataclasses.replace(fit_settings, objective="likelihood")
+    )
+
+    with pytest.raises(ValueError, match="objective"):
+        run_optimization(
+            problem,
+            problem.settings_initialized,
+            size=1,
+            show_progress=False,
+            engine_fit=True,
+        )

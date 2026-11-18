@@ -85,9 +85,15 @@ ALGORITHMS: dict[OptimizationAlgorithmType, str] = {
     OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: "differential_evolution",
 }
 
-#: the codes a run of the engine stops with which are a convergence of its
-#: optimizer (`basin::TerminationCode`), what the `success` of a run of scipy
-#: says; a code which is a budget, a safeguard or a failure is none of them
+#: the codes a run of the engine stops with which are a point its optimizer
+#: cannot improve on (`basin::TerminationCode`), i.e. the `success` of a run
+#: of scipy: a tolerance of the gradient, of the step or of the cost, and the
+#: codes of a trust region whose step collapsed (`NumericalNoProgress`, a
+#: rejected trial which changes no parameter, and `SolverFailed`, a step the
+#: solver cannot take), which is what the `xtol` of
+#: `scipy.optimize.least_squares` stops at. A code which is a budget of the
+#: run (its iterations, its time), a stop of the caller or a failure of the
+#: model is none of them, and the code itself is the message of the run.
 CONVERGED: frozenset[str] = frozenset(
     {
         "GradientTolerance",
@@ -99,6 +105,10 @@ CONVERGED: frozenset[str] = frozenset(
         "RelativeCostTolerance",
         "TargetCost",
         "SolverConverged",
+        "NoImprovement",
+        "NumericalNoProgress",
+        "SolverFailed",
+        "RhoTolerance",
     }
 )
 
@@ -638,6 +648,7 @@ def run(
     algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
     seed: int | None = None,
     sampling: SamplingType = SamplingType.LOGUNIFORM_LHS,
+    indices: Sequence[int] | None = None,
     threads: int | None = None,
     timeout: float | None = None,
     max_iterations: int = 100,
@@ -665,6 +676,8 @@ def run(
         algorithm: the optimizer of every run.
         seed: the seed of the sampling of the starts.
         sampling: the sampling of the starts.
+        indices: the runs of the fit to run, a piece of it; all of them
+            without, see `sbmlsim.fit.optimization.run_indices`.
         threads: the threads of the batch of an evaluation; the CPUs of the
             machine without.
         timeout: the seconds a single run may take, after which its optimizer
@@ -702,6 +715,8 @@ def run(
             f"the same run; a fit of several runs is a least squares one."
         )
     starts = problem.start_values(size, algorithm, sampling, seed)
+    if indices is not None:
+        starts = [starts[k] for k in indices]
     request = fit_request(
         problem,
         starts=[start for start in starts if start is not None],
@@ -769,3 +784,73 @@ def _fits_of(
             )
         )
     return fits
+
+
+def gaps_of_a_fit(
+    problem: OptimizationProblem,
+    algorithm: OptimizationAlgorithmType,
+    size: int,
+    kwargs: Mapping[str, Any] | None = None,
+) -> tuple[list[Gap], dict[str, Any]]:
+    """Get the gaps of a whole fit of the engine and the settings of its optimizer.
+
+    The objective of the problem has to be a request (`gaps_of`), and so have
+    the optimizer of the fit and its arguments: the arguments of a fit are the
+    ones of `scipy.optimize.least_squares` or of
+    `scipy.optimize.differential_evolution`, and the settings of the engine
+    are its iterations, the tolerance of its gradient and the population of a
+    differential evolution, so an argument which is none of them is a gap.
+
+    Args:
+        problem: the initialized problem.
+        algorithm: the optimizer of the fit.
+        size: the number of runs of the fit.
+        kwargs: the arguments of the optimizer of the fit.
+
+    Returns:
+        The gaps of the fit, empty for a fit the engine runs, and the settings
+        of `run` which its arguments give.
+    """
+    gaps = gaps_of(problem)
+    settings: dict[str, Any] = {}
+    evolution: dict[str, Any] = {}
+    evolving = algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    if evolving and size > 1:
+        gaps.append(
+            Gap(
+                "runs",
+                f"a differential evolution of the engine draws its population "
+                f"from one seed, so the {size} runs of the fit would be the "
+                f"same run",
+            )
+        )
+    for key, value in (kwargs or {}).items():
+        if key == "gtol":
+            settings["gradient_tolerance"] = float(value)
+        elif key == "method" and value == "trf":
+            continue
+        elif key == "maxiter" and evolving:
+            settings["max_iterations"] = int(value)
+        elif key == "seed" and evolving:
+            evolution["seed"] = int(value)
+        elif key == "popsize" and evolving:
+            # the population of scipy is a multiple of the parameters, the one
+            # of the engine is the members themselves
+            evolution["population"] = int(value) * len(problem.parameters)
+        elif key == "mutation" and evolving and isinstance(value, int | float):
+            evolution["f"] = float(value)
+        elif key == "recombination" and evolving:
+            evolution["cr"] = float(value)
+        elif key == "polish" and evolving:
+            evolution["polish"] = bool(value)
+        else:
+            gaps.append(
+                Gap(
+                    "optimizer",
+                    f"the argument '{key}' of the optimizer of the fit is no "
+                    f"setting of the optimizer of the engine",
+                )
+            )
+    if evolution:
+        settings["evolution"] = evolution
+    return gaps, settings
