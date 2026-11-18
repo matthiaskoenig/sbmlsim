@@ -83,7 +83,7 @@ PACK_THREAD_BYTES = 16 * 1024 * 1024
 #: copy is bound by the memory of the machine and not by the threads: on the
 #: HCTZ model, a chunk of 250 points of 401 rows and 190 selections (152 MB),
 #: 18.4 ms with one thread, 12.8 with four, 10.9 with six and 11.1 with eight
-PACK_MAX_THREADS = 6
+PACK_MAX_THREADS = 1  # EXPERIMENT: the threaded pack is off
 
 
 class ScanPointError(RuntimeError):
