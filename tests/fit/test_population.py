@@ -454,8 +454,13 @@ def test_a_last_member_which_kills_its_worker_leaves_no_broken_pool(
     assert not multiprocessing.active_children()
 
 
-def _fake_pool(*outcomes: Any) -> Any:
-    """A pool whose run hands out the given outcomes of the members."""
+def _fake_pool(*outcomes: Any, threads: int = 1) -> Any:
+    """A pool whose run hands out the given outcomes of the members.
+
+    `threads` is the threads of the engine one batch runs on, see
+    `runner.FitPool.threads`: more than one evaluates the whole generation in
+    one task, whose outcome is the cost of every member of it.
+    """
 
     def run(function: Any, tasks: Any, deadline: Any = None) -> Any:
         yield from enumerate(outcomes)
@@ -465,9 +470,55 @@ def _fake_pool(*outcomes: Any) -> Any:
         restarts=0,
         stopped=False,
         n_cores=1,
+        threads=threads,
         problem=SimpleNamespace(opid="p"),
         stop=lambda: None,
     )
+
+
+def test_a_generation_on_the_threads_of_the_engine_is_one_task() -> None:
+    """A generation of a pool with threads is one task, its costs the outcome.
+
+    The engine core simulates the members of the whole generation at once on
+    its threads, so the generation is one task of one worker, see
+    `runner.FitPool.threads`.
+    """
+    population = runner.PopulationPool(_fake_pool([1.0, 2.0, 3.0], threads=4))
+
+    assert list(population([np.zeros(1)] * 3, None)) == [(0, 1.0), (1, 2.0), (2, 3.0)]
+
+
+def test_a_generation_whose_batch_died_evaluates_its_members_one_per_task() -> None:
+    """A batch whose worker died is evaluated member by member.
+
+    A member which kills its worker then fails alone, with an infinite cost,
+    as it does without the batch.
+    """
+    runs: list[list[Any]] = [
+        [runner.WorkerDied("the worker of the batch died", alone=True)],
+        [1.0, runner.WorkerDied("the task killed its worker", alone=True)],
+    ]
+    functions: list[Any] = []
+
+    def run(function: Any, tasks: Any, deadline: Any = None) -> Any:
+        functions.append(function)
+        yield from enumerate(runs.pop(0))
+
+    pool: Any = SimpleNamespace(
+        run=run,
+        restarts=0,
+        stopped=False,
+        n_cores=1,
+        threads=4,
+        problem=SimpleNamespace(opid="p"),
+        stop=lambda: None,
+    )
+
+    assert list(runner.PopulationPool(pool)([np.zeros(1)] * 2, None)) == [
+        (0, 1.0),
+        (1, np.inf),
+    ]
+    assert functions == [runner._worker_costs, runner._worker_cost]
 
 
 def test_only_a_member_which_died_alone_has_an_infinite_cost() -> None:

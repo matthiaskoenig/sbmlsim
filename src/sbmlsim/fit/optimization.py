@@ -11,13 +11,14 @@ from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 import numpy as np
 import pandas as pd
 import scipy
 from scipy import interpolate
 
+from sbmlsim import cgroup
 from sbmlsim.console import console
 from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -69,7 +70,7 @@ from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import ObservableKind, Scan, Simulation
 from sbmlsim.simulation.scan import DimensionKind
 from sbmlsim.simulator import IntegratorSettings, Simulator
-from sbmlsim.simulator.engines import execute_plan
+from sbmlsim.simulator.engines import execute_plan, execute_plans
 from sbmlsim.simulator.executor import SteadyStateError
 from sbmlsim.simulator.formula import reduce_formula
 from sbmlsim.simulator.observables import (
@@ -430,6 +431,56 @@ class DataTimesResult:
     """
 
     output: TimecourseResult
+
+
+#: the value of one evaluated parameter vector, see `_evaluate_batch`
+_V = TypeVar("_V")
+
+
+@dataclass
+class _Batch:
+    """The simulations of a batch of parameter vectors, see `OptimizationProblem._simulate_batch`.
+
+    One evaluation of the objective of a fit is one simulation per group of
+    fit mappings, and the evaluations of a batch of vectors (the points of the
+    jacobian of a step, the members of a population) do not depend on each
+    other, so the simulations of the whole batch run as one batch of the
+    engine before any vector is evaluated. The evaluation of a vector then
+    reads the output of its simulations here instead of running them, see
+    `OptimizationProblem._execute`.
+
+    A point which is not in the batch is simulated by the evaluation which
+    asks for it, so a batch of some of the points of a vector is correct and
+    only slower: the columns of a point are part of its key, so the curves of
+    the complete data of an evaluation, which read other columns, are not
+    taken for the points of the training data.
+
+    Attributes:
+        outputs: the output of every point of every vector, the error which
+            failed it instead, by the vector, the group, the point of the
+            group and the columns of its output.
+        vector: the vector of the batch which is being evaluated, whose
+            points the outputs are read for.
+    """
+
+    outputs: dict[tuple[int, int, int, tuple[str, ...]], TimecourseResult | Exception]
+    vector: int = 0
+
+    def take(
+        self, k_group: int, point: int, selections: Sequence[str]
+    ) -> TimecourseResult | Exception | None:
+        """Get the output of a point of the vector which is being evaluated.
+
+        Args:
+            k_group: index of the simulation group.
+            point: index of the point within the group.
+            selections: the columns the evaluation reads.
+
+        Returns:
+            The output of the point, the error which failed it, or `None` if
+            the batch does not hold it.
+        """
+        return self.outputs.get((self.vector, k_group, point, tuple(selections)))
 
 
 def _interpolate_after_jumps(
@@ -938,6 +989,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         # deadline of the running optimization, set by `_optimize_single`
         self._deadline: float | None = None
         self._last_evaluation_failed = False
+        # the simulations of the batch of vectors which is being evaluated,
+        # see `evaluate_residuals_many`
+        self._batch: _Batch | None = None
         # the constant of the residuals of the last evaluation of a
         # likelihood, which the cost does not hold, see `_likelihood_terms`
         self._cost_offset = 0.0
@@ -3752,59 +3806,220 @@ class OptimizationProblem(ObjectJSONEncoder):
                 continue
 
             graph = self._group_graphs[k_group]
+            plans, selections = self._plans_of(k_group, x, quantities, indices, factors)
 
             result: DataTimesResult | GroupResult | None
             if graph is not None:
-                result = self._simulate_points(k_group, graph, x, quantities, factors)
+                result = self._simulate_points(k_group, graph, plans, selections, x)
                 for k in indices:
                     results[k] = result
                 continue
             # a simulation, or the one point of a scan which a group without
             # observables reads, see `_observation_of`
-            result = self._simulate_at_data(
-                k_group,
-                self.evaluated_plan(k_group, x, quantities, factors=factors),
-                x,
-                indices,
-            )
+            result = self._simulate_at_data(k_group, plans[0], selections, x)
 
             for k in indices:
                 results[k] = result
 
         return results
 
+    def _plans_of(
+        self,
+        k_group: int,
+        x: np.ndarray,
+        quantities: Sequence[Quantity],
+        indices: Sequence[int] | None = None,
+        factors: Mapping[str, float] | None = None,
+    ) -> tuple[list[Plan], Sequence[str]]:
+        """Get the plans of the points of a group and the columns they output.
+
+        One plan for a group which outputs the times of its data, the plan of
+        every point of its scan for a group which reads observables, see
+        `_simulate_groups`: this is what one evaluation of the objective
+        simulates for the group, and `_simulate_batch` builds the plans of a
+        batch of parameter vectors with it.
+
+        Args:
+            k_group: index of the simulation group.
+            x: parameter values in the units of the parameters.
+            quantities: the quantity of every parameter, for the derived
+                changes; empty without them.
+            indices: the evaluated mappings of the group, all without.
+            factors: the factors of the values of targets of a subject, see
+                `evaluated_plan`.
+
+        Returns:
+            The plan of every point of the group, in the order of the points,
+            and the columns of the output of every one of them.
+        """
+        graph = self._group_graphs[k_group]
+        if graph is None:
+            return [
+                self.evaluated_plan(k_group, x, quantities, factors=factors)
+            ], self._selections_of(k_group, indices)
+        points = self._group_points[k_group]
+        return [
+            self.evaluated_plan(k_group, x, quantities, point=i, factors=factors)
+            for i in range(1 if points is None else points.size)
+        ], (TIME, *graph.selections)
+
+    def _selections_of(
+        self, k_group: int, indices: Sequence[int] | None = None
+    ) -> Sequence[str]:
+        """Get the columns the simulation of a group outputs.
+
+        The selections the evaluated mappings of the group read, e.g. not the
+        ones of its validation data in a fit, or the observables the mappings
+        read, which are evaluated on its output.
+
+        Args:
+            k_group: index of the simulation group.
+            indices: the evaluated mappings of the group, all without.
+
+        Returns:
+            The columns of the output of the group.
+        """
+        graph = self._group_pointwise[k_group]
+        if graph is not None:
+            return [TIME, *graph.selections]
+        mappings = self.mapping_groups[k_group] if indices is None else indices
+        return sorted({s for k in mappings for s in self.selections[k]})
+
+    def _execute(
+        self,
+        k_group: int,
+        point: int,
+        plan: Plan,
+        model: SBMLModel,
+        selections: Sequence[str],
+    ) -> TimecourseResult:
+        """Simulate a point of a group, or read its output from a batch.
+
+        The simulations of a batch of parameter vectors run before any vector
+        of the batch is evaluated (`_simulate_batch`), so a point of the
+        batch is read here and a point which is not in it is simulated. The
+        error of a point of the batch is raised as its simulation would raise
+        it, so a simulation which fails in a batch and one which fails on its
+        own fail the evaluation alike.
+
+        Args:
+            k_group: index of the simulation group.
+            point: index of the point within the group, 0 for a group which
+                outputs the times of its data.
+            plan: the plan of the point with the values of the parameters.
+            model: the model of the group.
+            selections: the columns of the output.
+
+        Returns:
+            The output of the simulation.
+
+        Raises:
+            RuntimeError: if the engine fails to integrate.
+            SteadyStateError: if a presimulation finds no steady state.
+            NotImplementedError: for a feature the engine does not simulate.
+        """
+        batch = self._batch
+        output = None if batch is None else batch.take(k_group, point, selections)
+        if output is None:
+            return execute_plan(plan, model, selections)
+        if isinstance(output, Exception):
+            raise output
+        return output
+
+    def _simulate_batch(
+        self,
+        vectors: Sequence[np.ndarray],
+        evaluated: set[int],
+        threads: int,
+        factors: Mapping[str, float] | None = None,
+    ) -> _Batch:
+        """Simulate the points of every parameter vector as one batch per model.
+
+        The simulations of the vectors of a batch do not depend on each other
+        and they are the work of a scan of the points of the vectors: the
+        engine core simulates them on threads of its own, one batch per
+        model, so they run at once instead of one simulation per call, see
+        `sbmlsim.simulator.engines.execute_plans`. The other engines simulate
+        one plan per call, so the batch is the loop over the points for them.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer
+                searches.
+            evaluated: indices of the fit mappings which are evaluated.
+            threads: the threads of the engine the batch runs on.
+            factors: the factors of the values of targets of a subject, see
+                `evaluated_plan`.
+
+        Returns:
+            The simulations of the batch, which the evaluation of a vector
+            reads, see `_execute`.
+
+        Raises:
+            NotImplementedError: for a feature the engine does not simulate,
+                which fails for every value of the parameters.
+        """
+        models: dict[int, SBMLModel] = {}
+        points: dict[int, list[tuple[int, int, int, tuple[str, ...], Plan]]] = {}
+        for k_vector, xlog in enumerate(vectors):
+            x = self.from_scale(xlog)
+            _, quantities = self._simulator_and_quantities(x)
+            for k_group, group in enumerate(self.mapping_groups):
+                indices = [k for k in group if k in evaluated]
+                if not indices:
+                    continue
+                model = self.models[group[0]]
+                models.setdefault(id(model), model)
+                plans, selections = self._plans_of(
+                    k_group, x, quantities, indices, factors
+                )
+                columns = tuple(selections)
+                points.setdefault(id(model), []).extend(
+                    (k_vector, k_group, point, columns, plan)
+                    for point, plan in enumerate(plans)
+                )
+        outputs: dict[
+            tuple[int, int, int, tuple[str, ...]], TimecourseResult | Exception
+        ] = {}
+        for key, batched in points.items():
+            results = execute_plans(
+                [(plan, columns) for *_, columns, plan in batched],
+                models[key],
+                threads,
+            )
+            for (k_vector, k_group, point, columns, _), result in zip(
+                batched, results, strict=True
+            ):
+                outputs[(k_vector, k_group, point, columns)] = result
+        return _Batch(outputs=outputs)
+
     def _simulate_at_data(
         self,
         k_group: int,
         plan: Plan,
+        selections: Sequence[str],
         x: np.ndarray,
-        indices: Sequence[int] | None = None,
     ) -> DataTimesResult | None:
         """Simulate a group which outputs the times of its data, see `_compile_plans`.
 
         The simulation has the selections the evaluated mappings of the group
         read, e.g. not the ones of its validation data in a fit, or the
-        observables the mappings read, evaluated on its output.
+        observables the mappings read, evaluated on its output, see
+        `_selections_of`.
 
         Args:
             k_group: index of the simulation group.
             plan: the plan of the group with the values of the parameters,
                 see `evaluated_plan`; the plan of its curve for the evaluation.
+            selections: the columns of the output, see `_selections_of`.
             x: parameter values in the units of the parameters, for the log.
-            indices: the evaluated mappings of the group, all without.
 
         Returns:
             The output, `None` if the integration or an observable failed.
         """
         group = self.mapping_groups[k_group]
         graph = self._group_pointwise[k_group]
-        if graph is None:
-            mappings = group if indices is None else indices
-            selections = sorted({s for k in mappings for s in self.selections[k]})
-        else:
-            selections = [TIME, *graph.selections]
         try:
-            output = execute_plan(plan, self.models[group[0]], selections)
+            output = self._execute(k_group, 0, plan, self.models[group[0]], selections)
         except NotImplementedError:
             # a feature the engine does not simulate fails for every value of
             # the parameters, it is no failed integration
@@ -3845,35 +4060,28 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         k_group: int,
         graph: ObservableGraph,
+        plans: Sequence[Plan],
+        selections: Sequence[str],
         x: np.ndarray,
-        quantities: Sequence[Quantity],
-        factors: Mapping[str, float] | None = None,
     ) -> GroupResult | None:
         """Simulate the points of a group which reads observables.
 
         Args:
             k_group: index of the simulation group.
             graph: the observables of the group.
+            plans: the plan of every point of the group, see `_plans_of`.
+            selections: the columns of the output, see `_plans_of`.
             x: parameter values in the units of the parameters.
-            quantities: the quantity of every parameter, for the derived
-                changes; empty without them.
-            factors: the factors of the values of targets of a subject, see
-                `evaluated_plan`.
 
         Returns:
             The time and the outputs of every point, `None` if the integration
             of a point or its observables failed.
         """
-        points = self._group_points[k_group]
-        plans = [
-            self.evaluated_plan(k_group, x, quantities, point=i, factors=factors)
-            for i in range(1 if points is None else points.size)
-        ]
         model = self.models[self.mapping_groups[k_group][0]]
-        selections = (TIME, *graph.selections)
         try:
             solutions = [
-                execute_plan(point, model, selections).values for point in plans
+                self._execute(k_group, point, plan, model, selections).values
+                for point, plan in enumerate(plans)
             ]
         except NotImplementedError:
             # a feature the engine does not simulate, see `_simulate_at_data`
@@ -4635,6 +4843,98 @@ class OptimizationProblem(ObjectJSONEncoder):
         finally:
             self._trajectory, self._best = trajectory, best
 
+    def evaluate_residuals_many(
+        self, vectors: Sequence[np.ndarray], threads: int | None = None
+    ) -> list[tuple[np.ndarray, float]]:
+        """Get the residuals and the cost of a batch of parameter vectors.
+
+        What `evaluate_residuals` is for one vector: the evaluations of the
+        vectors of a batch do not depend on each other, so the simulations of
+        the whole batch run as one batch of the engine before any vector is
+        evaluated, and the engine core fans them out over threads of its own
+        (`_simulate_batch`). The points of the jacobian of a step of a least
+        squares run are such a batch, see
+        `sbmlsim.fit.runner.JacobianPool`.
+
+        The value of a vector is the one of its own evaluation: the engine
+        holds no state between two requests and every thread simulates on an
+        instance of its own, so the batch changes no number, see
+        `tests/fit/test_evaluation_batch.py`.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer
+                searches.
+            threads: the threads of the engine the batch runs on, the CPUs of
+                the process by default, see `sbmlsim.cgroup.available_cpus`.
+
+        Returns:
+            The weighted residuals and the cost of every vector, in the order
+            of the vectors.
+        """
+        return self._evaluate_batch(vectors, threads, self.evaluate_residuals)
+
+    def evaluate_cost_many(
+        self, vectors: Sequence[np.ndarray], threads: int | None = None
+    ) -> list[float]:
+        """Get the cost of a batch of parameter vectors, see `evaluate_residuals_many`.
+
+        The members of a population of differential evolution are such a
+        batch, see `sbmlsim.fit.runner.PopulationPool`.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer
+                searches.
+            threads: the threads of the engine the batch runs on, the CPUs of
+                the process by default.
+
+        Returns:
+            The cost of every vector, in the order of the vectors, infinite
+            for a simulation which failed.
+        """
+        return self._evaluate_batch(vectors, threads, self.evaluate_cost)
+
+    def _evaluate_batch(
+        self,
+        vectors: Sequence[np.ndarray],
+        threads: int | None,
+        evaluate: Callable[[np.ndarray], _V],
+    ) -> list[_V]:
+        """Evaluate every vector of a batch on the simulations of one batch.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer
+                searches.
+            threads: the threads of the engine the batch runs on, the CPUs of
+                the process without.
+            evaluate: what one vector is evaluated with, `evaluate_residuals`
+                or `evaluate_cost`.
+
+        Returns:
+            The value of every vector, in the order of the vectors.
+        """
+        if not vectors:
+            return []
+        # the optimization only uses the training data, as `residuals` does
+        evaluated = {
+            k
+            for k in range(len(self.mapping_keys))
+            if self.mapping_kinds[k] is MappingKind.TRAINING
+        }
+        batch = self._simulate_batch(
+            vectors,
+            evaluated,
+            cgroup.available_cpus() if threads is None else threads,
+        )
+        self._batch = batch
+        try:
+            values = []
+            for k_vector, xlog in enumerate(vectors):
+                batch.vector = k_vector
+                values.append(evaluate(xlog))
+            return values
+        finally:
+            self._batch = None
+
     def _record(self, x: np.ndarray, cost: float) -> None:
         """Record the cost of an evaluation and keep the best parameters.
 
@@ -4904,7 +5204,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 ):
                     continue
                 curve = self._simulate_at_data(
-                    k_group, self.evaluated_plan(k_group, x, quantities, curve=True), x
+                    k_group,
+                    self.evaluated_plan(k_group, x, quantities, curve=True),
+                    self._selections_of(k_group, None),
+                    x,
                 )
                 for k in self.mapping_groups[k_group]:
                     curves[k] = curve

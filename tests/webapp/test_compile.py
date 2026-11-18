@@ -57,7 +57,7 @@ DRAWN = DISTRIB.replace(
     "</csymbol><cn>0</cn><cn>1</cn></apply>",
 )
 
-#: a math with the `delay` csymbol, which the engine does not implement
+#: a math with the `delay` csymbol, which the engine simulates since 0.11.0
 DELAYED = DISTRIB.replace(
     "<apply><times/><apply><minus/><ci>k</ci></apply><ci>S</ci></apply>",
     '<apply><csymbol encoding="text" '
@@ -144,18 +144,27 @@ def test_the_uncertainties_change_nothing_of_the_compiled_model() -> None:
 
 
 def test_a_model_the_compiler_refuses_raises_with_its_message() -> None:
+    cyclic = DISTRIB.replace(
+        '<rateRule variable="S">', '<assignmentRule variable="S">'
+    ).replace("</rateRule>", "</assignmentRule>")
     with pytest.raises(WebAppError, match="sbmlsim-core cannot compile"):
-        compile_sbml(DELAYED)
+        compile_sbml(cyclic)
 
 
 def test_a_model_with_an_algebraic_rule_compiles() -> None:
     """sbmlsim-core simulates an algebraic rule with IDA since 0.10.0.
 
-    It was the one class of model the compiler refused that a simulator is
-    expected to handle, and it stood in for "a model the compiler refuses"
-    in the test above until the engine learned it.
+    An algebraic rule and the `delay` csymbol were the two classes of model
+    the compiler refused that a simulator is expected to handle; the engine
+    learned the first in 0.10.0 and the second in 0.11.0, so what stands in
+    for "a model the compiler refuses" above is a cycle of assignment rules.
     """
     compiled = compile_sbml(ALGEBRAIC)
     assert compiled.wasm[:4] == b"\0asm"
     # the matched unknown is the algebraic suffix of the state vector
     assert json.loads(compiled.description)["n_algebraic"] == 1
+
+
+def test_a_model_with_a_delay_compiles() -> None:
+    """sbmlsim-core simulates the `delay` csymbol since 0.11.0."""
+    assert compile_sbml(DELAYED).wasm[:4] == b"\0asm"
