@@ -202,7 +202,13 @@ def restrict_to_model(
     compiles a model, so a sidecar may name an id the model does not have. Such
     a curve is dropped and reported in a warning; a panel left without a curve
     is dropped and leaves the selection of its key, so a key whose ids are all
-    missing becomes a decoration which selects nothing.
+    missing becomes a decoration which selects nothing. The panels and the
+    figure are validated again.
+
+    The caller must build the panels of the pages of its app from the returned
+    panels and register the returned figure: a page which still lists a
+    dropped panel is refused by `sbmlsim.serve.runner.ModelRegistry.of`, which
+    finds no such panel in the model.
 
     Args:
         panels: the panels by id, see `panels_from_figure`.
@@ -227,9 +233,18 @@ def restrict_to_model(
             kept[pid] = (
                 panel
                 if len(present) == len(panel.curves)
-                else panel.model_copy(update={"curves": present})
+                else Panel.model_validate({**dict(panel), "curves": present})
             )
     dropped = list(dict.fromkeys(dropped))
+    lost = {
+        key: [c.id for pid in ids if pid in panels for c in panels[pid].curves]
+        for key, ids in figure.panels.items()
+    }
+    lost = {
+        key: [i for i in ids if i in dropped]
+        for key, ids in lost.items()
+        if any(i in dropped for i in ids)
+    }
     if dropped:
         if not kept:
             raise ContractError(
@@ -237,12 +252,20 @@ def restrict_to_model(
                 f"'{figure.title}'; missing {dropped}."
             )
         logger.warning(
-            "The model has not the readouts %s of the figure '%s'; they are left out.",
+            "The model does not have the readouts %s of the figure '%s'; they "
+            "are left out, so the parts %s lost readouts and %s select nothing.",
             dropped,
             figure.title,
+            sorted(lost),
+            sorted(
+                key
+                for key in lost
+                if not any(pid in kept for pid in figure.panels[key])
+            ),
         )
     selection = {
         key: tuple(pid for pid in ids if pid in kept)
         for key, ids in figure.panels.items()
     }
-    return kept, figure.model_copy(update={"panels": selection}), tuple(dropped)
+    restricted = AppFigure.model_validate({**dict(figure), "panels": selection})
+    return kept, restricted, tuple(dropped)

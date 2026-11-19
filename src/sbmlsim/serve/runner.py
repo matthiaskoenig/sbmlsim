@@ -736,7 +736,11 @@ def _check_app(entry: ModelEntry) -> None:
     to values of them (`_check_scenarios`). The variants are checked first, so
     an app of an unknown variant is refused without reading an SBML.
 
-    A model which declares no app is not checked here and reads nothing.
+    A model which declares no app is not checked here and reads nothing. An app
+    with a figure also loads the compiled model of each variant it is served
+    in, to check the curves the figure selects (`_check_figure`); that load is
+    not the warm model of a runner, which a registry has not yet, so such a
+    model is loaded once more when it is first run.
 
     Args:
         entry: the model of the registry.
@@ -751,7 +755,10 @@ def _check_app(entry: ModelEntry) -> None:
             the model, the variant, the page, the scenario, the knob and the
             panel, for a scenario which sets a knob no panel of its page
             declares or a value which is no value of that knob, see
-            `_check_scenarios`; if the project has no model variants, see
+            `_check_scenarios`; naming the model, the variant, the key path,
+            the panel and the curve, for a curve of a panel the figure selects
+            which the compiled model cannot select, see `_check_figure`; if
+            the project has no model variants, see
             `sbmlsim.project.Project.panels_of`.
         FileNotFoundError: if the SBML the panels are read from is no file,
             which is a problem of the service and not of a request.

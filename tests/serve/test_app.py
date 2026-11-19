@@ -874,3 +874,47 @@ def test_an_app_without_a_figure_answers_none(client: TestClient) -> None:
     assert all(
         page["figure"] is False and page["shown"] == [] for page in body["pages"]
     )
+
+
+def test_a_restricted_figure_registers_with_the_pages_rebuilt(project: Project) -> None:
+    from sbmlsim.panel import AppFigure
+    from sbmlsim.panel_figure import restrict_to_model
+
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["renal_plasma"]
+    real = plasma.curves[0]
+
+    def panel(pid: str, *ids: str) -> Panel:
+        curves = tuple(real.model_copy(update={"id": one}) for one in ids)
+        return plasma.model_copy(update={"id": pid, "curves": curves})
+
+    panels = {
+        "li_gli": panel("li_gli", "[Cve_hctz]", "LI__nope"),
+        "ki": panel("ki", "KI__nope"),
+    }
+    figure = AppFigure(
+        svg="<svg/>", title="Body", panels={"li/sub:gli": ("li_gli",), "ki": ("ki",)}
+    )
+    kept, restricted, dropped = restrict_to_model(
+        panels, figure, lambda one: one == "[Cve_hctz]"
+    )
+    assert dropped == ("LI__nope", "KI__nope")
+    assert restricted.panels == {"li/sub:gli": ("li_gli",), "ki": ()}
+    page = app.pages[0]
+
+    def declared(have: dict[str, Panel], ready: AppFigure) -> Project:
+        pages = (
+            page.model_copy(update={"panels": (*page.panels, *have)}),
+            *app.pages[1:],
+        )
+        return project.replace(
+            panels={**project.panels, **have},
+            app=app.model_copy(update={"pages": pages, "figure": ready}),
+        )
+
+    # the pages of the app list the panels which survived
+    ModelRegistry.of_projects({"hctz": declared(kept, restricted)})
+    # the pages still list the panels the model lacks curves of
+    with pytest.raises(ValueError, match="LI__nope"):
+        ModelRegistry.of_projects({"hctz": declared(panels, figure)})

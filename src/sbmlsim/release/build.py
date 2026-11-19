@@ -51,8 +51,9 @@ logger = logging.getLogger(__name__)
 
 #: the outputs of the factory which the release copies into `models`: the SBML,
 #: the equations (markdown), the antimony, the diagrams of the models (SVG)
-#: and the snippet of the interactive figure of a diagram (HTML)
-_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg", "*.html", "*.json")
+#: the snippet of the interactive figure of a diagram (HTML) and the readouts
+#: sidecar of a diagram (`<svg stem>.readouts.json`)
+_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg", "*.html", "*.readouts.json")
 _LICENSES = ("mit.txt", "cc-by-sa-4.0.txt")
 
 #: the folder of the specs of the steps in the release repository
@@ -351,7 +352,9 @@ def _copy_models(
     documentation show, an HTML file the snippet of its interactive figure,
     which the index of the site embeds, or the app of the model,
     `<name>_app.html`, which the site shows) and the variants compiled by
-    sbmlsim-core (`wasm/`, see `sbmlsim.webapp`), the licenses and the folder `figures`
+    sbmlsim-core (`wasm/`, see `sbmlsim.webapp`), and the readouts sidecars
+    (`*.readouts.json`) of the diagrams, which name what a click on the drawing
+    shows. The licenses and the folder `figures`
     are taken from the parent of it, the archive from its path relative to the
     root.
     """
