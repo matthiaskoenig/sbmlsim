@@ -19,7 +19,7 @@ from sbmlsim.release.manifest import MANIFEST_FILE, Manifest
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.release.source import run
 from sbmlsim.release.workflow import build_release, prepare_release
-from tests.release.fakes import VERSION, lock_text
+from tests.release.fakes import VERSION, lock_text, zensical
 from tests.release.repos import REFERENCE, git
 
 pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("git_env")]
@@ -111,7 +111,7 @@ def test_the_release_of_the_toy(
 
     # the site of the release builds without a warning
     result = subprocess.run(
-        ["zensical", "build", "--clean", "--strict"],
+        [zensical(), "build", "--clean", "--strict"],
         cwd=path,
         capture_output=True,
         text=True,

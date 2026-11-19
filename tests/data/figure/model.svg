@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g data-k="li"><rect x="10" y="10" width="30" height="30"/>
+    <g data-k="sub:gli"><circle cx="25" cy="25" r="5"/></g>
+  </g>
+  <g data-k="urine"><rect x="50" y="10" width="20" height="20"/></g>
+  <g data-k="bladder"><rect x="50" y="50" width="20" height="20"/></g>
+</svg>

@@ -814,3 +814,107 @@ def test_the_hash_of_the_sbml_has_one_source(
         body = client.post(SIMULATE, json={}).json()
     assert body["provenance"]["model_sha256"] == "a" * 64
     assert len(hashed) == 1
+
+
+def _with_figure(project: Project, curve_id: str) -> Project:
+    """The project with a figure which selects a panel of the curve `curve_id`."""
+    from sbmlsim.panel import AppFigure
+
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["renal_plasma"]
+    ghost = plasma.model_copy(
+        update={
+            "id": "li_gli",
+            "curves": (plasma.curves[0].model_copy(update={"id": curve_id}),),
+        }
+    )
+    pages = (
+        app.pages[0].model_copy(update={"panels": (*app.pages[0].panels, "li_gli")}),
+        *app.pages[1:],
+    )
+    figure = AppFigure(svg="<svg/>", title="Body", panels={"li/sub:gli": ("li_gli",)})
+    return project.replace(
+        panels={**project.panels, "li_gli": ghost},
+        app=app.model_copy(update={"pages": pages, "figure": figure}),
+    )
+
+
+def test_a_curve_the_model_does_not_have_names_the_id(project: Project) -> None:
+    with pytest.raises(ValueError, match="LI__Cpl_nope") as error:
+        ModelRegistry.of_projects({"hctz": _with_figure(project, "LI__Cpl_nope")})
+    assert "li/sub:gli" in str(error.value)
+    assert "'li_gli'" in str(error.value)
+
+
+def test_a_figure_of_curves_the_model_has_is_accepted(project: Project) -> None:
+    registry = ModelRegistry.of_projects({"hctz": _with_figure(project, "[Cve_hctz]")})
+    app = registry.entry("hctz").project.app
+    assert app is not None and app.figure is not None
+
+
+def test_the_figure_survives_the_service_and_the_bundle(project: Project) -> None:
+    from sbmlsim.serve.export import build_bundle
+
+    registry = ModelRegistry.of_projects({"hctz": _with_figure(project, "[Cve_hctz]")})
+    with TestClient(create_app(registry)) as client:
+        served = client.get(APP).json()
+    bundled = build_bundle(registry, "hctz").content["answers"][""]["app"]
+    for body in (served, bundled):
+        assert body["figure"]["panels"] == {"li/sub:gli": ["li_gli"]}
+        assert body["figure"]["svg"] == "<svg/>"
+        assert body["figure"]["title"] == "Body"
+        assert body["pages"][0]["figure"] is False
+        assert body["pages"][0]["shown"] == []
+
+
+def test_an_app_without_a_figure_answers_none(client: TestClient) -> None:
+    body = client.get(APP).json()
+    assert body["figure"] is None
+    assert all(
+        page["figure"] is False and page["shown"] == [] for page in body["pages"]
+    )
+
+
+def test_a_restricted_figure_registers_with_the_pages_rebuilt(project: Project) -> None:
+    from sbmlsim.panel import AppFigure
+    from sbmlsim.panel_figure import restrict_to_model
+
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["renal_plasma"]
+    real = plasma.curves[0]
+
+    def panel(pid: str, *ids: str) -> Panel:
+        curves = tuple(real.model_copy(update={"id": one}) for one in ids)
+        return plasma.model_copy(update={"id": pid, "curves": curves})
+
+    panels = {
+        "li_gli": panel("li_gli", "[Cve_hctz]", "LI__nope"),
+        "ki": panel("ki", "KI__nope"),
+    }
+    figure = AppFigure(
+        svg="<svg/>", title="Body", panels={"li/sub:gli": ("li_gli",), "ki": ("ki",)}
+    )
+    kept, restricted, dropped = restrict_to_model(
+        panels, figure, lambda one: one == "[Cve_hctz]"
+    )
+    assert dropped == ("LI__nope", "KI__nope")
+    assert restricted.panels == {"li/sub:gli": ("li_gli",), "ki": ()}
+    page = app.pages[0]
+
+    def declared(have: dict[str, Panel], ready: AppFigure) -> Project:
+        pages = (
+            page.model_copy(update={"panels": (*page.panels, *have)}),
+            *app.pages[1:],
+        )
+        return project.replace(
+            panels={**project.panels, **have},
+            app=app.model_copy(update={"pages": pages, "figure": ready}),
+        )
+
+    # the pages of the app list the panels which survived
+    ModelRegistry.of_projects({"hctz": declared(kept, restricted)})
+    # the pages still list the panels the model lacks curves of
+    with pytest.raises(ValueError, match="LI__nope"):
+        ModelRegistry.of_projects({"hctz": declared(panels, figure)})

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 __all__ = ["EXTRA_FORMATS", "ArchiveModel", "is_hierarchical", "write_archive"]
 
 #: the formats of the extra files of an archive by their suffix, the names of
-#: the members of `pymetadata.omex.EntryFormat`
+#: the members of `pymetadata.omex.EntryFormat` or a key of `_EXTRA_URIS`
 EXTRA_FORMATS: dict[str, str] = {
     ".md": "MARKDOWN",
     ".ant": "ANTIMONY",
@@ -37,6 +37,13 @@ EXTRA_FORMATS: dict[str, str] = {
     ".csv": "CSV",
     ".tsv": "TSV",
     ".pdf": "PDF",
+    ".json": "JSON",
+}
+
+#: the formats `pymetadata.omex.EntryFormat` has no member for, by their name:
+#: the media type of JSON, which is how COMBINE identifies it
+_EXTRA_URIS: dict[str, str] = {
+    "JSON": "https://purl.org/NET/mediatypes/application/json"
 }
 
 
@@ -141,7 +148,7 @@ def write_archive(
     from sbmlsim.licenses import License, write_license
 
     def entry(
-        location: str, fmt: EntryFormat, *, master: bool = False
+        location: str, fmt: EntryFormat | str, *, master: bool = False
     ) -> ManifestEntry:
         return ManifestEntry(location=location, format=fmt, master=master)
 
@@ -248,9 +255,10 @@ def write_archive(
         }
     for extra in extra_files:
         fmt = EXTRA_FORMATS[extra.suffix.lower()]
+        uri = _EXTRA_URIS.get(fmt) or getattr(EntryFormat, fmt)
         results[f"{extra.stem}_{extra.suffix.removeprefix('.')}"] = {
             "path": extra,
-            "entry": entry(location(extra, "extra file"), getattr(EntryFormat, fmt)),
+            "entry": entry(location(extra, "extra file"), uri),
         }
 
     omex = Omex()

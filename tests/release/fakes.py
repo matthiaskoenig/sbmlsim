@@ -7,6 +7,7 @@ publishing.
 
 import json
 import shutil
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -18,6 +19,19 @@ VERSION = "0.2.0"
 PYPI = '{ registry = "https://pypi.org/simple" }'
 #: the sbmlsim of the lock of the source repository (`tests/data/release/uv.lock`)
 SBMLSIM = "0.8.0"
+
+
+def zensical() -> str:
+    """The `zensical` executable: on the PATH, else next to the interpreter.
+
+    `.venv/bin` is on the PATH under `uv run` only, so a bare `pytest` of the
+    environment would not find the tool it has installed.
+    """
+    found = shutil.which("zensical") or shutil.which(
+        "zensical", path=str(Path(sys.executable).parent)
+    )
+    assert found, "zensical is not installed, it is a dev dependency"
+    return found
 
 
 def lock_text() -> str:

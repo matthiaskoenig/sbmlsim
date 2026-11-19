@@ -87,6 +87,7 @@ class FakeRunner:
             (models / "toy.md").write_text("# toy", encoding="utf-8")
             (models / "other.txt").write_text("not copied", encoding="utf-8")
             (models / "toy.svg").write_text("<svg/>", encoding="utf-8")
+            (models / "toy.readouts.json").write_text("{}", encoding="utf-8")
             # the web assets of the model, which `create_models` writes
             (models / "toy_app.html").write_text("<html/>", encoding="utf-8")
             (models / "wasm" / "toy").mkdir(parents=True)
@@ -202,6 +203,7 @@ def test_build_copies_outputs(tmp_path: Path) -> None:
     assert not (release / "models/other.txt").exists()
     # the diagram of the model which the factory draws beside it
     assert (release / "models/toy.svg").is_file()
+    assert (release / "models/toy.readouts.json").is_file()
     # the app of the model and the compiled variants
     assert (release / "models/toy_app.html").is_file()
     assert (release / "models/wasm/toy/model.wasm").read_bytes() == b"\0asm"

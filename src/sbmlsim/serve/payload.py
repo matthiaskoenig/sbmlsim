@@ -564,6 +564,25 @@ class ScenarioPayload(BaseModel):
     values: dict[str, float]
 
 
+class AppFigurePayload(BaseModel):
+    """The figure of the app of a model, see `AppResponse`.
+
+    Attributes:
+        svg: the drawing as inline svg text.
+        title: the figure as it is shown.
+        credit: the source of the drawing, empty without.
+        panels: the panel ids a click selects, by the key path of the part of
+            the drawing; an empty list for a decoration.
+    """
+
+    model_config = _CONFIG
+
+    svg: str
+    title: str
+    credit: str = ""
+    panels: dict[str, list[str]]
+
+
 class AppPagePayload(BaseModel):
     """One page of the app of a model, see `AppResponse`.
 
@@ -576,6 +595,9 @@ class AppPagePayload(BaseModel):
         scenarios: the named states of the knobs of the page a reader picks
             from, in the order they are shown; none for a page without.
         size: the size of the panels of the page, `regular` or `small`.
+        figure: whether the page shows the figure of the app.
+        shown: the panels of the page shown from the start, a subset of
+            `panels`; none means a reader picks them from the figure.
     """
 
     model_config = _CONFIG
@@ -585,6 +607,8 @@ class AppPagePayload(BaseModel):
     panels: list[str]
     scenarios: list[ScenarioPayload]
     size: Literal["regular", "small"]
+    figure: bool = False
+    shown: list[str] = Field(default_factory=list)
 
 
 class AppVariantPayload(BaseModel):
@@ -684,6 +708,8 @@ class AppResponse(BaseModel):
             a shell lays the head of each card out with before the panel has
             read its declaration, and are no part of the declaration of the
             app either.
+        figure: the figure a reader clicks to pick panels, none for an app
+            without.
         variant: the id of the variant of the model the app answers, whose
             panels its shared knobs and its heads are worked out of: the
             variant a request names with `?variant=`, else the default variant
@@ -702,6 +728,7 @@ class AppResponse(BaseModel):
     citation: str
     doi: str
     licenses: list[str]
+    figure: AppFigurePayload | None = None
     shared: dict[str, list[SharedKnobPayload]]
     heads: dict[str, list[PanelSummary]]
     variant: str

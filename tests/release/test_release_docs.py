@@ -35,6 +35,7 @@ from tests.credibility.tables import (
 from tests.credibility_toy.credibility import CREDIBILITY
 from tests.credibility_toy.extensions import ARMS
 from tests.project_toy import PROJECT, TOY_PATH
+from tests.release.fakes import zensical
 
 assert PROJECT.release is not None
 SETTINGS = dataclasses.replace(PROJECT.release, archive="toy_model.omex")
@@ -473,7 +474,7 @@ def test_zensical_strict(release: tuple[ProjectContext, Path]) -> None:
     write_project_files(context, path)
     write_docs(context, path)
     result = subprocess.run(
-        ["zensical", "build", "--clean", "--strict"],
+        [zensical(), "build", "--clean", "--strict"],
         cwd=path,
         capture_output=True,
         text=True,
