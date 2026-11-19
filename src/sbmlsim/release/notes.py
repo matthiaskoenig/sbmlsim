@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import libsbml
 
 from sbmlsim.fit.result import fit_subset
-from sbmlsim.release.build import BuildPaths, is_experiment_folder
+from sbmlsim.release.build import BuildPaths, app_name, is_experiment_folder
 from sbmlsim.release.hooks import ReleaseHook
 from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import (
@@ -852,6 +852,7 @@ def write_release_notes(
         "experiments_removed": removed_experiments,
         "fits": fit_changes(release, project, runner),
         "sections": list(hook.notes_sections(context, release, runner)),
+        "app": app_name(context, release.path),
         "number": _number,
     }
     path = release.path / NOTES_DIR / f"{context.version}.md"

@@ -594,3 +594,23 @@ def test_the_studies_of_two_data_folders_do_not_merge(tmp_path: Path) -> None:
 
     merged = data_changes(release, PACKAGE_DIR, folders, study=ByStudy().data_study)
     assert merged == DataChanges(changed=["Cederberg1992"])
+
+
+def test_the_release_notes_link_the_app(release: ReleaseRepo, model: Project) -> None:
+    write(release.path / "models" / "toy_app.html", "<html/>")
+    ctx = context(model, "0.2.0")
+    text = write_release_notes(ctx, release, fetch=fake_fetch).read_text(
+        encoding="utf-8"
+    )
+    assert f"App: <{ctx.settings.site_url}toy_app.html>" in text
+    assert "\n\n\n" not in text
+
+
+def test_the_release_notes_have_no_app_line_without_an_app(
+    release: ReleaseRepo, model: Project
+) -> None:
+    text = write_release_notes(
+        context(model, "0.2.0"), release, fetch=fake_fetch
+    ).read_text(encoding="utf-8")
+    assert "App: <" not in text
+    assert "_app.html" not in text

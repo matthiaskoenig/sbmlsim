@@ -905,3 +905,46 @@ def test_no_app_page_without_an_app(release: tuple[ProjectContext, Path]) -> Non
     assert pages(context, path) == PAGES
     assert not (path / "docs" / "app.md").exists()
     assert "App of the model" not in (path / "README.md").read_text(encoding="utf-8")
+
+
+def test_the_index_leads_with_the_app(release: tuple[ProjectContext, Path]) -> None:
+    context, path = release
+    app = f"{context.project.name}_app.html"
+    write(path / BuildPaths.MODELS / app, "<!doctype html><title>app</title>")
+    write_project_files(context, path)
+    write_docs(context, path)
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert index.count('<iframe id="model-app"') == 1
+    assert f'src="{app}"' in index
+    assert "(app.md)" in index
+    # after the description, before the model figure
+    assert (
+        index.index(context.settings.description)
+        < index.index("<iframe")
+        < index.index("![model overview]")
+    )
+    page = (path / "docs" / "app.md").read_text(encoding="utf-8")
+    assert page.count('<iframe id="model-app"') == 1
+
+
+def test_the_index_is_unchanged_without_an_app(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    context, path = release
+    write_docs(context, path)
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert "iframe" not in index
+    assert "app.md" not in index
+    assert "model-app" not in index
+
+
+def test_one_partial_embeds_the_app() -> None:
+    root = Path(__file__).parents[2] / "src/sbmlsim/resources/release/docs"
+    partial = (root / "_app_embed.md.j2").read_text(encoding="utf-8")
+    assert '<iframe id="model-app"' in partial
+    assert "ResizeObserver" in partial
+    for name in ("app.md.j2", "index.md.j2"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert 'include "docs/_app_embed.md.j2"' in text
+        assert "iframe" not in text
+        assert "ResizeObserver" not in text
