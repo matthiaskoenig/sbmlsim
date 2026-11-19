@@ -1,13 +1,14 @@
 """Tests of the panels of the readouts sidecar of a figure."""
 
 import json
+import logging
 import re
 from pathlib import Path
 
 import pytest
 
-from sbmlsim.panel import ContractError, PanelSimulation
-from sbmlsim.panel_figure import panels_from_figure
+from sbmlsim.panel import AppFigure, ContractError, Panel, PanelSimulation
+from sbmlsim.panel_figure import panels_from_figure, restrict_to_model
 
 DATA = Path(__file__).parent / "data" / "figure"
 SVG = DATA / "model.svg"
@@ -200,3 +201,48 @@ def test_two_keys_of_one_panel_id_are_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(ContractError, match="twice"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
+
+
+def _built() -> tuple[dict[str, Panel], AppFigure]:
+    return panels_from_figure(SVG, READOUTS, simulation=SIMULATION, title="T")
+
+
+def test_an_id_the_model_lacks_is_dropped_and_reported(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    panels, figure = _built()
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.panel_figure"):
+        kept, restricted, dropped = restrict_to_model(
+            panels, figure, lambda i: i != "LI__Cis_gli"
+        )
+    assert dropped == ("LI__Cis_gli",)
+    assert [c.id for c in kept["li_gli"].curves] == ["LI__Cpl_gli", "LI__Cic_gli"]
+    assert "LI__Cis_gli" in caplog.text
+    assert restricted.panels["li/sub:gli"] == ("li_gli",)
+
+
+def test_a_group_with_every_id_missing_becomes_a_decoration() -> None:
+    panels, figure = _built()
+    gone = {c.id for c in panels["li_gli"].curves}
+    kept, restricted, dropped = restrict_to_model(
+        panels, figure, lambda i: i not in gone
+    )
+    assert "li_gli" not in kept
+    assert restricted.panels["li/sub:gli"] == ()
+    assert set(dropped) == gone
+    assert restricted.panels["li"] == ("li",)
+
+
+def test_a_complete_model_changes_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    panels, figure = _built()
+    kept, restricted, dropped = restrict_to_model(panels, figure, lambda i: True)
+    assert kept == panels
+    assert restricted == figure
+    assert dropped == ()
+    assert not caplog.records
+
+
+def test_a_model_with_no_readout_of_the_figure_is_refused() -> None:
+    panels, figure = _built()
+    with pytest.raises(ContractError, match="LI__Cpl_gli"):
+        restrict_to_model(panels, figure, lambda i: False)

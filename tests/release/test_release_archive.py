@@ -189,13 +189,19 @@ def test_the_archive_carries_extra_files(tmp_path: Path) -> None:
     png.write_bytes(b"\x89PNG")
     svg = tmp_path / "models" / "simple.svg"
     svg.write_text("<svg/>", encoding="utf-8")
-    results = _create(tmp_path, extra=(extra,), files=(md, png, svg))
-    assert list(results)[-4:] == [
+    sidecar = tmp_path / "models" / "simple.readouts.json"
+    sidecar.write_text("{}", encoding="utf-8")
+    results = _create(tmp_path, extra=(extra,), files=(md, png, svg, sidecar))
+    assert list(results)[-5:] == [
         "simple_fluid",
         "simple_fluid_md",
         "simple_png",
         "simple_svg",
+        "simple.readouts_json",
     ]
+    assert results["simple.readouts_json"]["entry"].format == (
+        "https://purl.org/NET/mediatypes/application/json"
+    )
     assert results["simple_fluid_md"]["entry"].location == "./models/simple_fluid.md"
     assert results["simple_fluid_md"]["entry"].format == EntryFormat.MARKDOWN
     assert results["simple_png"]["entry"].location == "./figures/simple.png"

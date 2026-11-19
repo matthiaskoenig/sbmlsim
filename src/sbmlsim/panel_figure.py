@@ -4,12 +4,15 @@ A model package which draws its model (pkpdsim writes `<sid>_body.svg` and
 `<sid>_body.readouts.json` beside it) gets the panel declarations of its app
 from the sidecar instead of writing them by hand: one panel per part of the
 drawing which has readouts, and the `AppFigure` which maps the key path of
-every part to its panel. The ids of the readouts are taken as the sidecar
-gives them and are not checked against a compiled model.
+every part to its panel. `panels_from_figure` takes the ids of the readouts as
+the sidecar gives them, since pkpdsim never compiles a model; `restrict_to_model`
+checks them against the compiled one.
 """
 
 import json
+import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +26,8 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelSimulation,
 )
+
+logger = logging.getLogger(__name__)
 
 CONTRACT = "figurereadouts/1"
 """The contract of the readouts sidecar this module reads."""
@@ -184,3 +189,60 @@ def panels_from_figure(
         panels=selection,
     )
     return panels, figure
+
+
+def restrict_to_model(
+    panels: dict[str, Panel],
+    figure: AppFigure,
+    has_selection: Callable[[str], bool],
+) -> tuple[dict[str, Panel], AppFigure, tuple[str, ...]]:
+    """Drop the readouts the compiled model does not have.
+
+    The ids of a sidecar are the ones of the id scheme of pkpdsim, which never
+    compiles a model, so a sidecar may name an id the model does not have. Such
+    a curve is dropped and reported in a warning; a panel left without a curve
+    is dropped and leaves the selection of its key, so a key whose ids are all
+    missing becomes a decoration which selects nothing.
+
+    Args:
+        panels: the panels by id, see `panels_from_figure`.
+        figure: the figure whose `panels` select them.
+        has_selection: whether the compiled model can select an id, e.g.
+            `SBMLModel.has_selection`.
+
+    Returns:
+        The panels which keep a curve, the figure which selects only them, and
+        the dropped ids in the order they appear, each once.
+
+    Raises:
+        ContractError: naming the dropped ids, if the model lacks readouts and
+            not one panel of the figure keeps a curve.
+    """
+    kept: dict[str, Panel] = {}
+    dropped: list[str] = []
+    for pid, panel in panels.items():
+        present = tuple(c for c in panel.curves if has_selection(c.id))
+        dropped.extend(c.id for c in panel.curves if not has_selection(c.id))
+        if present:
+            kept[pid] = (
+                panel
+                if len(present) == len(panel.curves)
+                else panel.model_copy(update={"curves": present})
+            )
+    dropped = list(dict.fromkeys(dropped))
+    if dropped:
+        if not kept:
+            raise ContractError(
+                f"The model has none of the readouts of the figure "
+                f"'{figure.title}'; missing {dropped}."
+            )
+        logger.warning(
+            "The model has not the readouts %s of the figure '%s'; they are left out.",
+            dropped,
+            figure.title,
+        )
+    selection = {
+        key: tuple(pid for pid in ids if pid in kept)
+        for key, ids in figure.panels.items()
+    }
+    return kept, figure.model_copy(update={"panels": selection}), tuple(dropped)

@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 #: the outputs of the factory which the release copies into `models`: the SBML,
 #: the equations (markdown), the antimony, the diagrams of the models (SVG)
 #: and the snippet of the interactive figure of a diagram (HTML)
-_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg", "*.html")
+_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg", "*.html", "*.json")
 _LICENSES = ("mit.txt", "cc-by-sa-4.0.txt")
 
 #: the folder of the specs of the steps in the release repository
