@@ -395,8 +395,8 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 
 ```text title="Output"
    scenario      mean       sd    q0.05     q0.95
-0   healthy   66252.0  26028.0  33722.0  114599.0
-1  impaired  193087.0  84095.0  90797.0  350923.0
+0   healthy   66253.0  26028.0  33722.0  114601.0
+1  impaired  193090.0  84096.0  90798.0  350928.0
        variable  index  correlated
 0            BW   0.54       False
 1  KI__HCTZEX_k   0.36       False
