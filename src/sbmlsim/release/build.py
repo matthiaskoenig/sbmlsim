@@ -41,6 +41,7 @@ __all__ = [
     "BuildPaths",
     "BuildResult",
     "BuildStep",
+    "app_name",
     "build",
     "build_steps",
     "has_distributions",

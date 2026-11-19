@@ -897,6 +897,8 @@ def test_the_app_of_the_model_is_a_page_of_the_site(
     assert {"App": "app.md"} in nav["project"]["nav"]
     readme = (path / "README.md").read_text(encoding="utf-8")
     assert f"{context.settings.site_url}{app}" in readme
+    assert "Open the app" in readme
+    assert readme.index("Open the app") < readme.index("Documentation: <")
 
 
 def test_no_app_page_without_an_app(release: tuple[ProjectContext, Path]) -> None:
@@ -904,7 +906,9 @@ def test_no_app_page_without_an_app(release: tuple[ProjectContext, Path]) -> Non
     write_docs(context, path)
     assert pages(context, path) == PAGES
     assert not (path / "docs" / "app.md").exists()
-    assert "App of the model" not in (path / "README.md").read_text(encoding="utf-8")
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    assert "Open the app" not in readme
+    assert "_app.html" not in readme
 
 
 def test_the_index_leads_with_the_app(release: tuple[ProjectContext, Path]) -> None:
