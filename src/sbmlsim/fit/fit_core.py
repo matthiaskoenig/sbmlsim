@@ -839,7 +839,8 @@ def run(
         if not reported:
             raise
         logger.warning(
-            "'%s': the fit was interrupted after %d of its %d runs.",
+            "'%s': the fit was interrupted, it keeps the %d of its %d runs "
+            "which finished.",
             problem.opid,
             len(reported),
             len(starts),
