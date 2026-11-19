@@ -851,3 +851,26 @@ def test_a_figure_of_curves_the_model_has_is_accepted(project: Project) -> None:
     registry = ModelRegistry.of_projects({"hctz": _with_figure(project, "[Cve_hctz]")})
     app = registry.entry("hctz").project.app
     assert app is not None and app.figure is not None
+
+
+def test_the_figure_survives_the_service_and_the_bundle(project: Project) -> None:
+    from sbmlsim.serve.export import build_bundle
+
+    registry = ModelRegistry.of_projects({"hctz": _with_figure(project, "[Cve_hctz]")})
+    with TestClient(create_app(registry)) as client:
+        served = client.get(APP).json()
+    bundled = build_bundle(registry, "hctz").content["answers"][""]["app"]
+    for body in (served, bundled):
+        assert body["figure"]["panels"] == {"li/sub:gli": ["li_gli"]}
+        assert body["figure"]["svg"] == "<svg/>"
+        assert body["figure"]["title"] == "Body"
+        assert body["pages"][0]["figure"] is False
+        assert body["pages"][0]["shown"] == []
+
+
+def test_an_app_without_a_figure_answers_none(client: TestClient) -> None:
+    body = client.get(APP).json()
+    assert body["figure"] is None
+    assert all(
+        page["figure"] is False and page["shown"] == [] for page in body["pages"]
+    )
