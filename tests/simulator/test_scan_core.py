@@ -148,15 +148,34 @@ def test_the_points_of_a_chunk_are_one_batch_of_the_threads_of_the_run(
 ) -> None:
     """A chunk is one batch of the engine, on the threads the workers of the run give it.
 
-    The chunks are the ones of the one python process of the run, four of
-    them, and not the ones of its threads: a batch costs a pool of threads of
-    the engine, so a chunk per thread would pay for one per chunk.
+    The points of a chunk of such a run are every point the cap of the engine
+    allows and not a quarter of them per worker, which is the chunking of a
+    pool: the parallelism of a run of the engine is inside its chunk, where
+    the engine spreads the points of the batch over its threads itself, so a
+    narrower chunk runs those threads with fewer points than they are and
+    costs the waves of the batches it was cut into.
     """
     batches = _spy(model_core, monkeypatch)
     result = Simulator(engine="core", n_workers=4).run(model_core, scan_of(32))
     assert result.ds.sizes["dose"] == 32
-    assert [points for points, _ in batches.batches] == [8, 8, 8, 8]
-    assert {threads for _, threads in batches.batches} == {4}
+    assert batches.batches == [(32, 4)]
+
+
+def test_a_scan_of_one_point_per_thread_runs_them_in_one_batch(
+    model_core: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan of as many points as the run has threads is one batch of all of them.
+
+    The four chunks per worker of a pool cut such a scan into four batches of
+    a quarter of its points, which left three of four threads of the engine
+    idle and cost four waves of integration where one does: the parallel scan
+    of the large model of `docs/benchmarks.md`, eight points on eight
+    workers, was 2.7 times its own time that way.
+    """
+    batches = _spy(model_core, monkeypatch)
+    result = Simulator(engine="core", n_workers=8).run(model_core, scan_of(8))
+    assert result.ds.sizes["dose"] == 8
+    assert batches.batches == [(8, 8)]
 
 
 def test_the_chunks_of_a_wide_scan_are_cut_at_the_cap_of_the_core(
@@ -202,7 +221,9 @@ def test_a_scan_does_not_depend_on_the_chunking(
     scan = scan_of(16)
     whole = Simulator(engine="core", n_workers=4).run(model_core, scan)
     monkeypatch.setattr(
-        simulator_module, "_chunk_size", lambda n_points, workers, most: 1
+        simulator_module,
+        "_chunk_size",
+        lambda n_points, workers, most, batched=False: 1,
     )
     singles = Simulator(engine="core", n_workers=4).run(model_core, scan)
     xr.testing.assert_identical(whole.ds, singles.ds)
@@ -286,7 +307,9 @@ def test_a_point_whose_request_fails_is_that_point(
     # the three points in one chunk, so that the two which keep their request
     # are one batch and run
     monkeypatch.setattr(
-        simulator_module, "_chunk_size", lambda n_points, workers, most: n_points
+        simulator_module,
+        "_chunk_size",
+        lambda n_points, workers, most, batched=False: n_points,
     )
     scan = scan_of(0, doses=[10.0, 50.0, 100.0])
     flagged = Simulator(engine="core", n_workers=2).run(
