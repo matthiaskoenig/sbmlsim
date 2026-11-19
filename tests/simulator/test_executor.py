@@ -1,9 +1,11 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
 import warnings
+from importlib.metadata import version as distribution_version
 
 import numpy as np
 import pytest
+from packaging.version import Version
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.event_rows import EVENT_TRIGGER_PREFIX
@@ -1409,6 +1411,15 @@ LOST_AT_THE_END = (
     "libroadrunner develop: an event whose trigger is true at the end of a "
     "variable step simulate never fires (sys-bio/roadrunner#1445)"
 )
+#: the first build of libroadrunner measured to fire such an event at a change,
+#: which 2.12.0.dev683, the floor of the package and the build of the lock, does
+#: not: the environments of tox resolve the newest build and would otherwise
+#: fail on the strict xfail of a case the build they got has fixed
+DOSE_AT_A_CHANGE_FIXED = Version("2.12.0.dev700")
+#: whether the build of this environment loses the event at a change
+LOSES_A_DOSE_AT_A_CHANGE = (
+    Version(distribution_version("libroadrunner")) < DOSE_AT_A_CHANGE_FIXED
+)
 
 
 @pytest.mark.parametrize("times", [False, True])
@@ -1426,7 +1437,11 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     the first change fired again at the second.
     """
     if (c1, ulps, at, times) == (1.0, 9, "between", False):
-        request.applymarker(pytest.mark.xfail(strict=True, reason=LOST_AT_THE_END))
+        request.applymarker(
+            pytest.mark.xfail(
+                LOSES_A_DOSE_AT_A_CHANGE, strict=True, reason=LOST_AT_THE_END
+            )
+        )
     c2 = _ulps_after(c1, ulps)
     te = {"first": c1, "between": _ulps_after(c1, 1), "second": c2}[at]
     start, end = c1 - 1.0, c1 + 1.0
