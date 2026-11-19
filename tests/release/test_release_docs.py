@@ -948,3 +948,12 @@ def test_one_partial_embeds_the_app() -> None:
         assert 'include "docs/_app_embed.md.j2"' in text
         assert "iframe" not in text
         assert "ResizeObserver" not in text
+
+
+def test_the_embed_measures_the_body_of_the_app() -> None:
+    root = Path(__file__).parents[2] / "src/sbmlsim/resources/release/docs"
+    partial = (root / "_app_embed.md.j2").read_text(encoding="utf-8")
+    # the document element of a framed page is as high as the frame itself
+    assert "contentDocument?.body" in partial
+    assert "documentElement" not in partial
+    assert "if (page)" in partial

@@ -3,7 +3,7 @@
 (() => {
   const frame = document.getElementById("model-app");
   const fit = () => {
-    const page = frame.contentDocument?.documentElement;
+    const page = frame.contentDocument?.body;
     if (page) frame.style.height = `${page.scrollHeight}px`;
   };
   frame.addEventListener("load", () => {
