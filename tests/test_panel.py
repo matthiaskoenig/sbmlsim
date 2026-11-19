@@ -1283,3 +1283,10 @@ def test_a_page_shows_a_figure_the_app_has(app: App) -> None:
     assert App(title="T", pages=(page,), figure=figure).figure == figure
     unused = AppPage(id="q", title="Q", panels=("a",))
     assert App(title="T", pages=(unused,), figure=figure).figure == figure
+
+
+@pytest.mark.parametrize("svg", ["", "   ", "\n\t "], ids=["empty", "spaces", "blank"])
+def test_a_figure_which_draws_nothing_is_refused(svg: str) -> None:
+    with pytest.raises(ValidationError, match="svg"):
+        AppFigure(svg=svg, title="T", panels={})
+    AppFigure(svg="<svg/>", title="T", panels={})

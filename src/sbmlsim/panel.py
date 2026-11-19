@@ -1086,8 +1086,8 @@ class AppFigure(BaseModel):
     """The figure of the model an app shows, which a reader clicks to pick panels.
 
     Attributes:
-        svg: the drawing as inline svg text, at most `MAX_FIGURE_BYTES` bytes
-            in UTF-8; its `data-k` attributes name the parts a reader clicks.
+        svg: the drawing as inline svg text, not blank, at most `MAX_FIGURE_BYTES`
+            bytes in UTF-8; its `data-k` attributes name the parts a reader clicks.
             It is trusted markup from the model package which assembles the
             app, the origin of the panels and the model itself, and not user
             input, so it is inserted as it is and not sanitized.
@@ -1101,7 +1101,7 @@ class AppFigure(BaseModel):
 
     model_config = _CONFIG
 
-    svg: str
+    svg: _Text
     title: _Text
     credit: str = ""
     panels: Mapping[str, tuple[str, ...]]
