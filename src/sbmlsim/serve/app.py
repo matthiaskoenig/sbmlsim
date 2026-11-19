@@ -100,6 +100,7 @@ from sbmlsim.serve.payload import (
     SimulateResponse,
 )
 from sbmlsim.serve.runner import (
+    DrawsError,
     ModelBusy,
     ModelEntry,
     ModelRegistry,
@@ -109,6 +110,7 @@ from sbmlsim.serve.runner import (
     UnknownPanel,
     UnknownVariant,
     check_app_variant,
+    check_draws,
     check_knobs,
     check_values,
 )
@@ -527,8 +529,9 @@ def create_app(
         Args:
             model: the id of the model.
             panel: the id of the panel.
-            request: the values of the knobs and the grid, which is read
-                against the limits of `sbmlsim.panel` before this runs.
+            request: the values of the knobs, the grid and the draws of the
+                band, which is read against the limits of `sbmlsim.panel`
+                before this runs.
 
         Returns:
             The curves of the run with their provenance and the hash of the
@@ -546,10 +549,12 @@ def create_app(
             UnknownVariant: a 422 for a variant the project does not have,
                 checked before the cache is read.
             HTTPException: a 422 for a knob id the panel does not declare,
-                and for a value of a knob, or the points of a grid over it,
+                for a value of a knob, or the points of a grid over it,
                 which the declaration of the variant does not take
-                (`check_values`), which are the errors of a request a run is
-                answered with and which are checked before the cache is read,
+                (`check_values`), and for more draws than the uncertainty of
+                the panel holds (`check_draws`), which are the errors of a
+                request a run is answered with and which are checked before
+                the cache is read,
                 a 503 of `OVERLOADED` with a `Retry-After` for a model which
                 has as many requests in the runner as it may, see the module,
                 and a 500 for every other failure of the run, whose message
@@ -572,7 +577,12 @@ def create_app(
                 return cached
             started = time.perf_counter()
             result = runner.run(
-                model, declaration, request.values, request.grid, variant
+                model,
+                declaration,
+                request.values,
+                request.grid,
+                variant,
+                draws=request.draws,
             )
             seconds = time.perf_counter() - started
             settings = entry.project.simulator
@@ -590,10 +600,11 @@ def create_app(
                     created=datetime.now(UTC).isoformat(),
                 ),
             )
-        except UnknownKnob as error:
-            # the ids which are no knobs of the panel and the values which
-            # are no values of their knobs (`KnobValueError`), the messages of
-            # a request which carry nothing of the service
+        except (UnknownKnob, DrawsError) as error:
+            # the ids which are no knobs of the panel, the values which are
+            # no values of their knobs (`KnobValueError`) and the draws the
+            # uncertainty of the panel does not have, the messages of a
+            # request which carry nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
         except ModelBusy:
             raise _overloaded() from None
@@ -904,6 +915,10 @@ def _spec_hash(
     `model_sha256`, and a changed declaration must not answer under the hash
     of the one before it, which a cache of the responses reads.
 
+    The draws of the uncertainty are the resolved ones (`check_draws`), so a
+    request which asks a panel of the curves alone for draws has the hash of
+    the request without them, which is the answer it gets.
+
     Args:
         entry: the model of the request.
         panel: the panel of the request.
@@ -935,6 +950,7 @@ def _spec_hash(
                 for knob in panel.knobs
                 if knob.id in request.grid
             },
+            "draws": check_draws(panel, request.draws),
             "simulator": entry.project.simulator.model_dump(mode="json"),
             "sbmlsim": sbmlsim.__version__,
         }

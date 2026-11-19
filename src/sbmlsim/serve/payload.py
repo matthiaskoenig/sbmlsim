@@ -51,7 +51,14 @@ from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from sbmlsim.panel import APP_CONTRACT, CONTRACT, MAX_GRID, MAX_KNOBS, app_payload
+from sbmlsim.panel import (
+    APP_CONTRACT,
+    CONTRACT,
+    MAX_DRAWS,
+    MAX_GRID,
+    MAX_KNOBS,
+    app_payload,
+)
 from sbmlsim.serve.jobs import MAX_EXPERIMENTS, JobStatus
 
 if TYPE_CHECKING:
@@ -60,7 +67,7 @@ if TYPE_CHECKING:
     from sbmlsim.panel import App, Panel
     from sbmlsim.serve.data import PanelSeries
     from sbmlsim.serve.jobs import Job
-    from sbmlsim.serve.runner import GridAxis, PanelResult, SharedKnob
+    from sbmlsim.serve.runner import GridAxis, PanelBand, PanelResult, SharedKnob
 
 __all__ = [
     "DATA_CONTRACT",
@@ -68,6 +75,7 @@ __all__ = [
     "AppPagePayload",
     "AppResponse",
     "AppVariantPayload",
+    "BandPayload",
     "ExperimentsRequest",
     "GridAxisPayload",
     "HealthResponse",
@@ -85,6 +93,7 @@ __all__ = [
     "SimulateRequest",
     "SimulateResponse",
     "Status",
+    "UncertaintyPayload",
 ]
 
 #: the version of the wire contract of the study data of a panel, in the body
@@ -110,6 +119,9 @@ type _Value = Annotated[float, Field(allow_inf_nan=False)]
 #: the points of one axis of a grid, see `SimulateRequest`
 type _Points = Annotated[int, Field(ge=1, le=MAX_GRID)]
 
+#: the draws of the uncertainty a request asks for, see `SimulateRequest`
+type _Draws = Annotated[int, Field(ge=0, le=MAX_DRAWS)]
+
 
 class SimulateRequest(BaseModel):
     """The body of a simulation of a panel, see the module.
@@ -127,6 +139,13 @@ class SimulateRequest(BaseModel):
             that variant (`Project.panels_of`) runs on its SBML. Without, the
             declaration of the default variant runs on the variant it
             declares (`PanelSimulation.variant`), the default without.
+        draws: the draws of the uncertainty of the panel
+            (`sbmlsim.panel.PanelUncertainty`) to run next to its curves, the
+            first ones of the sample of its model; `0` runs the curves alone,
+            and more than the `max_draws` the panel declares is refused rather
+            than cut, so a page never states a band it did not get. A panel
+            which declares no uncertainty runs no draw whatever it is asked
+            for.
 
     The ids of the knobs and the variant are at most `MAX_ID` characters.
     """
@@ -136,6 +155,7 @@ class SimulateRequest(BaseModel):
     values: dict[_Id, _Value] = Field(default_factory=dict, max_length=MAX_KNOBS)
     grid: dict[_Id, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
     variant: _Id | None = None
+    draws: _Draws = 0
 
     @model_validator(mode="after")
     def _check_grid(self) -> Self:
@@ -237,6 +257,86 @@ class Status(BaseModel):
     failed: list[int]
 
 
+class BandPayload(BaseModel):
+    """The band of one curve of one point of the grid, the payload of a `CurveBand`.
+
+    Attributes:
+        low: the lower end of the band at every output time, `null` at a time
+            at which no draw integrated.
+        high: the upper end, as `low`.
+    """
+
+    model_config = _CONFIG
+
+    low: list[float | None]
+    high: list[float | None]
+
+
+class UncertaintyPayload(BaseModel):
+    """The band of the draws of a simulation, the payload of a `PanelBand`.
+
+    Attributes:
+        draws: the draws the band is the percentiles of, the first ones of the
+            sample of the model.
+        fit: the fit the uncertainty of the parameters comes from, empty for a
+            model whose uncertainties carry no name.
+        level: the level of the band, the one the panel declares.
+        band: the band of every curve, one per point of the grid in C order,
+            as the rows of `SimulateResponse.curves` are.
+        curves: the curve of every draw, a row per draw in the order of the
+            sample, for a request of one point alone, where their size is
+            bounded; `null` for a request over a grid, where the band travels
+            alone, since the draws of every point of it would be the rows of
+            the grid over again.
+        failed: the flat indices in C order of the draws which did not
+            integrate, over the points of the grid and their draws, and which
+            are no member of the percentiles.
+    """
+
+    model_config = _CONFIG
+
+    draws: int
+    fit: str
+    level: float
+    band: dict[str, list[BandPayload]]
+    curves: dict[str, list[list[float | None]]] | None
+    failed: list[int]
+
+    @classmethod
+    def of(cls, band: PanelBand) -> UncertaintyPayload:
+        """Get the payload of the band of a run.
+
+        Args:
+            band: the band of the result of the run.
+
+        Returns:
+            The payload, the values which are not finite as `null`.
+        """
+        return cls(
+            draws=band.draws,
+            fit=band.fit,
+            level=band.level,
+            band={
+                name: [
+                    BandPayload(
+                        low=_finite(list(one.low)), high=_finite(list(one.high))
+                    )
+                    for one in points
+                ]
+                for name, points in band.band.items()
+            },
+            curves=(
+                None
+                if band.curves is None
+                else {
+                    name: [_finite(row) for row in rows]
+                    for name, rows in band.curves.items()
+                }
+            ),
+            failed=list(band.failed),
+        )
+
+
 class SimulateResponse(BaseModel):
     """The answer of a simulation of a panel, see the module.
 
@@ -255,6 +355,8 @@ class SimulateResponse(BaseModel):
             one unit.
         provenance: where the curves come from.
         status: the outcome of the run.
+        uncertainty: the band of the draws a request asked for, `null` for one
+            which asked for none, see `UncertaintyPayload`.
     """
 
     model_config = _CONFIG
@@ -267,6 +369,7 @@ class SimulateResponse(BaseModel):
     units: dict[str, str | None]
     provenance: Provenance
     status: Status
+    uncertainty: UncertaintyPayload | None = None
 
     @classmethod
     def of(
@@ -297,6 +400,11 @@ class SimulateResponse(BaseModel):
                 ok=not result.failed,
                 points=points,
                 failed=list(result.failed),
+            ),
+            uncertainty=(
+                None
+                if result.uncertainty is None
+                else UncertaintyPayload.of(result.uncertainty)
             ),
         )
 

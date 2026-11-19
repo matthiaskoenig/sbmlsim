@@ -101,7 +101,8 @@ import math
 import threading
 from collections.abc import Generator, Iterable, Mapping, Sequence, Set
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from tokenize import TokenError
 from typing import TYPE_CHECKING, Any, Final
@@ -110,10 +111,19 @@ import numpy as np
 from pint.errors import PintError
 from pint.facets.plain import PlainUnit
 
+from sbmlsim.distrib import UNCERTAINTY_DIMENSION
 from sbmlsim.engine import Engine
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.model.model_sbml import SBMLModel, load_model
-from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData, dose_times
+from sbmlsim.panel import (
+    AppPage,
+    Knob,
+    Panel,
+    PanelCurve,
+    PanelData,
+    PanelUncertainty,
+    dose_times,
+)
 from sbmlsim.project import Project, load_project
 from sbmlsim.result.scan import STATUS, TIME
 from sbmlsim.serve.cache import BoundedCache
@@ -132,12 +142,15 @@ __all__ = [
     "MAX_WAITING",
     "SHARED_ENGINES",
     "UNITLESS",
+    "CurveBand",
     "DeliveredUnit",
+    "DrawsError",
     "GridAxis",
     "KnobValueError",
     "ModelBusy",
     "ModelEntry",
     "ModelRegistry",
+    "PanelBand",
     "PanelResult",
     "PanelRunner",
     "PanelUnits",
@@ -148,6 +161,7 @@ __all__ = [
     "UnknownVariant",
     "X",
     "check_app_variant",
+    "check_draws",
     "check_knobs",
     "check_values",
     "check_variant",
@@ -195,6 +209,11 @@ MAX_WAITING: Final = 8
 #: the ones whose curves do not change with the selections of a scan
 SHARED_ENGINES: Final = frozenset({Engine.ROADRUNNER})
 
+#: the samples of the uncertainties of the models which are kept, one per
+#: model, number of draws and seed; a sample is drawn by reading the SBML and
+#: is the same for every request of its model, see `_sample`
+_SAMPLES: Final = 8
+
 #: the errors the parsing of a unit raises: the ones of pint, whose
 #: `UndefinedUnitError` is an `AttributeError`, and the ones of its parser, see
 #: `sbmlsim.units.short_unit`
@@ -226,6 +245,17 @@ class KnobValueError(UnknownKnob):
     service: a value outside the bounds of a range knob, a value which is none
     of the choices of a choice knob, or a grid over a choice knob of other
     points than its choices.
+    """
+
+
+class DrawsError(ValueError):
+    """More draws of its uncertainty than the panel of a run declares.
+
+    Like `UnknownKnob` it is an error of a request, with a message which names
+    the panel and the draws of its sample and nothing of the service: a 422.
+    More draws than the sample holds are refused rather than cut, as a value
+    outside the bounds of a knob is refused, so a page never states a band it
+    did not get.
     """
 
 
@@ -314,6 +344,37 @@ def check_knobs(
         raise UnknownKnob(
             f"{unknown} are no knobs of the panel '{panel.id}', which has {knobs}."
         )
+
+
+def check_draws(panel: Panel, draws: int) -> int:
+    """Get the draws of a request, against the uncertainty a panel declares.
+
+    It is a check of a request and needs no model, as `check_knobs` is: a
+    request for draws a panel does not have is refused before anything is
+    loaded and never answered from a cache.
+
+    Args:
+        panel: the panel of the request.
+        draws: the draws the request asks for, `0` for none.
+
+    Returns:
+        The draws to run: the ones which were asked for, and `0` for a request
+        which asked for none and for a panel which declares no uncertainty,
+        whatever it asked for, so a panel of the curves alone answers the
+        curves alone.
+
+    Raises:
+        DrawsError: naming the panel, for more draws than its sample holds.
+    """
+    declared = panel.simulation.uncertainty
+    if declared is None or draws <= 0:
+        return 0
+    if draws > declared.max_draws:
+        raise DrawsError(
+            f"The panel '{panel.id}' carries {declared.max_draws} draws of its "
+            f"uncertainty, {draws} were asked for."
+        )
+    return draws
 
 
 def check_values(
@@ -1035,6 +1096,47 @@ class PanelUnits:
 
 
 @dataclass(frozen=True)
+class CurveBand:
+    """The band of one curve of one point of the grid, see `PanelBand`.
+
+    Attributes:
+        low: the lower end of the band at every output time, `NaN` at a time
+            at which no draw integrated.
+        high: the upper end, as `low`.
+    """
+
+    low: tuple[float, ...]
+    high: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class PanelBand:
+    """The band of the draws of the uncertainty of a run, see `PanelResult`.
+
+    Attributes:
+        draws: the draws the band is the percentiles of, the first ones of the
+            sample of the model.
+        fit: the fit the uncertainty of the parameters comes from, empty for a
+            model whose uncertainties carry no name, see `uncertainty_name`.
+        level: the level of the band, the one the panel declares.
+        band: the band of every curve, one per point of the grid in C order.
+        curves: the curve of every draw, a row per draw in the order of the
+            sample, for a run of one point alone, where their size is bounded;
+            `None` for a run over a grid, where the band travels alone.
+        failed: the flat indices in C order of the draws which did not
+            integrate, over the points of the grid and their draws, and which
+            are no member of the percentiles.
+    """
+
+    draws: int
+    fit: str
+    level: float
+    band: Mapping[str, tuple[CurveBand, ...]]
+    curves: Mapping[str, list[list[float]]] | None
+    failed: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class PanelResult:
     """The result of a run of a panel, see the module.
 
@@ -1050,6 +1152,8 @@ class PanelResult:
             sides of an axis state one unit.
         failed: the flat indices in C order of the points which did not
             integrate, whose rows are `NaN`.
+        uncertainty: the band of the draws a request asked for, `None` for a
+            run of the curves alone, see `PanelBand`.
     """
 
     x: tuple[float, ...]
@@ -1057,6 +1161,7 @@ class PanelResult:
     curves: Mapping[str, list[list[float]]]
     units: Mapping[str, str | None]
     failed: tuple[int, ...]
+    uncertainty: PanelBand | None = None
 
 
 #: the key of a warm model: the id of its entry and the SBML file it is loaded
@@ -1101,6 +1206,9 @@ class _Resolved:
             point of the grid (one for a request of a point), each the target,
             its times and the increment of a dose in the unit of the model;
             empty for a panel without a dosing protocol, see `_doses`.
+        sample: the draws of the uncertainty by their target, in the units of
+            the model, the last dimension of the scan; empty for a run of the
+            curves alone, see `_sample`.
     """
 
     scan: Scan
@@ -1108,6 +1216,7 @@ class _Resolved:
     preinit: Mapping[str, Any]
     grid: Mapping[str, Any]
     doses: tuple[tuple[tuple[str, tuple[float, ...], float], ...], ...] = ()
+    sample: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1242,6 +1351,7 @@ class PanelRunner:
         values: Mapping[str, float],
         grid: Mapping[str, int],
         variant: str | None = None,
+        draws: int = 0,
     ) -> PanelResult:
         """Run a panel of a model at a point of its knobs or over a grid.
 
@@ -1263,10 +1373,15 @@ class PanelRunner:
                 `Knob.values`.
             variant: the variant of the model to simulate, the one the panel
                 declares without.
+            draws: the draws of the uncertainty of the panel to run next to
+                its curves, at most the `max_draws` it declares; `0` runs the
+                curves alone and is what a panel without an uncertainty runs
+                whatever it is asked for.
 
         Returns:
             The result, see `PanelResult`; a point which did not integrate is
-            `NaN` and its flat index is in `failed`.
+            `NaN` and its flat index is in `failed`, and the band of the draws
+            is `uncertainty`.
 
         Raises:
             UnknownModel: for a model which is not served.
@@ -1282,16 +1397,20 @@ class PanelRunner:
                 time unit of the model, see `_times`, and for a unit of a
                 curve which is no unit of its values, see `curve_unit`;
                 naming the panel, for limits of its axes which are no limits
-                of the units it is delivered in, see `_check_limits`. The
-                limits of a request (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`)
-                are checked where a request is read.
+                of the units it is delivered in, see `_check_limits`; for
+                more draws than the panel declares, and for a panel whose
+                model has no parameter with a distribution. The limits of a
+                request (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`) are checked
+                where a request is read.
         """
         entry = self.registry.entry(model_id)
         check_knobs(panel, values, grid)
         check_variant(entry, variant)
         name = panel.simulation.variant if variant is None else variant
         with self._admitted(entry.id):
-            return self._run_admitted(entry, panel, values, grid, name)
+            return self._run_admitted(
+                entry, panel, values, grid, name, check_draws(panel, draws)
+            )
 
     def _run_admitted(
         self,
@@ -1300,8 +1419,15 @@ class PanelRunner:
         values: Mapping[str, float],
         grid: Mapping[str, int],
         name: str | None,
+        draws: int = 0,
     ) -> PanelResult:
         """Run a panel of a request which was admitted into the runner, see `run`.
+
+        The curves of a request and the draws of its band are two runs: the
+        curves are the model at its own parameters and are shared with every
+        request of that state, whatever draws it asks for, and the draws are a
+        run of their own, shared with every request which asks for the same
+        ones (`_run_key`).
 
         Args:
             entry: the entry of the model.
@@ -1309,6 +1435,8 @@ class PanelRunner:
             values: the value of a knob by its id.
             grid: the points of a knob of the grid by its id.
             name: the variant of the model to simulate.
+            draws: the draws of the uncertainty to run, `0` for none, as
+                `check_draws` resolved them.
 
         Returns:
             The result, see `run`.
@@ -1317,33 +1445,70 @@ class PanelRunner:
         warm = self._warm_model(entry, name)
         _check_limits(warm.model, panel)
         with warm.lock:
-            resolved = _scan(warm.model, panel, values, grid)
             curves = [curve.id for curve in panel.curves]
             runs = self._runs
-            if runs is None or entry.project.simulator.engine not in SHARED_ENGINES:
-                result = _run(warm, panel, resolved.scan, curves)
-                return _result(warm.model, panel, resolved.axes, result)
-            key = _run_key(warm, entry, panel, resolved)
-            stored = runs.get(key)
-            if stored is not None and stored.selections.issuperset(curves):
-                logger.debug(
-                    "The panel '%s' of the model '%s' is read out of the run '%s'.",
-                    panel.id,
-                    model_id,
-                    key,
-                )
-                return _result(warm.model, panel, resolved.axes, stored.result)
-            selections = _selections(
-                warm.model, panel, entry.project.panels_of(name).values()
+            shares = runs is not None and (
+                entry.project.simulator.engine in SHARED_ENGINES
             )
-            # the curves of the run it replaces as well, so the panels which
-            # read that run read this one and two groups of one state do not
-            # replace each other's run back and forth
-            if stored is not None:
-                selections += sorted(stored.selections.difference(selections))
-            result = _run(warm, panel, resolved.scan, selections)
-            runs.store(key, _Run(result=result, selections=frozenset(selections)))
-            return _result(warm.model, panel, resolved.axes, result)
+
+            def ran(resolved: _Resolved) -> ScanResult:
+                """Run a resolved scan, or read it out of the run it shares."""
+                if runs is None or not shares:
+                    return _run(warm, panel, resolved.scan, curves)
+                key = _run_key(warm, entry, panel, resolved)
+                stored = runs.get(key)
+                if stored is not None and stored.selections.issuperset(curves):
+                    logger.debug(
+                        "The panel '%s' of the model '%s' is read out of the run '%s'.",
+                        panel.id,
+                        model_id,
+                        key,
+                    )
+                    return stored.result
+                selections = _selections(
+                    warm.model, panel, entry.project.panels_of(name).values()
+                )
+                # the curves of the run it replaces as well, so the panels
+                # which read that run read this one and two groups of one
+                # state do not replace each other's run back and forth
+                if stored is not None:
+                    selections += sorted(stored.selections.difference(selections))
+                ran_result = _run(warm, panel, resolved.scan, selections)
+                runs.store(
+                    key, _Run(result=ran_result, selections=frozenset(selections))
+                )
+                return ran_result
+
+            resolved = _scan(warm.model, panel, values, grid)
+            result = _result(warm.model, panel, resolved.axes, ran(resolved))
+            declared = panel.simulation.uncertainty
+            if draws == 0 or declared is None:
+                return result
+            path = warm.key[1]
+            sample = _sample(path, declared.max_draws, declared.seed)
+            drawn = _scan(
+                warm.model,
+                panel,
+                values,
+                grid,
+                sample={
+                    target: numbers[:draws] for target, numbers in sample.values.items()
+                },
+            )
+            points = math.prod(len(axis.values) for axis in resolved.axes)
+            return replace(
+                result,
+                uncertainty=_band(
+                    warm.model,
+                    panel,
+                    declared,
+                    ran(drawn),
+                    points=points,
+                    draws=draws,
+                    times=len(result.x),
+                    fit=sample.fit,
+                ),
+            )
 
     def units(
         self, entry: ModelEntry, panel: Panel, variant: str | None = None
@@ -1559,7 +1724,9 @@ def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) 
     project, the times and the resolved scan: the values of the
     pre-initialization and of the dimension of the grid by their target, in
     the canonical order of the targets in which `_scan` gives them to the
-    simulator, whatever order the panel declares its knobs in. Every number is
+    simulator, whatever order the panel declares its knobs in, and the draws
+    of its uncertainty, so a run of a band and the run of its curves alone are
+    two runs and a request for other draws is one of its own. Every number is
     the exact double (`_exact`), so two states which differ in the last bit
     are two runs. The ids of the knobs and the panel are no part of it: a
     panel whose knobs resolve to the scan of another one is answered by its
@@ -1587,6 +1754,7 @@ def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) 
             "points": panel.simulation.points,
             "preinit": [[t, _exact(v)] for t, v in resolved.preinit.items()],
             "grid": [[t, _exact(v)] for t, v in resolved.grid.items()],
+            "sample": [[t, _exact(v)] for t, v in sorted(resolved.sample.items())],
             "doses": [
                 [[t, [_exact(x) for x in times], _exact(d)] for t, times, d in point]
                 for point in resolved.doses
@@ -1625,6 +1793,7 @@ def _scan(
     panel: Panel,
     values: Mapping[str, float],
     grid: Mapping[str, int],
+    sample: Mapping[str, Any] | None = None,
 ) -> _Resolved:
     """Get the scan of a request and the axes of its grid.
 
@@ -1643,15 +1812,25 @@ def _scan(
     the numbers of the knobs in their declared units, and its value is the
     value of its target in the unit of the model, see `PanelSimulation`.
 
+    The draws of the uncertainty are the last dimension of the scan, so the
+    rows of the result are the points of the grid, each with its draws: the
+    row of the point `p` and the draw `d` is `p * draws + d`. A draw sets the
+    parameters of the model it was drawn for, over the pre-initialization of
+    its point and over a value of the grid which sets one of them, since a
+    draw is of the fit of that parameter and not of a knob of the panel.
+
     Args:
         model: the model, which resolves the units of the knobs.
         panel: the panel.
         values: the value of a knob by its id.
         grid: the points of a knob of the grid by its id.
+        sample: the draws of the uncertainty by their target, in the units of
+            the model (`_sample`), `None` or empty for a run without a band.
 
     Returns:
         The scan, of one dimension for a request of a grid and none for one of
-        a point, the axes of the grid, one per knob of the grid in the order
+        a point, with the dimension of the draws after it for a request of a
+        band, the axes of the grid, one per knob of the grid in the order
         of the knobs of the panel, and the values it sets, see `_Resolved`.
 
     Raises:
@@ -1712,6 +1891,8 @@ def _scan(
         if gridded and changed
         else []
     )
+    drawn = dict(sample or {})
+    draws = [Dimension(UNCERTAINTY_DIMENSION, values=drawn)] if drawn else []
     # the output times are integrated to, so a curve is the solution at its
     # times and not the line between the steps of the integrator around them
     times = output_times(panel).tolist()
@@ -1737,11 +1918,12 @@ def _scan(
         )
         simulation = next(iter(simulations.values()))
         return _Resolved(
-            scan=Scan(simulation, [dimension]),
+            scan=Scan(simulation, [dimension, *draws]),
             axes=axes,
             preinit=preinit,
             grid=changed,
             doses=tuple(doses),
+            sample=drawn,
         )
     simulation = Simulation(
         end=panel.simulation.end,
@@ -1750,11 +1932,12 @@ def _scan(
         times=times,
     )
     return _Resolved(
-        scan=Scan(simulation, dimensions),
+        scan=Scan(simulation, [*dimensions, *draws]),
         axes=axes,
         preinit=preinit,
         grid=changed,
         doses=tuple(doses[:1]),
+        sample=drawn,
     )
 
 
@@ -2363,6 +2546,137 @@ def _times(
             time of it, see `_x_unit`.
     """
     return delivered_times(model, panel, result.quantity(TIME))
+
+
+@dataclass(frozen=True)
+class _Sample:
+    """The sample of the uncertainty of a model, see `_sample`.
+
+    Attributes:
+        fit: the fit the uncertainties of the parameters are named after,
+            empty for a model whose uncertainties carry no name.
+        values: the draws of every parameter which has a distribution, in the
+            unit of the parameter in the model.
+    """
+
+    fit: str
+    values: Mapping[str, Any]
+
+
+@lru_cache(maxsize=_SAMPLES)
+def _sample(path: Path, max_draws: int, seed: int) -> _Sample:
+    """Draw the sample of the uncertainty of a model, once per model and seed.
+
+    The sample is the Latin hypercube of the distrib distributions of the
+    parameters of the model (`uncertainty_dimension`), of `max_draws` draws
+    whatever a request asks for: a request runs the first ones of it, so the
+    band of a model settles as a reader asks for more draws instead of
+    jumping, and the band of the service is the band of its static bundle,
+    which carries the same sample (`sbmlsim.serve.export`).
+
+    Args:
+        path: the SBML of the variant, the model a run integrates on.
+        max_draws: the draws of the sample, the most a request may ask for.
+        seed: the seed of the Latin hypercube.
+
+    Returns:
+        The sample, see `_Sample`; it is cached and never written into.
+
+    Raises:
+        ValueError: if no parameter of the model has a distribution.
+    """
+    # the sampling package reaches the fit and the experiment layers, which
+    # import this one, so the draws are imported where they are drawn
+    from sbmlsim.simulation.sampling.model_distributions import (
+        uncertainty_dimension,
+        uncertainty_name,
+    )
+
+    dimension = uncertainty_dimension(path, draws=max_draws, seed=seed)
+    return _Sample(fit=uncertainty_name(path), values=dict(dimension.values))
+
+
+def _band(
+    model: SBMLModel,
+    panel: Panel,
+    declared: PanelUncertainty,
+    result: ScanResult,
+    *,
+    points: int,
+    draws: int,
+    times: int,
+    fit: str,
+) -> PanelBand:
+    """Reduce the draws of a run to the band of every curve of its panel.
+
+    The rows of the result are the points of the grid, each with its draws
+    (`_scan`), so the sample of a point is its own and the band of a point is
+    the percentiles of that sample, time by time: the levels
+    `(1 - level) / 2` and `(1 + level) / 2` of the finite draws, the linear
+    interpolation of their order statistics (`nan_quantile`). A draw which did
+    not integrate is `NaN` and no member of them, and a time at which no draw
+    integrated has no band.
+
+    Args:
+        model: the model of the panel, whose unit ids a curve may name.
+        panel: the panel.
+        declared: the uncertainty the panel declares, whose level the band is
+            of.
+        result: the result of the run of the draws.
+        points: the points of the grid, 1 for a request of a point.
+        draws: the draws of every point.
+        times: the output times of a row.
+        fit: the fit the uncertainty comes from.
+
+    Returns:
+        The band, see `PanelBand`.
+
+    Raises:
+        KeyError: for a curve which is no variable of the result.
+        ValueError: naming both units, for a unit of a curve which is no unit
+            of its values, see `curve_unit`.
+    """
+    # the band of a figure is the same reduction (`sbmlsim.plot.points`), so
+    # the service and the figures of a report answer one band; the import is
+    # here and not at the top because the plot layer reaches this one
+    from sbmlsim.plot.points import nan_quantile
+
+    low_level = (1.0 - declared.level) / 2.0
+    high_level = (1.0 + declared.level) / 2.0
+    band: dict[str, tuple[CurveBand, ...]] = {}
+    # the curves of the draws themselves travel for a request of one point,
+    # where their size is bounded; over a grid the band travels alone
+    curves: dict[str, list[list[float]]] | None = {} if points == 1 else None
+    for curve in panel.curves:
+        quantity = result.quantity(curve.id)
+        delivered = curve_unit(model, curve)
+        if delivered.unit is not None:
+            quantity = quantity.to(delivered.unit)
+        values = np.asarray(quantity.magnitude, dtype=float).reshape(
+            points, draws, times
+        )
+        if curves is not None:
+            curves[curve.id] = values[0].tolist()
+        over = np.moveaxis(values, 1, -1)
+        low = nan_quantile(over, low_level)
+        high = nan_quantile(over, high_level)
+        band[curve.id] = tuple(
+            CurveBand(low=tuple(low[point]), high=tuple(high[point]))
+            for point in range(points)
+        )
+    status = result.ds.get(STATUS)
+    failed: tuple[int, ...] = ()
+    if status is not None:
+        flags = np.asarray(status.values).reshape(-1)
+        failed = tuple(int(index) for index in np.flatnonzero(flags))
+    return PanelBand(
+        draws=draws,
+        fit=fit,
+        level=declared.level,
+        band=band,
+        curves=curves,
+        failed=failed,
+    )
 
 
 def _result(
