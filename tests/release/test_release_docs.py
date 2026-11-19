@@ -921,9 +921,10 @@ def test_the_index_leads_with_the_app(release: tuple[ProjectContext, Path]) -> N
     assert index.count('<iframe id="model-app"') == 1
     assert f'src="{app}"' in index
     assert "(app.md)" in index
-    # after the description, before the model figure
+    # the description, the line which offers the larger view, the app, the figure
     assert (
         index.index(context.settings.description)
+        < index.index("(app.md)")
         < index.index("<iframe")
         < index.index("![model overview]")
     )
