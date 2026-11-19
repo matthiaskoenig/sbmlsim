@@ -384,6 +384,7 @@ def run_optimization(
                 provenance=provenance,
                 selected=selected,
                 optimizer=optimizer,
+                show_progress=show_progress,
             )
         logger.info(
             "%s: the fit does not run in the engine: %s",
@@ -509,14 +510,17 @@ def _run_optimization_in_the_engine(
     provenance: FitProvenance | None,
     selected: Sequence[int],
     optimizer: Mapping[str, Any],
+    show_progress: bool = True,
 ) -> OptimizationResult:
     """Run the whole fit in the engine and get its result.
 
     The engine runs the starts of the fit next to each other on the threads
     of one batch and answers when all of them finished, so the fit has no
-    workers of its own, no progress of its runs and no run which is written
-    while it runs: the runs of a `runs_dir` are written when the answer is
-    there, which is what a fit which is interrupted leaves of itself.
+    workers of its own, no run which is written while it runs and no run
+    which is reported before the others: the runs of a `runs_dir` are written
+    when the answer is there, which is what a fit which is interrupted leaves
+    of itself, and the activity of the fit counts all of its runs at once,
+    which is what says how long a long fit has been running.
     """
     threads = resolve_n_cores(n_cores)
     display.key_values(
@@ -525,19 +529,23 @@ def _run_optimization_in_the_engine(
             "workers": f"{threads} (threads of the engine, one fit)",
         }
     )
-    opt_result = fit_core.run(
-        problem,
-        settings,
-        size=size,
-        algorithm=algorithm,
-        seed=seed,
-        sampling=sampling,
-        indices=selected,
-        threads=threads,
-        timeout=timeout,
-        provenance=provenance,
-        **optimizer,
-    )
+    with optimization_progress(
+        "optimizing", len(selected), show_progress, workers=len(selected)
+    ) as progress:
+        opt_result = fit_core.run(
+            problem,
+            settings,
+            size=size,
+            algorithm=algorithm,
+            seed=seed,
+            sampling=sampling,
+            indices=selected,
+            threads=threads,
+            timeout=timeout,
+            provenance=provenance,
+            **optimizer,
+        )
+        _advance(progress, len(selected))
     for k, fit in zip(selected, opt_result.fits, strict=True):
         _store_run(
             problem=problem,
