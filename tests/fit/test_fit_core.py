@@ -551,10 +551,11 @@ def test_a_fit_of_the_engine_which_is_interrupted_keeps_the_runs_it_reported(
     )
 
     assert result.interrupted
-    assert len(result.fits) == 2
     assert reported == [0, 1]
-    costs = [fit.cost for fit in result.fits]
-    assert costs == sorted(costs)
+    starts = problem.start_values(5, seed=1234)[:2]
+    assert len(result.fits) == 2
+    for fit, start in zip(result.fits, starts, strict=True):
+        np.testing.assert_allclose(fit.x0, np.asarray(start, dtype=float), rtol=1e-12)
 
 
 def test_a_fit_of_the_engine_which_is_interrupted_before_a_run_is_no_fit(

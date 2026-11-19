@@ -780,7 +780,8 @@ def run(
             fit call it with every run when the fit answered.
 
     Returns:
-        The result of the fit, the runs of its starts sorted by their cost.
+        The result of the fit, a run per start of it in the order of the
+        starts, which `OptimizationResult.df_fits` sorts by their cost.
 
     Raises:
         ValueError: if the problem is not initialized, if it has no model or
