@@ -18,6 +18,7 @@ from sbmlsim.panel import (
     MAX_CURVES,
     MAX_DRAWS,
     MAX_END,
+    MAX_FIGURE_BYTES,
     MAX_GRID,
     MAX_KNOBS,
     MAX_POINTS,
@@ -1240,16 +1241,45 @@ def test_an_app_without_a_figure_reads_as_it_did(app: App) -> None:
 def test_a_page_shows_the_panels_it_lists() -> None:
     with pytest.raises(ValidationError, match="shown"):
         AppPage(id="p", title="P", panels=("a",), shown=("b",))
+    with pytest.raises(ValidationError, match="without `figure`"):
+        AppPage(id="p", title="P", panels=("a",), shown=("a",))
+    with pytest.raises(ValidationError, match="twice"):
+        AppPage(id="p", title="P", panels=("a",), figure=True, shown=("a", "a"))
     page = AppPage(id="p", title="P", panels=("a", "b"), figure=True, shown=("b",))
     assert page.figure and page.shown == ("b",)
 
 
 def test_a_figure_selects_panels_the_app_has(app: App) -> None:
     figure = AppFigure(svg="<svg/>", title="T", panels={"li": ("nope",)})
-    with pytest.raises(ValidationError, match="unknown panel"):
+    with pytest.raises(ValidationError, match="no page of the app lists"):
         App.model_validate({**app.model_dump(), "figure": figure.model_dump()})
 
 
 def test_an_inline_figure_is_bounded() -> None:
     with pytest.raises(ValidationError, match="512"):
         AppFigure(svg="<svg>" + "x" * (512 * 1024), title="T", panels={})
+
+
+def test_the_figure_limit_is_inclusive() -> None:
+    head = "<svg>"
+    AppFigure(svg=head + "x" * (MAX_FIGURE_BYTES - len(head) - 1), title="T", panels={})
+    AppFigure(svg=head + "x" * (MAX_FIGURE_BYTES - len(head)), title="T", panels={})
+    with pytest.raises(ValidationError, match="512"):
+        AppFigure(
+            svg=head + "x" * (MAX_FIGURE_BYTES - len(head) + 1), title="T", panels={}
+        )
+
+
+def test_a_figure_selects_a_panel_once() -> None:
+    with pytest.raises(ValidationError, match="twice"):
+        AppFigure(svg="<svg/>", title="T", panels={"li": ("a", "a")})
+
+
+def test_a_page_shows_a_figure_the_app_has(app: App) -> None:
+    page = AppPage(id="p", title="P", panels=("a",), figure=True)
+    with pytest.raises(ValidationError, match="does not declare"):
+        App(title="T", pages=(page,))
+    figure = AppFigure(svg="<svg/>", title="T", panels={})
+    assert App(title="T", pages=(page,), figure=figure).figure == figure
+    unused = AppPage(id="q", title="Q", panels=("a",))
+    assert App(title="T", pages=(unused,), figure=figure).figure == figure

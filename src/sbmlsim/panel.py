@@ -1088,6 +1088,9 @@ class AppFigure(BaseModel):
     Attributes:
         svg: the drawing as inline svg text, at most `MAX_FIGURE_BYTES` bytes
             in UTF-8; its `data-k` attributes name the parts a reader clicks.
+            It is trusted markup from the model package which assembles the
+            app, the origin of the panels and the model itself, and not user
+            input, so it is inserted as it is and not sanitized.
         title: the figure as it is shown; it is not empty.
         credit: the source of the drawing, shown below it; free text, none
             without.
@@ -1109,15 +1112,23 @@ class AppFigure(BaseModel):
 
         Raises:
             ValueError: naming the limit, for a drawing above
-                `MAX_FIGURE_BYTES`.
+                `MAX_FIGURE_BYTES`, and naming the key, for a key which
+                selects a panel twice.
         """
         size = len(self.svg.encode("utf-8"))
-        if size >= MAX_FIGURE_BYTES:
+        if size > MAX_FIGURE_BYTES:
             raise ValueError(
                 f"The figure of an app is {size} bytes; the limit of an inline "
                 f"figure is {MAX_FIGURE_BYTES // 1024} KiB ({MAX_FIGURE_BYTES} "
                 f"bytes), so an app draws a simplified figure."
             )
+        for key, selected in self.panels.items():
+            twice = sorted({id_ for id_ in selected if selected.count(id_) > 1})
+            if twice:
+                raise ValueError(
+                    f"The figure of an app selects the panels {twice} twice at "
+                    f"'{key}'; a part selects a panel once."
+                )
         return self
 
 
@@ -1166,8 +1177,9 @@ class AppPage(BaseModel):
         Raises:
             ValueError: naming the id, for an id which is no `SId`; naming the
                 page, for an empty title and for a page without a panel;
-                naming the ids, for a panel the page lists twice and for two
-                scenarios of one id.
+                naming the ids, for a panel the page lists or shows twice
+                and for two scenarios of one id; naming the page, for `shown`
+                without `figure`.
         """
         if _SID.fullmatch(self.id) is None:
             raise ValueError(
@@ -1192,6 +1204,18 @@ class AppPage(BaseModel):
             raise ValueError(
                 f"The page '{self.id}' of an app declares the scenarios {twice} "
                 "twice; a reader picks a scenario of a page by its id."
+            )
+        shown = list(self.shown)
+        twice = sorted({panel for panel in shown if shown.count(panel) > 1})
+        if twice:
+            raise ValueError(
+                f"The page '{self.id}' of an app shows the panels {twice} "
+                "twice; a page shows a panel once."
+            )
+        if self.shown and not self.figure:
+            raise ValueError(
+                f"The page '{self.id}' of an app sets `shown` without `figure`; "
+                "`shown` is the panels picked from the figure of the page."
             )
         unlisted = sorted(set(self.shown) - set(self.panels))
         if unlisted:
@@ -1280,7 +1304,8 @@ class App(BaseModel):
         Raises:
             ValueError: for an empty title and for an app without a page;
                 naming the ids, for two pages or two variants of one id and
-                for a panel the figure selects which no page lists.
+                for a panel the figure selects which no page lists and for a
+                page which shows a figure the app does not have.
         """
         if not self.title.strip():
             raise ValueError("An app needs its title.")
@@ -1297,15 +1322,22 @@ class App(BaseModel):
                     f"The {kind} of the app '{self.title}' declare {twice} twice; "
                     "an id is the one a reader of the app names."
                 )
-        if self.figure is not None:
+        if self.figure is None:
+            bare = [page.id for page in self.pages if page.figure]
+            if bare:
+                raise ValueError(
+                    f"The pages {bare} of the app '{self.title}' show the "
+                    "figure, which the app does not declare."
+                )
+        else:
             known = {panel for page in self.pages for panel in page.panels}
             for key, selected in self.figure.panels.items():
                 unknown = sorted(set(selected) - known)
                 if unknown:
                     raise ValueError(
                         f"The figure of the app '{self.title}' selects the "
-                        f"unknown panel {unknown} at '{key}'; a figure selects "
-                        f"panels which a page of the app lists."
+                        f"panels {unknown} at '{key}' which no page of the app "
+                        f"lists; a figure selects panels of its pages."
                     )
         return self
 
@@ -1320,8 +1352,8 @@ def app_payload(app: App) -> dict[str, Any]:
         The payload: its `contract`, the texts of the app, its `pages` with
         their scenarios, its `variants` and the `citation`, the `doi` and the
         `licenses` of the provenance footer and its `figure`, `None` without.
-        Plain JSON values only, no object
-        of this package, see `app_from_payload`.
+        Plain JSON values only, no object of this package, see
+        `app_from_payload`.
     """
     return {
         "contract": APP_CONTRACT,
