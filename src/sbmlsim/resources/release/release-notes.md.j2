@@ -23,6 +23,10 @@
 
 Made from {{ top_package }} {{ commit }}{% if framework_version %} with {{ framework }} {{ framework_version }}{% endif %}.
 
+{% if app %}
+App: <{{ settings.site_url }}{{ app }}>
+
+{% endif %}
 {% if previous is none %}
 First release.
 {% else %}

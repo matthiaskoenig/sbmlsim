@@ -6,6 +6,12 @@
 
 {{ settings.description }}
 
+{% if app %}
+The model as an app, simulated in your browser. [Open the app on its own page](app.md) for a larger view.
+
+{% include "docs/_app_embed.md.j2" %}
+
+{% endif %}
 {% if figure %}
 ![model overview](images/{{ figure }})
 

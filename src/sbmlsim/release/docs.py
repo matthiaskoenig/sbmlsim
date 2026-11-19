@@ -22,11 +22,10 @@ from urllib.parse import quote
 from sbmlsim.credibility.assessment import CredibilityAssessment
 from sbmlsim.credibility.verification import PREDICTION_CHECKS, check_of
 from sbmlsim.fit.records import AdoptedRecord
-from sbmlsim.release.build import BuildPaths, is_experiment_folder
+from sbmlsim.release.build import BuildPaths, app_name, is_experiment_folder
 from sbmlsim.release.notes import NOTES_DIR, fits_prefix, version_key
 from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import ReleaseError
-from sbmlsim.webapp import APP_SUFFIX
 
 __all__ = [
     "DIAGRAM_ORDER",
@@ -279,12 +278,12 @@ def pages(context: ProjectContext, release_path: Path) -> tuple[tuple[str, str],
 
     Returns:
         `PAGES`, with `app` after `index` if the factory wrote the app of
-        the model (`_app_file`), with `credibility` if the release has the
+        the model (`app_name`), with `credibility` if the release has the
         record of the assessment of the contexts of use and then the pages of
         the release hook (`ReleaseHook.pages`) before `release-notes`.
     """
     base = PAGES
-    if _app_file(context, release_path).is_file():
+    if app_name(context, release_path) is not None:
         base = (PAGES[0], _APP, *PAGES[1:])
     added = []
     if _credibility_file(release_path).is_file():
@@ -294,23 +293,13 @@ def pages(context: ProjectContext, release_path: Path) -> tuple[tuple[str, str],
     return (*base[:index], *added, *base[index:])
 
 
-def _app_file(context: ProjectContext, release_path: Path) -> Path:
-    """Get the app of the model in the release, which the factory writes.
-
-    The factory of a project writes the app of the model beside its models
-    (`sbmlsim.webapp`, `<name>_app.html`), which the release copies into
-    `models`.
-    """
-    return release_path / BuildPaths.MODELS / f"{context.project.name}{APP_SUFFIX}"
-
-
 def _app(context: ProjectContext, release_path: Path, docs: Path) -> str | None:
     """Copy the app of the model into the site, its file name there; None without."""
-    source = _app_file(context, release_path)
-    if not source.is_file():
+    name = app_name(context, release_path)
+    if name is None:
         return None
-    shutil.copy2(source, docs / source.name)
-    return source.name
+    shutil.copy2(release_path / BuildPaths.MODELS / name, docs / name)
+    return name
 
 
 def _credibility_file(release_path: Path) -> Path:

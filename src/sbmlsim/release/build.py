@@ -29,10 +29,11 @@ from sbmlsim.run.context import (
     SPEC_FILE,
     SUMMARY_FILE,
 )
-from sbmlsim.webapp import WASM_DIR
+from sbmlsim.webapp import APP_SUFFIX, WASM_DIR
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
+    from sbmlsim.release.project import ProjectContext
 
 __all__ = [
     "RUN_RECORDS",
@@ -40,6 +41,7 @@ __all__ = [
     "BuildPaths",
     "BuildResult",
     "BuildStep",
+    "app_name",
     "build",
     "build_steps",
     "has_distributions",
@@ -338,6 +340,27 @@ def _write_specs(steps: list[BuildStep], release_path: Path) -> list[Path]:
         (release_path / step.spec_file).write_text(text, encoding="utf-8", newline="\n")
         written.append(Path(step.spec_file))
     return written
+
+
+def app_name(context: ProjectContext, release_path: Path) -> str | None:
+    """Get the file name of the app of the model in the release, `None` without.
+
+    The factory of a project writes the app of the model beside its models
+    (`sbmlsim.webapp`, `<name>_app.html`) and the build copies it into
+    `models`; the release notes and the docs are written after that copy, so
+    the file is the signal.
+
+    Args:
+        context: the project context.
+        release_path: the folder of the release repository.
+
+    Returns:
+        The file name, e.g. `toy_app.html`, if the release has the app.
+    """
+    name = f"{context.project.name}{APP_SUFFIX}"
+    if (release_path / BuildPaths.MODELS / name).is_file():
+        return name
+    return None
 
 
 def _copy_models(
