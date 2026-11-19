@@ -1439,13 +1439,13 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
 #: an event whose root CVODE finds within its root tolerance of the end of a
 #: variable step simulate fires there although its trigger is false at the
 #: end, since the fix of the event at the end of the steps which never fired
-#: (roadrunner #1445): the dose at 1.6 fires at the stop one unit in the last
-#: place before it, which the state of the trigger of the next segment does
-#: not have, so the change after it fires it a second time
+#: (roadrunner #1445, reported as #1460): the dose at 1.6 fires at the stop one
+#: unit in the last place before it, which the state of the trigger of the next
+#: segment does not have, so the change after it fires it a second time
 FIRED_BEFORE_ITS_TIME = (
     "libroadrunner develop: an event whose trigger is false at the end of a "
     "variable step simulate fires there when CVODE finds its root within the "
-    "root tolerance of the end (the fix of sys-bio/roadrunner#1445)"
+    "root tolerance of the end (sys-bio/roadrunner#1460, of the fix of #1445)"
 )
 
 
