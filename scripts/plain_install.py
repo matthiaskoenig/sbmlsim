@@ -9,7 +9,7 @@ result as netCDF and reads it back, in an install without extras:
 uv venv plain
 uv pip install --python plain/bin/python --no-deps \
     --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ \
-    "libroadrunner>=2.12.0.dev683"
+    "libroadrunner>=2.12.0.dev700"
 uv pip install --python plain/bin/python --no-sources .
 plain/bin/python -I scripts/plain_install.py
 ```

@@ -1,11 +1,9 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
 import warnings
-from importlib.metadata import version as distribution_version
 
 import numpy as np
 import pytest
-from packaging.version import Version
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.event_rows import EVENT_TRIGGER_PREFIX
@@ -1404,30 +1402,12 @@ def _ulps_after(time: float, ulps: int) -> float:
     return time
 
 
-#: an event whose trigger is true at the end of the steps of the integrator,
-#: e.g. at the stop a unit in the last place before a change, never fires in
-#: the develop builds of libroadrunner
-LOST_AT_THE_END = (
-    "libroadrunner develop: an event whose trigger is true at the end of a "
-    "variable step simulate never fires (sys-bio/roadrunner#1445)"
-)
-#: the first build of libroadrunner measured to fire such an event at a change,
-#: which 2.12.0.dev683, the floor of the package and the build of the lock, does
-#: not: the environments of tox resolve the newest build and would otherwise
-#: fail on the strict xfail of a case the build they got has fixed
-DOSE_AT_A_CHANGE_FIXED = Version("2.12.0.dev700")
-#: whether the build of this environment loses the event at a change
-LOSES_A_DOSE_AT_A_CHANGE = (
-    Version(distribution_version("libroadrunner")) < DOSE_AT_A_CHANGE_FIXED
-)
-
-
 @pytest.mark.parametrize("times", [False, True])
 @pytest.mark.parametrize("at", ["first", "between", "second"])
 @pytest.mark.parametrize("ulps", [1, 3, 9])
 @pytest.mark.parametrize("c1", [1.0, 0.0, -1.0])
 def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
-    c1: float, ulps: int, at: str, times: bool, request: pytest.FixtureRequest
+    c1: float, ulps: int, at: str, times: bool
 ) -> None:
     """A dose at the first, between or at the second of two close changes fires once.
 
@@ -1436,12 +1416,6 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     time the integration stopped before the first one, so the dose fired at
     the first change fired again at the second.
     """
-    if (c1, ulps, at, times) == (1.0, 9, "between", False):
-        request.applymarker(
-            pytest.mark.xfail(
-                LOSES_A_DOSE_AT_A_CHANGE, strict=True, reason=LOST_AT_THE_END
-            )
-        )
     c2 = _ulps_after(c1, ulps)
     te = {"first": c1, "between": _ulps_after(c1, 1), "second": c2}[at]
     start, end = c1 - 1.0, c1 + 1.0
@@ -1462,7 +1436,20 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     assert np.all(np.diff(result.time) >= 0.0)
 
 
-@pytest.mark.xfail(strict=True, reason=LOST_AT_THE_END)
+#: an event whose root CVODE finds within its root tolerance of the end of a
+#: variable step simulate fires there although its trigger is false at the
+#: end, since the fix of the event at the end of the steps which never fired
+#: (roadrunner #1445): the dose at 1.6 fires at the stop one unit in the last
+#: place before it, which the state of the trigger of the next segment does
+#: not have, so the change after it fires it a second time
+FIRED_BEFORE_ITS_TIME = (
+    "libroadrunner develop: an event whose trigger is false at the end of a "
+    "variable step simulate fires there when CVODE finds its root within the "
+    "root tolerance of the end (the fix of sys-bio/roadrunner#1445)"
+)
+
+
+@pytest.mark.xfail(strict=True, reason=FIRED_BEFORE_ITS_TIME)
 def test_a_dose_a_few_units_in_the_last_place_before_a_change_fires_once() -> None:
     """A dose between the stop before a change and the change fires once.
 

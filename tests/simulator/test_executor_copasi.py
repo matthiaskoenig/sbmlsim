@@ -345,12 +345,8 @@ DELAYED_EVENTS = {
 def test_delayed_events_without_writes(name: str, times: list[float] | None) -> None:
     """COPASI schedules the delayed events of a plan without writes itself.
 
-    A change at the start is no write between two runs. roadrunner fires a
-    delayed event late in the steps of the integrator (#1382), the values of
-    its execution are compared in an output of times only.
+    A change at the start is no write between two runs.
     """
-    if times is None and name == "values of the execution":
-        pytest.skip("roadrunner #1382")
     source = sbml(DELAYED_EVENTS[name])
     for changes in ([], [Change(0, {"Y": 0.0})]):
         simulation = Simulation(end=5, changes=changes, times=times)

@@ -1,13 +1,13 @@
 # Installation
 
-`sbmlsim` needs python 3.14 or newer and runs on Linux, macOS and Windows. It is on [PyPI](https://pypi.org/project/sbmlsim/), its simulator [libroadrunner](https://libroadrunner.org) is not: `sbmlsim` relies on fixes of libroadrunner which are not released yet, so it needs a build of the `develop` branch of libroadrunner, `libroadrunner>=2.12.0.dev683`, which the package index [roadrunner-wheels](https://github.com/matthiaskoenig/roadrunner-wheels) serves. Install the build from that index first and then `sbmlsim` from PyPI, whose requirement the installed build satisfies:
+`sbmlsim` needs python 3.14 or newer and runs on Linux, macOS and Windows. It is on [PyPI](https://pypi.org/project/sbmlsim/), its simulator [libroadrunner](https://libroadrunner.org) is not: `sbmlsim` relies on fixes of libroadrunner which are not released yet, so it needs a build of the `develop` branch of libroadrunner, `libroadrunner>=2.12.0.dev700`, which the package index [roadrunner-wheels](https://github.com/matthiaskoenig/roadrunner-wheels) serves. Install the build from that index first and then `sbmlsim` from PyPI, whose requirement the installed build satisfies:
 
 ```bash
-pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev683"
+pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev700"
 pip install sbmlsim
 ```
 
-The index serves the wheels of libroadrunner (and of rrplugins) only, so the first command takes nothing else from it (`--no-deps`, the numpy of libroadrunner comes from PyPI with `sbmlsim`) and every other package comes from PyPI with the second one. `pip install sbmlsim` alone stops with `No matching distribution found for libroadrunner>=2.12.0.dev683`; a single `pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ sbmlsim` installs the build as well, it asks the index for every package of the install. Once libroadrunner is released with these fixes, the release on PyPI satisfies the requirement as well and the index is no longer needed.
+The index serves the wheels of libroadrunner (and of rrplugins) only, so the first command takes nothing else from it (`--no-deps`, the numpy of libroadrunner comes from PyPI with `sbmlsim`) and every other package comes from PyPI with the second one. `pip install sbmlsim` alone stops with `No matching distribution found for libroadrunner>=2.12.0.dev700`; a single `pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ sbmlsim` installs the build as well, it asks the index for every package of the install. Once libroadrunner is released with these fixes, the release on PyPI satisfies the requirement as well and the index is no longer needed.
 
 `import sbmlsim` checks the installed libroadrunner against this requirement and raises an `ImportError` with these commands when another one is installed, e.g. the release of PyPI: such a libroadrunner loads the models and simulates them with other rows at the events and the changes of a simulation, so a wrong install shows up as wrong results and not as an error. `SBMLSIM_SKIP_ROADRUNNER_CHECK=1` switches the check off, e.g. for a libroadrunner built from source.
 
@@ -41,7 +41,7 @@ To install into a virtual environment instead, install libroadrunner from the in
 
 ```bash
 uv venv --python 3.14
-uv pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev683"
+uv pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev700"
 uv pip install sbmlsim
 ```
 
@@ -99,7 +99,7 @@ The Rust engine `core` ([sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim
 Install the current state of the `develop` branch from GitHub, the build of libroadrunner from the index of the builds first:
 
 ```bash
-pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev683"
+pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev700"
 pip install git+https://github.com/matthiaskoenig/sbmlsim.git@develop
 ```
 
