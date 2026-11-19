@@ -246,3 +246,15 @@ def test_a_model_with_no_readout_of_the_figure_is_refused() -> None:
     panels, figure = _built()
     with pytest.raises(ContractError, match="LI__Cpl_gli"):
         restrict_to_model(panels, figure, lambda i: False)
+
+
+def test_a_blank_drawing_is_refused_naming_the_file(tmp_path: Path) -> None:
+    blank = tmp_path / "blank.svg"
+    blank.write_text("  \n", encoding="utf-8")
+    with pytest.raises(ContractError, match=r"(?s)blank\.svg.*\nsvg\n"):
+        panels_from_figure(blank, READOUTS, simulation=SIMULATION, title="T")
+
+
+def test_a_blank_title_is_refused_naming_the_file() -> None:
+    with pytest.raises(ContractError, match=r"(?s)model\.svg.*\ntitle\n"):
+        panels_from_figure(SVG, READOUTS, simulation=SIMULATION, title=" ")

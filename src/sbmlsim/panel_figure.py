@@ -133,7 +133,8 @@ def panels_from_figure(
     Raises:
         ContractError: for a sidecar of another contract or a malformed key,
             a key with more than `MAX_CURVES` readouts in one unit, or two keys
-            of one panel id.
+            of one panel id; naming the drawing and the reason, for a blank
+            drawing or title or any other figure the app refuses.
         OSError: for a file which cannot be read.
         json.JSONDecodeError: for a sidecar which is no JSON.
     """
@@ -182,12 +183,18 @@ def panels_from_figure(
                 ) from error
             ids.append(pid)
         selection[key] = tuple(ids)
-    figure = AppFigure(
-        svg=svg.read_text(encoding="utf-8"),
-        title=title,
-        credit=credit,
-        panels=selection,
-    )
+    try:
+        figure = AppFigure(
+            svg=svg.read_text(encoding="utf-8"),
+            title=title,
+            credit=credit,
+            panels=selection,
+        )
+    except ValidationError as error:
+        raise ContractError(
+            f"The figure of the drawing '{svg}' with the readouts '{readouts}' "
+            f"is no figure: {error}"
+        ) from error
     return panels, figure
 
 
