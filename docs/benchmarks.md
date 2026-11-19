@@ -14,6 +14,8 @@ taskset -c 0,2,4,6,8,10,12,14 uv run --no-sync python scripts/engine_benchmark.p
 
 That command printed the tables below and drew the figures: the four packaged models and the large model, every engine which is installed, and the scans over the default of 1000 points on 8 workers. `--out FILE` writes the tables into a file, `--figure FILE` draws the comparison and `--json FILE` writes the measurement with every number as it was measured; `--figure` names a stem and not a file, since a model gets a figure of its own and every figure is drawn once per mode of this page, so the command above writes `engines-hctz-light.png`, `engines-hctz-dark.png` and the eight others beside them, and `--from-json FILE` draws them again from a stored measurement without measuring anything; `--models`, `--engines`, `--points`, `--repetitions` and `--rounds` narrow or widen the run, and `--cold` and `--steps` are the measurements of the two sections after it. Nothing regenerates this page, so a new measurement is a run of the script and a commit of its tables and its figure.
 
+The rows of the large model are a second run of that command with `--models perfusion`, merged into the first with `--from-json`. In the first run another process on the machine took the eight cores while the simulations of the large model were timed, which put its single simulation at twice what the serial scan of the same run reports for a point of the same model, so those four rows were measured again an hour later on an idle machine and the two measurements were merged into the tables and the figures below. Every other cell is of the first run.
+
 The large model is `benchmarks/models/machine_perfusion_liver_flat.xml`, the liver of a normothermic machine perfusion: 839 species, 1007 reactions, 570 parameters, 387 rules and 43 compartments in 2.6 MB, which is twelve times the largest packaged model, scanned over the flow of its pump. It is in the repository and no part of the package, so no install carries it, see `benchmarks/models/README.md`. One of its simulations is tens of seconds in COPASI, so it is scanned over as many points as the parallel scan has workers and measured in fewer and shorter rounds than the packaged models, which the first table of the run says of every model.
 
 `--no-sync` keeps the environment as it is. COPASI comes with the extra `dev` and the engine core with every install, since its bindings `sbmlsim-core` are a dependency of sbmlsim in `uv.lock`. AMICI comes from the extra `amici` (`uv sync --extra dev --extra amici`), which is not in `uv.lock`, see [Optional packages](installation.md#optional-packages); a plain `uv run`, which syncs the environment to the lock, uninstalls it and measures the three other engines. An engine which is not installed is skipped and named below the table, so a shorter table is never a slow engine.
@@ -79,76 +81,76 @@ The liver of a machine perfusion, the large model.
 
 | model | engine | load s | first compile s | compile s | instantiate s |
 |---|---|---:|---:|---:|---:|
-| repressilator | core | 0.0204 | 0.0317 | 0.000594 | 0.00015 |
-| repressilator | roadrunner | 0.0185 | 0.0374 |  |  |
-| repressilator | copasi | 0.0499 | 0.0511 |  |  |
-| repressilator | amici | 0.0278 | 0.0288 |  |  |
-| demo | core | 0.024 | 0.0276 | 0.00107 | 0.000159 |
-| demo | roadrunner | 0.0224 | 0.0413 |  |  |
-| demo | copasi | 0.0493 | 0.0484 |  |  |
-| demo | amici | 0.0301 | 0.0289 |  |  |
-| midazolam | core | 0.0524 | 0.169 | 0.0051 | 0.000501 |
-| midazolam | roadrunner | 0.0504 | 0.159 |  |  |
-| midazolam | copasi | 0.142 | 0.133 |  |  |
-| midazolam | amici | 0.0721 | 0.0749 |  |  |
-| hctz | core | 0.0931 | 0.102 | 0.00493 | 0.000483 |
-| hctz | roadrunner | 0.0986 | 0.179 |  |  |
-| hctz | copasi | 0.221 | 0.214 |  |  |
-| hctz | amici | 0.126 | 0.121 |  |  |
-| perfusion | core | 3.32 | 4.17 | 0.219 | 0.00744 |
-| perfusion | roadrunner | 3.87 | 5.35 |  |  |
-| perfusion | copasi | 7.6 | 6.46 |  |  |
-| perfusion | amici | 4.08 | 4.03 |  |  |
+| repressilator | core | 0.0209 | 0.0296 | 0.000601 | 0.000168 |
+| repressilator | roadrunner | 0.0191 | 0.0377 |  |  |
+| repressilator | copasi | 0.0512 | 0.0515 |  |  |
+| repressilator | amici | 0.0284 | 0.0286 |  |  |
+| demo | core | 0.0248 | 0.0263 | 0.00104 | 0.000148 |
+| demo | roadrunner | 0.0232 | 0.0406 |  |  |
+| demo | copasi | 0.0512 | 0.0494 |  |  |
+| demo | amici | 0.0312 | 0.0304 |  |  |
+| midazolam | core | 0.0571 | 0.0847 | 0.00532 | 0.000709 |
+| midazolam | roadrunner | 0.055 | 0.201 |  |  |
+| midazolam | copasi | 0.163 | 0.199 |  |  |
+| midazolam | amici | 0.0778 | 0.0949 |  |  |
+| hctz | core | 0.0952 | 0.107 | 0.00494 | 0.000481 |
+| hctz | roadrunner | 0.1 | 0.183 |  |  |
+| hctz | copasi | 0.225 | 0.223 |  |  |
+| hctz | amici | 0.128 | 0.125 |  |  |
+| perfusion | core | 3.41 | 3.52 | 0.223 | 0.00741 |
+| perfusion | roadrunner | 3.95 | 5.4 |  |  |
+| perfusion | copasi | 7.86 | 6.51 |  |  |
+| perfusion | amici | 4.13 | 4.06 |  |  |
 
 ### One simulation and a scan
 
 | model | engine | simulate ms | scan serial s | scan parallel s |
 |---|---|---:|---:|---:|
-| repressilator | core | 0.553 | 0.567 | 0.101 |
-| repressilator | roadrunner | 0.842 | 0.808 | 0.122 |
-| repressilator | copasi | 1.4 | 1.82 | 0.26 |
-| repressilator | amici | 2.67 | 2.76 | 0.395 |
-| demo | core | 0.107 | 0.0396 | 0.024 |
-| demo | roadrunner | 0.368 | 0.26 | 0.0658 |
-| demo | copasi | 0.952 | 1.32 | 0.194 |
-| demo | amici | 2.28 | 2.19 | 0.333 |
-| midazolam | core | 0.614 | 0.617 | 0.162 |
-| midazolam | roadrunner | 1.28 | 1.24 | 0.246 |
-| midazolam | copasi | 12.2 | 12.1 | 1.8 |
-| midazolam | amici | 10.3 | 10.3 | 2.09 |
-| hctz | core | 0.876 | 0.764 | 0.165 |
-| hctz | roadrunner | 1.67 | 1.49 | 0.25 |
-| hctz | copasi | 11.4 | 11.3 | 1.64 |
-| hctz | amici | 10.8 | 10.4 | 1.84 |
-| perfusion | core | 57 | 0.47 | 0.268 |
-| perfusion | roadrunner | 84 | 0.66 | 0.167 |
-| perfusion | copasi | 5.33e+04 | 339 | 81.2 |
-| perfusion | amici | 877 | 7.04 | 2.87 |
+| repressilator | core | 0.563 | 0.571 | 0.102 |
+| repressilator | roadrunner | 0.858 | 0.821 | 0.128 |
+| repressilator | copasi | 1.44 | 1.84 | 0.273 |
+| repressilator | amici | 2.77 | 2.84 | 0.397 |
+| demo | core | 0.113 | 0.0428 | 0.0275 |
+| demo | roadrunner | 0.38 | 0.275 | 0.0667 |
+| demo | copasi | 0.977 | 1.4 | 0.281 |
+| demo | amici | 2.32 | 2.3 | 0.439 |
+| midazolam | core | 0.656 | 0.624 | 0.179 |
+| midazolam | roadrunner | 1.37 | 1.27 | 0.261 |
+| midazolam | copasi | 12.9 | 13.5 | 2.29 |
+| midazolam | amici | 11.6 | 11.1 | 2.27 |
+| hctz | core | 0.877 | 0.76 | 0.162 |
+| hctz | roadrunner | 1.68 | 1.5 | 0.237 |
+| hctz | copasi | 12.1 | 12 | 1.67 |
+| hctz | amici | 11 | 10.6 | 1.85 |
+| perfusion | core | 58.8 | 0.465 | 0.0982 |
+| perfusion | roadrunner | 84.9 | 0.671 | 0.148 |
+| perfusion | copasi | 4.82e+04 | 351 | 80.7 |
+| perfusion | amici | 899 | 7.2 | 2.81 |
 
 ### Against the engine core
 
 | model | engine | load | one simulation | a serial scan | a parallel scan |
 |---|---|---:|---:|---:|---:|
 | repressilator | core | 1 | 1 | 1 | 1 |
-| repressilator | roadrunner | 0.909 | 1.52 | 1.43 | 1.2 |
-| repressilator | copasi | 2.45 | 2.54 | 3.2 | 2.57 |
-| repressilator | amici | 1.36 | 4.83 | 4.86 | 3.9 |
+| repressilator | roadrunner | 0.917 | 1.53 | 1.44 | 1.25 |
+| repressilator | copasi | 2.46 | 2.56 | 3.22 | 2.66 |
+| repressilator | amici | 1.36 | 4.92 | 4.98 | 3.88 |
 | demo | core | 1 | 1 | 1 | 1 |
-| demo | roadrunner | 0.934 | 3.46 | 6.56 | 2.74 |
-| demo | copasi | 2.05 | 8.93 | 33.3 | 8.1 |
-| demo | amici | 1.25 | 21.4 | 55.5 | 13.9 |
+| demo | roadrunner | 0.937 | 3.36 | 6.43 | 2.42 |
+| demo | copasi | 2.07 | 8.64 | 32.8 | 10.2 |
+| demo | amici | 1.26 | 20.6 | 53.8 | 15.9 |
 | midazolam | core | 1 | 1 | 1 | 1 |
-| midazolam | roadrunner | 0.96 | 2.09 | 2.01 | 1.52 |
-| midazolam | copasi | 2.72 | 19.9 | 19.6 | 11.1 |
-| midazolam | amici | 1.38 | 16.7 | 16.8 | 12.9 |
+| midazolam | roadrunner | 0.963 | 2.09 | 2.04 | 1.46 |
+| midazolam | copasi | 2.85 | 19.7 | 21.6 | 12.8 |
+| midazolam | amici | 1.36 | 17.7 | 17.8 | 12.7 |
 | hctz | core | 1 | 1 | 1 | 1 |
-| hctz | roadrunner | 1.06 | 1.9 | 1.96 | 1.52 |
-| hctz | copasi | 2.38 | 13 | 14.8 | 9.91 |
-| hctz | amici | 1.35 | 12.4 | 13.6 | 11.1 |
+| hctz | roadrunner | 1.06 | 1.92 | 1.97 | 1.47 |
+| hctz | copasi | 2.37 | 13.8 | 15.8 | 10.4 |
+| hctz | amici | 1.34 | 12.5 | 13.9 | 11.4 |
 | perfusion | core | 1 | 1 | 1 | 1 |
-| perfusion | roadrunner | 1.17 | 1.47 | 1.4 | 0.625 |
-| perfusion | copasi | 2.29 | 934 | 721 | 303 |
-| perfusion | amici | 1.23 | 15.4 | 15 | 10.7 |
+| perfusion | roadrunner | 1.16 | 1.44 | 1.44 | 1.5 |
+| perfusion | copasi | 2.3 | 821 | 753 | 822 |
+| perfusion | amici | 1.21 | 15.3 | 15.5 | 28.6 |
 
 ### The agreement with roadrunner
 
@@ -168,14 +170,14 @@ The liver of a machine perfusion, the large model.
 | midazolam | amici | 2.72e-07 | 0 |
 | hctz | core | 1.20e-11 | 0 |
 | hctz | roadrunner | 0 | 0 |
-| hctz | copasi | 1.67e-08 | 1.60e-23 |
+| hctz | copasi | 1.72e-08 | 5.94e-22 |
 | hctz | amici | 1.63e-08 | 0 |
 | perfusion | core | 7.49e-06 | 0 |
 | perfusion | roadrunner | 0 | 0 |
-| perfusion | copasi | 7.81e-03 | 0 |
+| perfusion | copasi | 3.51e-02 | 0 |
 | perfusion | amici | 7.45e-06 | 0 |
 
-Measured with python 3.14.10, sbmlsim 0.31.1, libroadrunner 2.12.0.dev700, sbmlsim-core 0.12.0, python-copasi 4.48.311, amici 1.2.0: every cell is the median of its rounds, a round the median of its timed calls after its warm ups, and the engines take turns within a model, so a change of the load of the machine reaches every engine of a comparison alike. The run measured 20 simulations after 3 warm ups in 5 rounds and scanned 1000 points unless the model above says otherwise, and the parallel scans ran on 8 workers.
+Measured with python 3.14.10, sbmlsim 0.31.1, libroadrunner 2.12.0.dev700, sbmlsim-core 0.13.0, python-copasi 4.48.311, amici 1.2.0: every cell is the median of its rounds, a round the median of its timed calls after its warm ups, and the engines take turns within a model, so a change of the load of the machine which outlasts their turns reaches every engine of a comparison alike, and one which is shorter than a phase of the run can still move a single cell. The run measured 20 simulations after 3 warm ups in 5 rounds and scanned 1000 points unless the model above says otherwise, and the parallel scans ran on 8 workers.
 
 - A cell is the median of the rounds of its model, each round the median of its timed calls: a round which was slow because the machine was doing something else moves a mean and not a median, which is why the tables report medians and no deviation.
 - The table against the engine core is the median of an engine divided by the median of the engine core on the same model and measure, so the engine core is 1, a number above it is that many times its time and a number below it is a cell it loses. The ratios are what carries from one machine to another; the seconds of the tables above belong to this one.
@@ -184,23 +186,23 @@ Measured with python 3.14.10, sbmlsim 0.31.1, libroadrunner 2.12.0.dev700, sbmls
 - `simulate ms` is one `Simulator.simulate` at the defaults of `Simulator`, i.e. the tolerances a run has and not the tighter ones of the agreement below, which is measured in simulations of its own: every speed of this table is the speed of a run as a user gets it. `scan serial s` and `scan parallel s` are that simulation over the points of the scan on one worker and on the workers of the parallel scan below.
 - The scan times are warm: every scan runs once before it is timed, so they exclude the pool of worker processes, which is kept per process and number of workers, the model every worker loads and compiles and the first batch of the threads of the engine core. A measurement which includes that first run is not the same measurement: it is several times larger for an engine whose parallel scan runs in worker processes, which carries the pool and one compilation of the model per worker, while the engine core, which starts no pool, pays only its own compilation there.
 - The simulation of a model is its horizon with an equidistant output, which every engine computes alike (the steps of the integrator are each engine's own), in the time unit of the model: `repressilator` to 100 in 101 output times, its scan over `n` from 1.5 to 4.0; `demo` to 100 in 101 output times, its scan over `Km_A` from 0.5 to 2.0; `midazolam` to 1440 in 101 output times, its scan over `PODOSE_mid` from 5.0 to 100.0; `hctz` to 1440 in 101 output times, its scan over `PODOSE_hctz` from 5.0 to 100.0; `perfusion` to 60 in 101 output times, its scan over `Q_pump` from 0.0015 to 0.006. How much output a point has matters for the parallel scan of the engine core, see the workers of a parallel scan below.
-- The workers of a parallel scan are 8 python processes for roadrunner, COPASI and AMICI, which load the model in every worker, and for the engine core the threads of the engine inside one python process: `Simulator.run` hands the points of a scan to the engine in batches which it integrates on 8 threads of its own (`worker._run_chunk_core`, at most `CORE_MAX_CHUNK` points per batch), so a run of the engine core starts no pool of processes at all and loads the model once. The two do not scale alike: a process runs the whole point, a thread of the engine integrates while the result of the run is assembled in its one python process, so the more output a point has, the less the threads gain.
+- The workers of a parallel scan are 8 python processes for roadrunner, COPASI and AMICI, which load the model in every worker, and for the engine core the threads of the engine inside one python process: `Simulator.run` hands the points of a scan to the engine in batches which it integrates on 8 threads of its own (`worker._run_chunk_core`, at most `CORE_MAX_CHUNK` points per batch), so a run of the engine core starts no pool of processes at all and loads the model once. The two do not scale alike: a process runs the whole point, its integration and the python around it, while a thread of the engine integrates only and the one python process of the run assembles the result of every point itself, so the more output a point has, the less the threads gain.
 - `max rel. diff.` and `max abs. diff.` are the agreement with roadrunner at atol 1e-12 and rtol 1e-10: the largest difference of a column divided by the largest magnitude of that column in roadrunner, and, for a column which is identically zero in roadrunner, where a relative difference is undefined, the largest absolute difference. roadrunner is the reference, COPASI is not bitwise reproducible across loads of a model.
 - An empty cell is a measurement which was not made.
 
 ## What the tables say
 
-**roadrunner 2.12 changed this page.** Up to libroadrunner 2.11 CVODE factorized a dense Jacobian, and the large model, whose Jacobian is 0.45 % dense at 919 states, spent nearly all of its time there: one simulation took 2.7 s and the engine core was 22 times faster. roadrunner 2.12 ([#1450](https://github.com/sys-bio/roadrunner/pull/1450)) added the sparse direct solver KLU and a colored sparse difference quotient Jacobian, and both are its defaults (`linear_solver="klu"`, `jacobian="sparse_difference_quotient"`). The same simulation now takes 84.0 ms, a factor of 29, which is what brought roadrunner back within reach of the engine core on that model: it leads its parallel scan and trails its single simulation by 1.5. The two settings only work together: with either one alone CVODE falls back to the dense factorization and the model takes 2.4 s, since at 919 states the factorization is the whole cost and the Jacobian evaluation is not.
+**roadrunner 2.12 changed this page.** Up to libroadrunner 2.11 CVODE factorized a dense Jacobian, and the large model, whose Jacobian is 0.45 % dense at 919 states, spent nearly all of its time there: one simulation took 2.7 s and the engine core was 22 times faster. roadrunner 2.12 ([#1450](https://github.com/sys-bio/roadrunner/pull/1450)) added the sparse direct solver KLU and a colored sparse difference quotient Jacobian, and both are its defaults (`linear_solver="klu"`, `jacobian="sparse_difference_quotient"`). The same simulation now takes 84.9 ms, a factor of 28, which is what brought roadrunner back within reach of the engine core on that model: it trails its single simulation by 1.4 and its parallel scan by 1.5. The two settings only work together: with either one alone CVODE falls back to the dense factorization and the model takes 2.4 s, since at 919 states the factorization is the whole cost and the Jacobian evaluation is not.
 
-- **Loading a model.** On the four packaged models roadrunner and the engine core load an already compiled model within a few percent of each other (0.0986 s against 0.0931 s for HCTZ), COPASI takes a bit over twice as long and compiles the model on every load, and AMICI imports its compiled extension in about 1.3 times roadrunner's load. The large model keeps that order: the engine core loads it in 3.32 s, roadrunner in 3.87 s, AMICI in 4.11 s and COPASI in 7.60 s. Compiling is where they differ most. roadrunner's LLJIT adds about 80 ms to the load of HCTZ (0.179 s against 0.0986 s) and 1.5 s to the load of the perfusion model (5.35 s against 3.87 s), while the engine core writes the WebAssembly module of HCTZ in 4.9 ms and instantiates it in 0.5 ms, and of the perfusion model in 219 ms and 7.4 ms. AMICI is the exception the table cannot show: its first compilation of a model is minutes, once per machine, and the measurement warms that cache before it times anything.
-- **One simulation.** The engine core leads every model of this run, by 1.5 to 3.6 times: the repressilator 0.553 ms against roadrunner's 0.842 ms, `demo` 0.107 ms against 0.368 ms, midazolam 0.614 ms against 1.28 ms, HCTZ 0.876 ms against 1.67 ms and the large model 57.0 ms against 84.0 ms. It did not lead before sbmlsim-core 0.9.0 and sbmlsim 0.30.0: the wheel ran `engine.wasm` in wasmtime, the slowest host the engine has, and sbmlsim built an instance, a vector of tolerances and the targets of the changes again for every simulation, which on HCTZ was most of the 2.34 ms this page used to report. COPASI and AMICI take 13 to 20 times the engine core on the two physiologically based models. The large model is where the numbers separate: the engine core 57.0 ms, roadrunner 84.0 ms, AMICI 877 ms and COPASI 53.3 s, so COPASI is 935 times the engine core on the model where a simulation actually costs something.
-- **A serial scan.** The engine core runs the 1000 points of `demo` in 0.0396 s against roadrunner's 0.260 s, seven times less, and HCTZ in 0.764 s against 1.49 s. The reason is where the python is: a serial scan of roadrunner runs point by point through python, while a scan of the engine core hands a whole chunk, here up to 250 points, to the engine as one batch, so the per-point python is paid once per chunk. The smaller the model, the more that matters, which is why `demo` gains most and the repressilator, whose oscillating integration is the work, gains least (0.567 s against 0.808 s). On the eight points of the perfusion model, where the integration is everything, the engine core needs 0.470 s against roadrunner's 0.660 s, AMICI's 7.04 s and COPASI's 339 s.
-- **A parallel scan.** On eight workers the engine core takes four of the five models and roadrunner keeps the large one (0.167 s against 0.268 s). The two parallelize different things: roadrunner's eight worker processes each run whole points, their integration and the python around them, while the engine core runs eight threads of the engine inside one python process, which assembles every result alone. That shows on the large model, where roadrunner goes from 0.660 s to 0.167 s, a factor of 4.0 on eight processes, while the engine core goes from 0.470 s to 0.268 s, a factor of 1.8 on eight threads: eight points of this model produce a lot of output, and assembling it is serial python. It is also the closest race of the four the engine core takes, the repressilator at 0.101 s against 0.122 s. The section below measures that one python process directly, cold against warm.
+- **Loading a model.** On the four packaged models roadrunner and the engine core load an already compiled model within a few percent of each other (0.100 s against 0.0952 s for HCTZ), COPASI takes a bit over twice as long and compiles the model on every load, and AMICI imports its compiled extension in about 1.3 times roadrunner's load. The large model keeps that order: the engine core loads it in 3.41 s, roadrunner in 3.95 s, AMICI in 4.13 s and COPASI in 7.86 s. Compiling is where they differ most. roadrunner's LLJIT adds about 80 ms to the load of HCTZ (0.183 s against 0.100 s) and 1.4 s to the load of the perfusion model (5.40 s against 3.95 s), while the engine core writes the WebAssembly module of HCTZ in 4.9 ms and instantiates it in 0.5 ms, and of the perfusion model in 223 ms and 7.4 ms. AMICI is the exception the table cannot show: its first compilation of a model is minutes, once per machine, and the measurement warms that cache before it times anything.
+- **One simulation.** The engine core leads every model of this run, by 1.4 to 3.4 times: the repressilator 0.563 ms against roadrunner's 0.858 ms, `demo` 0.113 ms against 0.380 ms, midazolam 0.656 ms against 1.37 ms, HCTZ 0.877 ms against 1.68 ms and the large model 58.8 ms against 84.9 ms. It did not lead before sbmlsim-core 0.9.0 and sbmlsim 0.30.0: the wheel ran `engine.wasm` in wasmtime, the slowest host the engine has, and sbmlsim built an instance, a vector of tolerances and the targets of the changes again for every simulation, which on HCTZ was most of the 2.34 ms this page used to report. COPASI and AMICI take 12 to 20 times the engine core on the two physiologically based models. The large model is where the numbers separate: the engine core 58.8 ms, roadrunner 84.9 ms, AMICI 899 ms and COPASI 48.2 s, so COPASI is 820 times the engine core on the model where a simulation actually costs something.
+- **A serial scan.** The engine core runs the 1000 points of `demo` in 0.0428 s against roadrunner's 0.275 s, six times less, and HCTZ in 0.760 s against 1.50 s. The reason is where the python is: a serial scan of roadrunner runs point by point through python, while a scan of the engine core hands a whole chunk, here up to 250 points, to the engine as one batch, so the per-point python is paid once per chunk. The smaller the model, the more that matters, which is why `demo` gains most and the repressilator, whose oscillating integration is the work, gains least (0.571 s against 0.821 s). On the eight points of the perfusion model, where the integration is everything, the engine core needs 0.465 s against roadrunner's 0.671 s, AMICI's 7.20 s and COPASI's 351 s.
+- **A parallel scan.** On eight workers the engine core takes all five models, the large one by 1.5 (0.0982 s against roadrunner's 0.148 s). The two parallelize different things: roadrunner's eight worker processes each run whole points, their integration and the python around them, while the engine core hands the points of a chunk to the engine as one batch, which spreads them over eight threads of its own, and the one python process of the run assembles every result itself. That shows on the large model, where roadrunner goes from 0.671 s to 0.148 s, a factor of 4.5 on eight processes, and the engine core from 0.465 s to 0.0982 s, a factor of 4.7 on eight threads. What is left of its run is the slowest point and the assembly: a point of this scan costs 56 to 91 ms when it runs alone, so eight threads cannot finish before the slowest of them, and the 3301 variables of the result are assembled in that one python process. The factor was 1.8 until sbmlsim 0.32.0, when this cell read 0.268 s: a chunk was sized for a pool of processes, four chunks per worker, which handed the engine two of the eight points at a time and ran the four batches one after the other, so six of the eight threads idled through each of them ([#576](https://github.com/matthiaskoenig/sbmlsim/pull/576)). The closest race of the five is the repressilator, 0.102 s against 0.128 s. The section below measures that one python process directly, cold against warm.
 - **The agreement.** At atol 1e-12 and rtol 1e-10 every engine agrees with roadrunner to 2.7e-07 relative or better on the packaged models, and on `demo` every one of them reproduces roadrunner exactly. The engine core is the closest there, by a factor of 16 on midazolam and of about 1400 on HCTZ and 1000 on the repressilator, because it integrates with the vector of absolute tolerances which roadrunner computes per state, while COPASI and AMICI have a single absolute tolerance and are given the smallest one with a safety factor, see [Absolute tolerances](simulation.md#absolute-tolerances). The large model separates them differently: the engine core and AMICI are level there, both at 7.5e-06 of roadrunner, while COPASI is at 7.8e-03, three orders of magnitude further away, which is a model to compare engine by engine before trusting a number, see [Comparing the engines](simulation.md#comparing-the-engines). Agreeing with roadrunner more closely is not the same as being more accurate: the roadrunner rows are 0 because roadrunner is the reference of the column, not because it is the truth, and the error of the engine core is not bounded by roadrunner's, see [core](simulation.md#core).
 
 ## The sparse solver of roadrunner
 
-The factor of 29 above is worth its own measurement, since it is the difference between a page where roadrunner is last on large models and one where it is first. `linear_solver` and `jacobian` are settings of `Simulator`, so the four combinations are measured in one process on the perfusion model, each the median of three rounds:
+The factor of 28 above is worth its own measurement, since it is the difference between a page where roadrunner is last on large models and one where it is first. `linear_solver` and `jacobian` are settings of `Simulator`, so the four combinations are measured in one process on the perfusion model, each the median of three rounds:
 
 | `linear_solver` | `jacobian` | one simulation |
 | --- | --- | ---: |

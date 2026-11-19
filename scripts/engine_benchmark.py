@@ -48,8 +48,11 @@ carries a round which was slow because the machine was doing something else
 into the cell; a median of enough rounds does not, which is what makes a
 measurement on a machine which is not perfectly idle worth reading.
 The engines take turns within a model and a model is measured on its own, so
-a change of the load of the machine reaches every engine of a comparison
-alike, and a large model carries fewer points and shorter rounds of its own
+a change of the load of the machine which outlasts their turns reaches every
+engine of a comparison alike; one which is shorter than a phase of the run
+can still move a single cell, which is why a cell against a measurement of
+another day is read as such. A large model carries fewer points and shorter
+rounds of its own
 (`ModelBenchmark`, `ModelConfiguration`), since one of its simulations is
 tens of seconds in some engines.
 
@@ -2131,8 +2134,10 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"Measured with {versions}: every cell is the median of its rounds, "
         f"a round the median of its timed calls after its warm ups, and the "
         f"engines take turns within a "
-        f"model, so a change of the load of the machine reaches every engine "
-        f"of a comparison alike. The run measured "
+        f"model, so a change of the load of the machine which outlasts their "
+        f"turns reaches every engine of a comparison alike, and one which is "
+        f"shorter than a phase of the run can still move a single cell. The "
+        f"run measured "
         f"{_count(result.repetitions, 'simulation')} after "
         f"{_count(result.warmups, 'warm up')} in "
         f"{_count(result.rounds, 'round')} and scanned "
@@ -2184,10 +2189,11 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"{result.workers} threads of its own (`worker._run_chunk_core`, at "
         "most `CORE_MAX_CHUNK` points per batch), so a run of the engine "
         "core starts no pool of processes at all and loads the model once. "
-        "The two do not scale alike: a process runs the whole point, a "
-        "thread of the engine integrates while the result of the run is "
-        "assembled in its one python process, so the more output a point "
-        "has, the less the threads gain.",
+        "The two do not scale alike: a process runs the whole point, its "
+        "integration and the python around it, while a thread of the engine "
+        "integrates only and the one python process of the run assembles the "
+        "result of every point itself, so the more output a point has, the "
+        "less the threads gain.",
         "- `max rel. diff.` and `max abs. diff.` are the agreement with "
         "roadrunner at atol 1e-12 and rtol 1e-10: the largest difference of a "
         "column divided by the largest magnitude of that column in "
