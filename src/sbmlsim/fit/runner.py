@@ -497,13 +497,6 @@ def run_optimization(
     return opt_result
 
 
-def _engine_workers(size: int, threads: int) -> str:
-    """Say what the threads of a fit in the engine are and what they run."""
-    _, requests = fit_core.requests_of(size, threads)
-    runs = "one request" if requests == 1 else f"{requests} requests"
-    return f"{threads} (threads of the engine, {runs})"
-
-
 def _run_optimization_in_the_engine(
     problem: OptimizationProblem,
     settings: FitSettings,
@@ -522,17 +515,17 @@ def _run_optimization_in_the_engine(
     """Run the whole fit in the engine and get its result.
 
     The engine runs the starts of the fit next to each other on the threads of
-    one batch, a request per chunk of `n_cores` starts, so the fit has no
-    workers of its own and the runs of a chunk are written, counted and kept
-    when it answers: a fit which is interrupted leaves the chunks which
-    finished, as a fit in python leaves the repeats which finished, and the
-    activity of the fit says how far it is and how long it has been running.
+    one batch and reports a run of it as soon as that run finished, so the fit
+    has no workers of its own and every run is written and counted while the
+    fit runs: a fit which is interrupted leaves the runs which finished, as a
+    fit in python leaves the repeats which finished, and the activity of the
+    fit says how far it is and how long it has been running.
     """
     threads = resolve_n_cores(n_cores)
     display.key_values(
         {
             "runs": _runs_label(size, selected),
-            "workers": _engine_workers(len(selected), threads),
+            "workers": f"{threads} (threads of the engine, one fit)",
         }
     )
     with optimization_progress(

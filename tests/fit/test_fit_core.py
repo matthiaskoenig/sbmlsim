@@ -433,53 +433,70 @@ def test_profiles_which_must_be_walked_in_the_engine_name_their_gaps(
 
 
 class Spy:
-    """A loaded model which keeps the requests of its fits and may be interrupted.
+    """A loaded model which keeps the requests of its fits.
 
-    The requests say how the runs of a fit were chunked, see `fit_core.run`, and
-    `interrupt_at` is the request which raises a `KeyboardInterrupt` instead of
-    answering, as a fit which is interrupted on the terminal does.
+    The requests say what a fit asked the engine for, see `fit_core.run`.
     """
 
-    def __init__(self, loaded: Any, interrupt_at: int | None = None) -> None:
+    def __init__(self, loaded: Any) -> None:
         self.loaded = loaded
         self.requests: list[Any] = []
-        self.interrupt_at = interrupt_at
 
     def __getattr__(self, name: str) -> Any:
         """Everything but the fit is the loaded model itself."""
         return getattr(self.loaded, name)
 
     def fit(self, request: Any, **kwargs: Any) -> Any:
-        """Answer the fit of a request, or be interrupted at `interrupt_at`."""
+        """Answer the fit of a request."""
         self.requests.append(request)
-        if self.interrupt_at is not None and len(self.requests) == self.interrupt_at:
-            raise KeyboardInterrupt
         return self.loaded.fit(request, **kwargs)
 
 
-def spy_on(
-    problem: OptimizationProblem,
-    monkeypatch: pytest.MonkeyPatch,
-    interrupt_at: int | None = None,
-) -> Spy:
+def spy_on(problem: OptimizationProblem, monkeypatch: pytest.MonkeyPatch) -> Spy:
     """Let the fits of a problem run through a `Spy` on its loaded model."""
-    spy = Spy(loaded_model(problem), interrupt_at)
+    spy = Spy(loaded_model(problem))
     monkeypatch.setattr(fit_core, "loaded_model", lambda _: spy)
     return spy
 
 
-def test_a_fit_of_more_starts_than_threads_is_a_request_per_chunk(
+def interrupt_after(
+    problem: OptimizationProblem, monkeypatch: pytest.MonkeyPatch, runs: int
+) -> None:
+    """Let the engine report `runs` runs of a fit and be interrupted then.
+
+    The fit of the engine reports a run of it as soon as that run finished and
+    raises the `KeyboardInterrupt` of a Ctrl-C which reaches it, which this is
+    for a fit of the test: the runs are the ones the engine ran, in the order it
+    reported them, and the fit is stopped after them.
+    """
+    loaded = loaded_model(problem)
+    fit = loaded.fit
+
+    def interrupted(request: Any, *, on_run: Any = None, **kwargs: Any) -> Any:
+        """Report the first runs of the fit of a request, then interrupt it."""
+        answer = fit(request, **kwargs)
+        for index, finished in enumerate(answer["runs"][:runs]):
+            if on_run is not None:
+                on_run(index, finished)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        fit_core, "loaded_model", lambda _: SimpleNamespace(fit=interrupted)
+    )
+
+
+def test_the_whole_fit_of_the_engine_is_one_request(
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The starts of a fit are chunked by the threads, which fills the batch."""
+    """Every start of a fit is in one request, which fills the pool of the engine."""
     problem = on_core(op_hctz_iv, fit_settings)
     spy = spy_on(problem, monkeypatch)
 
     result = run(problem, fit_settings, size=5, seed=1234, max_iterations=2, threads=2)
 
-    assert [len(request["starts"]) for request in spy.requests] == [2, 2, 1]
+    assert [len(request["starts"]) for request in spy.requests] == [5]
     assert len(result.fits) == 5
     assert not result.interrupted
     starts = problem.start_values(5, seed=1234)
@@ -487,7 +504,7 @@ def test_a_fit_of_more_starts_than_threads_is_a_request_per_chunk(
         np.testing.assert_allclose(fit.x0, np.asarray(start, dtype=float), rtol=1e-12)
 
 
-def test_a_fit_of_the_engine_reports_a_run_as_soon_as_its_chunk_answered(
+def test_a_fit_of_the_engine_reports_a_run_as_soon_as_it_finished(
     op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """`on_run` gets the index of every run of the fit and its result."""
@@ -509,14 +526,18 @@ def test_a_fit_of_the_engine_reports_a_run_as_soon_as_its_chunk_answered(
     assert [cost for _, cost in reported] == [fit.cost for fit in result.fits]
 
 
-def test_a_fit_of_the_engine_which_is_interrupted_keeps_the_chunks_which_finished(
+def test_a_fit_of_the_engine_which_is_interrupted_keeps_the_runs_it_reported(
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An interrupted fit is the runs of its chunks which answered, as in python."""
+    """An interrupted fit is the runs the engine reported, as in python.
+
+    The engine of the test reports two of the five runs of the fit and is then
+    interrupted, as Ctrl-C of a terminal interrupts a fit which runs.
+    """
     problem = on_core(op_hctz_iv, fit_settings)
-    spy = spy_on(problem, monkeypatch, interrupt_at=2)
+    interrupt_after(problem, monkeypatch, runs=2)
     reported: list[int] = []
 
     result = run(
@@ -529,34 +550,54 @@ def test_a_fit_of_the_engine_which_is_interrupted_keeps_the_chunks_which_finishe
         on_run=lambda k, _: reported.append(k),
     )
 
-    assert len(spy.requests) == 2
     assert result.interrupted
     assert len(result.fits) == 2
     assert reported == [0, 1]
+    costs = [fit.cost for fit in result.fits]
+    assert costs == sorted(costs)
 
 
-def test_a_fit_of_the_engine_which_is_interrupted_in_its_first_chunk_is_no_fit(
+def test_a_fit_of_the_engine_which_is_interrupted_before_a_run_is_no_fit(
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A fit which has no run to keep is interrupted, it is not an empty result."""
     problem = on_core(op_hctz_iv, fit_settings)
-    spy_on(problem, monkeypatch, interrupt_at=1)
+    interrupt_after(problem, monkeypatch, runs=0)
 
     with pytest.raises(KeyboardInterrupt):
         run(problem, fit_settings, size=2, max_iterations=2, threads=2)
 
 
-@pytest.mark.parametrize(
-    ("starts", "threads", "expected"),
-    [(8, 3, (3, 3)), (3, 8, (8, 1)), (4, 4, (4, 1)), (1, None, (1, 1)), (0, 2, (2, 1))],
-)
-def test_the_chunks_of_a_fit_fill_the_threads_of_the_engine(
-    starts: int, threads: int | None, expected: tuple[int, int]
+def test_a_fit_of_bindings_which_report_no_run_reports_them_when_it_answered(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A chunk is as wide as the threads and a fit is at least one request."""
-    assert fit_core.requests_of(starts, threads) == expected
+    """The runs of a fit are reported, whether the bindings report them or not.
+
+    `on_run` of `LoadedModel.fit` is new in sbmlsim-core 0.12.0, where the fit
+    itself is as well, so bindings of a release between the two report the runs
+    of a fit when it answered, see `fit_core.reports_runs`.
+    """
+    problem = on_core(op_hctz_iv, fit_settings)
+    monkeypatch.setattr(fit_core, "reports_runs", lambda _: False)
+    reported: list[int] = []
+
+    result = run(
+        problem,
+        fit_settings,
+        size=3,
+        seed=1234,
+        max_iterations=2,
+        threads=2,
+        on_run=lambda k, _: reported.append(k),
+    )
+
+    assert reported == [0, 1, 2]
+    assert len(result.fits) == 3
+    assert not result.interrupted
 
 
 def test_a_differential_evolution_of_the_engine_is_a_run_of_its_population(
