@@ -570,7 +570,7 @@ def _event_at_the_end(
     _at_event_times(block, end + tolerance, tolerance, markers)
     # roadrunner's last row is no row of an event
     rows = block[:-1]
-    pairs = event_pairs(rows, markers, tolerance)
+    pairs = event_pairs(rows, markers)
     pairs = pairs[rows[pairs + 1, 0] <= end + tolerance]
     if pairs.size == 0:
         return None
@@ -593,7 +593,7 @@ def _at_event_times(
         markers: the number of markers of the events, see `_steps`.
     """
     rows = block.shape[0] - 1 if block[-1, 0] >= end - tolerance else block.shape[0]
-    block[:rows, 0] = at_event_times(block[:rows], markers, tolerance)
+    block[:rows, 0] = at_event_times(block[:rows], markers)
 
 
 def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.ndarray:

@@ -25,6 +25,10 @@ change is. An event with a delay whose values are the ones at the time of
 its trigger would count from the count at that time and miss an event which
 executes during its delay: it marks itself with the time of its trigger in a
 parameter of its own instead, which differs between two of its executions.
+The trigger of an event with a delay changes nothing and is one row of the
+steps, the row at its time (libroadrunner reported it as two rows of equal
+values until the fix of roadrunner #1446, which `event_pairs` paired by
+their values and their distance).
 
 The behavior of roadrunner which sbmlsim depends on is pinned by the tests a
 new release of roadrunner has to pass: `tests/model/test_event_rows.py`,
@@ -108,21 +112,19 @@ def with_event_markers(sbml: str) -> tuple[str, tuple[str, ...]]:
     return libsbml.writeSBMLToString(doc), tuple(markers)
 
 
-def event_pairs(rows: np.ndarray, markers: int, tolerance: float) -> np.ndarray:
+def event_pairs(rows: np.ndarray, markers: int) -> np.ndarray:
     """Get the rows of the events of an integration with the steps of the integrator.
 
     Two adjacent rows are an event if a marker changes between them, see the
-    module. Two rows of the same values closer than the resolution of the
-    time, neither of which is a row of such an event, are the trigger of an
-    event with a delay, which changes nothing. The first row, the state at
-    the start, is no row of an event: roadrunner applies an event at the
-    start of an integration without rows. A row belongs to one event, of
-    adjacent rows in a row the first, third, ... are events.
+    module; two rows of equal values are two steps and no event, also two
+    within the resolution of the time. The first row, the state at the start,
+    is no row of an event: roadrunner applies an event at the start of an
+    integration without rows. A row belongs to one event, of adjacent rows in
+    a row the first, third, ... are events.
 
     Args:
         rows: the rows, the time first and the markers last.
         markers: the number of markers.
-        tolerance: the resolution of the time.
 
     Returns:
         The index of the row before every event, the row after it is the next,
@@ -133,18 +135,7 @@ def event_pairs(rows: np.ndarray, markers: int, tolerance: float) -> np.ndarray:
     values = rows[:, 1:]
     changed = np.any(values[1:, -markers:] != values[:-1, -markers:], axis=1)
     changed[0] = False
-    events = _alternate(np.flatnonzero(changed))
-    rows_of_events = np.zeros(rows.shape[0], dtype=bool)
-    rows_of_events[events] = True
-    rows_of_events[events + 1] = True
-    trigger = (
-        np.all(values[1:] == values[:-1], axis=1)
-        & (rows[1:, 0] - rows[:-1, 0] <= tolerance)
-        & ~rows_of_events[:-1]
-        & ~rows_of_events[1:]
-    )
-    trigger[0] = False
-    return np.sort(np.concatenate([events, _alternate(np.flatnonzero(trigger))]))
+    return _alternate(np.flatnonzero(changed))
 
 
 def _alternate(candidates: np.ndarray) -> np.ndarray:
@@ -158,7 +149,7 @@ def _alternate(candidates: np.ndarray) -> np.ndarray:
     return candidates[(index - first) % 2 == 0]
 
 
-def at_event_times(rows: np.ndarray, markers: int, tolerance: float) -> np.ndarray:
+def at_event_times(rows: np.ndarray, markers: int) -> np.ndarray:
     """Give the two rows of every event of the model the time of the event.
 
     Both rows of an event, see `event_pairs`, get the time half way between
@@ -171,13 +162,12 @@ def at_event_times(rows: np.ndarray, markers: int, tolerance: float) -> np.ndarr
     Args:
         rows: the rows, the time first and the markers last.
         markers: the number of markers.
-        tolerance: the resolution of the time.
 
     Returns:
         The times, a copy.
     """
     t = np.array(rows[:, 0], dtype=float)
-    pairs = event_pairs(rows, markers, tolerance)
+    pairs = event_pairs(rows, markers)
     if pairs.size == 0:
         return t
     event = t[pairs] + (t[pairs + 1] - t[pairs]) / 2.0

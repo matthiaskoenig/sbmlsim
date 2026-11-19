@@ -44,10 +44,13 @@ dependencies = [
 	# simulation
 	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
 	# on fixes of libroadrunner which are not released yet (roadrunner #1381,
-	# #1382, #1383, #1384, #1420), and the benchmark on the sparse linear solver
-	# of roadrunner #1450 (KLU, `linear_solver`); a release of libroadrunner
-	# satisfies it as well
-	"libroadrunner>=2.12.0.dev683",
+	# #1382, #1383, #1384, #1420, #1445, #1446), and the benchmark on the sparse
+	# linear solver of roadrunner #1450 (KLU, `linear_solver`); the floor is the
+	# build of the fixes of #1445, an event whose trigger is true at the end of
+	# the steps of the integrator, and of #1446, the rows of a delayed event in
+	# them, which 2.12.0.dev683 and the builds before it do not have; a release
+	# of libroadrunner satisfies the requirement as well
+	"libroadrunner>=2.12.0.dev700",
 	# the comparison of the installed libroadrunner with this requirement at
 	# `import sbmlsim` (`sbmlsim.engine.check_roadrunner`), which imports
 	# `packaging.version` (2 ms) and `packaging.requirements` only for a

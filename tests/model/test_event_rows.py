@@ -88,13 +88,13 @@ def _rows(text: str, end: float, *selections: str) -> np.ndarray:
 
 def test_the_two_rows_of_every_event_are_paired() -> None:
     rows = _rows(SAWTOOTH, 2.5, "X")
-    pairs = event_pairs(rows, 1, 2.5e-9)
+    pairs = event_pairs(rows, 1)
     assert len(pairs) == 2
     for k, time in zip(pairs, (1.0, 2.0), strict=True):
         # the state before and after the reset, a little before and after it
         assert rows[k, 1] == pytest.approx(1.0) and rows[k + 1, 1] == 0.0
         assert rows[k, 0] < time < rows[k + 1, 0]
-    times = at_event_times(rows, 1, 2.5e-9)
+    times = at_event_times(rows, 1)
     for k, time in zip(pairs, (1.0, 2.0), strict=True):
         assert times[k] == times[k + 1] == pytest.approx(time, abs=1e-12)
     assert np.all(np.diff(times) >= 0.0)
@@ -102,27 +102,24 @@ def test_the_two_rows_of_every_event_are_paired() -> None:
     assert rows[pairs[0], 0] != times[pairs[0]]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "libroadrunner develop: a delayed event in the steps of the integrator "
-        "has no row of the state before it (sys-bio/roadrunner#1446)"
-    ),
-)
-def test_the_rows_of_a_delayed_event_and_of_its_trigger_are_paired() -> None:
-    """The trigger of an event with a delay changes nothing, its rows are paired.
+def test_the_rows_of_a_delayed_event_are_paired_and_its_trigger_is_one_row() -> None:
+    """A delayed event is two rows at its time, its trigger changes nothing.
 
     roadrunner executes a delayed event in the steps of the integrator at its
-    time (roadrunner #1382), `L` at 0.45 and `D` at 0.8, and the reset at 1;
-    its rows are paired at the time of the event.
+    time (roadrunner #1382), `L` at 0.45 and `D` at 0.8, and the reset at 1,
+    each as the state before it and the state after it (roadrunner #1446);
+    its rows are paired at the time of the event. The triggers at 0.25 and
+    0.5 change nothing and are one row each, the row at their time.
     """
     rows = _rows(DELAYS, 1.5, "X", "Y")
-    times = at_event_times(rows, 2, 1.5e-9)
-    pairs = event_pairs(rows, 2, 1.5e-9)
+    times = at_event_times(rows, 2)
+    pairs = event_pairs(rows, 2)
     np.testing.assert_array_equal(times[pairs], times[pairs + 1])
-    np.testing.assert_allclose(
-        np.unique(times[pairs]), [0.25, 0.45, 0.5, 0.8, 1.0], atol=1e-12
-    )
+    np.testing.assert_allclose(np.unique(times[pairs]), [0.45, 0.8, 1.0], atol=1e-12)
+    for trigger in (0.25, 0.5):
+        at_trigger = np.flatnonzero(np.abs(rows[:, 0] - trigger) < 1e-9)
+        assert at_trigger.size == 1, trigger
+        assert at_trigger[0] not in pairs and at_trigger[0] - 1 not in pairs
     # every change of Y is the row after an event
     jumps = np.flatnonzero(np.diff(rows[:, 2]) != 0)
     assert jumps.size > 0 and set(jumps) <= set(pairs)
@@ -132,15 +129,15 @@ def test_other_rows_keep_their_times() -> None:
     rows = np.array(
         [[0.0, 0.0, 0.0], [1e-9, 1e-9, 0.0], [0.5, 0.5, 0.0], [0.5 + 1e-8, 0.6, 0.0]]
     )
-    np.testing.assert_array_equal(at_event_times(rows, 1, 1e-9), rows[:, 0])
+    np.testing.assert_array_equal(at_event_times(rows, 1), rows[:, 0])
     # without markers there are no events
-    assert event_pairs(rows, 0, 1e-9).size == 0
+    assert event_pairs(rows, 0).size == 0
 
 
 def test_the_first_row_is_no_row_of_an_event() -> None:
     """roadrunner applies an event at the start of an integration without rows."""
     rows = np.array([[0.0, 0.0, 0.0], [0.5, 0.5, 1.0], [1.0, 1.0, 1.0]])
-    assert event_pairs(rows, 1, 1e-9).size == 0
+    assert event_pairs(rows, 1).size == 0
 
 
 def test_a_row_belongs_to_one_event() -> None:
@@ -154,11 +151,15 @@ def test_a_row_belongs_to_one_event() -> None:
             [2.0, 1.0, 2.0],
         ]
     )
-    assert event_pairs(rows, 1, 1e-9).tolist() == [1]
+    assert event_pairs(rows, 1).tolist() == [1]
 
 
-def test_the_rows_of_an_event_win_over_equal_rows_before_it() -> None:
-    """Two equal rows before the row before an event are no trigger of the event."""
+def test_two_equal_rows_are_no_event() -> None:
+    """Two rows of equal values are two steps, also within the resolution of the time.
+
+    They were the trigger of an event with a delay until the fix of
+    roadrunner #1446, which reports it as one row.
+    """
     rows = np.array(
         [
             [0.0, 1.0, 0.0],
@@ -168,7 +169,8 @@ def test_the_rows_of_an_event_win_over_equal_rows_before_it() -> None:
             [1.0, 2.0, 1.0],
         ]
     )
-    assert event_pairs(rows, 1, 1e-9).tolist() == [2]
-    # without the event the equal rows are the trigger of a delayed event
+    # the marker changes at the event alone
+    assert event_pairs(rows, 1).tolist() == [2]
     rows[3:, 1:] = [1.0, 0.0]
-    assert event_pairs(rows, 1, 1e-9).tolist() == [1]
+    assert event_pairs(rows, 1).size == 0
+    np.testing.assert_array_equal(at_event_times(rows, 1), rows[:, 0])

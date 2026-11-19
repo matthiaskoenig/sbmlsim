@@ -98,7 +98,7 @@ jobs:
         # an install which asks the index for every package
         uv pip install --python "$RUNNER_TEMP/plain/bin/python" --no-deps \
           --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ \
-          "libroadrunner>=2.12.0.dev683"
+          "libroadrunner>=2.12.0.dev700"
         uv pip install --python "$RUNNER_TEMP/plain/bin/python" --no-sources .
     - name: Run a scan and write its result as netCDF
       # isolated (-I) and outside of the repository, so the package is the
