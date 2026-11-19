@@ -497,6 +497,13 @@ def run_optimization(
     return opt_result
 
 
+def _engine_workers(size: int, threads: int) -> str:
+    """Say what the threads of a fit in the engine are and what they run."""
+    _, requests = fit_core.requests_of(size, threads)
+    runs = "one request" if requests == 1 else f"{requests} requests"
+    return f"{threads} (threads of the engine, {runs})"
+
+
 def _run_optimization_in_the_engine(
     problem: OptimizationProblem,
     settings: FitSettings,
@@ -514,24 +521,39 @@ def _run_optimization_in_the_engine(
 ) -> OptimizationResult:
     """Run the whole fit in the engine and get its result.
 
-    The engine runs the starts of the fit next to each other on the threads
-    of one batch and answers when all of them finished, so the fit has no
-    workers of its own, no run which is written while it runs and no run
-    which is reported before the others: the runs of a `runs_dir` are written
-    when the answer is there, which is what a fit which is interrupted leaves
-    of itself, and the activity of the fit counts all of its runs at once,
-    which is what says how long a long fit has been running.
+    The engine runs the starts of the fit next to each other on the threads of
+    one batch, a request per chunk of `n_cores` starts, so the fit has no
+    workers of its own and the runs of a chunk are written, counted and kept
+    when it answers: a fit which is interrupted leaves the chunks which
+    finished, as a fit in python leaves the repeats which finished, and the
+    activity of the fit says how far it is and how long it has been running.
     """
     threads = resolve_n_cores(n_cores)
     display.key_values(
         {
             "runs": _runs_label(size, selected),
-            "workers": f"{threads} (threads of the engine, one fit)",
+            "workers": _engine_workers(len(selected), threads),
         }
     )
     with optimization_progress(
-        "optimizing", len(selected), show_progress, workers=len(selected)
+        "optimizing", len(selected), show_progress, workers=threads
     ) as progress:
+
+        def store(k: int, fit: OptimizeResult) -> None:
+            """Keep a run of a chunk which answered and count it."""
+            _store_run(
+                problem=problem,
+                settings=settings,
+                runs_dir=runs_dir,
+                fit=fit,
+                # the engine answers with the cost of a run and not of its steps
+                trajectory=[],
+                sid=f"{problem.opid}_run_{k}",
+                provenance=provenance,
+                run=k,
+            )
+            _advance(progress)
+
         opt_result = fit_core.run(
             problem,
             settings,
@@ -543,20 +565,8 @@ def _run_optimization_in_the_engine(
             threads=threads,
             timeout=timeout,
             provenance=provenance,
+            on_run=store,
             **optimizer,
-        )
-        _advance(progress, len(selected))
-    for k, fit in zip(selected, opt_result.fits, strict=True):
-        _store_run(
-            problem=problem,
-            settings=settings,
-            runs_dir=runs_dir,
-            fit=fit,
-            # the engine answers with the cost of a run and not of its steps
-            trajectory=[],
-            sid=f"{problem.opid}_run_{k}",
-            provenance=provenance,
-            run=k,
         )
     _print_summary(opt_result)
     return opt_result

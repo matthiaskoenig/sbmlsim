@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -686,6 +686,25 @@ def _gaps_at_the_changes(
     ]
 
 
+def requests_of(starts: int, threads: int | None) -> tuple[int, int]:
+    """Get the starts of a chunk of a fit and the requests the fit takes.
+
+    The starts of a fit are chunked by the threads of the engine, see `run`:
+    a chunk fills the batch and a fit of fewer starts than threads is one
+    request of all of them.
+
+    Args:
+        starts: the runs of the fit.
+        threads: the threads of the batch of an evaluation; one chunk of every
+            start without.
+
+    Returns:
+        The starts of a chunk and the requests of the fit, at least one each.
+    """
+    width = max(threads or starts, 1)
+    return width, max(-(-starts // width), 1)
+
+
 def run(
     problem: OptimizationProblem,
     settings: FitSettings | None = None,
@@ -703,15 +722,22 @@ def run(
     jacobian: str | None = None,
     identifiability: Mapping[str, Any] | None = None,
     provenance: FitProvenance | None = None,
+    on_run: Callable[[int, OptimizeResult], None] | None = None,
 ) -> OptimizationResult:
     """Run the fit of a problem in the engine and get the result of the fit.
 
-    The whole fit is one request: the engine runs the `size` starts of the fit
-    next to each other on the threads of one batch, every one of them an
-    optimizer of its own, and answers with every run and with the best of
-    them. The starts are the ones of the problem
-    (`OptimizationProblem.start_values`), so a fit of a seed starts where the
-    fit of that seed in python starts.
+    The engine runs the starts of a request next to each other on the threads
+    of one batch, every one of them an optimizer of its own, and answers with
+    every run and with the best of them. The starts are the ones of the
+    problem (`OptimizationProblem.start_values`), so a fit of a seed starts
+    where the fit of that seed in python starts.
+
+    A fit of more starts than threads is a request per chunk of `threads`
+    starts, which fills the batch as one request of all of them does and ends
+    the fit at a chunk: the runs of a chunk are there when it answers, which
+    is what `on_run` reports and what a fit which is interrupted keeps (its
+    result carries `interrupted`), where one request of every start would
+    answer with nothing before the last of them finished.
 
     Args:
         problem: the initialized problem, without gaps (`gaps_of`).
@@ -737,6 +763,9 @@ def run(
         identifiability: the identifiability of the optimum, see
             `fit_request`; none of it without.
         provenance: what the fit ran with, stored with the result.
+        on_run: called with the index of a run of the fit and its result as
+            soon as the chunk of that run answered, e.g. to store the runs
+            while the fit runs.
 
     Returns:
         The result of the fit, the runs of its starts sorted by their cost.
@@ -760,28 +789,59 @@ def run(
             f"population from one seed, so the {size} runs of the fit would be "
             f"the same run; a fit of several runs is a least squares one."
         )
-    starts = problem.start_values(size, algorithm, sampling, seed)
-    if indices is not None:
-        starts = [starts[k] for k in indices]
-    request = fit_request(
-        problem,
-        starts=[start for start in starts if start is not None],
-        algorithm=algorithm,
-        max_iterations=max_iterations,
-        max_seconds=timeout,
-        gradient_tolerance=gradient_tolerance,
-        evolution=evolution,
-        identifiability=identifiability,
-        jacobian=jacobian,
-        threads=threads,
-    )
-    answer = loaded_model(problem).fit(request, threads=threads)
-    return OptimizationResult(
+    drawn = problem.start_values(size, algorithm, sampling, seed)
+    runs = list(range(size)) if indices is None else list(indices)
+    starts = [drawn[k] for k in runs]
+    loaded = loaded_model(problem)
+    # the chunks of the fit: as many starts as threads fill the batch of the
+    # engine, and a fit of more of them ends at a chunk instead of at its last
+    # run, see the summary above
+    width, _ = requests_of(len(starts), threads)
+    fits: list[OptimizeResult] = []
+    interrupted = False
+    for first in range(0, len(starts), width):
+        chunk = starts[first : first + width]
+        request = fit_request(
+            problem,
+            starts=[start for start in chunk if start is not None],
+            algorithm=algorithm,
+            max_iterations=max_iterations,
+            max_seconds=timeout,
+            gradient_tolerance=gradient_tolerance,
+            evolution=evolution,
+            identifiability=identifiability,
+            jacobian=jacobian,
+            threads=threads,
+        )
+        try:
+            answer = loaded.fit(request, threads=threads)
+        except KeyboardInterrupt:
+            # the chunks which answered are the fit, as the repeats which
+            # finished are the fit of an optimizer in python
+            if not fits:
+                raise
+            logger.warning(
+                "'%s': the fit was interrupted after %d of its %d runs.",
+                problem.opid,
+                len(fits),
+                len(starts),
+            )
+            interrupted = True
+            break
+        for index, fit in zip(
+            runs[first : first + width],
+            _fits_of(problem, answer, algorithm, request),
+            strict=True,
+        ):
+            fits.append(fit)
+            if on_run is not None:
+                on_run(index, fit)
+    result = OptimizationResult(
         parameters=problem.parameters,
-        fits=_fits_of(problem, answer, algorithm, request),
+        fits=fits,
         # the engine answers with the cost of every run and not with the cost
         # of its steps, so a result of the engine has no trace of a run
-        trajectories=[[] for _ in answer["runs"]],
+        trajectories=[[] for _ in fits],
         sid=problem.opid,
         opid=problem.opid,
         settings=settings,
@@ -789,6 +849,8 @@ def run(
         provenance=provenance,
         prior_correlation=problem.prior_correlation,
     )
+    result.interrupted = interrupted
+    return result
 
 
 def _fits_of(
