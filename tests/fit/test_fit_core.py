@@ -38,7 +38,12 @@ from sbmlsim.fit.fit_core import (
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import LossFunctionType, ObjectiveType, ResidualType
+from sbmlsim.fit.options import (
+    LossFunctionType,
+    ObjectiveType,
+    OptimizationAlgorithmType,
+    ResidualType,
+)
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
@@ -552,3 +557,48 @@ def test_the_chunks_of_a_fit_fill_the_threads_of_the_engine(
 ) -> None:
     """A chunk is as wide as the threads and a fit is at least one request."""
     assert fit_core.requests_of(starts, threads) == expected
+
+
+def test_a_differential_evolution_of_the_engine_is_a_run_of_its_population(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A differential evolution draws its population in the engine, without a start.
+
+    The starts of the fit are no starts of such a request: the engine draws the
+    members from the seed of the evolution and answers with the best of them.
+    """
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    result = run(
+        problem,
+        fit_settings,
+        size=1,
+        algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+        max_iterations=3,
+        threads=2,
+        evolution={"population": 8, "seed": 1234, "polish": False},
+    )
+
+    assert len(result.fits) == 1
+    fit = result.fits[0]
+    assert fit.algorithm == "DIFFERENTIAL_EVOLUTION"
+    assert np.isfinite(fit.cost)
+    lower = np.asarray([p.lower_bound for p in problem.parameters], dtype=float)
+    upper = np.asarray([p.upper_bound for p in problem.parameters], dtype=float)
+    assert np.all(fit.x >= lower) and np.all(fit.x <= upper)
+
+
+def test_a_differential_evolution_of_many_runs_of_the_engine_is_no_fit(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Every run of such a fit would draw the same population, which is one run."""
+    problem = on_core(op_hctz_iv, fit_settings)
+
+    with pytest.raises(ValueError, match="draws its population from one seed"):
+        run(
+            problem,
+            fit_settings,
+            size=2,
+            algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+            max_iterations=1,
+        )

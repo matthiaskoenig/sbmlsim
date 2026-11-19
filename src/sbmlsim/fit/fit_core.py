@@ -793,6 +793,24 @@ def run(
     runs = list(range(size)) if indices is None else list(indices)
     starts = [drawn[k] for k in runs]
     loaded = loaded_model(problem)
+    # the objective of the fit is built once and every chunk of starts is that
+    # request with the starts of the chunk, so the conditions, the data and the
+    # mappings of a fit of many chunks are prepared once
+    whole = fit_request(
+        problem,
+        starts=[start for start in starts if start is not None],
+        algorithm=algorithm,
+        max_iterations=max_iterations,
+        max_seconds=timeout,
+        gradient_tolerance=gradient_tolerance,
+        evolution=evolution,
+        identifiability=identifiability,
+        jacobian=jacobian,
+        threads=threads,
+    )
+    # a differential evolution draws its population instead of starting from a
+    # point, so such a request has no starts and is its only chunk
+    scaled = list(whole.get("starts", []))
     # the chunks of the fit: as many starts as threads fill the batch of the
     # engine, and a fit of more of them ends at a chunk instead of at its last
     # run, see the summary above
@@ -800,19 +818,8 @@ def run(
     fits: list[OptimizeResult] = []
     interrupted = False
     for first in range(0, len(starts), width):
-        chunk = starts[first : first + width]
-        request = fit_request(
-            problem,
-            starts=[start for start in chunk if start is not None],
-            algorithm=algorithm,
-            max_iterations=max_iterations,
-            max_seconds=timeout,
-            gradient_tolerance=gradient_tolerance,
-            evolution=evolution,
-            identifiability=identifiability,
-            jacobian=jacobian,
-            threads=threads,
-        )
+        chunk = scaled[first : first + width]
+        request = {**whole, "starts": chunk} if scaled else whole
         try:
             answer = loaded.fit(request, threads=threads)
         except KeyboardInterrupt:
