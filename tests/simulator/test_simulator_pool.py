@@ -76,8 +76,10 @@ def _chunk_sizes(monkeypatch: pytest.MonkeyPatch) -> list[list[int]]:
         on_error: Any,
         block: Any = None,
         most: int = simulator_module.MAX_CHUNK,
+        *,
+        batched: bool = False,
     ) -> Any:
-        result = chunks(self, workers, on_error, block, most)
+        result = chunks(self, workers, on_error, block, most, batched=batched)
         sizes.append([len(chunk.indices) for chunk in result])
         return result
 
@@ -97,6 +99,21 @@ def test_the_size_of_a_chunk() -> None:
     assert simulator_module._chunk_size(10**6, 1, most) == most
 
 
+def test_the_size_of_a_batched_chunk() -> None:
+    """A chunk whose points run at once holds every one of them the cap allows.
+
+    The chunks of a run of the engine core, whose points are one batch of the
+    threads of the engine: the parallelism is inside the chunk, so four chunks
+    per worker would run those threads a quarter full, see
+    `sbmlsim.simulator.worker._run_chunk_core`.
+    """
+    most = simulator_module.CORE_MAX_CHUNK
+    assert simulator_module._chunk_size(8, 1, most, batched=True) == 8
+    assert simulator_module._chunk_size(12, 1, most, batched=True) == 12
+    assert simulator_module._chunk_size(10**6, 1, most, batched=True) == most
+    assert simulator_module._chunk_size(0, 1, most, batched=True) == 1
+
+
 @pytest.mark.parametrize("n_workers", [1, 2, 4])
 @pytest.mark.parametrize("points", [1, 12])
 def test_the_result_does_not_depend_on_the_workers(
@@ -105,7 +122,7 @@ def test_the_result_does_not_depend_on_the_workers(
     """Chunks of one point and one chunk of every point give the serial result."""
     serial = Simulator(n_workers=1).run(_model(), _scan())
     monkeypatch.setattr(
-        simulator_module, "_chunk_size", lambda n, workers, most: points
+        simulator_module, "_chunk_size", lambda n, workers, most, batched=False: points
     )
     sizes = _chunk_sizes(monkeypatch)
     pooled = Simulator(n_workers=n_workers).run(_model(), _scan())

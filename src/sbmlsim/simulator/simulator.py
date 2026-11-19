@@ -12,8 +12,11 @@
 2. Points: a point is a tuple of indices, nothing is built per point in the
    parent. The points are cut into chunks which share a plan, at most
    `ceil(n_points / (4 * n_workers))` and at most `MAX_CHUNK` points each,
-   `CORE_MAX_CHUNK` for the engine core, whose chunk is one batch and holds
-   the table of every one of its points at once.
+   four per process so that a process which finishes early takes another
+   chunk. A chunk of the engine core is one batch, whose points the engine
+   spreads over its threads itself, so there the parallelism is inside the
+   chunk and a chunk holds every point `CORE_MAX_CHUNK` allows, the cap of
+   the tables of a batch.
 3. Worker: a chunk applies the values of each point to its plan and runs it,
    see `sbmlsim.simulator.worker`; the same function runs serially in the
    calling process and in a worker of a pool of `sbmlsim.parallel`; the
@@ -368,16 +371,22 @@ class Simulator:
         block = _block(points, scan.size)
         compiled = self._compile(model, scan, time, observables, keep)
         workers, threads = self._workers(len(block))
-        # the chunks of the processes of the run, four of them for a run of
-        # the engine core, which is one python process: a chunk of it is one
-        # batch which the engine spreads over its threads itself, and a batch
-        # costs a pool of threads, so chunks of the threads would pay for one
-        # per chunk (a scan of 64 points of HCTZ on 8 threads takes 214 ms in
-        # 32 chunks against 50 ms in 4, the same numbers bitwise); a wide
-        # chunk of the engine buys that with the tables of its points, which
-        # `CORE_MAX_CHUNK` bounds, see `sbmlsim.simulator.worker`
-        most = CORE_MAX_CHUNK if self.engine is Engine.CORE else MAX_CHUNK
-        chunks = compiled.chunks(workers, on_error, block, most)
+        # the chunks of the processes of the run, and of the batches of a run
+        # of the engine core, which is one python process: a chunk of it is
+        # one batch which the engine spreads over its threads itself, so the
+        # parallelism of such a run is inside its chunk and the chunk takes
+        # every point the cap of a batch allows, where the four chunks per
+        # process of a pool would hand the engine a quarter of the points at
+        # a time and run its threads that full (the eight points of the large
+        # model of `docs/benchmarks.md` on eight threads take 0.13 s in one
+        # batch against 0.27 s in four, and 64 points of HCTZ 12 ms in one
+        # batch, 13 ms in four and 31 ms in chunks of two, the same numbers
+        # bitwise in each case); a wide chunk of the engine buys that with the
+        # tables of its points, which `CORE_MAX_CHUNK` bounds, see
+        # `sbmlsim.simulator.worker`
+        batched = self.engine is Engine.CORE
+        most = CORE_MAX_CHUNK if batched else MAX_CHUNK
+        chunks = compiled.chunks(workers, on_error, block, most, batched=batched)
         # the points which run at once, the processes or the threads
         at_once = max(workers, threads)
         show = at_once > 1 if progress is None else progress
@@ -1011,6 +1020,8 @@ class _Compiled:
         on_error: OnError,
         block: range | None = None,
         most: int = MAX_CHUNK,
+        *,
+        batched: bool = False,
     ) -> list[Chunk]:
         """Cut the points of a block into chunks which share a plan, see the module.
 
@@ -1022,12 +1033,14 @@ class _Compiled:
                 points.
             most: the most points of a chunk, `CORE_MAX_CHUNK` for a run of
                 the engine core.
+            batched: whether the points of a chunk run at once, which is a
+                run of the engine core, see `_chunk_size`.
 
         Returns:
             The chunks in the order of their first point.
         """
         block = range(self.size) if block is None else block
-        size = _chunk_size(len(block), workers, most)
+        size = _chunk_size(len(block), workers, most, batched=batched)
         # the positions of the points of the block only, a scan may have more
         # points than fit into memory
         positions = _positions(self.scan, block)
@@ -1434,21 +1447,34 @@ def _block(points: range | None, size: int) -> range:
     return points
 
 
-def _chunk_size(n_points: int, workers: int, most: int = MAX_CHUNK) -> int:
+def _chunk_size(
+    n_points: int, workers: int, most: int = MAX_CHUNK, *, batched: bool = False
+) -> int:
     """Get the most points of a chunk.
 
     Four chunks per worker, so that a worker which finishes early takes
     another one, of at most `most` points and of at least one.
+
+    A batched chunk, whose points run at once on the threads of the engine
+    core (`sbmlsim.simulator.worker._run_chunk_core`), takes every point
+    `most` allows instead: the parallelism of such a run is inside the chunk,
+    so the four chunks per worker of a pool would give the engine a quarter
+    of the points of the run at a time and run its threads that full, and the
+    batches of the chunks would run one after the other.
 
     Args:
         n_points: the points of the scan.
         workers: the number of processes of the run.
         most: the most points of a chunk, `MAX_CHUNK` by default and
             `CORE_MAX_CHUNK` for a run of the engine core.
+        batched: whether the points of a chunk run at once, a run of the
+            engine core.
 
     Returns:
         The size of a chunk.
     """
+    if batched:
+        return max(1, min(most, n_points))
     return max(1, min(most, math.ceil(n_points / (4 * workers))))
 
 
