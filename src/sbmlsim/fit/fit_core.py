@@ -177,9 +177,10 @@ def loaded_model(problem: OptimizationProblem) -> Any:
 def fits_requests(loaded: Any) -> bool:
     """Whether a loaded model of the bindings fits a request of `fit/1` itself.
 
-    `LoadedModel.fit` is new in sbmlsim-core 0.12.0 and the floor of sbmlsim
-    is older, so a fit of the engine is a gap of the older bindings and the
-    optimizer in python fits the problem as it did before.
+    `LoadedModel.fit` is new in sbmlsim-core 0.12.0, which the floor of
+    sbmlsim is at, so what answers `False` here is a model which is not
+    loaded in the engine core, and the optimizer in python fits the problem
+    of such a model as it did before.
 
     Args:
         loaded: the loaded model, `None` for a model which is not loaded in
@@ -690,10 +691,10 @@ def _gaps_at_the_changes(
 def reports_runs(loaded: Any) -> bool:
     """Whether the bindings report the runs of a fit while the fit runs.
 
-    The `on_run` of `LoadedModel.fit` is new in sbmlsim-core 0.12.0, where
-    `LoadedModel.fit` is as well, so this is what bindings of a release
-    between the two answer with `False`, whose fits report their runs when
-    they answered, see `run`.
+    The `on_run` of `LoadedModel.fit` is new in sbmlsim-core 0.13.0 and the
+    fit itself in 0.12.0, so this is what bindings of a release between the
+    two answer with `False`, whose fits report their runs when they
+    answered, see `run`.
 
     Args:
         loaded: the loaded model of the bindings.
