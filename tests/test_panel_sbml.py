@@ -17,6 +17,7 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelSimulation,
+    PanelUncertainty,
 )
 from sbmlsim.panel_sbml import (
     AT_ELEMENT,
@@ -159,6 +160,7 @@ def panel() -> Panel:
             points=200,
             x_unit="min",
             preinit={"beta": 0.2},
+            uncertainty=PanelUncertainty(draws=8, max_draws=32, level=0.8, seed=3),
         ),
     )
 
@@ -181,6 +183,21 @@ def test_a_panel_round_trips_through_the_annotation(
     panels, problems = panels_from_sbml(tmp_path / "m.xml")
     assert problems == ()
     assert panels == {panel.id: panel}
+
+
+def test_the_uncertainty_of_a_simulation_is_a_child_of_its_element(
+    tmp_path: Path, panel: Panel, minimal: Panel
+) -> None:
+    """The band a panel declares travels with the model, as its dosing does."""
+    xml = panels_to_annotation([panel])
+    assert '<uncertainty draws="8" maxDraws="32" level="0.8" seed="3"/>' in xml
+    write_panels(SBML_IN, tmp_path / "m.xml", [panel, minimal])
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels[panel.id].simulation.uncertainty == panel.simulation.uncertainty
+    # a panel which declares none draws no band
+    assert panels[minimal.id].simulation.uncertainty is None
+    assert "<uncertainty" not in panels_to_annotation([minimal])
 
 
 def test_a_panel_of_the_defaults_round_trips_as_well(

@@ -42,6 +42,15 @@ point is these together with the `preinit` of the panel, and the initial
 assignments compute the derived targets from the parameters, as the service
 computes them from the numbers of the knobs.
 
+A panel which declares an uncertainty (`sbmlsim.panel.PanelUncertainty`) also
+carries its sample: the parameters of the model which have a distrib
+distribution and one vector of `max_draws` draws per parameter, drawn as the
+service draws them (`uncertainty_dimension`, a Latin hypercube of the seed the
+panel declares), in the units of the model. A reader runs the draws it was
+asked for, which are the first ones of that sample, and reduces them to the
+band itself: a prefix of a Latin hypercube is a sample of its own, so the band
+settles as a reader asks for more draws instead of jumping.
+
 The settings of the integrator are the ones of the simulator of the project
 in the names of sbmlsim-core, and the absolute tolerance of every state is the
 one the project's settings give it in roadrunner
@@ -68,6 +77,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import libsbml
+import numpy as np
 
 import sbmlsim
 from sbmlsim.atomic import atomic_directory
@@ -92,6 +102,10 @@ from sbmlsim.serve.runner import (
     output_times,
     time_factor,
     time_unit,
+)
+from sbmlsim.simulation.sampling.model_distributions import (
+    uncertainty_dimension,
+    uncertainty_name,
 )
 from sbmlsim.simulator.formula import compile_formula, formula_mathml
 
@@ -444,6 +458,55 @@ def _run(
             }
             for dosing in panel.simulation.dosing
         ],
+        "uncertainty": _uncertainty(panel, path),
+    }
+
+
+def _uncertainty(panel: Panel, path: Path) -> dict[str, Any] | None:
+    """Get the sample of the uncertainty of a panel, the draws of its band.
+
+    The draws are the Latin hypercube of the distrib distributions of the
+    parameters of the model, independent as those distributions are, and in
+    the units of the model, so a reader sets a draw exactly as it sets the
+    pre-initialization of a point. They are `max_draws` of them, the most a
+    request may ask for, and a request for fewer runs the first ones.
+
+    Args:
+        panel: the declaration of the panel.
+        path: the SBML of the variant the panel runs on.
+
+    Returns:
+        The sample, `None` for a panel which declares no uncertainty.
+
+    Raises:
+        ValueError: naming the panel, for a panel which declares one and a
+            model whose parameters carry no distribution.
+    """
+    declared = panel.simulation.uncertainty
+    if declared is None:
+        return None
+    try:
+        dimension = uncertainty_dimension(
+            path, draws=declared.max_draws, seed=declared.seed
+        )
+    except ValueError as err:
+        raise ValueError(f"The panel '{panel.id}' is no bundle: {err}") from err
+    parameters = sorted(dimension.values)
+    columns = [
+        np.asarray(
+            getattr(dimension.values[name], "magnitude", dimension.values[name]),
+            dtype=float,
+        )
+        for name in parameters
+    ]
+    return {
+        "fit": uncertainty_name(path),
+        "level": declared.level,
+        "seed": declared.seed,
+        "default_draws": declared.draws,
+        "max_draws": declared.max_draws,
+        "parameters": parameters,
+        "draws": [[float(value) for value in row] for row in np.column_stack(columns)],
     }
 
 

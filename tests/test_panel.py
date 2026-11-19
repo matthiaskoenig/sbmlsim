@@ -16,6 +16,7 @@ from sbmlsim.panel import (
     APP_CONTRACT,
     CONTRACT,
     MAX_CURVES,
+    MAX_DRAWS,
     MAX_END,
     MAX_GRID,
     MAX_KNOBS,
@@ -30,6 +31,7 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelSimulation,
+    PanelUncertainty,
     Scenario,
     app_from_payload,
     app_payload,
@@ -681,6 +683,40 @@ def test_a_simulation_over_the_limits_is_refused(simulation: dict[str, Any]) -> 
 def test_a_simulation_at_the_limits_is_accepted() -> None:
     simulation = PanelSimulation(end=MAX_END, points=MAX_POINTS)
     assert (simulation.end, simulation.points) == (MAX_END, MAX_POINTS)
+
+
+def test_a_panel_declares_the_draws_of_its_band_or_none() -> None:
+    """The uncertainty says how many draws of the sample of the model it wants."""
+    assert PanelSimulation(end=10.0).uncertainty is None
+    declared = PanelUncertainty()
+    assert (declared.draws, declared.max_draws, declared.level, declared.seed) == (
+        16,
+        64,
+        0.9,
+        0,
+    )
+    simulation = PanelSimulation(end=10.0, uncertainty=PanelUncertainty(draws=4))
+    panel = Panel(
+        id="p",
+        title="p",
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        simulation=simulation,
+    )
+    payload = panel_payload(panel)["simulation"]["uncertainty"]
+    assert payload == {"draws": 4, "max_draws": 64, "level": 0.9, "seed": 0}
+    assert panel_from_payload(panel_payload(panel)) == panel
+    # a sample of the most draws is accepted, more than it holds is not
+    assert PanelUncertainty(draws=MAX_DRAWS, max_draws=MAX_DRAWS).draws == MAX_DRAWS
+    for over in (
+        {"draws": 32, "max_draws": 16},
+        {"draws": 0},
+        {"max_draws": MAX_DRAWS + 1},
+        {"level": 1.0},
+        {"level": 0.0},
+        {"seed": -1},
+    ):
+        with pytest.raises(ValidationError):
+            PanelUncertainty(**over)
 
 
 def test_the_time_axis_is_the_unit_of_the_model_without_an_x_unit() -> None:

@@ -117,7 +117,7 @@ The limits fix the axes, so two settings of the knobs are compared on one scale 
 | `points` | the output steps, `200` without, from 2 to `2000`; a run answers the `points + 1` times from 0 to `end`, which the integrator integrates to, so a curve is the solution at its times and not interpolated between the steps of the integrator |
 | `xUnit` | the unit the time axis is delivered in, the time unit of the model without |
 
-Its `<preinit target="BW" value="75"/>` children are the values of the pre-initialization which are no knob, e.g. a body weight; a knob writes its target over them. Its `<derived target="f_renal_function" formula="min(crcl / 110, 1)"/>` children are its derived targets, see [Derived targets](#derived-targets), and its `<dosing target="PODOSE_hctz" dose="dose" interval="interval" duration="days"/>` children its dosing protocols, see [Dosing protocols](#dosing-protocols).
+Its `<preinit target="BW" value="75"/>` children are the values of the pre-initialization which are no knob, e.g. a body weight; a knob writes its target over them. Its `<derived target="f_renal_function" formula="min(crcl / 110, 1)"/>` children are its derived targets, see [Derived targets](#derived-targets), its `<dosing target="PODOSE_hctz" dose="dose" interval="interval" duration="days"/>` children its dosing protocols, see [Dosing protocols](#dosing-protocols), and its `<uncertainty draws="16" maxDraws="64" level="0.9" seed="0"/>` child the band of the uncertainty of the parameters of the model, see [The band of the parameters](#the-band-of-the-parameters).
 
 `<knob>`, an entity of the model a reader sets, or an input of the formulas of its derived targets:
 
@@ -358,7 +358,7 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 | `GET /api/models/{model}/panels` | the panels the default variant of the model declares, their ids, titles and subtitles |
 | `GET /api/models/{model}/panels/{panel}?variant=` | the declaration of one panel in a variant, the contract `panel/1` |
 | `GET /api/models/{model}/panels/{panel}/data?variant=` | the study data behind its curves in a variant, the contract `paneldata/1` |
-| `POST /api/models/{model}/panels/{panel}/simulate` | the curves of a run of the panel at the values of its knobs or over a grid of them |
+| `POST /api/models/{model}/panels/{panel}/simulate` | the curves of a run of the panel at the values of its knobs or over a grid of them, with the band of the draws it asks for |
 | `GET /api/sim/{spec_hash}` | the stored answer of a simulation by its hash, as immutable |
 | `POST /api/models/{model}/experiments` | a 202 with the job of a run of the simulation experiments of the model; with `--experiments` only |
 | `GET /api/jobs/{job_id}` | that job as it is now, with the figures of a finished one; with `--experiments` only |
@@ -447,7 +447,7 @@ The declaration of a panel is its `panel/1` payload, here the one of `renal_urin
 }
 ```
 
-A simulation takes the value of every knob a reader set, the points of every knob a grid runs over and the variant of the model, see below, and nothing else; the body below is a run of `renal_plasma`, whose two curves are one quantity in one unit:
+A simulation takes the value of every knob a reader set, the points of every knob a grid runs over, the draws of the band it wants and the variant of the model, see below, and nothing else; the body below is a run of `renal_plasma`, whose two curves are one quantity in one unit:
 
 ```json
 {"values": {"dose": 25.0}, "grid": {"egfr": 3}}
@@ -492,7 +492,50 @@ A knob of the grid takes no value, a knob which a request leaves out runs at its
 
 A grid is one request per figure and not one per movement of a knob: a renderer fetches it once and interpolates between its points while a knob moves. A point which did not integrate, a knob value the model does not simulate, is `null` in every curve and its flat index is in `status.failed`; the request stays a 200, since a model which does not integrate everywhere is a fact of the model and no error of the request.
 
+A request which asks for `draws` is answered with the band of the uncertainty of the parameters next to its curves, see [The band of the parameters](#the-band-of-the-parameters).
+
 A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {"crcl": 45.0}, "grid": {}, "variant": "female"}`: the declaration of the panel in that variant runs on the SBML of that variant, so the knobs, the derived targets and the curves are the ones that variant declares. Without one the declaration of the default variant runs on the variant it declares, else on the default variant of the project. A variant the project does not have is a 422 which names the model and its variants, and a panel the variant does not declare is a 404. The `spec_hash` covers the variant and the whole declaration, and `provenance.variant` says which one ran. The declaration and the data routes take the same variant as the query `variant`, so a renderer which switches the variant reads the declaration, the data and the curves of one variant.
+
+### The band of the parameters
+
+A model whose parameters were fitted carries the uncertainty of every fitted parameter in its SBML, the distribution of its draws as the distrib package states it (`sbmlsim.simulation.sampling.model_distributions`, written from the records of the adopted fits of the model). A panel which declares an `<uncertainty>` draws that uncertainty as a band around its curves: the parameters are drawn as a Latin hypercube of their distributions, every point of the grid is run once per draw with the parameters of that draw set before the initialization, and the answer carries the percentiles of those draws at every output time.
+
+| attribute of `<uncertainty>` | what it is |
+| --- | --- |
+| `draws` | the draws a client asks for when its host names no number, `16` without; a request which names none runs no draw at all, since the draws are the work of the band |
+| `maxDraws` | the draws of the sample, the most a request may ask for, `64` without and at most `256` |
+| `level` | the level of the band, `0.9` without: the 5th and the 95th percentile of the draws of every output time |
+| `seed` | the seed of the Latin hypercube, `0` without, so the band of a model is the same band on every machine and in its static bundle |
+
+The declaration states what a client may ask for, so a page reads the number from it and may let its reader move it; a request for more draws than the sample holds is a 422 which names both numbers, rather than a band of fewer draws than it asked for. The draws a request runs are the first ones of the sample: a prefix of a Latin hypercube is a sample of its own, so the band settles as a reader asks for more draws instead of jumping, and the answers of 16 and of 32 draws are two runs of one sample.
+
+```json
+{"values": {"dose": 25.0}, "draws": 16}
+```
+
+```json
+{
+  "contract": "panel/1",
+  "spec_hash": "...",
+  "x": [0.0, 1.0, 2.0],
+  "dims": [],
+  "curves": {"[Cve_hctz]": [[0.0, 0.42, 0.61]]},
+  "units": {"x": "hr", "[Cve_hctz]": "uM"},
+  "status": {"ok": true, "points": 1, "failed": []},
+  "uncertainty": {
+    "draws": 16,
+    "fit": "fit HCTZ_1",
+    "level": 0.9,
+    "band": {"[Cve_hctz]": [{"low": [0.0, 0.31, 0.5], "high": [0.0, 0.53, 0.72]}]},
+    "curves": {"[Cve_hctz]": [[0.0, 0.39, 0.58], ["..."]]},
+    "failed": []
+  }
+}
+```
+
+The `band` of a curve is one `low` and `high` per point of the grid, in the same C order as the rows of `curves`, so a band interpolates with a knob exactly as a curve does. The `curves` of the draws themselves travel for a request of one point alone, where their size is bounded - a page which shows the draws behind its band, or computes something of its own from them, reads them there; over a grid they stay behind, since the draws of every point would be the rows of the grid over again. `fit` is the name the uncertainties of the model share, the fit they were adopted from, and is empty for a model whose uncertainties carry none. A draw which did not integrate is no member of the percentiles and its flat index, over the points of the grid and their draws, is in `uncertainty.failed`; the curves of the panel are the model at its own parameters whatever the draws do, and `status` is of them alone.
+
+The curves of a request and the draws of its band are two runs: the curves are shared with every request of that state whatever draws it asks for, and the draws are a run of their own, shared with every request which asks for the same ones ([One run per state of a page](#one-run-per-state-of-a-page)). The sample of a model is drawn once per model, number of draws and seed, by reading its SBML, and the `spec_hash` covers the draws, so a cache never answers a request for a band with a run without one.
 
 The study data of `renal_urine` is `paneldata/1`, on the axis of its curves and in their units:
 
@@ -676,8 +719,11 @@ The recipe leaves nothing of the semantics of a simulation to the page:
 | `preinit` | the pre-initialization of the panel, in the units of the model |
 | `knobs` | per knob its `target`, the `factor` from the unit of the knob into the unit of the target, the `parameter` the formulas of the derived targets read, and the `unit` of an axis of the grid over it |
 | `dosing` | per dosing protocol its `target`, the knobs of its `dose`, `interval` and `duration` (or `null`) and the factors from the units of the knobs of the times into the time unit of the model (`interval_factor`, `duration_factor`) |
+| `uncertainty` | the sample of the band of a panel which declares one, `null` without: the `fit` it comes from, the `level`, the `seed`, the `default_draws` a client asks for, the `max_draws` it may ask for, the `parameters` of the model and the `draws`, one vector per draw in the order of the parameters and in the units of the model |
 
 A value `v` of a knob sets its target to `v * factor` and its parameter to `v`, and the pre-initialization of a point is these together with `preinit`. A panel without derived targets runs on the SBML of its variant; a panel with derived targets runs on a model of its own (the key `<variant>-<12 hex digits>`, shared by the panels of the same derived targets), the SBML of the variant with a constant parameter `panel_knob__<knob id>` per knob a formula reads and an initial assignment of every derived target to its formula over them. The MathML of a formula is written from the same parse tree the service evaluates it from, with the operations as written and the numbers as their doubles (`sbmlsim.simulator.formula.formula_mathml`), so the model computes the derived targets the service computes. A derived target which is no parameter or compartment, or which a rule sets, is refused. Every unit conversion is a factor: a unit with an offset is refused. A dosing protocol (`PanelDosing`) adds the dose `v * factor` of its knob of the dose to its target again at the times `k * interval`, `k = 1, 2, ...`, while they are before the duration and the end (`sbmlsim.panel.dose_times`, at most `MAX_DOSES`), as a change of each time which increments the target in the state before it (the `increments` of a change of sbmlsim-core 0.6.0); at a time which is an output time the curve is the state after the dose.
+
+A page runs the draws it was asked for, the first vectors of the sample, and reduces them to the band itself, so its band is the band of the service: both sides take the same sample, the Latin hypercube of the `seed` and the `max_draws` of the declaration, and the same percentiles of it. A page which asks for a band is a run per point of the grid and per draw, so a declaration keeps `max_draws` to what the reader of that page should wait for.
 
 Each model of `models` names its SBML, the directory its compiled model goes to (sbmlsim-core writes `model.wasm` and `model.json` there), its variant, the selections of the curves of its panels, the settings of the integrator of the project in the names of sbmlsim-core (`relative_tolerance`, `absolute_tolerance`, `maximum_num_steps`, `maximum_time_step`, `initial_time_step`, `stiff`, `linear_solver`, `jacobian`; a setting of roadrunner sbmlsim-core does not have is logged and not carried) and `absolute_tolerances`, the tolerance of every state by its id as the settings of the project give it in roadrunner (`RoadrunnerSBMLModel.tolerances`). Simulating the exported SBML with this recipe alone reproduces the answer of `POST .../simulate`, which `tests/serve/test_export.py` checks with roadrunner. No number of a bundle is `NaN` or infinite; the export refuses them.
 
@@ -694,7 +740,7 @@ What a renderer may rely on:
 - **the ids are data**: the ids of the models, panels, knobs, curves and series come from the payloads, so no model name and no entity of a model is built into a renderer;
 - **the limits**, which the declaration of a panel carries under `limits`, so a renderer reads the bounds of the endpoint instead of carrying its own numbers;
 - **one unit per axis**: the `units` of a simulation and the `unit` and `x_unit` of the series of the same panel state one unit unless a series declares a unit of its own, see [Units](#units);
-- **the shape of a grid**: `curves[id]` is one row per point of `dims` in C order, `x` is the output times of every row, and a point which failed is `null` with its flat index in `status.failed`;
+- **the shape of a grid**: `curves[id]` is one row per point of `dims` in C order, `x` is the output times of every row, and a point which failed is `null` with its flat index in `status.failed`; the `band` of a curve of `uncertainty` is one `{low, high}` per point of the same order;
 - **the names of `panel/1` as they are**: the knobs of a declaration are its `axes` (each knob is a possible axis of a grid), the axes of the grid of an answer are its `dims`, and the most knobs of a panel are `limits.knobs`; the three names are frozen with the contract, and a renderer reads a knob of `axes` and an axis of `dims` by the same `id`;
 - **an added field keeps the version**: a payload may grow a field within `panel/1`, so a renderer ignores the fields it does not know, while the python readers of this package are strict and refuse a field they do not know; a field which is removed or changes its meaning is a new contract version, `panel/2`.
 
@@ -704,7 +750,7 @@ What a renderer must not rely on:
 - **the hash**: `spec_hash` is an opaque string; what goes into it is the business of the service and changes with it;
 - **the provenance values**: `seconds` and `created` are of the run which computed a body, and a stored body carries the ones of the run which computed it first;
 - **the error texts**: the message of a 404 or a 422 is for a human, the status code is the contract;
-- **the extra fields of a request**: a request body forbids what it does not declare, so a renderer sends `values`, `grid` and `variant` and nothing else;
+- **the extra fields of a request**: a request body forbids what it does not declare, so a renderer sends `values`, `grid`, `variant` and `draws` and nothing else;
 - **a formula**: the derived targets of a panel are evaluated by the service, so a renderer reads them as declared text and never evaluates one.
 
 ## Where the pieces are

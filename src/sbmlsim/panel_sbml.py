@@ -12,6 +12,7 @@ a release:
             <preinit target="BW" value="75"/>
             <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>
             <dosing target="PODOSE_hctz" dose="dose" interval="interval" duration="days"/>
+            <uncertainty draws="16" maxDraws="64" level="0.9" seed="0"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
           <knob id="crcl" label="creatinine clearance" unit="ml/min" kind="range" min="10" max="150" steps="8" default="110">
@@ -40,7 +41,8 @@ named stops of one of the kind `range`, the `preinit` children of the
 simulation are its `preinit`, its `derived` children its `derived`, each of a
 `target` and its `formula`, its `dosing` children its `dosing`, each of a
 `target`, the knob of its `dose`, of its `interval` and of its `duration`
-(optional), the `select` children of a series of the data are
+(optional), its `uncertainty` child the band of the draws of the parameters of
+the model (`maxDraws` for `max_draws`), the `select` children of a series of the data are
 its `sel`, the rows of its dataset, each of them of a `column` and a `value`,
 and its `at` children are its `at`, the state of the knobs it was measured
 under, each of them of a `knob` and a `value`. The `dataset` of a series is the
@@ -87,6 +89,7 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelSimulation,
+    PanelUncertainty,
     panel_from_payload,
 )
 
@@ -117,6 +120,8 @@ PREINIT_ELEMENT: Final = "preinit"
 DERIVED_ELEMENT: Final = "derived"
 #: the element of one dosing protocol of the simulation
 DOSING_ELEMENT: Final = "dosing"
+#: the element of the uncertainty of the simulation, the band of its draws
+UNCERTAINTY_ELEMENT: Final = "uncertainty"
 #: the element of one knob of a panel
 KNOB_ELEMENT: Final = "knob"
 #: the element of one choice of a knob of the kind `choice` or one named stop
@@ -149,6 +154,13 @@ _SIMULATION_ATTRIBUTES: Final = {
     "end": "end",
     "points": "points",
     "xUnit": "x_unit",
+}
+#: the fields of the uncertainty of the simulation of a panel
+_UNCERTAINTY_ATTRIBUTES: Final = {
+    "draws": "draws",
+    "maxDraws": "max_draws",
+    "level": "level",
+    "seed": "seed",
 }
 #: the fields of a knob, its `choices` are the `option` children
 _KNOB_ATTRIBUTES: Final = {
@@ -187,7 +199,9 @@ _DATA_ATTRIBUTES: Final = {
 }
 
 #: a panel or one of its parts, which the writer reads the fields of
-type _Part = Panel | PanelSimulation | Knob | Choice | PanelCurve | PanelData
+type _Part = (
+    Panel | PanelSimulation | PanelUncertainty | Knob | Choice | PanelCurve | PanelData
+)
 
 
 @dataclass(frozen=True)
@@ -516,6 +530,9 @@ def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
     ]
     if dosing:
         payload["dosing"] = dosing
+    uncertainty = list(_children(simulations[0], UNCERTAINTY_ELEMENT))
+    if uncertainty:
+        payload["uncertainty"] = _fields_of(uncertainty[0], _UNCERTAINTY_ATTRIBUTES)
     return payload
 
 
@@ -690,7 +707,11 @@ def _panel_xml(panel: Panel) -> str:
 
 
 def _simulation_xml(simulation: PanelSimulation) -> str:
-    """Get the XML of the `simulation` element, its `preinit`, `derived` and `dosing` children."""
+    """Get the XML of the `simulation` element and its children.
+
+    The `preinit`, the `derived`, the `dosing` and the `uncertainty` of the
+    simulation are the children of its element.
+    """
     preinit = "".join(
         f"<{PREINIT_ELEMENT} target={quoteattr(target)} value={quoteattr(str(value))}/>"
         for target, value in simulation.preinit.items()
@@ -706,11 +727,18 @@ def _simulation_xml(simulation: PanelSimulation) -> str:
         + "/>"
         for item in simulation.dosing
     )
+    uncertainty = (
+        ""
+        if simulation.uncertainty is None
+        else _element_xml(
+            UNCERTAINTY_ELEMENT, simulation.uncertainty, _UNCERTAINTY_ATTRIBUTES
+        )
+    )
     return _element_xml(
         SIMULATION_ELEMENT,
         simulation,
         _SIMULATION_ATTRIBUTES,
-        preinit + derived + dosing,
+        preinit + derived + dosing + uncertainty,
     )
 
 

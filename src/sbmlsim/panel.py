@@ -41,6 +41,7 @@ __all__ = [
     "CONTRACT",
     "MAX_CURVES",
     "MAX_DOSES",
+    "MAX_DRAWS",
     "MAX_END",
     "MAX_GRID",
     "MAX_KNOBS",
@@ -56,6 +57,7 @@ __all__ = [
     "PanelData",
     "PanelDosing",
     "PanelSimulation",
+    "PanelUncertainty",
     "Scenario",
     "app_from_payload",
     "app_payload",
@@ -86,6 +88,9 @@ MAX_CURVES: Final = 16
 #: the most doses a dosing protocol of a panel gives after its first one, see
 #: `dose_times`
 MAX_DOSES: Final = 1000
+#: the most draws of the uncertainty of a panel, which a request runs on top of
+#: the points of its grid
+MAX_DRAWS: Final = 256
 
 #: a panel and its parts forbid unknown fields and do not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
@@ -483,6 +488,52 @@ def dose_times(interval: float, duration: float | None, end: float) -> list[floa
     return times
 
 
+class PanelUncertainty(BaseModel):
+    """The uncertainty of the parameters of a model, which a panel draws as a band.
+
+    The sample is drawn from the distributions the model carries - the
+    `distrib` uncertainty of every parameter a fit estimated, see
+    `sbmlsim.simulation.sampling.model_distributions` - and never from
+    anything a panel states: a panel declares how many draws it wants of what
+    its model knows, and a model which knows nothing carries no band.
+
+    Attributes:
+        draws: the draws a client asks for when its host names no number; a
+            request which names none runs no draw at all, since the draws are
+            the work of the band.
+        max_draws: the draws of the sample, the most a request may ask for. A
+            request for more is refused rather than cut, so a page never
+            states a band it did not get.
+        level: the level of the band, e.g. `0.9` for the 5th and the 95th
+            percentile of the draws of every output time.
+        seed: the seed the sample is drawn with, so the band of a bundle and
+            the band of the service are the same band on every machine.
+    """
+
+    model_config = _CONFIG
+
+    draws: int = Field(default=16, ge=1, le=MAX_DRAWS)
+    max_draws: int = Field(default=64, ge=1, le=MAX_DRAWS)
+    level: float = Field(default=0.9, gt=0.0, lt=1.0)
+    seed: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _check_draws(self) -> Self:
+        """Check that the draws a client asks for are ones the sample holds.
+
+        Raises:
+            ValueError: naming both numbers, for a panel which asks for more
+                draws than its sample holds.
+        """
+        if self.draws > self.max_draws:
+            raise ValueError(
+                f"The uncertainty asks for {self.draws} draws of a sample of "
+                f"{self.max_draws}; a panel asks for at most the draws its sample "
+                f"holds."
+            )
+        return self
+
+
 class PanelSimulation(BaseModel):
     """The simulation a panel runs, the same for every point of its grid.
 
@@ -514,6 +565,9 @@ class PanelSimulation(BaseModel):
         dosing: the dosing protocols, a dose of a knob repeated at the
             interval of another knob, see `PanelDosing`; at most one per
             target.
+        uncertainty: the uncertainty of the parameters of the model, which the
+            panel draws as a band around its curves, see `PanelUncertainty`;
+            `None` for a panel of the curves alone.
     """
 
     model_config = _CONFIG
@@ -525,6 +579,7 @@ class PanelSimulation(BaseModel):
     preinit: Mapping[str, _Number] = {}
     derived: Mapping[str, str] = {}
     dosing: tuple[PanelDosing, ...] = ()
+    uncertainty: PanelUncertainty | None = None
 
     @model_validator(mode="after")
     def _check_derived(self) -> Self:

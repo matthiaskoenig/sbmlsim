@@ -45,6 +45,7 @@ __all__ = [
     "distribution_from_formula",
     "parameter_distributions",
     "uncertainty_dimension",
+    "uncertainty_name",
 ]
 
 
@@ -133,6 +134,41 @@ def parameter_distributions(sbml_path: Path) -> dict[str, Distribution]:
                 formula = libsbml.formulaToL3String(child.getMath())
                 distributions[pid] = distribution_from_formula(formula)
     return distributions
+
+
+def uncertainty_name(sbml_path: Path) -> str:
+    """Get the name the uncertainties of the parameters of a model share.
+
+    The factory of a model names the distrib uncertainty of every parameter it
+    writes after the fit the parameter was adopted from
+    (`sbmlsim.fit.records.AdoptedRecords`), so the name says which fit a band
+    of the draws comes from. It is provenance and no input of a draw: a model
+    whose uncertainties carry no name, or more than one name, has none.
+
+    Args:
+        sbml_path: the SBML model, the flat model a simulation runs.
+
+    Returns:
+        The name the uncertainties share, empty for a model whose
+        uncertainties disagree or carry none.
+
+    Raises:
+        ValueError: if the file has no model.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
+    model: libsbml.Model | None = doc.getModel()
+    if model is None:
+        raise ValueError(f"'{sbml_path}' has no SBML model.")
+    names: set[str] = set()
+    for parameter in model.getListOfParameters():
+        plugin = parameter.getPlugin("distrib")
+        if plugin is None:
+            continue
+        for k in range(plugin.getNumUncertainties()):
+            uncertainty = plugin.getUncertainty(k)
+            if uncertainty.isSetName():
+                names.add(uncertainty.getName())
+    return names.pop() if len(names) == 1 else ""
 
 
 def uncertainty_dimension(
