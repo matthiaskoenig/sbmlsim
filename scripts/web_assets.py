@@ -29,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 #: the version of sbmlsim-web which is vendored
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 #: the files of the package which are vendored, by their path in its tarball
 FILES = {
     "package/dist/sbmlsim-web.iife.js": "sbmlsim-web.iife.js",
