@@ -170,7 +170,7 @@ def test_a_scan_of_one_point_per_thread_runs_them_in_one_batch(
     a quarter of its points, which left three of four threads of the engine
     idle and cost four waves of integration where one does: the parallel scan
     of the large model of `docs/benchmarks.md`, eight points on eight
-    workers, was 2.7 times its own time that way.
+    workers, was 2.1 times its own time that way.
     """
     batches = _spy(model_core, monkeypatch)
     result = Simulator(engine="core", n_workers=8).run(model_core, scan_of(8))
