@@ -22,6 +22,7 @@ from sbmlsim.panel import (
     MAX_KNOBS,
     MAX_POINTS,
     App,
+    AppFigure,
     AppPage,
     AppVariant,
     Choice,
@@ -1218,3 +1219,37 @@ def test_a_value_of_the_preinitialization_or_a_state_which_is_not_finite_is_refu
             y="y",
             at={"dose": value},
         )
+
+
+def test_an_app_carries_a_figure_through_its_payload(app: App) -> None:
+    figure = AppFigure(
+        svg="<svg/>", title="The model", panels={"li/sub:gli": ("renal",)}
+    )
+    carried = app.model_copy(update={"figure": figure})
+    payload = app_payload(carried)
+    assert payload["figure"]["panels"] == {"li/sub:gli": ["renal"]}
+    assert app_from_payload(json.loads(json.dumps(payload))) == carried
+
+
+def test_an_app_without_a_figure_reads_as_it_did(app: App) -> None:
+    payload = app_payload(app)
+    assert payload["figure"] is None
+    assert app_from_payload(payload) == app
+
+
+def test_a_page_shows_the_panels_it_lists() -> None:
+    with pytest.raises(ValidationError, match="shown"):
+        AppPage(id="p", title="P", panels=("a",), shown=("b",))
+    page = AppPage(id="p", title="P", panels=("a", "b"), figure=True, shown=("b",))
+    assert page.figure and page.shown == ("b",)
+
+
+def test_a_figure_selects_panels_the_app_has(app: App) -> None:
+    figure = AppFigure(svg="<svg/>", title="T", panels={"li": ("nope",)})
+    with pytest.raises(ValidationError, match="unknown panel"):
+        App.model_validate({**app.model_dump(), "figure": figure.model_dump()})
+
+
+def test_an_inline_figure_is_bounded() -> None:
+    with pytest.raises(ValidationError, match="512"):
+        AppFigure(svg="<svg>" + "x" * (512 * 1024), title="T", panels={})

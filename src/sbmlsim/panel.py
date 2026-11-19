@@ -43,10 +43,12 @@ __all__ = [
     "MAX_DOSES",
     "MAX_DRAWS",
     "MAX_END",
+    "MAX_FIGURE_BYTES",
     "MAX_GRID",
     "MAX_KNOBS",
     "MAX_POINTS",
     "App",
+    "AppFigure",
     "AppPage",
     "AppVariant",
     "Choice",
@@ -75,6 +77,8 @@ APP_CONTRACT: Final = "app/1"
 
 #: the largest end of the simulation of a panel, in the time unit of its model
 MAX_END: Final = 10000.0
+#: the most bytes of the inline svg of the figure of an app, see `AppFigure`
+MAX_FIGURE_BYTES: Final = 512 * 1024
 #: the most output points of the simulation of a panel
 MAX_POINTS: Final = 2000
 #: the most knobs of a panel, which are the most a request may set or grid
@@ -1078,6 +1082,45 @@ class Scenario(BaseModel):
         return self
 
 
+class AppFigure(BaseModel):
+    """The figure of the model an app shows, which a reader clicks to pick panels.
+
+    Attributes:
+        svg: the drawing as inline svg text, at most `MAX_FIGURE_BYTES` bytes
+            in UTF-8; its `data-k` attributes name the parts a reader clicks.
+        title: the figure as it is shown; it is not empty.
+        credit: the source of the drawing, shown below it; free text, none
+            without.
+        panels: the panel ids a click selects, by the key path of the part,
+            the `data-k` attributes from the outside in joined by `/`, e.g.
+            `li` or `li/sub:gli`. Which panels exist is checked by `App`.
+    """
+
+    model_config = _CONFIG
+
+    svg: str
+    title: _Text
+    credit: str = ""
+    panels: Mapping[str, tuple[str, ...]]
+
+    @model_validator(mode="after")
+    def _check_figure(self) -> Self:
+        """Check the size of the drawing.
+
+        Raises:
+            ValueError: naming the limit, for a drawing above
+                `MAX_FIGURE_BYTES`.
+        """
+        size = len(self.svg.encode("utf-8"))
+        if size >= MAX_FIGURE_BYTES:
+            raise ValueError(
+                f"The figure of an app is {size} bytes; the limit of an inline "
+                f"figure is {MAX_FIGURE_BYTES // 1024} KiB ({MAX_FIGURE_BYTES} "
+                f"bytes), so an app draws a simplified figure."
+            )
+        return self
+
+
 class AppPage(BaseModel):
     """One page of the app of a model: a title and the panels it shows.
 
@@ -1099,6 +1142,11 @@ class AppPage(BaseModel):
             page of many readouts side by side, e.g. one small panel per
             output of a model under the knobs the page shares; how a renderer
             draws a size is its own, see sbmlsim-web.
+        figure: whether the page shows the figure of the app
+            (`App.figure`), by which a reader picks the panels of `shown`.
+        shown: the panels of the page which are shown from the start, a subset
+            of `panels` in any order; none means the page lists them and a
+            reader picks them from the figure.
     """
 
     model_config = _CONFIG
@@ -1108,6 +1156,8 @@ class AppPage(BaseModel):
     panels: tuple[str, ...]
     scenarios: tuple[Scenario, ...] = ()
     size: Literal["regular", "small"] = "regular"
+    figure: bool = False
+    shown: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _check_page(self) -> Self:
@@ -1142,6 +1192,13 @@ class AppPage(BaseModel):
             raise ValueError(
                 f"The page '{self.id}' of an app declares the scenarios {twice} "
                 "twice; a reader picks a scenario of a page by its id."
+            )
+        unlisted = sorted(set(self.shown) - set(self.panels))
+        if unlisted:
+            raise ValueError(
+                f"The page '{self.id}' of an app shows the panels {unlisted} "
+                f"which it does not list; every panel of `shown` is one of its "
+                f"`panels`."
             )
         return self
 
@@ -1201,6 +1258,8 @@ class App(BaseModel):
         doi: the DOI of the model, shown in that footer; free text.
         licenses: the licenses of the model and its data, shown in that
             footer; free text, e.g. `("CC BY-SA 4.0",)`.
+        figure: the figure of the model a page shows (`AppPage.figure`); none
+            without.
     """
 
     model_config = _CONFIG
@@ -1212,6 +1271,7 @@ class App(BaseModel):
     citation: str = ""
     doi: str = ""
     licenses: tuple[str, ...] = ()
+    figure: AppFigure | None = None
 
     @model_validator(mode="after")
     def _check_app(self) -> Self:
@@ -1219,7 +1279,8 @@ class App(BaseModel):
 
         Raises:
             ValueError: for an empty title and for an app without a page;
-                naming the ids, for two pages or two variants of one id.
+                naming the ids, for two pages or two variants of one id and
+                for a panel the figure selects which no page lists.
         """
         if not self.title.strip():
             raise ValueError("An app needs its title.")
@@ -1236,6 +1297,16 @@ class App(BaseModel):
                     f"The {kind} of the app '{self.title}' declare {twice} twice; "
                     "an id is the one a reader of the app names."
                 )
+        if self.figure is not None:
+            known = {panel for page in self.pages for panel in page.panels}
+            for key, selected in self.figure.panels.items():
+                unknown = sorted(set(selected) - known)
+                if unknown:
+                    raise ValueError(
+                        f"The figure of the app '{self.title}' selects the "
+                        f"unknown panel {unknown} at '{key}'; a figure selects "
+                        f"panels which a page of the app lists."
+                    )
         return self
 
 
@@ -1248,7 +1319,8 @@ def app_payload(app: App) -> dict[str, Any]:
     Returns:
         The payload: its `contract`, the texts of the app, its `pages` with
         their scenarios, its `variants` and the `citation`, the `doi` and the
-        `licenses` of the provenance footer. Plain JSON values only, no object
+        `licenses` of the provenance footer and its `figure`, `None` without.
+        Plain JSON values only, no object
         of this package, see `app_from_payload`.
     """
     return {
@@ -1260,6 +1332,7 @@ def app_payload(app: App) -> dict[str, Any]:
         "citation": app.citation,
         "doi": app.doi,
         "licenses": list(app.licenses),
+        "figure": None if app.figure is None else app.figure.model_dump(mode="json"),
     }
 
 
