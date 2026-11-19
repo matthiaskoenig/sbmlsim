@@ -116,6 +116,7 @@ from sbmlsim.engine import Engine
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.panel import (
+    AppFigure,
     AppPage,
     Knob,
     Panel,
@@ -782,6 +783,56 @@ def _check_app(entry: ModelEntry) -> None:
         pages = entry.pages(variant)
         for page in app.pages:
             _check_scenarios(model, page, pages[page.id])
+        if app.figure is not None:
+            _check_figure(entry, variant, model, app.figure, pages)
+
+
+def _check_figure(
+    entry: ModelEntry,
+    variant: str | None,
+    where: str,
+    figure: AppFigure,
+    pages: Mapping[str, Sequence[Panel]],
+) -> None:
+    """Check the curves of the panels a figure selects against the compiled model.
+
+    The ids of the readouts of a figure are the ones of the id scheme of
+    pkpdsim, which never compiles a model, so a panel may name an id the model
+    does not have and would be drawn blank. `sbmlsim.panel_figure.restrict_to_model`
+    is what an author applies to avoid it; this is the backstop for a figure
+    which declares such a curve anyway. The model is loaded only for an app
+    with a figure.
+
+    Args:
+        entry: the model of the registry.
+        variant: the variant the app is served in.
+        where: `the model ... in its variant ...`, for the message.
+        figure: the figure of the app.
+        pages: the panels of every page in the variant.
+
+    Raises:
+        ValueError: naming the model, the variant, the key path, the panel and
+            the curve, for a curve the compiled model cannot select; naming the
+            curve for a unit it does not convert to, see `curve_unit`.
+    """
+    selected = {panel.id: panel for panels in pages.values() for panel in panels}
+    keys = {
+        pid: key for key, ids in figure.panels.items() for pid in ids if pid in selected
+    }
+    if not keys:
+        return
+    path = entry.project.variant_path(variant).resolve()
+    model = _load(entry, path, "").model
+    for pid, key in keys.items():
+        for curve in selected[pid].curves:
+            if not model.has_selection(curve.id):
+                raise ValueError(
+                    f"The figure of the app of {where} selects the panel "
+                    f"'{pid}' at '{key}', whose curve '{curve.id}' the model "
+                    "does not have; the ids of a figure are checked with "
+                    "`sbmlsim.panel_figure.restrict_to_model`."
+                )
+            curve_unit(model, curve)
 
 
 def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None:

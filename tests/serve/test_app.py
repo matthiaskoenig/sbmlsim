@@ -814,3 +814,40 @@ def test_the_hash_of_the_sbml_has_one_source(
         body = client.post(SIMULATE, json={}).json()
     assert body["provenance"]["model_sha256"] == "a" * 64
     assert len(hashed) == 1
+
+
+def _with_figure(project: Project, curve_id: str) -> Project:
+    """The project with a figure which selects a panel of the curve `curve_id`."""
+    from sbmlsim.panel import AppFigure
+
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["renal_plasma"]
+    ghost = plasma.model_copy(
+        update={
+            "id": "li_gli",
+            "curves": (plasma.curves[0].model_copy(update={"id": curve_id}),),
+        }
+    )
+    pages = (
+        app.pages[0].model_copy(update={"panels": (*app.pages[0].panels, "li_gli")}),
+        *app.pages[1:],
+    )
+    figure = AppFigure(svg="<svg/>", title="Body", panels={"li/sub:gli": ("li_gli",)})
+    return project.replace(
+        panels={**project.panels, "li_gli": ghost},
+        app=app.model_copy(update={"pages": pages, "figure": figure}),
+    )
+
+
+def test_a_curve_the_model_does_not_have_names_the_id(project: Project) -> None:
+    with pytest.raises(ValueError, match="LI__Cpl_nope") as error:
+        ModelRegistry.of_projects({"hctz": _with_figure(project, "LI__Cpl_nope")})
+    assert "li/sub:gli" in str(error.value)
+    assert "'li_gli'" in str(error.value)
+
+
+def test_a_figure_of_curves_the_model_has_is_accepted(project: Project) -> None:
+    registry = ModelRegistry.of_projects({"hctz": _with_figure(project, "[Cve_hctz]")})
+    app = registry.entry("hctz").project.app
+    assert app is not None and app.figure is not None
