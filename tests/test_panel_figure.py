@@ -25,7 +25,8 @@ def _readout(
 def _sidecar(tmp_path: Path, keys: dict[str, object]) -> Path:
     path = tmp_path / "x.readouts.json"
     path.write_text(
-        json.dumps({"contract": "figurereadouts/1", "model": "m", "keys": keys})
+        json.dumps({"contract": "figurereadouts/1", "model": "m", "keys": keys}),
+        encoding="utf-8",
     )
     return path
 
@@ -104,14 +105,16 @@ def test_an_empty_keys_mapping_gives_no_panels(tmp_path: Path) -> None:
 
 def test_a_payload_which_is_no_object_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "list.readouts.json"
-    path.write_text("[1, 2]")
+    path.write_text("[1, 2]", encoding="utf-8")
     with pytest.raises(ContractError, match="figurereadouts/1"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
 
 
 def test_a_payload_without_keys_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "nokeys.readouts.json"
-    path.write_text(json.dumps({"contract": "figurereadouts/1", "model": "m"}))
+    path.write_text(
+        json.dumps({"contract": "figurereadouts/1", "model": "m"}), encoding="utf-8"
+    )
     with pytest.raises(ContractError, match="keys"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
 
@@ -159,7 +162,10 @@ def test_the_figure_carries_the_svg_inline() -> None:
 def test_a_sidecar_of_another_contract_is_refused(tmp_path: Path) -> None:
     other = tmp_path / "other.readouts.json"
     other.write_text(
-        READOUTS.read_text().replace("figurereadouts/1", "figurereadouts/2")
+        READOUTS.read_text(encoding="utf-8").replace(
+            "figurereadouts/1", "figurereadouts/2"
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(ContractError, match="figurereadouts/1"):
         panels_from_figure(SVG, other, simulation=SIMULATION, title="T")
@@ -178,7 +184,8 @@ def test_a_group_of_more_than_sixteen_curves_is_refused(tmp_path: Path) -> None:
                 "model": "m",
                 "keys": {"li": {"label": "Liver", "readouts": readouts}},
             }
-        )
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(ContractError, match="'li'"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
@@ -197,7 +204,8 @@ def test_two_keys_of_one_panel_id_are_refused(tmp_path: Path) -> None:
                 "model": "m",
                 "keys": {"li/sub:gli": entry, "li/gli": entry},
             }
-        )
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(ContractError, match="twice"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
