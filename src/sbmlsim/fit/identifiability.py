@@ -117,7 +117,7 @@ from scipy.stats import chi2
 
 from sbmlsim.engine import Engine
 from sbmlsim.events import emit
-from sbmlsim.fit import display, runner
+from sbmlsim.fit import display, fit_core, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import (
@@ -1117,6 +1117,7 @@ def profile_likelihood(
     serial: bool = False,
     show_progress: bool = True,
     on_profile: Callable[[IdentifiabilityResult], None] | None = None,
+    engine_profiles: bool | None = None,
 ) -> IdentifiabilityResult:
     """Analyse the identifiability of the parameters of a fit.
 
@@ -1145,7 +1146,17 @@ def profile_likelihood(
             store the profiles while the analysis runs; its duration is the
             time since the profile before it finished. The results of all
             profiles combine to the result of the analysis, see
-            `IdentifiabilityResult.combine`.
+            `IdentifiabilityResult.combine`. An analysis which walks in the
+            engine answers with all of its profiles at once, so it calls the
+            callback for every one of them when the answer is there.
+        engine_profiles: whether the whole analysis runs in the engine, i.e.
+            the walks of the profiles, the optimizations of their points and
+            the evaluations of those, see `sbmlsim.fit.fit_core`: `None` walks
+            there if the engine can walk it
+            (`fit_core.gaps_of_the_profiles`, which a problem of the engine
+            core of a profile of the other parameters passes), `True` requires
+            it and `False` scans in python, which evaluates the points through
+            the engine.
 
     Returns:
         The profiles with the confidence intervals and the classification.
@@ -1153,8 +1164,10 @@ def profile_likelihood(
     Raises:
         KeyError: if a parameter id is not a parameter of the problem.
         ValueError: if the parameter set is outside of the bounds of the problem,
-            if there is no parameter to profile, or if the arguments of the
-            optimizer change the loss, which is `FitSettings.loss_function`.
+            if there is no parameter to profile, if the arguments of the
+            optimizer change the loss, which is `FitSettings.loss_function`,
+            or if `engine_profiles` is required and the engine cannot walk the
+            profiles.
         TypeError: if an argument of the optimizer is not an argument of
             `scipy.optimize.least_squares`.
     """
@@ -1255,6 +1268,26 @@ def profile_likelihood(
     )
     parallel = scan_workers > 1
     parallel_jacobian = jacobian_workers > 1
+    threads = 1 if serial else runner.resolve_n_cores(n_cores)
+
+    # the engine walks the sides of every profile next to each other on the
+    # threads of one batch, where the scans in python are a process each
+    in_the_engine = False
+    if engine_profiles is not False:
+        gaps = fit_core.gaps_of_the_profiles(problem, profile_settings)
+        if engine_profiles and gaps:
+            raise ValueError(
+                f"'{problem.opid}': the profiles cannot be walked in the engine: "
+                + "; ".join(f"{gap.code}: {gap.message}" for gap in gaps)
+                + "."
+            )
+        in_the_engine = not gaps
+        if gaps:
+            logger.info(
+                "%s: the profiles are not walked in the engine: %s",
+                problem.opid,
+                "; ".join(f"{gap.code}: {gap.message}" for gap in gaps),
+            )
 
     display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
     display.key_values(
@@ -1271,10 +1304,14 @@ def profile_likelihood(
             "profiles": ", ".join(pids),
             "reoptimize": profile_settings.reoptimize,
             "scans": (
-                f"{len(tasks)} one after another, the jacobian of a point on "
-                f"{jacobian_workers} core(s)"
-                if parallel_jacobian
-                else f"{len(tasks)} on {scan_workers} core(s)"
+                f"{len(tasks)} on {threads} thread(s) of the engine"
+                if in_the_engine
+                else (
+                    f"{len(tasks)} one after another, the jacobian of a point on "
+                    f"{jacobian_workers} core(s)"
+                    if parallel_jacobian
+                    else f"{len(tasks)} on {scan_workers} core(s)"
+                )
             ),
         }
     )
@@ -1332,7 +1369,20 @@ def profile_likelihood(
         workers=scan_workers,
         kind="identifiability",
     ) as progress:
-        if parallel:
+        if in_the_engine:
+            walked = fit_core.profile_points(
+                problem,
+                profile_settings,
+                theta_optimum,
+                pids,
+                threads=threads,
+            )
+            for pid, (below, above) in walked.items():
+                index = problem.pids.index(pid)
+                for direction, points in ((-1, below), (+1, above)):
+                    runner._advance(progress)
+                    collect(index, direction, points)
+        elif parallel:
             with runner.worker_pool(problem, settings, scan_workers) as pool:
                 for _, outcome in pool.run(_worker_scan, dict(enumerate(tasks))):
                     if isinstance(outcome, Exception):

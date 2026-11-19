@@ -43,7 +43,7 @@ from scipy.optimize import OptimizeResult
 from sbmlsim import cgroup, parallel
 from sbmlsim.engine import Engine
 from sbmlsim.events import emit
-from sbmlsim.fit import display
+from sbmlsim.fit import display, fit_core
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import (
     FitTimeout,
@@ -266,6 +266,7 @@ def run_optimization(
     sampling: SamplingType = SamplingType.LOGUNIFORM_LHS,
     provenance: FitProvenance | None = None,
     indices: Sequence[int] | None = None,
+    engine_fit: bool | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -307,6 +308,13 @@ def run_optimization(
             given repeat keeps its index, i.e. its file `<opid>_run_<k>.json`,
             so the repeats of pieces of a fit are the repeats of the whole fit
             and `OptimizationResult.from_directory` merges them.
+        engine_fit: whether the whole fit runs in the engine, i.e. its
+            optimizer, the runs of its starts and their evaluations, see
+            `sbmlsim.fit.fit_core`: `None` runs it there if the engine can
+            run it (`fit_core.gaps_of_a_fit`, which a problem of the engine
+            core without an objective or an argument of its own passes),
+            `True` requires it and `False` optimizes in python, which
+            evaluates the objective of a point through the engine.
         kwargs: additional arguments for the optimizer, i.e., for
             `scipy.optimize.least_squares` or
             `scipy.optimize.differential_evolution`, e.g. xtol.
@@ -319,7 +327,8 @@ def run_optimization(
     Raises:
         ValueError: if a bound or a start value does not suit the scale of
             its parameter or the algorithm, if every worker of a parallel
-            fit failed, or if the indices are invalid, see `run_indices`.
+            fit failed, if the indices are invalid, see `run_indices`, or if
+            `engine_fit` is required and the engine cannot run the fit.
         TypeError: if `kwargs` has an argument which the optimizer of the
             algorithm does not accept, e.g. one of the other optimizer.
         KeyboardInterrupt: if the fit is interrupted (Ctrl-C) before a repeat
@@ -350,6 +359,38 @@ def run_optimization(
         ),
         hooks=hook_summaries(problem.hybridizations),
     )
+
+    if engine_fit is not False:
+        gaps, optimizer = fit_core.gaps_of_a_fit(
+            problem, algorithm, len(selected), kwargs
+        )
+        if engine_fit and gaps:
+            raise ValueError(
+                f"'{problem.opid}': the fit cannot run in the engine: "
+                + "; ".join(f"{gap.code}: {gap.message}" for gap in gaps)
+                + "."
+            )
+        if not gaps:
+            return _run_optimization_in_the_engine(
+                problem=problem,
+                settings=settings,
+                size=size,
+                algorithm=algorithm,
+                seed=seed,
+                n_cores=n_cores,
+                sampling=sampling,
+                timeout=timeout,
+                runs_dir=runs_dir,
+                provenance=provenance,
+                selected=selected,
+                optimizer=optimizer,
+                show_progress=show_progress,
+            )
+        logger.info(
+            "%s: the fit does not run in the engine: %s",
+            problem.opid,
+            "; ".join(f"{gap.code}: {gap.message}" for gap in gaps),
+        )
 
     # a worker without a repeat only costs the start of a process, and one
     # worker is a serial fit without the start of a process
@@ -452,6 +493,74 @@ def run_optimization(
             **kwargs,
         )
 
+    _print_summary(opt_result)
+    return opt_result
+
+
+def _run_optimization_in_the_engine(
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    size: int,
+    algorithm: OptimizationAlgorithmType,
+    seed: int | None,
+    n_cores: int | None,
+    sampling: SamplingType,
+    timeout: float | None,
+    runs_dir: Path | None,
+    provenance: FitProvenance | None,
+    selected: Sequence[int],
+    optimizer: Mapping[str, Any],
+    show_progress: bool = True,
+) -> OptimizationResult:
+    """Run the whole fit in the engine and get its result.
+
+    The engine runs the starts of the fit next to each other on the threads of
+    one batch and reports a run of it as soon as that run finished, so the fit
+    has no workers of its own and every run is written and counted while the
+    fit runs: a fit which is interrupted leaves the runs which finished, as a
+    fit in python leaves the repeats which finished, and the activity of the
+    fit says how far it is and how long it has been running.
+    """
+    threads = resolve_n_cores(n_cores)
+    display.key_values(
+        {
+            "runs": _runs_label(size, selected),
+            "workers": f"{threads} (threads of the engine, one fit)",
+        }
+    )
+    with optimization_progress(
+        "optimizing", len(selected), show_progress, workers=threads
+    ) as progress:
+
+        def store(k: int, fit: OptimizeResult) -> None:
+            """Keep a run of a chunk which answered and count it."""
+            _store_run(
+                problem=problem,
+                settings=settings,
+                runs_dir=runs_dir,
+                fit=fit,
+                # the engine answers with the cost of a run and not of its steps
+                trajectory=[],
+                sid=f"{problem.opid}_run_{k}",
+                provenance=provenance,
+                run=k,
+            )
+            _advance(progress)
+
+        opt_result = fit_core.run(
+            problem,
+            settings,
+            size=size,
+            algorithm=algorithm,
+            seed=seed,
+            sampling=sampling,
+            indices=selected,
+            threads=threads,
+            timeout=timeout,
+            provenance=provenance,
+            on_run=store,
+            **optimizer,
+        )
     _print_summary(opt_result)
     return opt_result
 

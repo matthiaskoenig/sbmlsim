@@ -53,6 +53,23 @@ def require(engine: Engine) -> None:
     pytest.importorskip(_MODULES[engine])
 
 
+def require_core_fit() -> None:
+    """Skip a test of a fit which runs in the engine core itself.
+
+    The bindings fit a request of the contract `fit/1`
+    (`sbmlsim_core.LoadedModel.fit`) from sbmlsim-core 0.12.0 on, where the
+    floor of sbmlsim is 0.11.0: a test of that path is skipped on the older
+    bindings, as a test of an engine whose extra is not installed is.
+    """
+    require(Engine.CORE)
+    core = pytest.importorskip("sbmlsim_core")
+    if not hasattr(core.LoadedModel, "fit"):
+        pytest.skip(
+            f"sbmlsim-core {core.__version__} does not fit a request of "
+            f"'fit/1' itself, which 0.12.0 is the first to do"
+        )
+
+
 def model_class(engine: Engine) -> type[SBMLModel]:
     """Get the class of the models of an engine besides roadrunner."""
     if engine is Engine.COPASI:
