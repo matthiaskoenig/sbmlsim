@@ -5,8 +5,10 @@ A model package which draws its model (pkpdsim writes `<sid>_body.svg` and
 from the sidecar instead of writing them by hand: one panel per part of the
 drawing which has readouts, and the `AppFigure` which maps the key path of
 every part to its panel. `panels_from_figure` takes the ids of the readouts as
-the sidecar gives them, since pkpdsim never compiles a model; `restrict_to_model`
-checks them against the compiled one. A caller which wants the readouts of a
+the sidecar gives them, since pkpdsim never compiles a model, so its panels are
+a proposal and not a declaration: `restrict_to_model` checks them against the
+compiled one and a declaration which skips that step is refused by the registry
+of the service, naming the first id the model has not. A caller which wants the readouts of a
 part split otherwise than by their unit, e.g. the substances of one compartment
 in one plot, passes a `Grouping`.
 """
@@ -24,6 +26,7 @@ from sbmlsim.panel import (
     MAX_CURVES,
     AppFigure,
     ContractError,
+    Knob,
     Panel,
     PanelCurve,
     PanelSimulation,
@@ -135,6 +138,7 @@ def panels_from_figure(
     readouts: Path,
     *,
     simulation: PanelSimulation,
+    knobs: tuple[Knob, ...] = (),
     title: str,
     credit: str = "",
     prefix: str = "",
@@ -162,6 +166,12 @@ def panels_from_figure(
         svg: the drawing, read as text for the inline figure.
         readouts: the sidecar beside it, `<svg stem>.readouts.json`.
         simulation: the simulation every panel runs.
+        knobs: the knobs every panel takes, the ones of the page which shows
+            them: the shell of a page offers one control per knob id and sets
+            every panel of the page from it, so the panels of a figure carry
+            the knobs of their page and not knobs of their own. A simulation
+            with derived targets needs them, since a formula of a derived
+            target reads the knobs of its panel.
         title: the title of the figure.
         credit: the source of the drawing.
         prefix: put before every panel id.
@@ -172,8 +182,15 @@ def panels_from_figure(
     Returns:
         The panels by id (the title the label of the key and its group, the
         curves its readouts in order, the `y_label` the kinds of the curves,
-        joined by " / " when they differ), and the figure whose `panels` map
-        every key to its panel ids, none for a decoration.
+        joined by " / " when they differ, the knobs and the simulation given),
+        and the figure whose `panels` map every key to its panel ids, none for
+        a decoration. The ids are the ones of the sidecar, so the panels are
+        declarable only once `restrict_to_model` has dropped what the compiled
+        model has not. The label of a curve is the one of the sidecar unless
+        `group` answers another: it is drawn in the legend of the panel, beside
+        the title and not instead of it, and a renderer cuts a label too long
+        for the plot, so a label which repeats the title is read twice and fits
+        once.
 
     Raises:
         ContractError: for a sidecar of another contract or a malformed key,
@@ -230,6 +247,7 @@ def panels_from_figure(
                         PanelCurve(id=e["id"], label=c, unit=e.get("unit") or None)
                         for e, c in part
                     ),
+                    knobs=knobs,
                     simulation=simulation,
                 )
             except ValidationError as error:
