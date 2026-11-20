@@ -427,19 +427,37 @@ def test_the_bytes_of_a_response_are_at_least_what_it_holds(
     curves: int, points: int, times: int
 ) -> None:
     """The estimate of `response_bytes` against `tracemalloc`, see `cache`."""
-    gc.collect()
-    tracemalloc.start()
-    try:
-        response = _shaped(curves, points, times)
-        gc.collect()
-        held, _ = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    estimate = response_bytes(response)
+    estimate, held = _measured(curves, points, times)
     assert estimate >= held
     if curves * points * times > 10_000:
         # within a few percent where the numbers are what a response holds
         assert estimate <= 1.05 * held
+
+
+def _measured(curves: int, points: int, times: int) -> tuple[int, int]:
+    """Get the estimate of `response_bytes` of a response and what it holds.
+
+    `tracemalloc.get_traced_memory` counts every allocation of the process
+    which is alive, whatever holds it: the warm up of the first response a
+    process builds, the objects of the tests before this one and the threads
+    of the service among them. The memory of a response is therefore what its
+    release frees and not what the process holds while it is alive, which is
+    the same number in a process which does nothing else and about 4 kB more
+    in a worker of pytest-xdist which builds its first response here.
+    """
+    gc.collect()
+    tracemalloc.start()
+    try:
+        response = _shaped(curves, points, times)
+        estimate = response_bytes(response)
+        gc.collect()
+        alive, _ = tracemalloc.get_traced_memory()
+        del response
+        gc.collect()
+        after, _ = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    return estimate, alive - after
 
 
 def _large(spec_hash: str, numbers: int) -> SimulateResponse:
