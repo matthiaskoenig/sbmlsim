@@ -15,8 +15,10 @@ variant (`<sbmlsim-panel>`) for a project without an app.
 
 Everything is embedded, the binary files as base64: the page loads nothing
 from the network, needs no server and opens from `file://` as well. It carries
-the notices of the libraries of the engine (`sbmlsim_core.THIRD_PARTY`) and
-the licenses of the components, since it distributes them.
+the notices of the libraries of the engine (`sbmlsim_core.THIRD_PARTY`, as
+the plain text of `notices.plain_notices`) and the licenses of the components,
+since it distributes them: the app shows them in its information view, which
+takes them in its slot `licenses`, and a page of panels alone in its footer.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from sbmlsim.webapp.compile import (
     CompiledModel,
     compile_sbml,
 )
+from sbmlsim.webapp.notices import plain_notices
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +188,7 @@ def render_app(
             files=_json(files),
             engine=_base64(runtime["engine"]),
             mathlib=_base64(runtime["mathlib"]),
-            third_party=sbmlsim_core.THIRD_PARTY,
+            third_party=plain_notices(sbmlsim_core.THIRD_PARTY),
             web_license=components["license"],
         )
     )

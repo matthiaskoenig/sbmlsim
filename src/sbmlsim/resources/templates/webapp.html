@@ -34,6 +34,11 @@ main {
   margin: 0 auto;
   padding: 8px 0 32px;
 }
+/* an app draws the figure of its model beside its panels, which is worth the width of a
+   screen: a page of panels alone keeps the reading width above */
+main.app {
+  max-width: 1920px;
+}
 main > h1 {
   margin: 16px 16px 8px;
   font-size: 1.5rem;
@@ -56,10 +61,25 @@ footer {
   line-height: 1.5;
 }
 footer p { margin: 0 0 8px; }
-footer details { margin: 0 0 8px; }
-footer summary { cursor: pointer; }
-footer pre {
+/* the licenses of the components, which the app shows in its information view and a page of
+   panels in its footer: the notices are the plain text of a NOTICE file, folded away until a
+   reader opens them */
+.licenses {
+  margin: 8px 0;
+  color: var(--page-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.licenses p { margin: 0 0 8px; }
+.licenses details { margin: 0 0 8px; }
+.licenses summary { cursor: pointer; }
+.licenses .notice-head {
+  margin: 12px 0 0;
+  font-weight: 600;
+}
+.licenses pre {
   max-height: 24rem;
+  margin: 8px 0 0;
   overflow: auto;
   white-space: pre-wrap;
   font-size: 0.75rem;
@@ -68,9 +88,13 @@ a { color: inherit; }
 </style>
 </head>
 <body>
-<main>
+<main{% if has_app %} class="app"{% endif %}>
 {% if has_app %}
-<sbmlsim-app endpoint="local:{{ model }}" model="{{ model }}"></sbmlsim-app>
+<sbmlsim-app endpoint="local:{{ model }}" model="{{ model }}">
+<div slot="licenses" class="licenses">
+{% include "webapp_licenses.html" %}
+</div>
+</sbmlsim-app>
 {% else %}
 <h1>{{ title }}</h1>
 <div class="panels">
@@ -82,12 +106,11 @@ a { color: inherit; }
 <footer>
 <p>Every simulation runs in this browser: the model is compiled to WebAssembly by <a href="https://matthiaskoenig.github.io/sbmlsim-core/">sbmlsim-core</a> {{ versions['sbmlsim-core'] }} and simulated in a pool of Web Workers, the panels are drawn by <a href="https://matthiaskoenig.github.io/sbmlsim-web/">sbmlsim-web</a> {{ versions['sbmlsim-web'] }}, and the page was written by <a href="https://matthiaskoenig.github.io/sbmlsim/">sbmlsim</a> {{ versions['sbmlsim'] }}. It is one file, which needs no server and no network.</p>
 <p>A research tool, provided as is and without warranty of any kind. It is not fit for any clinical application and does not diagnose, treat or inform dosing decisions.</p>
-<details>
-<summary>Licenses of the components of this page</summary>
-<p>sbmlsim-core: MIT; its engine links SUNDIALS (BSD-3-Clause) and KLU and BTF of SuiteSparse (LGPL-2.1-or-later), whose notices follow. sbmlsim-web: MIT.</p>
-<pre>{{ third_party }}</pre>
-<pre>{{ web_license }}</pre>
-</details>
+{% if not has_app %}
+<div class="licenses">
+{% include "webapp_licenses.html" %}
+</div>
+{% endif %}
 </footer>
 </main>
 <script>{{ web_script | safe }}</script>
