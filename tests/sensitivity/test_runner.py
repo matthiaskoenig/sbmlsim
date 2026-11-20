@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 from matplotlib.figure import Figure
 
+from sbmlsim.domains import Domain
 from sbmlsim.project import Project, SimulatorSettings
 from sbmlsim.sensitivity import SensitivityResult, indices, plots
 from sbmlsim.sensitivity import runner as module
@@ -126,6 +127,24 @@ def test_an_analysis_varies_no_parameter_which_a_group_sets(
     assert "Removing fixed parameter: Vc" in caplog.text
     df = pd.read_csv(path / "local" / "local_d0.01_nvar3_00_control.tsv", sep="\t")
     assert set(df["parameter"]) == {"k"}
+
+
+def test_local_keeps_its_steps_in_the_domains_of_its_parameters(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A step above the domain of `k` is clamped and the sensitivity stays -1 (#592)."""
+    analyses = {
+        "local": LocalAnalysis(groups=[CONTROL], domains={"k": Domain(0.0, 0.2008)})
+    }
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.sampling.designs"):
+        path = runner(tmp_path, analyses=analyses).run(["local"], workers=1)
+    assert "'k' [0, 0.2008]" in caplog.text
+    df = pd.read_csv(path / "local" / "local_d0.01_nvar3_00_control.tsv", sep="\t")
+    auc = df[(df["parameter"] == "k") & (df["output"] == "A_auc")]
+    # the AUC of the decay is A0 / k, so its elasticity is -1; the clamped
+    # steps are one-sided, which biases it by 0.3 %, where the step of the
+    # record over the one it reached would give -0.84
+    assert float(auc["Sij"].iloc[0]) == pytest.approx(-1.0, abs=1e-2)
 
 
 def test_sampling_writes_the_samples_of_every_group(tmp_path: Path) -> None:

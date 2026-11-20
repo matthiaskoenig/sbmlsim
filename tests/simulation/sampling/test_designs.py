@@ -5,6 +5,7 @@ import pytest
 from scipy import stats
 
 from sbmlsim import Q
+from sbmlsim.domains import Domain, Values
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulation.sampling import (
@@ -18,7 +19,13 @@ from sbmlsim.simulation.sampling import (
 from sbmlsim.simulation.sampling.designs import _iman_conover
 from sbmlsim.simulation.scan import Design
 from sbmlsim.simulator import Simulator
-from tests.simulator.models import roadrunner_model, sbml, sbml_minutes
+from tests.simulator.models import (
+    FRACTION,
+    roadrunner_model,
+    sbml,
+    sbml_minutes,
+    with_domains,
+)
 
 
 def record(dimension: Dimension) -> Design:
@@ -47,6 +54,83 @@ def test_local_varies_every_target_around_its_reference(
 def test_local_needs_a_delta_below_one(model: RoadrunnerSBMLModel) -> None:
     with pytest.raises(ValueError, match="delta"):
         local(["k1"], delta=1.0, model=model)
+
+
+@pytest.fixture(scope="module")
+def fraction_model() -> RoadrunnerSBMLModel:
+    """A model whose fraction, class and volume state a domain (#592)."""
+    text = with_domains(
+        sbml(FRACTION),
+        {
+            "f_renal": Domain(0.0, 1.0),
+            "stage": Domain(0.0, 3.0, Values.INTEGER),
+            "C": Domain(0.0, np.inf),
+        },
+    )
+    return roadrunner_model(Simulator().load(text))
+
+
+def test_local_keeps_its_steps_in_the_domain_of_the_model(
+    fraction_model: RoadrunnerSBMLModel, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING", logger="sbmlsim.simulation.sampling.designs"):
+        dimension = local(["f_renal", "k"], delta=0.15, model=fraction_model)
+    # the reference 0.94 of the fraction would be stepped to 1.081, above its domain
+    np.testing.assert_allclose(
+        dimension.values["f_renal"], [0.94, 1.0, 0.799, 0.94, 0.94]
+    )
+    np.testing.assert_allclose(dimension.values["k"], [0.5, 0.5, 0.5, 0.575, 0.425])
+    assert record(dimension).options["clamped"]["f_renal"] == pytest.approx(
+        [1.0, 0.799]
+    )
+    assert "f_renal" in caplog.text
+
+
+def test_local_steps_a_target_without_a_domain_as_before(
+    fraction_model: RoadrunnerSBMLModel,
+) -> None:
+    dimension = local(["k"], delta=0.15, model=fraction_model)
+    np.testing.assert_allclose(dimension.values["k"], [0.5, 0.575, 0.425])
+    assert "clamped" not in record(dimension).options
+
+
+def test_local_leaves_a_class_of_integers_at_its_reference(
+    fraction_model: RoadrunnerSBMLModel,
+) -> None:
+    # a relative step of a class is no value of its domain, so the design
+    # does not move it and its sensitivities are undefined
+    dimension = local(["stage"], delta=0.15, model=fraction_model)
+    np.testing.assert_allclose(dimension.values["stage"], [2.0, 2.0, 2.0])
+    assert record(dimension).options["clamped"] == {"stage": [2.0, 2.0]}
+
+
+def test_local_takes_the_domains_it_is_given(
+    fraction_model: RoadrunnerSBMLModel,
+) -> None:
+    dimension = local(
+        ["k"], delta=0.15, model=fraction_model, domains={"k": Domain(0.0, 0.55)}
+    )
+    np.testing.assert_allclose(dimension.values["k"], [0.5, 0.55, 0.425])
+    assert record(dimension).options["clamped"]["k"] == pytest.approx([0.55, 0.425])
+
+
+def test_local_clamps_nothing_without_domains(
+    fraction_model: RoadrunnerSBMLModel,
+) -> None:
+    dimension = local(["f_renal"], delta=0.15, model=fraction_model, domains={})
+    np.testing.assert_allclose(dimension.values["f_renal"], [0.94, 1.081, 0.799])
+    assert "clamped" not in record(dimension).options
+
+
+def test_local_reports_a_reference_outside_its_domain(
+    fraction_model: RoadrunnerSBMLModel, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING", logger="sbmlsim.simulation.sampling.designs"):
+        dimension = local(
+            ["k"], delta=0.15, model=fraction_model, domains={"k": Domain(0.0, 0.2)}
+        )
+    np.testing.assert_allclose(dimension.values["k"], [0.5, 0.2, 0.2])
+    assert "'k'" in caplog.text and "[0, 0.2]" in caplog.text
 
 
 def test_random_draws_from_every_marginal() -> None:

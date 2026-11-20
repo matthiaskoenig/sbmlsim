@@ -63,6 +63,7 @@ nav = [
       { "data" = "api/data.md" },
       { "units" = "api/units.md" },
       { "distrib" = "api/distrib.md" },
+      { "domains" = "api/domains.md" },
       { "licenses" = "api/licenses.md" },
       { "engine" = "api/engine.md" },
       { "sbml_math" = "api/sbml_math.md" },

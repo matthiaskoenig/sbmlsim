@@ -25,7 +25,7 @@ bounds = {pid: Uniform(relative=0.2) for pid in parameters}
 
 ## Local sensitivities
 
-The local design changes one parameter at a time to `1 + delta` and `1 - delta` times its value, and the analysis takes central differences. It needs only `2 d + 1` simulations for `d` parameters, but it describes the model only near the reference values.
+The local design changes one parameter at a time to `1 + delta` and `1 - delta` times its value, and the analysis takes central differences. It needs only `2 d + 1` simulations for `d` parameters, but it describes the model only near the reference values. A step which would leave the domain of its parameter, the values the model accepts for it, is clamped to the domain and the difference is taken over the two values the design reached, see [the domain of a parameter](sampling.md#the-domain-of-a-parameter).
 
 ```python
 design = sampling.local(parameters, 0.01, model=model)

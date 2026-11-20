@@ -9,6 +9,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 
 from sbmlsim import sensitivity
+from sbmlsim.domains import Domain, Values
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import ScanResult
 from sbmlsim.sensitivity.result import PARAMETER
@@ -44,6 +45,42 @@ def test_the_normalized_sensitivities_are_the_exponents(
         s["y_max.raw"].values, [2.0 * y / 2.0, -y / 3.0, 0.5 * y / 4.0], rtol=1e-5
     )
     assert s.method == "local"
+
+
+def test_a_clamped_step_is_differentiated_over_the_values_it_reached(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    # the step of `a` ends at 2.001 instead of 2.002, so the difference is
+    # taken over 2.001 - 1.998 and the elasticity stays the exponent (#592)
+    design = sampling.local(
+        ["a"], 0.001, model=model, domains={"a": Domain(0.0, 2.001)}
+    )
+    res = Simulator().run(
+        model,
+        Scan(Simulation(end=1, steps=1), [design]),
+        [Formula("y_max", "max(y)")],
+    )
+    s = sensitivity.local(res)
+    np.testing.assert_allclose(s["y_max.normalized"].values, [2.0], rtol=1e-3)
+    y = 2.0**2 / 3.0 * 4.0**0.5
+    np.testing.assert_allclose(s["y_max.raw"].values, [2.0 * y / 2.0], rtol=1e-3)
+
+
+def test_a_target_the_design_cannot_move_has_no_sensitivities(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    # both steps of a class of integers round back to its reference
+    design = sampling.local(
+        ["a"], 0.001, model=model, domains={"a": Domain(0.0, 3.0, Values.INTEGER)}
+    )
+    res = Simulator().run(
+        model,
+        Scan(Simulation(end=1, steps=1), [design]),
+        [Formula("y_max", "max(y)")],
+    )
+    s = sensitivity.local(res)
+    assert np.isnan(s["y_max.normalized"].values).all()
+    assert np.isnan(s["y_max.raw"].values).all()
 
 
 def test_the_design_dimension_need_not_be_first(model: RoadrunnerSBMLModel) -> None:

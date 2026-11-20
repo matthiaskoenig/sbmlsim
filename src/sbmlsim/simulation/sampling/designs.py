@@ -21,6 +21,7 @@ takes `seed`; `None` draws a seed, which the record keeps.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -29,12 +30,18 @@ from numpy.typing import ArrayLike
 from scipy import stats
 from scipy.stats import qmc
 
+from sbmlsim.domains import Domain
+from sbmlsim.domains import domains as domains_of
+from sbmlsim.model.model import AbstractModel
+from sbmlsim.model.model_sbml import SBMLModel
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.sampling.distributions import Distribution, Number
 from sbmlsim.simulation.sampling.references import references
 from sbmlsim.simulation.scan import Design, Dimension
 from sbmlsim.simulator.simulator import ModelLike
 from sbmlsim.units import Quantity, ureg
+
+logger = logging.getLogger(__name__)
 
 MAX_REDRAWS = 100
 """How often the orders of the scores of a correlated hypercube are drawn again."""
@@ -233,8 +240,21 @@ def local(
     model: ModelLike,
     simulation: Simulation | None = None,
     id: str = "local",
+    domains: Mapping[str, Domain] | None = None,
 ) -> Dimension:
     """Get the local design: the reference and every target alone at `1 ± delta` times it.
+
+    A step which leaves the domain of its target, the values the model accepts
+    for it (`sbmlsim.domains`), is clamped to the domain: a fraction whose
+    reference is 0.94 is not evaluated at 1.081 but at 1, and a step of a class
+    of integers, which is no value of its domain, is rounded, so such a
+    parameter stays at its reference (#592). Every clamped target is logged and
+    the record of the design keeps the two values it was stepped to, which the
+    local sensitivities differentiate over (`sbmlsim.sensitivity.indices.local`).
+
+    The domains are those of the model, read from its SBML, unless they are
+    given; the ids are matched as written, so the domain of a target given as a
+    selection (`[S]`) is not read.
 
     Args:
         targets: the targets, e.g. the parameters of `parameters_of`.
@@ -242,6 +262,9 @@ def local(
         model: the model, whose references the design varies.
         simulation: the simulation whose pre-initialization gives the references.
         id: the id of the dimension.
+        domains: the domain of a target, by its id, for a model which states
+            none or to override what it states; the domains of the model by
+            default, and an empty mapping clamps nothing.
 
     Returns:
         The dimension of `2 k + 1` points, labelled `reference`, `<target>+`,
@@ -261,19 +284,76 @@ def local(
     if not 0.0 < delta < 1.0:
         raise ValueError(f"The delta of a local design is in (0, 1), not {delta}.")
     refs = references(model, names, simulation)
+    bounds = model_domains(model) if domains is None else dict(domains)
     n = 2 * len(names) + 1
     values: dict[str, Any] = {}
+    clamped: dict[str, list[float]] = {}
+    outside: list[str] = []
     for j, target in enumerate(names):
         reference = refs[target]
         magnitude = float(getattr(reference, "magnitude", reference))
+        up, down = magnitude * (1.0 + delta), magnitude * (1.0 - delta)
+        domain = bounds.get(target)
+        if domain is not None:
+            moved = (domain.clip(up), domain.clip(down))
+            if moved != (up, down):
+                clamped[target] = [moved[0], moved[1]]
+                up, down = moved
+            if not domain.contains(magnitude):
+                outside.append(f"'{target}' {magnitude:g} of {domain}")
         column = np.full(n, magnitude)
-        column[1 + 2 * j] = magnitude * (1.0 + delta)
-        column[2 + 2 * j] = magnitude * (1.0 - delta)
+        column[1 + 2 * j] = up
+        column[2 + 2 * j] = down
         unit = str(reference.units) if isinstance(reference, Quantity) else None
         values[target] = ureg.Quantity(column, unit) if unit else column
+    if clamped:
+        logger.warning(
+            "The steps of %d of the %d targets of the local design '%s' were "
+            "clamped to the domain of their target: %s.",
+            len(clamped),
+            len(names),
+            id,
+            ", ".join(
+                f"'{t}' {bounds[t]} ({up:g}, {down:g})"
+                for t, (up, down) in clamped.items()
+            ),
+        )
+    if outside:
+        logger.warning(
+            "The reference of %d of the %d targets of the local design '%s' lies "
+            "outside the domain of its target, so the design is one-sided or does "
+            "not move it: %s.",
+            len(outside),
+            len(names),
+            id,
+            ", ".join(outside),
+        )
+    options: dict[str, Any] = {"delta": delta, "targets": names}
+    if clamped:
+        options["clamped"] = clamped
     labels = ["reference", *(f"{t}{sign}" for t in names for sign in "+-")]
-    record = _record("local", {}, {"delta": delta, "targets": names}, refs)
+    record = _record("local", {}, options, refs)
     return Dimension(id, values=values, labels=labels, design=record)
+
+
+def model_domains(model: ModelLike) -> dict[str, Domain]:
+    """Get the domains the SBML of a model states for its quantities.
+
+    Args:
+        model: the model, loaded or a source.
+
+    Returns:
+        The domain of every quantity which states one, by its id, see
+        `sbmlsim.domains.domains`; empty for a model which is no SBML model.
+    """
+    if isinstance(model, SBMLModel):
+        # the flattened SBML of the model, which the engine simulates
+        return domains_of(model.sbml)
+    if isinstance(model, AbstractModel):
+        source = model.source
+        sbml = source.content if source.content is not None else source.path
+        return domains_of(sbml) if sbml is not None else {}
+    return domains_of(model)
 
 
 def _drawn(

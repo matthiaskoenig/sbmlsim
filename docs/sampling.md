@@ -153,6 +153,22 @@ A distribution without a location (`relative=`, `factor=`, or no mean or median)
 
 `sampling.parameters_of(model)` lists the constant parameters of a model, for an analysis that varies all of them.
 
+### The domain of a parameter
+
+A model can state which values it accepts for one of its quantities, its domain, as a `distrib` uncertainty named `domain` whose single span is a range on the parameter, compartment or species (`sbmlsim.domains`, which reads them back): a fraction lies in `[0, 1]`, a volume or a rate in `[0, inf)`, a class in the integers of `[0, 3]`. The domain of a quantity is not the uncertainty of its value; the confidence interval of a literature value and the distribution of a fitted parameter are statements of their own, which sit next to the domain on the same element.
+
+`local` reads the domains of its model and clamps its steps to them, so a fraction whose reference is 0.94 is evaluated at 1 and not at 1.081 for `delta=0.15`, and a parameter which is a class of integers, whose relative step is no value of its domain, stays at its reference. The clamped parameters are logged and the record of the design keeps the two values each of them reached, over which `sensitivity.local` takes its difference; a parameter the design could not move has `NaN` sensitivities. `domains=` gives the domains of a model which states none, or overrides what a model states, and `domains={}` clamps nothing:
+
+```py
+from sbmlsim.domains import Domain, domains
+
+design = sampling.local(parameters, 0.15, model=model)  # the domains of the model
+print(domains(model_path)["f_renal_function"])  # [0, 1]
+design = sampling.local(parameters, 0.15, model=model, domains={"k": Domain(0.0, 1.0)})
+```
+
+A random design draws from the distributions it is given, which state their own support, so bound a distribution by the domain of its parameter where the two differ, e.g. with `Domain.clip` on the bounds of a `Uniform`.
+
 `correlation` is a matrix of Spearman rank correlations between the parameters, in the order of the distributions. `random` correlates its draws with a Gaussian copula, `lhs` reorders its points (Iman and Conover), which keeps the even coverage of each parameter:
 
 ```python
