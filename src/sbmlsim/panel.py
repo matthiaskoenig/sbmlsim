@@ -653,6 +653,14 @@ class Panel(BaseModel):
         x_max: the upper limit of the time axis, in the unit it is delivered
             in (`PanelSimulation.x_unit`, the time unit of the model without),
             at most the end of the simulation; `None` is the end.
+        pk: whether the panel states the pharmacokinetic parameters of its
+            curves in a table under the figure: the peak and its time, the
+            area under the curve over the window and the half-life of the
+            terminal phase, read off the curves of the state the knobs are at
+            (a non-compartmental analysis of what is drawn, no fit and no
+            model). It is a statement about the curves of the panel and not
+            about its model: a panel of concentrations declares it, a panel of
+            an amount in the urine or of a pressure does not.
     """
 
     model_config = _CONFIG
@@ -665,6 +673,7 @@ class Panel(BaseModel):
     y_min: float | None = Field(default=None, allow_inf_nan=False)
     y_max: float | None = Field(default=None, allow_inf_nan=False)
     x_max: float | None = Field(default=None, allow_inf_nan=False)
+    pk: bool = False
     knobs: tuple[Knob, ...] = Field(default=(), max_length=MAX_KNOBS)
     curves: tuple[PanelCurve, ...] = Field(max_length=MAX_CURVES)
     data: tuple[PanelData, ...] = ()
@@ -983,6 +992,7 @@ def panel_payload(panel: Panel) -> dict[str, Any]:
             "y_min": panel.y_min,
             "y_max": panel.y_max,
             "x_max": panel.x_max,
+            "pk": panel.pk,
         },
         "axes": [knob.model_dump(mode="json") for knob in panel.knobs],
         "curves": [curve.model_dump(mode="json") for curve in panel.curves],

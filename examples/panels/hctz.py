@@ -228,6 +228,10 @@ HCTZ_PATIENT_PLASMA = Panel(
     y_min=0.0,
     y_max=PATIENT_PLASMA_MAX,
     x_max=PATIENT_X_MAX,
+    # a concentration over time: the table under it states the exposure of the
+    # patient the knobs describe (the peak, its time, the area under the curve
+    # and the half-life), which is what a reader of a dose compares
+    pk=True,
     knobs=(CRCL, DOSE),
     curves=(
         PanelCurve(id="[Cve_hctz]", label="plasma", unit="uM"),
