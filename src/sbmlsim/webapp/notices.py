@@ -25,8 +25,8 @@ FENCE = "```"
 #: The characters a heading of the first two levels is underlined with, by its level.
 RULES = {1: "=", 2: "-"}
 
-#: The columns of a table are separated by this in the plain text.
-COLUMN_GAP = "  "
+#: The indent of the fields of a row of a table.
+FIELD_INDENT = "  "
 
 #: A heading: its level and its text.
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -66,35 +66,33 @@ def _cells(row: str) -> list[str]:
 
 
 def _table(rows: list[list[str]]) -> list[str]:
-    """Render a table as aligned columns.
+    """Render a table as a block per row.
 
-    The header is underlined over the width of the table, so the columns are read as columns in
-    preformatted text; a row of more cells than the header has keeps them.
+    Columns of a width which fits a terminal do not fit the panel of a page, which wraps them
+    into each other; a block per row, its first cell its heading and every other cell a field of
+    `<header>: <cell>`, reads at any width and loses nothing of the table.
 
     Args:
         rows: the rows, the header first, each a list of cells.
 
     Returns:
-        the lines of the table.
+        the lines of the table, a blank line between its blocks.
     """
-    if not rows:
-        return []
-    widths: list[int] = []
-    for row in rows:
-        for index, cell in enumerate(row):
-            if index < len(widths):
-                widths[index] = max(widths[index], len(cell))
-            else:
-                widths.append(len(cell))
-    written = [
-        COLUMN_GAP.join(
-            cell.ljust(widths[index]) if index + 1 < len(row) else cell
-            for index, cell in enumerate(row)
-        ).rstrip()
-        for row in rows
-    ]
-    rule = "-" * max(len(line) for line in written)
-    return [written[0], rule, *written[1:]]
+    if len(rows) < 2:
+        return [FIELD_INDENT.join(row) for row in rows]
+    header, *body = rows
+    lines: list[str] = []
+    for row in body:
+        if lines:
+            lines.append("")
+        lines.append(row[0] if row else "")
+        for index, cell in enumerate(row[1:], start=1):
+            if cell:
+                name = header[index] if index < len(header) else ""
+                lines.append(
+                    f"{FIELD_INDENT}{name}: {cell}" if name else f"{FIELD_INDENT}{cell}"
+                )
+    return lines
 
 
 def plain_notices(text: str) -> str:

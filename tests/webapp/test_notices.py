@@ -18,18 +18,24 @@ def test_a_heading_is_underlined() -> None:
     ]
 
 
-def test_a_table_becomes_aligned_columns() -> None:
+def test_a_table_becomes_a_block_per_row() -> None:
     text = plain_notices(
         "| Library | Version | License |\n"
         "|---|---|---|\n"
         "| KLU (SuiteSparse) | 2.3.6 | LGPL-2.1-or-later |\n"
         "| BTF | 2.3.3 | the same |\n"
     )
-    lines = text.splitlines()
-    assert lines[0] == "Library            Version  License"
-    assert set(lines[1]) == {"-"}
-    assert lines[2] == "KLU (SuiteSparse)  2.3.6    LGPL-2.1-or-later"
-    assert lines[3] == "BTF                2.3.3    the same"
+    # a block per row, its first cell its heading and every other cell a field of the header, so
+    # the table reads at the width of a panel instead of wrapping its columns into each other
+    assert text.splitlines() == [
+        "KLU (SuiteSparse)",
+        "  Version: 2.3.6",
+        "  License: LGPL-2.1-or-later",
+        "",
+        "BTF",
+        "  Version: 2.3.3",
+        "  License: the same",
+    ]
 
 
 def test_the_text_of_a_license_is_kept_verbatim() -> None:
@@ -63,7 +69,9 @@ def test_the_notices_of_the_engine_carry_no_markup() -> None:
     core = pytest.importorskip("sbmlsim_core")
     text = plain_notices(core.THIRD_PARTY)
     lines = text.splitlines()
-    assert not [one for one in lines if one.startswith(("# ", "## ", "### ", "|---"))]
+    assert not [
+        one for one in lines if one.startswith(("# ", "## ", "### ", "|", "|---"))
+    ]
     assert "```" not in text
     # the libraries which are linked and their licenses are still in it, as is the LGPL notice
     assert "SUNDIALS" in text
