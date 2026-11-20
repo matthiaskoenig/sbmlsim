@@ -3,11 +3,18 @@
 import json
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
-from sbmlsim.panel import AppFigure, ContractError, Panel, PanelSimulation
+from sbmlsim.panel import (
+    MAX_CURVES,
+    AppFigure,
+    ContractError,
+    Panel,
+    PanelSimulation,
+)
 from sbmlsim.panel_figure import panels_from_figure, restrict_to_model
 
 DATA = Path(__file__).parent / "data" / "figure"
@@ -209,6 +216,123 @@ def test_two_keys_of_one_panel_id_are_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(ContractError, match="twice"):
         panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
+
+
+def _grouped(key: str, readout: Mapping[str, str]) -> tuple[str, str]:
+    substance, _, compartment = readout["label"].partition(", ")
+    return compartment, substance
+
+
+def test_a_group_opens_one_panel_per_compartment(tmp_path: Path) -> None:
+    path = _sidecar(
+        tmp_path,
+        {
+            "li": {
+                "label": "Liver",
+                "readouts": [
+                    _readout("LI__Cpl_gli", label="glimepiride, plasma"),
+                    _readout("LI__Cpl_m1", label="M1, plasma"),
+                    _readout("LI__Cic_gli", label="glimepiride, cells"),
+                ],
+            }
+        },
+    )
+    panels, figure = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+    assert list(panels) == ["li_plasma", "li_cells"]
+    assert [c.label for c in panels["li_plasma"].curves] == ["glimepiride", "M1"]
+    assert panels["li_plasma"].title == "Liver, plasma"
+    assert figure.panels["li"] == ("li_plasma", "li_cells")
+
+
+def test_a_key_of_one_group_keeps_the_id_of_its_key(tmp_path: Path) -> None:
+    path = _sidecar(
+        tmp_path,
+        {
+            "ve": {
+                "label": "Venous blood",
+                "readouts": [_readout("Cve", label="gli, plasma")],
+            }
+        },
+    )
+    panels, _ = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+    assert list(panels) == ["ve"]
+    assert panels["ve"].title == "Venous blood"
+
+
+def test_one_group_of_two_units_opens_a_panel_per_unit(tmp_path: Path) -> None:
+    path = _sidecar(
+        tmp_path,
+        {
+            "urine": {
+                "label": "Urine",
+                "readouts": [
+                    _readout("Aurine", unit="umol", kind="amount", label="gli, urine"),
+                    _readout("Furine", unit="umol/h", kind="rate", label="gli, urine"),
+                ],
+            }
+        },
+    )
+    panels, _ = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+    assert list(panels) == ["urine_amount", "urine_rate"]
+    assert [c.unit for p in panels.values() for c in p.curves] == ["umol", "umol/h"]
+    assert [p.title for p in panels.values()] == ["Urine", "Urine"]
+
+
+def test_a_group_which_is_no_word_text_keeps_the_panel_id_an_sid(
+    tmp_path: Path,
+) -> None:
+    path = _sidecar(
+        tmp_path,
+        {
+            "li": {
+                "label": "Liver",
+                "readouts": [
+                    _readout("LI__Cpl_gli", label="gli, plasma"),
+                    _readout("LI__Cti_gli", label="gli, tissue (unbound)"),
+                ],
+            }
+        },
+    )
+    panels, _ = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+    assert list(panels) == ["li_plasma", "li_tissue__unbound_"]
+
+
+def test_more_curves_than_the_limit_in_one_group_is_refused(tmp_path: Path) -> None:
+    readouts = [
+        _readout(f"LI__C{i}", label=f"s{i}, plasma") for i in range(MAX_CURVES + 1)
+    ]
+    path = _sidecar(tmp_path, {"li": {"label": "Liver", "readouts": readouts}})
+    with pytest.raises(ContractError, match="plasma"):
+        panels_from_figure(SVG, path, simulation=SIMULATION, title="T", group=_grouped)
+
+
+def test_a_group_which_is_no_pair_of_texts_is_refused(tmp_path: Path) -> None:
+    path = _sidecar(tmp_path, {"li": {"label": "Liver", "readouts": [_readout("C")]}})
+    with pytest.raises(ContractError, match="'li'"):
+        panels_from_figure(
+            SVG,
+            path,
+            simulation=SIMULATION,
+            title="T",
+            group=lambda key, readout: "x",  # ty: ignore[invalid-argument-type]
+        )
+
+
+def test_a_group_which_raises_names_the_key(tmp_path: Path) -> None:
+    def boom(key: str, readout: Mapping[str, str]) -> tuple[str, str]:
+        raise RuntimeError("no")
+
+    path = _sidecar(tmp_path, {"li": {"label": "Liver", "readouts": [_readout("C")]}})
+    with pytest.raises(ContractError, match="'li'"):
+        panels_from_figure(SVG, path, simulation=SIMULATION, title="T", group=boom)
 
 
 def _built() -> tuple[dict[str, Panel], AppFigure]:
