@@ -8,6 +8,7 @@ from html.parser import HTMLParser
 from importlib import resources
 from pathlib import Path
 
+import jinja2
 import pytest
 
 import sbmlsim
@@ -122,22 +123,45 @@ def test_the_page_names_the_versions_and_carries_the_licenses(app: Path) -> None
     assert '<sbmlsim-app endpoint="local:hctz" model="hctz">' in text
 
 
+def test_the_licenses_of_an_app_are_in_its_information(app: Path) -> None:
+    text = app.read_text(encoding="utf-8")
+    # the information view of the app takes them in its slot, so they are read next to the
+    # licenses of the model and not in a footer of their own
+    assert '<div slot="licenses" class="licenses">' in text
+    assert text.index('<div slot="licenses"') < text.index("</sbmlsim-app>")
+    assert "<footer>" in text and text.index("</sbmlsim-app>") < text.index("<footer>")
+    # and they are the plain text of a NOTICE file: no markdown is left of the document
+    notices = text.split('<div slot="licenses"')[1].split("</div>")[0]
+    assert "Third-party notices\n===================" in notices
+    assert "```" not in notices
+    assert "|---" not in notices
+
+
+def test_the_licenses_of_a_page_of_panels_are_in_its_footer() -> None:
+    page = _template().render(has_app=False, panels=["p"], third_party="# Notices")
+    footer = page.split("<footer>")[1]
+    assert '<div class="licenses">' in footer
+    assert "Notices" in footer
+    assert "slot=" not in page
+
+
 def test_the_page_of_an_app_is_as_wide_as_the_screen(app: Path) -> None:
     # the app draws the figure of its model beside its panels, which needs the room
     assert '<main class="app">' in app.read_text(encoding="utf-8")
 
 
-def test_the_page_of_panels_keeps_the_reading_width() -> None:
-    import jinja2
-
+def _template() -> jinja2.Template:
+    """The template of the page, rendered with whatever a test gives it."""
     environment = jinja2.Environment(
         loader=jinja2.PackageLoader("sbmlsim", "resources/templates"),
         autoescape=jinja2.select_autoescape(["html"]),
         undefined=jinja2.ChainableUndefined,
     )
-    page = environment.get_template("webapp.html").render(
-        has_app=False, panels=["p"], third_party=[]
-    )
+    return environment.get_template("webapp.html")
+
+
+def test_the_page_of_panels_keeps_the_reading_width() -> None:
+    page = _template().render(has_app=False, panels=["p"], third_party=[])
     assert "<main>" in page
     assert 'class="app"' not in page
 
