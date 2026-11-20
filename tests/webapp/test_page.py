@@ -122,6 +122,26 @@ def test_the_page_names_the_versions_and_carries_the_licenses(app: Path) -> None
     assert '<sbmlsim-app endpoint="local:hctz" model="hctz">' in text
 
 
+def test_the_page_of_an_app_is_as_wide_as_the_screen(app: Path) -> None:
+    # the app draws the figure of its model beside its panels, which needs the room
+    assert '<main class="app">' in app.read_text(encoding="utf-8")
+
+
+def test_the_page_of_panels_keeps_the_reading_width() -> None:
+    import jinja2
+
+    environment = jinja2.Environment(
+        loader=jinja2.PackageLoader("sbmlsim", "resources/templates"),
+        autoescape=jinja2.select_autoescape(["html"]),
+        undefined=jinja2.ChainableUndefined,
+    )
+    page = environment.get_template("webapp.html").render(
+        has_app=False, panels=["p"], third_party=[]
+    )
+    assert "<main>" in page
+    assert 'class="app"' not in page
+
+
 def test_the_app_is_the_same_for_the_same_model(app: Path, tmp_path: Path) -> None:
     assert write_app(PROJECT, tmp_path).read_bytes() == app.read_bytes()
 
