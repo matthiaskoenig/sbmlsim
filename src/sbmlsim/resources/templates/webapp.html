@@ -34,6 +34,11 @@ main {
   margin: 0 auto;
   padding: 8px 0 32px;
 }
+/* an app draws the figure of its model beside its panels, which is worth the width of a
+   screen: a page of panels alone keeps the reading width above */
+main.app {
+  max-width: 1920px;
+}
 main > h1 {
   margin: 16px 16px 8px;
   font-size: 1.5rem;
@@ -68,7 +73,7 @@ a { color: inherit; }
 </style>
 </head>
 <body>
-<main>
+<main{% if has_app %} class="app"{% endif %}>
 {% if has_app %}
 <sbmlsim-app endpoint="local:{{ model }}" model="{{ model }}"></sbmlsim-app>
 {% else %}
