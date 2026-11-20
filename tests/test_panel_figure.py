@@ -12,6 +12,7 @@ from sbmlsim.panel import (
     MAX_CURVES,
     AppFigure,
     ContractError,
+    Knob,
     Panel,
     PanelSimulation,
 )
@@ -390,3 +391,37 @@ def test_a_blank_drawing_is_refused_naming_the_file(tmp_path: Path) -> None:
 def test_a_blank_title_is_refused_naming_the_file() -> None:
     with pytest.raises(ContractError, match=r"(?s)model\.svg.*\ntitle\n"):
         panels_from_figure(SVG, READOUTS, simulation=SIMULATION, title=" ")
+
+
+KNOBS = (
+    Knob(
+        id="dose",
+        label="dose",
+        target="PODOSE_gli",
+        unit="mg",
+        min=1,
+        max=8,
+        default=4,
+    ),
+    Knob(
+        id="crcl",
+        label="creatinine clearance",
+        unit="ml/min",
+        min=10,
+        max=130,
+        default=125,
+    ),
+)
+
+
+def test_every_panel_takes_the_knobs_of_its_page() -> None:
+    panels, _ = panels_from_figure(
+        SVG, READOUTS, simulation=SIMULATION, title="T", knobs=KNOBS
+    )
+    assert len(panels) > 1
+    assert all(panel.knobs == KNOBS for panel in panels.values())
+
+
+def test_a_panel_without_given_knobs_has_none() -> None:
+    panels, _ = panels_from_figure(SVG, READOUTS, simulation=SIMULATION, title="T")
+    assert all(panel.knobs == () for panel in panels.values())
