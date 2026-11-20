@@ -644,3 +644,166 @@ def test_a_differential_evolution_of_many_runs_of_the_engine_is_no_fit(
             algorithm=OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
             max_iterations=1,
         )
+
+
+# ----------------------------------------------------------------------------
+# the jacobian of the residuals, the Fisher information of the optimum
+# ----------------------------------------------------------------------------
+def test_the_jacobian_of_the_engine_is_the_derivative_of_the_residuals(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The forward sensitivities are the derivative the differences converge to.
+
+    At a tolerance of `1e-10` the central differences of python reach the
+    sensitivities point for point over a step of `1e-3`. The jacobian of the
+    data of an iv fit says nothing about the absorption of an oral dose, so
+    the columns of its two absorption parameters are zero.
+    """
+    from sbmlsim.fit.fisher import jacobian
+
+    tight = dataclasses.replace(
+        fit_settings, relative_tolerance=1e-10, absolute_tolerance=1e-12
+    )
+    problem = on_core(op_hctz_iv, tight)
+    x = problem.to_scale(problem.xmodel)
+
+    sensitivities = fit_core.residual_jacobian(problem, x, threads=2)
+
+    differences = jacobian(problem, x, step=1e-3)[: sensitivities.shape[0]]
+    assert sensitivities.shape == (len(problem.residuals(x)), len(problem.parameters))
+    np.testing.assert_allclose(sensitivities, differences, rtol=1e-4, atol=1e-6)
+    assert np.all(sensitivities[:, :2] == 0.0)
+    assert np.linalg.norm(sensitivities[:, 2]) > 0.0
+
+
+def test_the_sensitivities_hold_at_the_tolerance_of_a_fit(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Which is what the Fisher information takes them for.
+
+    The sensitivities are integrated next to the states and not differenced,
+    so the information they give at the default tolerance of a fit (`1e-6`) is
+    the one of a tolerance of `1e-10`; the central differences of that
+    tolerance are off it by percents, whatever their step, because they divide
+    the noise of the integrator by it.
+    """
+    from sbmlsim.fit.fisher import jacobian
+
+    tight = dataclasses.replace(
+        fit_settings, relative_tolerance=1e-10, absolute_tolerance=1e-12
+    )
+    problem = on_core(op_hctz_iv, tight)
+    x = problem.to_scale(problem.xmodel)
+    exact = fit_core.residual_jacobian(problem, x, threads=2)
+    information = exact.T @ exact
+
+    problem.initialize(fit_settings)
+    sensitivities = fit_core.residual_jacobian(problem, x, threads=2)
+
+    np.testing.assert_allclose(
+        sensitivities.T @ sensitivities, information, rtol=1e-3, atol=1e-12
+    )
+    for step in (1e-2, 1e-3):
+        differences = jacobian(problem, x, step=step)[: exact.shape[0]]
+        off = abs(float((differences.T @ differences)[2, 2] / information[2, 2] - 1.0))
+        assert off > 5e-3, f"the differences of the step {step} are off by {off:g}"
+
+
+def test_the_jacobian_of_the_engine_is_in_the_space_of_the_problem(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Its point is the one of the problem, carried into the units of the model.
+
+    The engine searches the entity of the model, which the factor of its
+    target carries a parameter of its own unit into; the engine itself says
+    which values a point of its search space stands for.
+    """
+    problem = on_core(op_hctz_pk, fit_settings)
+    core = core_problem(problem)
+    factors = np.asarray(fit_core._factors_of(problem), dtype=float)
+
+    for change in (1.0, 1.3):
+        x = problem.to_scale(problem.xmodel * change)
+
+        point = fit_core._point_of(problem, x)
+
+        np.testing.assert_allclose(
+            core.values(point),
+            np.asarray(problem.from_scale(x), dtype=float) * factors,
+            rtol=1e-12,
+        )
+    np.testing.assert_allclose(
+        fit_core._column_factors(problem),
+        [
+            1.0 if scale.is_log else factor
+            for scale, factor in zip(problem.scales_initialized, factors, strict=True)
+        ],
+        rtol=1e-12,
+    )
+
+
+def test_a_problem_of_another_engine_has_no_jacobian_of_the_engine(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A problem of roadrunner is a gap of the jacobian, as it is one of the fit."""
+    problem = op_hctz_iv
+    problem.initialize(fit_settings)
+
+    gaps = fit_core.gaps_of_a_jacobian(problem)
+
+    assert [gap.code for gap in gaps] == ["engine"]
+    assert "roadrunner" in gaps[0].message
+
+
+def test_the_information_of_the_engine_is_the_one_of_the_problem(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The Fisher information takes the sensitivities where the engine has them."""
+    from sbmlsim.fit.fisher import (
+        CENTRAL_DIFFERENCES,
+        SENSITIVITIES,
+        FisherInformation,
+        fisher_information,
+    )
+
+    problem = on_core(op_hctz_pk, fit_settings)
+    parameter_set = problem.parameter_set_model()
+
+    information = fisher_information(problem, fit_settings, parameter_set, n_cores=2)
+
+    assert information.jacobian_of == SENSITIVITIES
+    assert information.step == 0.0
+    assert information.rank == information.k
+    # the record says which jacobian the matrix came from
+    again = FisherInformation.from_dict(information.to_dict())
+    assert again.jacobian_of == SENSITIVITIES
+
+    # the differences of python are the same information, to their accuracy
+    differences = fisher_information(
+        problem, fit_settings, parameter_set, n_cores=2, engine_jacobian=False
+    )
+    assert differences.jacobian_of == CENTRAL_DIFFERENCES
+    np.testing.assert_allclose(
+        information.matrix, differences.matrix, rtol=2e-2, atol=1e-6
+    )
+    np.testing.assert_allclose(
+        information.summary_df.se.to_numpy(),
+        differences.summary_df.se.to_numpy(),
+        rtol=2e-2,
+    )
+
+
+def test_a_step_of_the_information_asks_for_the_differences(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A caller which gives a step wants the differences of that step."""
+    from sbmlsim.fit.fisher import CENTRAL_DIFFERENCES, fisher_information
+
+    problem = on_core(op_hctz_pk, fit_settings)
+
+    information = fisher_information(
+        problem, fit_settings, problem.parameter_set_model(), step=1e-3, n_cores=2
+    )
+
+    assert information.jacobian_of == CENTRAL_DIFFERENCES
+    assert information.step == 1e-3

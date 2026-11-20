@@ -21,6 +21,12 @@ information is the one of the data: the residuals of the priors of a fit of
 the posterior are no part of it, the Laplace approximation of the posterior,
 `sbmlsim.fit.posterior`, adds the curvature of the priors.
 
+The jacobian is the forward sensitivities of the engine core where the problem
+is one the engine fits (`sbmlsim.fit.fit_core`, #556) and its conditions carry
+them, and the central differences of the residuals in python otherwise, see
+`_jacobian_of`; `FisherInformation.jacobian_of` says which of the two a matrix
+came from.
+
 The two analyses answer different questions and disagree where the cost is not
 a quadratic: the Fisher information is a local statement about the optimum, the
 profile likelihood follows the cost until it rises by the threshold. A
@@ -59,6 +65,13 @@ Evaluate = Callable[[Sequence[np.ndarray]], Sequence[np.ndarray]]
 #: its step, the step of the information before it followed the tolerance of
 #: the integrator, see `default_step`
 DEFAULT_STEP = 1e-6
+
+#: where the jacobian of an information comes from: the central differences of
+#: the residuals in python, which is what every engine can do, or the forward
+#: sensitivities of the engine core, which are the derivatives themselves
+#: (`sbmlsim.fit.fit_core.SENSITIVITIES`, #556)
+CENTRAL_DIFFERENCES = "central_differences"
+SENSITIVITIES = "sensitivities"
 
 
 def default_step(relative_tolerance: float) -> float:
@@ -109,7 +122,10 @@ class FisherInformation:
         rank_tolerance: eigenvalues below this fraction of the largest one are
             a direction the data does not constrain.
         step: relative step of the finite differences of the jacobian the
-            matrix was computed with, see `jacobian`.
+            matrix was computed with, see `jacobian`; `0` for a jacobian which
+            took no difference, i.e. the sensitivities of the engine.
+        jacobian_of: where the jacobian of the matrix comes from,
+            `CENTRAL_DIFFERENCES` or `SENSITIVITIES`.
         units: the unit of every parameter in the order of the matrix, a unit
             of pint with the unit ids of the model resolved, `None` for the
             unit of the model; empty for an information which does not know
@@ -132,6 +148,7 @@ class FisherInformation:
     alpha: float = 0.95
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
     step: float = DEFAULT_STEP
+    jacobian_of: str = CENTRAL_DIFFERENCES
     units: list[str | None] = field(default_factory=list)
     scales: list[ParameterScaleType] = field(default_factory=list)
     targets: list[str] = field(default_factory=list)
@@ -433,6 +450,8 @@ class FisherInformation:
             rank_tolerance=d.get("rank_tolerance", DEFAULT_RANK_TOLERANCE),
             # a record before the step was stored has the default step
             step=d.get("step", DEFAULT_STEP),
+            # a record before the jacobian was stored is one of the differences
+            jacobian_of=str(d.get("jacobian_of", CENTRAL_DIFFERENCES)),
             units=list(d.get("units", [])),
             scales=[ParameterScaleType[name] for name in d.get("scales", [])],
             targets=list(d.get("targets", [])),
@@ -455,6 +474,7 @@ class FisherInformation:
             "alpha": self.alpha,
             "rank_tolerance": self.rank_tolerance,
             "step": self.step,
+            "jacobian_of": self.jacobian_of,
             "units": list(self.units),
             "targets": list(self.targets),
             "objective": self.objective.value,
@@ -584,6 +604,106 @@ def jacobian(
     return np.column_stack(columns)
 
 
+def _jacobian_of(
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    x: np.ndarray,
+    rows: int,
+    *,
+    step: float | None,
+    engine: bool | None,
+    n_cores: int,
+) -> tuple[np.ndarray, str, float]:
+    """Get the jacobian of the residuals of the data, and where it comes from.
+
+    The forward sensitivities of the engine core are the derivatives of the
+    residuals themselves and a simulation per condition, where a difference
+    quotient is two simulations per parameter and condition whose accuracy is
+    the noise of the integrator over its step: at the default tolerance of
+    `1e-6` the central differences of the iv fit of the HCTZ example are 1.5 %
+    off the sensitivities over the step which balances that noise
+    (`default_step`), and the sensitivities of that tolerance are the ones of
+    a tolerance of `1e-10` to `1e-5`, which the differences reach only there.
+    So the information takes them where the engine has them.
+
+    The finite differences of the engine are not taken: their step is a fixed
+    `1e-3` of the parameter, the `diff_step` of an optimizer, and does not
+    follow the tolerance of the integrator, so they are a worse estimate than
+    the central differences of `default_step` in python.
+
+    Args:
+        problem: the initialized problem.
+        settings: the settings the problem was initialized with.
+        x: the point, in the space the problem searches.
+        rows: the number of residuals of the data, which the jacobian of the
+            differences is cut to: the residuals of the priors of a fit of the
+            posterior are no part of the information.
+        step: the relative step of the differences, `None` for the step of the
+            tolerance of the integrator; a step which is given asks for the
+            differences.
+        engine: whether the jacobian is the one of the engine, see
+            `fisher_information`.
+        n_cores: the workers of the differences, the threads of the engine.
+
+    Returns:
+        The jacobian, where it comes from (`SENSITIVITIES` or
+        `CENTRAL_DIFFERENCES`) and the step it took, `0` for the
+        sensitivities.
+
+    Raises:
+        ValueError: if the jacobian of the engine is required and the engine
+            cannot compute it.
+    """
+    from sbmlsim.fit import fit_core
+
+    asked = engine or (engine is None and step is None)
+    if asked:
+        gaps = fit_core.gaps_of_a_jacobian(problem)
+        reason = "; ".join(f"{gap.code}: {gap.message}" for gap in gaps)
+        if engine and gaps:
+            raise ValueError(
+                f"'{problem.opid}': the jacobian of the Fisher information cannot "
+                f"come from the engine: {reason}."
+            )
+        if not gaps:
+            from sbmlsim.fit.runner import resolve_n_cores
+
+            try:
+                jac = fit_core.residual_jacobian(
+                    problem, x, threads=resolve_n_cores(n_cores)
+                )
+            except ValueError as err:
+                # a condition which carries no forward sensitivities (an event
+                # of the model, a change of the request, a steady state) is
+                # refused by the engine, and the differences answer instead
+                if engine:
+                    raise
+                reason = f"sensitivities: {err}"
+            else:
+                if jac.shape[0] == rows:
+                    return jac, SENSITIVITIES, 0.0
+                reason = (
+                    f"residuals: the engine computes {jac.shape[0]} residuals of "
+                    f"the data, the problem {rows}"
+                )
+                if engine:
+                    raise ValueError(
+                        f"'{problem.opid}': the jacobian of the Fisher information "
+                        f"cannot come from the engine: {reason}."
+                    )
+        logger.info(
+            "'%s': the jacobian of the Fisher information is the central "
+            "differences of python: %s.",
+            problem.opid,
+            reason,
+        )
+    if step is None:
+        step = default_step(settings.relative_tolerance)
+    with evaluator(problem, settings, n_cores) as evaluate:
+        jac = jacobian(problem, x, step=step, evaluate=evaluate)[:rows]
+    return jac, CENTRAL_DIFFERENCES, step
+
+
 def fisher_information(
     problem: OptimizationProblem,
     settings: FitSettings,
@@ -592,8 +712,13 @@ def fisher_information(
     step: float | None = None,
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE,
     n_cores: int = 1,
+    engine_jacobian: bool | None = None,
 ) -> FisherInformation:
     """Calculate the Fisher information of a parameter set on a problem.
+
+    The jacobian is the forward sensitivities of the engine core where the
+    problem and its conditions carry them, and the central differences of the
+    residuals in python otherwise, see `_jacobian_of`.
 
     Args:
         problem: optimization problem, initialized with the settings.
@@ -603,27 +728,43 @@ def fisher_information(
         alpha: confidence level of the intervals.
         step: relative step of the finite differences of the jacobian,
             `default_step` of the relative tolerance of the settings by
-            default.
+            default; a step which is given asks for the differences, so the
+            jacobian of such a call comes from the engine only with
+            `engine_jacobian=True`.
         rank_tolerance: eigenvalues below this fraction of the largest one are
             a direction the data does not constrain.
         n_cores: the workers which evaluate the points of the jacobian, the
             two points of every parameter, see `evaluator`; one evaluates them
             in this process, which is `2 k` simulations of the experiments one
-            after another.
+            after another. It is the threads of the batch of a jacobian of the
+            engine.
+        engine_jacobian: whether the jacobian is the forward sensitivities of
+            the engine: `None` takes them where the engine has them, `True`
+            requires them and names what keeps the problem from them, `False`
+            takes the central differences in python.
 
     Returns:
         The Fisher information with the errors, the correlations and the
         directions the data does not constrain.
+
+    Raises:
+        ValueError: if `engine_jacobian` is required and the engine cannot
+            compute the jacobian of the problem.
     """
     problem.initialize(settings)
-    if step is None:
-        step = default_step(settings.relative_tolerance)
     values = problem.bind_parameter_set(parameter_set).x(problem.pids)
     x = problem.to_scale(values)
 
     residuals, cost, n = data_residuals(problem, x)
-    with evaluator(problem, settings, n_cores) as evaluate:
-        jac = jacobian(problem, x, step=step, evaluate=evaluate)[: residuals.size]
+    jac, jacobian_of, step = _jacobian_of(
+        problem,
+        settings,
+        x,
+        residuals.size,
+        step=step,
+        engine=engine_jacobian,
+        n_cores=n_cores,
+    )
     matrix = jac.T @ jac
 
     return FisherInformation(
@@ -638,6 +779,7 @@ def fisher_information(
         alpha=alpha,
         rank_tolerance=rank_tolerance,
         step=step,
+        jacobian_of=jacobian_of,
         # units of pint, a unit id of a model resolved
         units=list(problem.parameter_units.values()),
         scales=list(problem.scales_initialized),

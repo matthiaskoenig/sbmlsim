@@ -91,6 +91,12 @@ ALGORITHMS: dict[OptimizationAlgorithmType, str] = {
     OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: "differential_evolution",
 }
 
+#: where a jacobian of the engine comes from: the forward sensitivities of the
+#: conditions of the request, which are the derivatives of the residuals, or a
+#: forward difference quotient of a relative step of `1e-3`
+SENSITIVITIES = "sensitivities"
+DIFFERENCE_QUOTIENT = "difference_quotient"
+
 #: the iterations of the optimizer of a point of a profile, which fits the
 #: other parameters while one of them is held at a value: the fit of the
 #: request takes none of its own, so that the profiles are walked around the
@@ -1152,3 +1158,123 @@ def _theta_of(
     values = list(point["values"])
     values.insert(index, float(point["value"]))
     return np.asarray(problem.to_scale(np.asarray(values, dtype=float)), dtype=float)
+
+
+def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
+    """Get what keeps the jacobian of the residuals of a problem out of the engine.
+
+    The gaps of the fit of the problem (`gaps_of`), and the bindings which do
+    not resolve the problem of a request (`LoadedModel.fit_problem`, new in
+    sbmlsim-core 0.12.0). Whether the conditions of the problem carry the
+    forward sensitivities is no gap of the request: the engine answers that
+    when it resolves the problem, see `residual_jacobian`.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The gaps, empty for a problem whose jacobian the engine computes.
+    """
+    gaps = gaps_of(problem)
+    if gaps:
+        return gaps
+    loaded = _loaded_of(problem)
+    if not hasattr(loaded, "fit_problem"):
+        import sbmlsim_core
+
+        return [
+            Gap(
+                "bindings",
+                f"the bindings of sbmlsim-core {sbmlsim_core.__version__} do not "
+                f"resolve the problem of a request of '{CONTRACT}', which 0.12.0 "
+                f"is the first to do",
+            )
+        ]
+    return gaps
+
+
+def residual_jacobian(
+    problem: OptimizationProblem,
+    x: Sequence[float] | np.ndarray,
+    *,
+    threads: int | None = None,
+) -> np.ndarray:
+    """Get the jacobian of the residuals of a problem from the engine, exactly.
+
+    The forward sensitivities of the conditions are the derivatives of the
+    residuals themselves, one simulation per condition, where a difference
+    quotient takes two simulations per parameter and condition and is exact
+    only to the noise of the integrator over its step. The whole jacobian is
+    one batch of the engine, which walks the conditions on its threads.
+
+    The jacobian is the one of the data of the fit, a row per point of the
+    curves of the request, which are the training mappings of the problem; the
+    residuals of the priors of a fit of the posterior are no part of a request
+    and no part of this jacobian. Its columns are the derivatives in the space
+    the problem searches: the engine searches the entity of the model, so a
+    parameter of its own unit has the factor of its target in its column, and
+    the factor of a parameter which is searched as a logarithm cancels.
+
+    Args:
+        problem: the initialized problem, without gaps (`gaps_of_a_jacobian`).
+        x: the point, in the space the problem searches.
+        threads: the threads of the batch, every CPU of the process without.
+
+    Returns:
+        The jacobian, a row per data point and a column per parameter.
+
+    Raises:
+        ValueError: if the problem is not initialized, if it has no model or
+            more than one, if `x` is not one value per parameter, or if a
+            condition of the problem carries no forward sensitivities, which
+            is what the engine refuses the problem with.
+    """
+    request = fit_request(
+        problem,
+        starts=[np.asarray(problem.from_scale(np.asarray(x, dtype=float)))],
+        # the jacobian is no fit: the optimizer of the request takes no step
+        max_iterations=0,
+        jacobian=SENSITIVITIES,
+        threads=threads,
+    )
+    core = loaded_model(problem).fit_problem(request, threads=threads)
+    jacobian = np.asarray(core.jacobian(_point_of(problem, x)), dtype=float)
+    return jacobian * _column_factors(problem)
+
+
+def _point_of(
+    problem: OptimizationProblem, x: Sequence[float] | np.ndarray
+) -> list[float]:
+    """Get the point of the search space of the engine of a point of a problem.
+
+    The engine searches the entity of the model, which the factor of its
+    target carries a parameter of another unit into (`_factors_of`), on the
+    scale of the parameter.
+    """
+    values = np.asarray(problem.from_scale(np.asarray(x, dtype=float)), dtype=float)
+    return [
+        float(scale.to_scale(value * factor))
+        for scale, value, factor in zip(
+            problem.scales_initialized, values, _factors_of(problem), strict=True
+        )
+    ]
+
+
+def _column_factors(problem: OptimizationProblem) -> np.ndarray:
+    """Get what carries the columns of a jacobian of the engine into the space of the problem.
+
+    A parameter of a linear scale is searched as the value of its entity in
+    the model, which is the value of the parameter times the factor of its
+    target, so the derivative of the engine is the one of the problem divided
+    by that factor. The factor of a parameter which is searched as a logarithm
+    is an offset of the search space and cancels in its derivative.
+    """
+    return np.array(
+        [
+            1.0 if scale.is_log else factor
+            for scale, factor in zip(
+                problem.scales_initialized, _factors_of(problem), strict=True
+            )
+        ],
+        dtype=float,
+    )
