@@ -200,6 +200,25 @@ def test_the_uncertainty_of_a_simulation_is_a_child_of_its_element(
     assert "<uncertainty" not in panels_to_annotation([minimal])
 
 
+def test_the_table_of_the_parameters_is_a_flag_of_the_panel(
+    tmp_path: Path, panel: Panel, minimal: Panel
+) -> None:
+    """A panel which states its pharmacokinetic parameters says so in the model.
+
+    The flag travels with the model as the rest of a declaration does, and a
+    panel which states none writes no attribute, so the annotation of every
+    panel written before it is unchanged.
+    """
+    stating = panel.model_copy(update={"pk": True})
+    assert ' pk="True"' in panels_to_annotation([stating])
+    assert " pk=" not in panels_to_annotation([minimal])
+    write_panels(SBML_IN, tmp_path / "m.xml", [stating, minimal])
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels[stating.id].pk is True
+    assert panels[minimal.id].pk is False
+
+
 def test_a_panel_of_the_defaults_round_trips_as_well(
     tmp_path: Path, panel: Panel, minimal: Panel
 ) -> None:

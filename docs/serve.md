@@ -105,6 +105,7 @@ A model declares as many `<panel>` elements as it has panels, each with one `<si
 | `yLabel` | the label of the value axis, e.g. `plasma concentration`, empty without; a renderer names that axis after the curves then, and appends the unit they share in either case, so the unit is no part of it |
 | `yMin`, `yMax` | the limits of the value axis, in the unit the curves of the panel are delivered in, which they then share; none without, which a renderer fits to the curves. `yMin` is below `yMax`, and both are positive on a panel whose curves declare the `log` scale |
 | `xMax` | the end of the time axis, in the unit it is delivered in (`xUnit`, the time unit of the model without), greater than 0 and at most the end of the simulation; the end without |
+| `pk` | `True` on a panel which states the pharmacokinetic parameters of its curves in a table under the figure, no attribute without. A renderer reads them off the curves of the state the knobs are at - the peak and the time of it, the area under the curve over the window by the linear trapezoid, and the half-life of the log-linear fit of the terminal phase - so the table is a non-compartmental analysis of what is drawn and moves with the knobs. It is a statement about the curves of the panel: a panel of concentrations declares it, one of an amount in the urine or of a pressure does not, and a curve which no analysis describes (one which stays at zero, one which does not decay) leaves no row and no half-life |
 
 The limits fix the axes, so two settings of the knobs are compared on one scale instead of an axis which follows each curve; the page `patient` of the example fixes them at the highest curve its knobs reach, rounded up, and its time axis at the day it simulates, `xMax="24"` hours of `end="1440"` minutes.
 
@@ -382,7 +383,8 @@ The declaration of a panel is its `panel/1` payload, here the one of `renal_urin
     "y_label": "amount excreted",
     "y_min": null,
     "y_max": null,
-    "x_max": null
+    "x_max": null,
+    "pk": false
   },
   "axes": [
     {

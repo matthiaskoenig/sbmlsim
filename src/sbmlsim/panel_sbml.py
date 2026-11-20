@@ -146,6 +146,7 @@ _PANEL_ATTRIBUTES: Final = {
     "yMin": "y_min",
     "yMax": "y_max",
     "xMax": "x_max",
+    "pk": "pk",
 }
 #: the fields of the simulation of a panel, its `preinit` and its `derived`
 #: are children
@@ -776,13 +777,15 @@ def _element_xml(
         children: the XML of the children of the element, none without.
 
     Returns:
-        The element; a field which is `None` or empty is no attribute, so it
-        is read back as the default of its field.
+        The element; a field which is `None`, empty or `False` is no
+        attribute, so it is read back as the default of its field.
     """
     attributes = "".join(
         f" {attribute}={quoteattr(str(value))}"
         for attribute, field in names.items()
-        if (value := getattr(part, field)) is not None and value != ""
+        if (value := getattr(part, field)) is not None
+        and value != ""
+        and value is not False
     )
     if not children:
         return f"<{name}{attributes}/>"

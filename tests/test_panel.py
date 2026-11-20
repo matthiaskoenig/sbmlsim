@@ -875,6 +875,9 @@ def test_the_payload_names_the_knobs_as_the_axes_of_the_grid(panel: Panel) -> No
         "y_min": 0.001,
         "y_max": 1.0,
         "x_max": 24.0,
+        # the panel states no pharmacokinetic parameters, which a renderer
+        # reads as a table it does not draw
+        "pk": False,
     }
 
 
