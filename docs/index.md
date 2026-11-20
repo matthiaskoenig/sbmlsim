@@ -75,7 +75,7 @@ Parameter optimization:
 
 If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.org/10.5281/zenodo.3597770):
 
-> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.30.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24355551
+> König, M. (2026). *sbmlsim: SBML simulation made easy* (Version 0.32.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24380837
 
 ## License
 
