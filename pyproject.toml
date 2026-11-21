@@ -212,7 +212,15 @@ addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite an
 verbosity_subtests = 0
 # a warning fails the test which raises it, so a deprecation is fixed when it
 # appears and not when the feature is removed
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # matplotlib warns when the search of its `loc="best"` legend takes more
+    # than a second of wall clock (`Legend._find_best_position`), which on a
+    # loaded machine happens for a small figure as well, e.g. under the
+    # workers of pytest-xdist, so the warning is about the machine and not
+    # about the code under test
+    'ignore:Creating legend with loc="best" can be slow:UserWarning',
+]
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
     "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
