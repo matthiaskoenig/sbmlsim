@@ -1436,27 +1436,16 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     assert np.all(np.diff(result.time) >= 0.0)
 
 
-#: an event whose root CVODE finds within its root tolerance of the end of a
-#: variable step simulate fires there although its trigger is false at the
-#: end, since the fix of the event at the end of the steps which never fired
-#: (roadrunner #1445, reported as #1460): the dose at 1.6 fires at the stop one
-#: unit in the last place before it, which the state of the trigger of the next
-#: segment does not have, so the change after it fires it a second time
-FIRED_BEFORE_ITS_TIME = (
-    "libroadrunner develop: an event whose trigger is false at the end of a "
-    "variable step simulate fires there when CVODE finds its root within the "
-    "root tolerance of the end (sys-bio/roadrunner#1460, of the fix of #1445)"
-)
-
-
-@pytest.mark.xfail(strict=True, reason=FIRED_BEFORE_ITS_TIME)
 def test_a_dose_a_few_units_in_the_last_place_before_a_change_fires_once() -> None:
     """A dose between the stop before a change and the change fires once.
 
     roadrunner integrated the stop four units in the last place before the
     change at 1.6 + 3 units to one unit after it, where the dose at 1.6
     fired, and the triggers before the change, evaluated at the stop, fired
-    it a second time after the change; doses from 1 to 3.
+    it a second time after the change (roadrunner #1460, of the fix of
+    #1445, an event whose root CVODE found within its root tolerance of the
+    end of a variable step simulate fired there although its trigger was
+    false at the end); doses from 1 to 3.
     """
     wrong = []
     for te in np.round(np.linspace(1.0, 3.0, 41), 6)[::4]:
@@ -1637,8 +1626,9 @@ def test_the_state_before_a_change_is_before_the_event_at_its_time(c: float) -> 
 def test_the_state_before_a_change_is_before_the_event_at_every_time() -> None:
     """The rule of `test_the_state_before_a_change_is_before_the_event_at_its_time`.
 
-    401 times of a change from 1 to 3; without the time between of
-    `_simulate_times` 27 states at a change were wrong.
+    401 times of a change from 1 to 3; before the fix of roadrunner #1430,
+    which integrated an output time from the one before it, 27 states at a
+    change were wrong.
     """
     states = []
     for c in np.round(np.linspace(1.0, 3.0, 401), 6):

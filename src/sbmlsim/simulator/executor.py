@@ -25,11 +25,10 @@ The semantics are the ones of PEtab v2:
    of the integrator at every change, an output of times at its times which
    are changes. A segment of a model with events stops just before its end,
    a unit in the last place of the larger magnitude of its start and end
-   and at least four machine epsilons, see `segment_stop` and
-   `_simulate_times`, so an event of the model at the time of a change fires
-   after the change and an event at the end after the state before it. A
-   segment too short for CVODE, a few units in the last place in absolute
-   time, is not integrated: its state is the one at its start, and the
+   and at least four machine epsilons, see `segment_stop`, so an event of
+   the model at the time of a change fires after the change and an event at
+   the end after the state before it. A segment too short for CVODE, a few
+   units in the last place in absolute time, is not integrated: its state is the one at its start, and the
    triggers before the next change are evaluated at the time the model is
    at, its start, so an event of the time in it fires once, after it, see
    `integrable`. A delayed event which roadrunner keeps pending closer after
@@ -312,7 +311,7 @@ def _simulate(
             # a time which rounds to the end in local time is before the change
             shifted = np.minimum(wanted - offset, end_stop)
             grid, asked = _output_grid(start, shifted, end_stop)
-            result = _simulate_times(r, grid, end, bool(model_events))
+            result = _simulate_times(r, grid)
             block = result[asked]
             if block.shape[0] != wanted.size:
                 raise RuntimeError(
@@ -327,9 +326,9 @@ def _simulate(
                 state = result[-1].copy()
                 state[0] = b
                 block = np.vstack([block, state])
-        # the time the model is at: roadrunner may integrate an exact output
-        # time to one unit in the last place after it and fire an event there,
-        # see `_simulate_times`; a segment which is not integrated is at its start
+        # the time the model is at, which roadrunner may integrate one unit
+        # in the last place past the stop of the segment to; a segment which
+        # is not integrated is at its start
         stopped = start if held else float(r.model.getTime())
         blocks.append(block)
 
@@ -712,41 +711,27 @@ def _to_the_end(r: roadrunner.RoadRunner, end: float) -> None:
     integrator.integrate(end, 0.0)
 
 
-def _simulate_times(
-    r: roadrunner.RoadRunner, grid: np.ndarray, end: float, events: bool
-) -> np.ndarray:
+def _simulate_times(r: roadrunner.RoadRunner, grid: np.ndarray) -> np.ndarray:
     """Integrate a segment with exact output at the times of a grid.
 
-    roadrunner integrates every output time from the one before it, to
-    `t + (next - t)`, which can round up by one unit in the last place: for a
-    last time one unit before the end, before a change at the end, and a time
-    before it below half of it, roadrunner integrated to the end and an event
-    of the model at the time of the change fired before the change. Such a
-    last interval gets a time between, from which the sum is exact; its row
-    is not returned.
+    roadrunner integrates every output time of a segment to that time
+    (roadrunner #1430: it integrated to `t + (next - t)` of the output time
+    `t` before it, which rounds up by one unit in the last place for some
+    times, so a last time one unit before the end of the segment reached the
+    end and an event of the model at the time of a change there fired before
+    the change; an integrator which integrates so needs a time between, see
+    `intermediate_time`).
 
     Args:
         r: the roadrunner instance, in the state at the start.
         grid: the output times in the time of roadrunner, sorted, the first
             the start of the segment.
-        end: the end of the segment in the time of roadrunner, which the
-            integration must not reach if the last time is before it.
-        events: whether the model has events.
 
     Returns:
         The values, a row per time of the grid.
     """
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, False)
-    times = [float(t) for t in grid]
-    between: float | None = None
-    if events and len(times) > 1:
-        between = intermediate_time(times[-2], times[-1], end)
-        if between is not None:
-            times.insert(len(times) - 1, between)
-    values = _integrate(r, times, steps=False)
-    if between is not None:
-        values = np.delete(values, values.shape[0] - 2, axis=0)
-    return values
+    return _integrate(r, [float(t) for t in grid], steps=False)
 
 
 def intermediate_time(previous: float, last: float, end: float) -> float | None:
@@ -758,8 +743,9 @@ def intermediate_time(previous: float, last: float, end: float) -> float | None:
     to the end, where an event of the model at the time of a change fires
     before the change. From a time between them of the same sign within a
     factor of two of the last time the difference is exact, and so is the
-    sum. Both executors share it, see `_simulate_times` and
-    `sbmlsim.simulator.executor_copasi`.
+    sum. LSODA of COPASI integrates so, see
+    `sbmlsim.simulator.executor_copasi`; roadrunner integrates an output time
+    to that time since the fix of roadrunner #1430, see `_simulate_times`.
 
     Args:
         previous: the output time before the last one.
@@ -814,13 +800,12 @@ def steady_state(
         SteadyStateError: if the steady state is not reached by `max_time`.
     """
     r = model.r_loaded
-    events = bool(model.symbols.events)
     states = model.state_ids()
     time = start
     horizon = 1.0
     while True:
         end = start + min(horizon, plan.max_time)
-        _simulate_times(r, np.array([time, end]), end, events)
+        _simulate_times(r, np.array([time, end]))
         time = end
         # the rates of every state of the integrator, the targets of rate
         # rules and the species; roadrunner's `getRatesOfChangeNamedArray`

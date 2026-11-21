@@ -1429,16 +1429,16 @@ wheels = [
 
 [[package]]
 name = "libroadrunner"
-version = "2.12.0.dev700"
+version = "2.12.0.dev714"
 source = { registry = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" }
 dependencies = [
     { name = "numpy" },
 ]
 wheels = [
-    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev700/libroadrunner-2.12.0.dev700-cp310-abi3-macosx_15_0_arm64.whl", hash = "sha256:955d3e4fb6cf69c09e4fcb62cb3e4355ff79a2e34c09e817e28c30cf8448e75e" },
-    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev700/libroadrunner-2.12.0.dev700-cp310-abi3-macosx_15_0_x86_64.whl", hash = "sha256:56afdce8ed425d300da25deb782af41555d721d9d3cbe6b2f951f8686d5bc706" },
-    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev700/libroadrunner-2.12.0.dev700-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:61875a61b9083a6badfef7e8473489bccdd25b71f836ac483d25e830249fddaf" },
-    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev700/libroadrunner-2.12.0.dev700-cp310-abi3-win_amd64.whl", hash = "sha256:4c8bf66c296b2702302c9f75e2f120a4dff304b265f40c33f75f453cf6bfb83c" },
+    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev714/libroadrunner-2.12.0.dev714-cp310-abi3-macosx_15_0_arm64.whl", hash = "sha256:1cb0a48a5d1f9e66919637a4e01e9540268f285e336f7d317c2e521d0f761e0b" },
+    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev714/libroadrunner-2.12.0.dev714-cp310-abi3-macosx_15_0_x86_64.whl", hash = "sha256:10bcfdbc17a5bec40dac90fd847e79b2faa7bac669505c209dd3bbd5b7137410" },
+    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev714/libroadrunner-2.12.0.dev714-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:58c40676e5ded9b970cfc4e6319e6e81b4174ec516276d0dbb0804eb80831f00" },
+    { url = "https://github.com/matthiaskoenig/roadrunner-wheels/releases/download/v2.12.0.dev714/libroadrunner-2.12.0.dev714-cp310-abi3-win_amd64.whl", hash = "sha256:3e8ff4a36d0ecac1f142399ce11378f1b380c0a5a7bae91115ff616112048fa6" },
 ]
 
 [[package]]
@@ -3224,7 +3224,7 @@ requires-dist = [
     { name = "httpx2", marker = "extra == 'web'", specifier = ">=2.16.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "latex2mathml", specifier = ">=3.77" },
-    { name = "libroadrunner", specifier = ">=2.12.0.dev700", index = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" },
+    { name = "libroadrunner", specifier = ">=2.12.0.dev714", index = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.9" },
     { name = "ninja", marker = "extra == 'amici'" },
