@@ -3,6 +3,7 @@
 import subprocess
 import sys
 from pathlib import Path
+from unittest import mock
 
 import h5py
 import numpy as np
@@ -12,7 +13,14 @@ import xarray as xr
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
-from sbmlsim.result.netcdf import CHUNK_BYTES, chunk_shape
+from sbmlsim.result.netcdf import (
+    CHUNK_BYTES,
+    STACK_MIN,
+    STACK_PREFIX,
+    chunk_shape,
+    read_netcdf,
+    write_netcdf,
+)
 from sbmlsim.sensitivity import SensitivityResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
@@ -152,3 +160,91 @@ def test_the_chunks_are_whole_timecourses(
     shape: tuple[int, ...], chunks: tuple[int, ...]
 ) -> None:
     assert chunk_shape(shape, 8) == chunks
+
+
+@pytest.fixture(scope="module")
+def wide() -> ScanResult:
+    """A result of more than `STACK_MIN` variables, which are gathered (#607)."""
+    model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
+    scan = Scan(
+        Simulation(end=50),
+        [Dimension("d", values={"n": np.linspace(1.5, 4.0, 10)})],
+    )
+    return Simulator(n_workers=1).run(model, scan, time=np.linspace(0, 50, 51))
+
+
+def _variables(path: Path) -> set[str]:
+    """Get the names the file carries, the coordinates of the dimensions apart."""
+    with h5py.File(path) as f:
+        return {name for name in f if isinstance(f[name], h5py.Dataset)}
+
+
+def test_the_variables_of_a_wide_result_are_gathered_into_one_array(
+    wide: ScanResult, tmp_path: Path
+) -> None:
+    path = tmp_path / "wide.nc"
+    assert len(wide.ds.data_vars) >= STACK_MIN
+
+    wide.to_netcdf(path)
+
+    names = _variables(path)
+    assert f"{STACK_PREFIX}0" in names, names
+    assert not {str(name) for name in wide.ds.data_vars} & names
+
+
+@pytest.mark.parametrize("compression", ["zstd", "gzip", None])
+def test_a_gathered_result_is_read_as_it_was_written(
+    wide: ScanResult, compression: str | None, tmp_path: Path
+) -> None:
+    path = tmp_path / "wide.nc"
+    wide.to_netcdf(path, compression=compression)  # ty: ignore[invalid-argument-type]
+
+    again = ScanResult.from_netcdf(path)
+
+    xr.testing.assert_identical(again.ds, wide.ds)
+    # the variables come back in the order they were written in
+    assert list(again.ds.data_vars) == list(wide.ds.data_vars)
+
+
+def test_the_array_of_a_gathered_result_carries_the_compression(
+    wide: ScanResult, tmp_path: Path
+) -> None:
+    path = tmp_path / "wide.nc"
+    wide.to_netcdf(path)
+
+    chunks, filters = _filters(path, f"{STACK_PREFIX}0")
+
+    assert filters == {"shuffle", ZSTD_FILTER}
+    stacked = (len(wide.ds.data_vars), *wide.ds["PX"].shape)
+    assert chunks == chunk_shape(stacked, 8)
+    # this result fits into one chunk; an array which does not is cut so that a
+    # chunk of it is a chunk of a single variable, as it was before #607
+    assert chunk_shape((3301, 1000, 101), 8)[0] == 1
+
+
+def test_a_result_of_few_variables_keeps_its_variables_named(
+    wide: ScanResult, tmp_path: Path
+) -> None:
+    few = wide.ds[[str(name) for name in list(wide.ds.data_vars)[: STACK_MIN - 1]]]
+    few.attrs = wide.ds.attrs
+    path = tmp_path / "few.nc"
+
+    write_netcdf(few, path)
+
+    assert _variables(path) >= {str(name) for name in few.data_vars}
+    xr.testing.assert_identical(read_netcdf(path), few)
+
+
+def test_gathering_does_not_make_the_file_larger(
+    wide: ScanResult, tmp_path: Path
+) -> None:
+    gathered = tmp_path / "gathered.nc"
+    one_by_one = tmp_path / "one_by_one.nc"
+    wide.to_netcdf(gathered)
+    # the layout of the releases before #607, which `STACK_MIN` of a variable
+    # count below the result's reproduces
+    with mock.patch("sbmlsim.result.netcdf.STACK_MIN", len(wide.ds.data_vars) + 1):
+        wide.to_netcdf(one_by_one)
+
+    assert _variables(one_by_one) >= {str(name) for name in wide.ds.data_vars}
+    assert gathered.stat().st_size <= one_by_one.stat().st_size

@@ -22,7 +22,7 @@ from typing import Any
 
 import libsbml
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, IdentifiabilityResult
@@ -1143,7 +1143,7 @@ def _tolerance(tolerance: AbsoluteTolerance) -> list[Part]:
     return parts
 
 
-def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Paragraph:
+def _integrator(settings: FitSettings, engine: Engine = DEFAULT_ENGINE) -> Paragraph:
     """Write the simulator and its integrator.
 
     Args:

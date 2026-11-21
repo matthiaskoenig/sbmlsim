@@ -127,12 +127,13 @@ the engine documents:
    stateless, so the executor cannot set the values of a pre-initialization
    on it and read what a formula reads, as the executor of roadrunner does,
    and no request answers them either, since they are set before the
-   initialization of the simulation the request is. Only a formula of a
-   parameter is folded: the size of a compartment and the amount or the
-   concentration of a species are set with the bookkeeping of the volumes
-   and the amounts of the initialization, which the engine does as every
-   other executor does since sbmlsim-core 0.7.0, so a formula of a
-   compartment and of a species can be folded as well and is not yet.
+   initialization of the simulation the request is. The target of the formula
+   may be any entity: the fold gives the number and the engine applies it
+   with the bookkeeping of the volumes and the amounts of its initialization,
+   which it does as every other executor does since sbmlsim-core 0.7.0, so a
+   formula of a compartment or of a species is folded as one of a parameter
+   is (#607, which a PEtab v2 condition that estimates a concentration
+   needs).
 8. The engine integrates with the absolute tolerance of every state of
    roadrunner (`CoreSBMLModel.request_settings`), so it needs no factor of
    one tolerance as COPASI and AMICI do, but its own build of CVODE chooses
@@ -1415,11 +1416,16 @@ def _preinit_value(
     the rule `kk := 3*f` of a pre-initialization which sets `f`, so the value
     of the model as loaded would be the wrong one.
 
-    Only a formula of a parameter is folded and only a number of a parameter
-    is read: the size of a compartment and the amount or the concentration of
-    a species are set with the bookkeeping of the volumes and the amounts of
-    the initialization, which the engine does as every other executor does,
-    see the module.
+    A formula of any target is folded, a parameter, a compartment and the
+    amount or the concentration of a species alike: the fold computes the
+    number the formula has, and the engine then applies that number to the
+    target with the bookkeeping of the volumes and the amounts of its
+    initialization, exactly as it applies a number the pre-initialization
+    states for the same target (#607). Only a number of a parameter is read as
+    the value of a symbol, though: a pre-initialization which sets the
+    concentration `[S]` does not give the amount `S` that number, the
+    bookkeeping of the initialization does, so a formula which reads a symbol
+    the pre-initialization sets as anything but a parameter is refused.
 
     The symbol `time` is the value of an entity of that name in the model as
     loaded, which is what roadrunner reads (measured on a model with a
@@ -1443,14 +1449,6 @@ def _preinit_value(
             symbol or of a mixed pre-initialization, see above.
     """
     where = "before the initialization"
-    if assignment.kind is not TargetKind.PARAMETER:
-        raise _no_fold(
-            assignment,
-            model,
-            where,
-            f"'{assignment.target}' is a {assignment.kind}, which is set with the "
-            f"bookkeeping of the volumes and the amounts of the initialization",
-        )
     formula = compile_formula(str(assignment.formula))
     values: list[float] = []
     for symbol in formula.symbols:

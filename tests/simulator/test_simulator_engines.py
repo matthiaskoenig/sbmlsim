@@ -13,7 +13,7 @@ import pytest
 
 from sbmlsim import Q
 from sbmlsim.comparison.diff import DataSetsComparison
-from sbmlsim.engine import Engine, UnsupportedModelError
+from sbmlsim.engine import DEFAULT_ENGINE, Engine, UnsupportedModelError
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.result.scan import ScanResult
@@ -35,6 +35,7 @@ from tests.simulator.models import (
     PREINIT_FORMULAS,
     auc_of_c,
     doubled,
+    roadrunner_simulator,
     sbml,
     sbml_pk,
 )
@@ -63,7 +64,7 @@ def _dose_scan() -> Scan:
 @pytest.fixture(scope="module")
 def roadrunner_doses() -> ScanResult:
     """Get the scan of the doses with roadrunner."""
-    return Simulator().run(HCTZ_SBML, _dose_scan())
+    return roadrunner_simulator().run(HCTZ_SBML, _dose_scan())
 
 
 @pytest.fixture(scope="module")
@@ -118,10 +119,10 @@ def test_the_engine_at_the_defaults_is_as_accurate_as_roadrunner(
         Simulation(end=24 * 60, times=np.linspace(0, 24 * 60, 241).tolist()),
         dimensions=[Dimension("dose", values={"PODOSE_hctz": [10, 25, 50]})],
     )
-    reference = Simulator(absolute_tolerance=1e-16, relative_tolerance=1e-12).run(
-        HCTZ_SBML, scan
-    )
-    r = Simulator().run(HCTZ_SBML, scan)
+    reference = roadrunner_simulator(
+        absolute_tolerance=1e-16, relative_tolerance=1e-12
+    ).run(HCTZ_SBML, scan)
+    r = roadrunner_simulator().run(HCTZ_SBML, scan)
     e = Simulator(engine=other_engine).run(HCTZ_SBML, scan)
     margin = ACCURACY_MARGIN[other_engine]
     assert _scaled_error(e, reference) <= margin * _scaled_error(r, reference)
@@ -147,7 +148,7 @@ def test_simulator_engine_switch_gives_the_same_result(
 
 
 def test_simulator_engine(other_engine: Engine) -> None:
-    assert Simulator().engine is Engine.ROADRUNNER
+    assert Simulator().engine is DEFAULT_ENGINE is Engine.CORE
     simulator = Simulator(engine=other_engine.value)
     assert simulator.engine is other_engine
     assert f"engine={other_engine.value}" in repr(simulator)
@@ -164,7 +165,7 @@ def test_simulate_with_the_engine(other_engine: Engine) -> None:
     model = Simulator(engine=other_engine).load(HCTZ_SBML)
     assert isinstance(model, model_class(other_engine))
     e = Simulator(engine=other_engine).simulate(model, simulation)
-    r = Simulator().simulate(HCTZ_SBML, simulation)
+    r = roadrunner_simulator().simulate(HCTZ_SBML, simulation)
     # the default selections of the engines may be in another order
     assert sorted(e.columns) == sorted(r.columns)
     for name in r.columns:
@@ -182,7 +183,7 @@ def test_observables_formula_and_pk(other_engine: Engine) -> None:
         Simulation(end=24 * 60, times=np.linspace(0, 24 * 60, 24 * 60 + 1).tolist()),
         dimensions=[Dimension("dose", values={"PODOSE_hctz": [10, 25, 50]})],
     )
-    r = Simulator().run(HCTZ_SBML, scan, observables)
+    r = roadrunner_simulator().run(HCTZ_SBML, scan, observables)
     e = Simulator(engine=other_engine).run(HCTZ_SBML, scan, observables)
     for name in ("cpmax", "pk.cmax", "pk.auc_inf_obs"):
         assert r.ds.attrs["units"][name] == e.ds.attrs["units"][name]
@@ -206,7 +207,7 @@ def test_custom_observables(other_engine: Engine, n_workers: int) -> None:
         Simulation(end=48, times=np.linspace(0, 48, 97).tolist()),
         [Dimension("dose", values={"PODOSE": Q([50.0, 100.0], "mg")})],
     )
-    r = Simulator(n_workers=1).run(sbml_pk(), scan, observables)
+    r = roadrunner_simulator(n_workers=1).run(sbml_pk(), scan, observables)
     e = Simulator(n_workers=n_workers, engine=other_engine).run(
         sbml_pk(), scan, observables
     )
@@ -231,7 +232,7 @@ def test_a_roadrunner_model_given_to_the_simulator_is_reloaded(
     assert loaded.selections == ["time", "[Cve_hctz]"]
     # the model of the engine is used as it is
     assert Simulator(engine=other_engine).load(loaded) is loaded
-    assert Simulator().load(model) is model
+    assert roadrunner_simulator().load(model) is model
 
 
 def test_engine_attribute_survives_netcdf(
@@ -311,7 +312,7 @@ def test_preinit_formulas_read_what_they_read_in_roadrunner(
         with pytest.raises(UnsupportedModelError, match=PREINIT_FORMULA_REFUSED):
             Simulator(engine=other_engine).simulate(source, simulation)
         return
-    r = Simulator().simulate(source, simulation)
+    r = roadrunner_simulator().simulate(source, simulation)
     e = Simulator(engine=other_engine).simulate(source, simulation)
     assert sorted(e.columns) == sorted(r.columns)
     for name in r.columns:
@@ -547,7 +548,9 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
             rtol=1e-5,
         )
         return
-    reference = Simulator().run(RoadrunnerSBMLModel(source=sbml(model)), simulation)
+    reference = roadrunner_simulator().run(
+        RoadrunnerSBMLModel(source=sbml(model)), simulation
+    )
     expected = _first_row(reference)
     assert first["n"] == expected["n"] == 1.0
     assert first["total"] == pytest.approx(expected["total"], rel=1e-6, abs=1e-9)

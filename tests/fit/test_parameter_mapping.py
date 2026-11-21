@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from conftest import is_intravenous, is_oral  # ty: ignore[import-not-found]
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
@@ -518,6 +519,8 @@ def test_a_problem_compiles_its_models_at_its_level_in_a_worker(
         base_path=op_hctz_pk.base_path,
         data_path=op_hctz_pk.data_path,
         jit_optimization="O0",
+        # the level is the JIT of roadrunner, which the engine core has not
+        engine=Engine.ROADRUNNER,
     )
     monkeypatch.setenv(JIT_OPTIMIZATION_VARIABLE, "O2")
     unpickled = pickle.loads(pickle.dumps(problem))

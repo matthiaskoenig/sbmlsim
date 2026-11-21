@@ -8,7 +8,7 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.scales import typical_scales
-from tests.simulator.models import sbml
+from tests.simulator.models import roadrunner_simulator, sbml
 
 #: a dose of a drug in nM next to a large state in mM, in one compartment
 DRUG = """
@@ -55,11 +55,13 @@ def test_scaled_tolerances_integrate_a_small_state_as_accurately_as_a_large_one(
         changes=[Change(0, {"[drug]": 1e-6})],
         times=np.linspace(0, 5, 51).tolist(),
     )
-    scales = typical_scales(Simulator(n_workers=1), model, dose)
+    # the vector of CVODE of the scaled tolerances is roadrunner's, which
+    # the model below is read for
+    scales = typical_scales(roadrunner_simulator(n_workers=1), model, dose)
     exact = 2e-6 * np.exp(-np.linspace(0, 5, 51))
 
     def error(tolerance: AbsoluteTolerance) -> float:
-        simulator = Simulator(
+        simulator = roadrunner_simulator(
             n_workers=1, absolute_tolerance=tolerance, relative_tolerance=1e-8
         )
         drug = simulator.run(simulator.load(model), dose, keep=["drug"]).ds["drug"]
@@ -69,7 +71,7 @@ def test_scaled_tolerances_integrate_a_small_state_as_accurately_as_a_large_one(
     scaled = AbsoluteTolerance(relative=1e-8, scales=scales)
     assert error(loose) > 1e-6
     assert error(scaled) < 1e-6
-    loaded = Simulator(n_workers=1, absolute_tolerance=scaled).load(model)
+    loaded = roadrunner_simulator(n_workers=1, absolute_tolerance=scaled).load(model)
     assert isinstance(loaded, RoadrunnerSBMLModel)
     tolerances = loaded.tolerances()
     by_id = tolerances.set_index("sid")

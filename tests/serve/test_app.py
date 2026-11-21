@@ -17,6 +17,7 @@ from pydantic import ValidationError
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from examples.panels.hctz import EGFR_STAGES, END, POINTS
+from sbmlsim.engine import DEFAULT_ENGINE
 from sbmlsim.panel import CONTRACT, MAX_KNOBS, Choice, Knob, Panel, Scenario
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
@@ -321,7 +322,8 @@ def test_simulate_answers_a_grid_with_provenance_and_a_hash(
     assert provenance["sbmlsim"] == sbmlsim.__version__
     assert provenance["model"] == "hctz"
     assert provenance["panel"] == "renal_plasma"
-    assert provenance["engine"] == "roadrunner"
+    # the demo names no engine, so its runs are on the default engine
+    assert provenance["engine"] == DEFAULT_ENGINE.value
     assert len(provenance["model_sha256"]) == 64
     assert provenance["seconds"] > 0.0
     assert len(body["spec_hash"]) == 64

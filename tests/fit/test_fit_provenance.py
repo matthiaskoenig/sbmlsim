@@ -8,10 +8,11 @@ from pathlib import Path, PureWindowsPath
 import pytest
 
 from examples.hctz_fitting import DATA_PATH
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.provenance import (
+    ENGINE_PACKAGES,
     FitProvenance,
     GitInfo,
     checksum_key,
@@ -40,11 +41,26 @@ def repo(tmp_path: Path) -> Path:
 
 
 def test_versions_name_the_simulation_stack() -> None:
+    """The stack of every fit, plus the package of the engine (#607).
+
+    `collect_versions` without an engine records the packages of
+    `DEFAULT_ENGINE`, so a record written without one, e.g. the `run.json` of
+    the run layer, names the engine the run used and not roadrunner.
+    """
     versions = collect_versions()
     assert {"python", "sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
-    assert "python-copasi" not in versions
-    assert "amici" not in versions
-    assert "sbmlsim-core" not in versions
+    assert set(ENGINE_PACKAGES[DEFAULT_ENGINE]) <= set(versions)
+    # the packages of the engines a fit of the default engine does not use
+    others = {
+        package
+        for engine, packages in ENGINE_PACKAGES.items()
+        if engine is not DEFAULT_ENGINE
+        for package in packages
+    } - set(ENGINE_PACKAGES[DEFAULT_ENGINE])
+    assert not others & set(versions), others & set(versions)
+
+    # roadrunner comes with the package, so its own call adds nothing
+    assert collect_versions(Engine.ROADRUNNER).keys() <= versions.keys()
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 # Models
 
-`sbmlsim` simulates models written in the [Systems Biology Markup Language](https://sbml.org) (SBML). It loads a model into [libroadrunner](https://libroadrunner.org), reads the units of the model and keeps a few settings with it: values to change before every simulation, the variables to record and the settings of the integrator. This page uses the HCTZ model of the [Tutorial](tutorial.md), a whole body model of the diuretic hydrochlorothiazide.
+`sbmlsim` simulates models written in the [Systems Biology Markup Language](https://sbml.org) (SBML). It loads a model into an engine, reads the units of the model and keeps a few settings with it: values to change before every simulation, the variables to record and the settings of the integrator. The engine is the [engine core](benchmarks.md) by default, the Rust SBML engine compiled to WebAssembly which every install brings, and [libroadrunner](https://libroadrunner.org), COPASI and AMICI are the others, see [Engines](simulation.md#engines). This page uses the HCTZ model of the [Tutorial](tutorial.md), a whole body model of the diuretic hydrochlorothiazide.
 
 ## Loading a model
 
@@ -13,15 +13,19 @@ from sbmlsim.simulator import Simulator
 simulator = Simulator()
 model = simulator.load(HCTZ_SBML)
 print(type(model).__name__)
-print(model.r.model.getModelName())
+
+roadrunner = Simulator(engine="roadrunner").load(HCTZ_SBML)
+print(type(roadrunner).__name__)
+print(roadrunner.r.model.getModelName())
 ```
 
 ```text title="Output"
+CoreSBMLModel
 RoadrunnerSBMLModel
 Hydrochlorothiazide (HCTZ) body model
 ```
 
-The model is a `RoadrunnerSBMLModel`, and `model.r` is its `roadrunner.RoadRunner` instance, for anything `sbmlsim` does not cover. You can also create one directly with `RoadrunnerSBMLModel(source=HCTZ_SBML)` and pass it to the simulator. A hierarchical model (SBML `comp`) is flattened when it is loaded.
+The model of the default engine is a `CoreSBMLModel`; a simulator of roadrunner gives a `RoadrunnerSBMLModel`, whose `r` is its `roadrunner.RoadRunner` instance, for anything `sbmlsim` does not cover. You can also create one directly with `RoadrunnerSBMLModel(source=HCTZ_SBML)` and pass it to the simulator, which loads it in its own engine. A hierarchical model (SBML `comp`) is flattened when it is loaded.
 
 `sbmlsim.resources` ships four models, which the documentation, the examples and the tests use:
 
@@ -98,11 +102,11 @@ The compiler writes the SBML into the directory `dist` of the platform.
 ```python
 from sbmlsim.model import RoadrunnerSBMLModel
 
-parameters = RoadrunnerSBMLModel.parameter_df(model.r)
+parameters = RoadrunnerSBMLModel.parameter_df(roadrunner.r)
 selected = parameters[parameters.sid.isin(["BW", "PODOSE_hctz", "Mr_hctz"])]
 print(selected[["sid", "value", "unit", "name"]].to_string(index=False))
 
-species = RoadrunnerSBMLModel.species_df(model.r)
+species = RoadrunnerSBMLModel.species_df(roadrunner.r)
 selected = species[species.sid.isin(["Cve_hctz", "Aurine_hctz"])]
 print(selected[["sid", "amount", "unit", "name"]].to_string(index=False))
 ```
@@ -186,7 +190,7 @@ print(simulator.run(small, dose))
 ```
 
 ```text title="Output"
-ScanResult(_point: 840; [Cve_hctz], Aurine_hctz)
+ScanResult(_point: 841; [Cve_hctz], Aurine_hctz)
 ```
 
 `model.set_selections([...])` changes the selections of a loaded model.
@@ -228,7 +232,7 @@ print(type(loaded).__name__, loaded.changes)
 ```
 
 ```text title="Output"
-RoadrunnerSBMLModel {'BW': Quantity(100, "kilogram")}
+CoreSBMLModel {'BW': Quantity(100, "kilogram")}
 ```
 
 The source of a model is a path, absolute or relative to the `base_path` of the experiment, or the SBML itself. `sbmlsim` never downloads a model: a source which is neither an existing file nor SBML raises an `OSError`.

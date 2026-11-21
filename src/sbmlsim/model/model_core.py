@@ -5,7 +5,8 @@
 with a description of the contract `model/2` (its states, parameters and
 selections), which the runtime of the engine loads into a `LoadedModel`. The
 compiled model of an SBML is kept per process and shared by every model of
-that SBML (`COMPILED`), and the runtime, which compiles the engine itself, is
+that SBML (`COMPILED`, compiled once however many threads ask for it, see
+`compiled_model`), and the runtime, which compiles the engine itself, is
 created once (`runtime`): the HCTZ model compiles in 3 ms and loads in 4 ms,
 while the runtime takes 51 ms.
 
@@ -41,6 +42,7 @@ the integrator of the delays of the engine.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
@@ -118,13 +120,25 @@ ENGINE_SETTINGS: Final[dict[str, str]] = {
 #: the bindings, which are not imported statically
 COMPILED: dict[tuple[str, bool, str], Any] = {}
 
+#: the lock of the compilations, which guards `_COMPILING` and nothing else,
+#: see `compiled_model`
+_LOCK: Final[threading.Lock] = threading.Lock()
+
+#: the lock of every key of `COMPILED` which is being compiled, created under
+#: `_LOCK`, so two threads which ask for one SBML compile it once while two
+#: which ask for different SBML compile at the same time, see `compiled_model`
+_COMPILING: dict[tuple[str, bool, str], threading.Lock] = {}
+
 
 @cache
 def runtime() -> Any:
     """Get the runtime of the engine of this process, created once.
 
     The runtime compiles the engine and its math library, 51 ms, and loads
-    the models of the process, see `compiled_model`.
+    the models of the process, see `compiled_model`. It is created behind
+    `_LOCK`, so one runtime is created however many threads ask for it at
+    once; the bindings themselves are imported on a thread which lives as
+    long as the process, see `sbmlsim.engine.import_core`.
 
     Returns:
         The `Runtime` of the bindings.
@@ -132,7 +146,8 @@ def runtime() -> Any:
     Raises:
         ImportError: if the bindings of sbmlsim-core are not installed.
     """
-    return import_core().Runtime()
+    with _LOCK:
+        return import_core().Runtime()
 
 
 def compiled_model(
@@ -167,7 +182,15 @@ def compiled_model(
     """
     key = (sbml, optimize, jacobian)
     loaded = COMPILED.get(key)
-    if loaded is None:
+    if loaded is not None:
+        return loaded
+    with _LOCK:
+        compiling = _COMPILING.setdefault(key, threading.Lock())
+    with compiling:
+        # the thread which held the lock before this one may have compiled it
+        loaded = COMPILED.get(key)
+        if loaded is not None:
+            return loaded
         core = import_core()
         try:
             compiled = core.compile_sbml(sbml, optimize=optimize, jacobian=jacobian)
@@ -182,7 +205,7 @@ def compiled_model(
                 f"The engine 'core' cannot load the model '{label}': {err}"
             ) from err
         COMPILED[key] = loaded
-    return loaded
+        return loaded
 
 
 class CoreSBMLModel(SBMLModel):

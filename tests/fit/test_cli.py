@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import (
     ALGORITHMS,
@@ -632,10 +632,12 @@ def test_the_definition_names_the_engine_of_its_problem(
 ) -> None:
     """A definition with an engine creates problems which optimize on it."""
     assert definition_hctz_pk.engine is None
-    assert definition_hctz_pk.problem(opid="default").engine is Engine.ROADRUNNER
-    definition = dataclasses.replace(definition_hctz_pk, engine="core")
-    assert definition.engine is Engine.CORE
-    assert definition.problem(opid="core").engine is Engine.CORE
+    assert definition_hctz_pk.problem(opid="default").engine is DEFAULT_ENGINE
+    # an engine which is not the default, so the assertion is about the
+    # definition and not about the default
+    definition = dataclasses.replace(definition_hctz_pk, engine="roadrunner")
+    assert definition.engine is Engine.ROADRUNNER
+    assert definition.problem(opid="rr").engine is Engine.ROADRUNNER
 
 
 def test_the_definition_refuses_an_unknown_engine(
@@ -653,11 +655,15 @@ def test_the_fits_of_a_project_run_on_its_engine() -> None:
 
     base = PROJECT.load_fit_definitions()
     assert base
-    assert {d.problem(opid="x").engine for d in base.values()} == {Engine.ROADRUNNER}
+    assert {d.problem(opid="x").engine for d in base.values()} == {DEFAULT_ENGINE}
 
-    project = PROJECT.replace(simulator=SimulatorSettings(engine="core"))
+    # an engine which is not the default, so the project and not the default
+    # is what reaches the definitions
+    project = PROJECT.replace(simulator=SimulatorSettings(engine="roadrunner"))
     definitions = project.load_fit_definitions()
-    assert {d.problem(opid="x").engine for d in definitions.values()} == {Engine.CORE}
+    assert {d.problem(opid="x").engine for d in definitions.values()} == {
+        Engine.ROADRUNNER
+    }
 
 
 def test_the_engine_of_a_definition_wins_over_the_one_of_the_project() -> None:

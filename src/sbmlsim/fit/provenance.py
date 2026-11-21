@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.hashing import file_sha256
 
 if TYPE_CHECKING:
@@ -139,7 +139,7 @@ class FitProvenance:
         )
 
 
-def collect_versions(engine: Engine = Engine.ROADRUNNER) -> dict[str, str]:
+def collect_versions(engine: Engine = DEFAULT_ENGINE) -> dict[str, str]:
     """Get the versions of python and of the simulation stack.
 
     Args:
@@ -348,7 +348,7 @@ def create_provenance(
     files: Iterable[Path],
     start_values: Mapping[str, float | None],
     fixed_values: Mapping[str, float] | None = None,
-    engine: Engine = Engine.ROADRUNNER,
+    engine: Engine = DEFAULT_ENGINE,
     sources: list[dict[str, Any]] | None = None,
 ) -> FitProvenance:
     """Create the provenance of a fit before it starts.

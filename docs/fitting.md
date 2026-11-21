@@ -66,15 +66,15 @@ parameter      start   lower   upper   unit
 Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                4
-workers             1 (serial)
+workers             1 (threads of the engine, one fit)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.1 s
+optimizer time      0.0 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
-0    1  0.049603     0.304794      0.005028
-1    0  0.049603     0.304794      0.005028
-2    2  0.049603     0.304797      0.005028
-3    3  0.049604     0.304750      0.005027
+0    1  0.049603     0.304811      0.005028
+1    0  0.049603     0.304812      0.005028
+2    2  0.049603     0.304812      0.005028
+3    3  0.049603     0.304795      0.005028
 ```
 
 `show_progress` says whether the fit reports what it does: on a terminal a bar per activity (the runs of the fit and the points of their jacobians), without one a line every 30 seconds, each with the count, the elapsed time, the estimate of the time which is left and the cores, the CPU and the memory of the run, see [Progress](run.md#progress-and-provenance). The setting is the same everywhere, `--progress` of `python -m sbmlsim.run` or `SBMLSIM_PROGRESS`.
@@ -389,7 +389,9 @@ The first point of a curve is the exception: if a curve has later points, its fi
 
     The whole fit is one request, which fills the pool of the engine with its starts, and the engine reports a run of it as soon as that run finished: every run is stored and counted while the fit runs, so the progress of a long fit says how far it is and a fit which is interrupted (Ctrl-C) keeps the runs which finished, as a fit in python keeps the repeats which finished. Chunks of starts, a request each, would cost the fit more than they are worth: the runs are not equally long and a chunk ends with its longest run while the threads beside it idle, which costs 1.07x of the PK fit and 1.34x of the iv fit of sixteen starts in chunks of four on four threads, and more the wider the runs of a fit spread.
 
-    The residuals the engine computes are the residuals of the problem, point for point, so the fit of the engine is the fit of the problem: the weighting of the curves and of the points is the noise of a curve of the request, and the parameters are searched in the scale of the problem. What the engine has not keeps a fit in python, and the gaps are logged so a fit says why: an objective which is not a least squares, a loss function which is not linear, a residual which is not absolute or normalized, data at the time of a change which is not the state before it, a derived or dimensional mapping, and an argument of the optimizer which is no setting of the engine, e.g. `max_nfev`. `engine_fit=True` requires the fit of the engine and names the gaps of a fit it cannot run, `engine_fit=False` keeps the optimizer in python, which evaluates its points through the engine.
+    The residuals the engine computes are the residuals of the problem, point for point, so the fit of the engine is the fit of the problem: the weighting of the curves and of the points is the noise of a curve of the request, and the parameters are searched in the scale of the problem. What the engine has not keeps a fit in python, and the gaps are logged so a fit says why: an objective which is not a least squares, a loss function which is not linear, a residual which is not absolute or normalized, a derived or dimensional mapping, a parameter whose bounds are not finite and increasing, e.g. a parameter which has a prior and no bounds of its own, an argument of the optimizer which is no setting of the engine, e.g. `max_nfev`, and whatever the engine itself does not simulate (`unsupported`), which is the same for a fit as for a simulation: a value before the initialization or at a change which it cannot evaluate as a number, a steady state after the end of a simulation, and the rest of the list in the module docstring of `sbmlsim.simulator.executor_core`. That last check builds the request and reports what the engine refuses, so a problem the engine would not simulate is fitted in python instead of failing. `engine_fit=True` requires the fit of the engine and names the gaps of a fit it cannot run, `engine_fit=False` keeps the optimizer in python, which evaluates its points through the engine.
+
+    A measurement at the time of a change is no gap in either direction: the curve of the request carries one flag per point (`after_change` of `fit/1`, sbmlsim-core 0.16.0), so the engine reads the state before or after the change exactly as the `data_at_change` of the fit says. An observable which is a formula of the selections is no gap either: it is written into the model of the fit as a global parameter of an assignment rule (`sbmlsim.fit.observable_sbml`), so the engine reads it as it reads the math of the model, and the placeholders of a PEtab observable become parameters of their values. A placeholder whose value differs between the points of one curve makes the mapping one curve per run of points which share their values, in the order of the points, so the residuals stay the residuals of the problem in their places. What is still fitted in python is an observable of an experiment which is no formula of the selections, e.g. a `PK` parameter or a `Custom` function.
 
     A fit in the engine has no workers of its own, so `n_cores` are the threads of its batch, and it has no trajectory of the cost of its steps and no run which is written while it runs: the runs of a `runs_dir` are written when the answer is there. A run reports the code it stopped with as its message, and a run which stopped where its optimizer cannot improve the cost any further, the step of a trust region which collapsed included, counts as a converged run, which is what the `xtol` of `scipy.optimize.least_squares` stops at and reports as a success.
 - `popsize`, `polish`: differential evolution has a population of `5` members per parameter (`DE_POPSIZE` of `sbmlsim.fit.optimization`, `15` in SciPy), and its best member is polished by a least squares optimization of the residuals (`polish="least_squares"`, `LEAST_SQUARES_POLISH`), unless they are given. On the fits of the HCTZ example this reached the optimum from every seed at a quarter of the evaluations of the defaults of SciPy, whose polishing by L-BFGS-B on the cost cost 360 evaluations without improving it; `polish=True` is the polishing of SciPy.
@@ -431,7 +433,7 @@ print(ParameterSets.from_json(Path("parameters.json")).to_df())
 
 ```text title="Output"
       parameter  unit  hctz_patel_0  hctz_patel_1
-0   Ka_dis_hctz  1/hr      0.304794      0.304794
+0   Ka_dis_hctz  1/hr      0.304811      0.304812
 1  KI__HCTZEX_k  1/ml      0.005028      0.005028
 ```
 

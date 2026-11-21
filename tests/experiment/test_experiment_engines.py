@@ -14,7 +14,7 @@ import pytest
 from examples.demo.demo import DemoExperiment
 from examples.repressilator.repressilator import RepressilatorExperiment
 from sbmlsim import parallel
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import _run_job, model_key, run_experiments
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -83,7 +83,8 @@ def test_repressilator_experiment_runs_with_the_engine(
 def test_the_runner_loads_its_models_in_the_engine_of_its_simulator(
     other_engine: Engine,
 ) -> None:
-    assert _runner(None).engine is Engine.ROADRUNNER
+    # a runner without a simulator takes the default engine of the package
+    assert _runner(None).engine is DEFAULT_ENGINE
     assert _runner(Engine.ROADRUNNER).engine is Engine.ROADRUNNER
     runner = _runner(other_engine)
 
@@ -98,11 +99,11 @@ def test_the_runner_loads_its_models_in_the_engine_of_its_simulator(
 def test_the_model_key_includes_the_engine(other_engine: Engine) -> None:
     model = AbstractModel(REPRESSILATOR_SBML)
 
-    assert model_key(model) == model_key(model, Engine.ROADRUNNER)
-    assert model_key(model, other_engine) != model_key(model)
-    assert model_key(model, other_engine)._replace(
-        engine=Engine.ROADRUNNER
-    ) == model_key(model)
+    assert model_key(model) == model_key(model, DEFAULT_ENGINE)
+    assert model_key(model, Engine.ROADRUNNER) != model_key(model, Engine.CORE)
+    assert model_key(model, other_engine)._replace(engine=DEFAULT_ENGINE) == model_key(
+        model
+    )
 
 
 def test_set_simulator_with_another_engine_reloads_the_models(
@@ -133,7 +134,7 @@ def test_set_simulator_with_another_engine_reloads_the_models(
     runner.set_simulator(Simulator(n_workers=1, engine=other_engine))
     assert all(runner.models[k] is m for k, m in loaded.items())
 
-    runner.set_simulator(Simulator(n_workers=1))
+    runner.set_simulator(Simulator(n_workers=1, engine=Engine.ROADRUNNER))
     assert all(isinstance(m, RoadrunnerSBMLModel) for m in runner.models.values())
     assert all(isinstance(m, RoadrunnerSBMLModel) for m in experiment._models.values())
 

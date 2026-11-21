@@ -11,7 +11,9 @@ from typing import Any
 import antimony
 import numpy as np
 
+from sbmlsim.engine import Engine
 from sbmlsim.model import RoadrunnerSBMLModel, SBMLModel
+from sbmlsim.simulator import Simulator
 
 PROBE = """
 model probe
@@ -397,6 +399,18 @@ def roadrunner_model(model: SBMLModel) -> RoadrunnerSBMLModel:
     """Get a model which a simulator of roadrunner loaded as a model of roadrunner."""
     assert isinstance(model, RoadrunnerSBMLModel)
     return model
+
+
+def roadrunner_simulator(**kwargs: Any) -> Simulator:
+    """Get a simulator of roadrunner, whatever the default engine is.
+
+    The engine core is the default engine of the package (`DEFAULT_ENGINE`),
+    so a test of what roadrunner itself does - its instance `r`, its pool of
+    workers, its tolerance vector, the regeneration of its model, the numbers
+    it computes bitwise - names roadrunner through this instead of relying on
+    the default (#607).
+    """
+    return Simulator(engine=Engine.ROADRUNNER, **kwargs)
 
 
 #: a model with an algebraic rule, which the engine core simulates with IDA

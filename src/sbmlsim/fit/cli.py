@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sbmlsim import log
-from sbmlsim.engine import Engine, resolve_engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine, resolve_engine
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import DerivedChanges, hook_summaries
 from sbmlsim.fit.evaluation import Grouping
@@ -138,7 +138,7 @@ class FitDefinition:
             not state one. A project gives the definitions of its fits the
             engine of its simulator, see
             `sbmlsim.project.Project.load_fit_definitions`, and a problem
-            without either runs on roadrunner.
+            without either runs on `sbmlsim.engine.DEFAULT_ENGINE`.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -220,7 +220,7 @@ class FitDefinition:
             hybridizations=self.hybridizations,
             jit_optimization=self.jit_optimization,
             prior_correlation=self.prior_correlation,
-            engine=self.engine or Engine.ROADRUNNER,
+            engine=self.engine or DEFAULT_ENGINE,
         )
 
 

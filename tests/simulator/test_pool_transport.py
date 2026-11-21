@@ -16,9 +16,9 @@ import xarray as xr
 from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, Scan, Simulation
-from sbmlsim.simulator import ScanError, Simulator
+from sbmlsim.simulator import ScanError
 from sbmlsim.simulator.worker import ModelSpec, ScanPointError
-from tests.simulator.models import PROBE, sbml
+from tests.simulator.models import PROBE, roadrunner_simulator, sbml
 
 
 @pytest.fixture(autouse=True)
@@ -61,8 +61,8 @@ def test_reused_pool_gets_small_snapshot_descriptors_and_correct_models(
     path = tmp_path / "model.xml"
     path.write_text(sbml(), encoding="utf-8")
     model = RoadrunnerSBMLModel(path, selections=["time", "A", "k1"])
-    simulator = Simulator(n_workers=2)
-    serial = Simulator(n_workers=1).run(model, _scan())
+    simulator = roadrunner_simulator(n_workers=2)
+    serial = roadrunner_simulator(n_workers=1).run(model, _scan())
     first = simulator.run(model, _scan())
     executor = parallel.pool(2)
     path.unlink()
@@ -120,7 +120,7 @@ def test_only_a_bounded_number_of_chunks_is_pending(
 
     monkeypatch.setattr(module, "wait", recording)
     model = RoadrunnerSBMLModel(sbml(), selections=["time", "A"])
-    result = Simulator(n_workers=2).run(model, _scan())
+    result = roadrunner_simulator(n_workers=2).run(model, _scan())
     assert result["A"].shape == (24, 2)
     assert max(counts) <= 4
     assert len(counts) >= 2
@@ -130,7 +130,7 @@ def test_an_earlier_failure_in_unsubmitted_chunks_still_wins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A chunk may hold late points while later chunks hold earlier points."""
-    simulator = Simulator(n_workers=2)
+    simulator = roadrunner_simulator(n_workers=2)
     model = RoadrunnerSBMLModel(sbml(), selections=["time", "A"])
     compiled = simulator._compile(model, _scan(), None)
     template = compiled.chunks(2, "raise")[0]
@@ -194,7 +194,7 @@ def test_workers_stop_before_snapshot_cleanup_on_unexpected_errors(
     monkeypatch.setattr(module, "wait", fail_wait)
     monkeypatch.setattr(parallel, "stop", stop)
     with pytest.raises(error, match="interrupted"):
-        Simulator(n_workers=2).run(sbml(), _scan(), keep=["A"])
+        roadrunner_simulator(n_workers=2).run(sbml(), _scan(), keep=["A"])
     assert stopped == [True]
     assert all(not path.exists() for path in paths)
 
@@ -206,5 +206,5 @@ def test_serial_execution_creates_no_shared_payloads(
         raise AssertionError("serial execution created files")
 
     monkeypatch.setattr(parallel, "shared_payloads", no_payloads)
-    result = Simulator(n_workers=1).run(sbml(), _scan(), keep=["A"])
+    result = roadrunner_simulator(n_workers=1).run(sbml(), _scan(), keep=["A"])
     assert result["A"].shape == (24, 2)

@@ -22,6 +22,7 @@ from sbmlsim.simulator import Simulator
 from tests.simulator.models import (
     FRACTION,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
     sbml_minutes,
     with_domains,
@@ -36,7 +37,13 @@ def record(dimension: Dimension) -> Design:
 
 @pytest.fixture(scope="module")
 def model() -> RoadrunnerSBMLModel:
-    return roadrunner_model(Simulator().load(sbml()))
+    """The probe as a model of roadrunner, whose references a design reads.
+
+    The references of a design are read with roadrunner whatever the engine of
+    the simulation, so the model of a design is one of roadrunner and names it
+    instead of relying on the default engine (#607).
+    """
+    return roadrunner_model(roadrunner_simulator().load(sbml()))
 
 
 def test_local_varies_every_target_around_its_reference(
@@ -67,7 +74,7 @@ def fraction_model() -> RoadrunnerSBMLModel:
             "C": Domain(0.0, np.inf),
         },
     )
-    return roadrunner_model(Simulator().load(text))
+    return roadrunner_model(roadrunner_simulator().load(text))
 
 
 def test_local_keeps_its_steps_in_the_domain_of_the_model(

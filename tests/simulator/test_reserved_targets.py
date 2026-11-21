@@ -6,7 +6,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.worker import OnError
-from tests.simulator.models import sbml
+from tests.simulator.models import roadrunner_simulator, sbml
 
 
 def _model(target: str = "status") -> RoadrunnerSBMLModel:
@@ -24,7 +24,11 @@ def test_a_scanned_reserved_parameter_is_qualified(
     scan = Scan(
         Simulation(end=1, steps=1), [Dimension("rate", values={target: [1, 2]})]
     )
-    result = Simulator(n_workers=1).run(_model(target), scan, on_error=on_error)
+    # roadrunner integrates `S' = rate` to the exact rows below, which the
+    # other engines reach within their integration only
+    result = roadrunner_simulator(n_workers=1).run(
+        _model(target), scan, on_error=on_error
+    )
     assert result[f"rate.{target}"].values.tolist() == [1, 2]
     assert result["S"].values.tolist() == [[1, 2], [1, 3]]
     if on_error == "flag":

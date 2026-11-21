@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import (
     FitSettings,
 )
@@ -28,7 +28,7 @@ def test_set_simulator_of_the_same_engine_keeps_the_models(
     plans = list(op_hctz_pk.plans)
     simulator = Simulator(n_workers=1)
     op_hctz_pk.set_simulator(simulator)
-    assert op_hctz_pk.engine is Engine.ROADRUNNER
+    assert op_hctz_pk.engine is DEFAULT_ENGINE
     assert all(a is b for a, b in zip(op_hctz_pk.models, models, strict=True))
     assert all(a is b for a, b in zip(op_hctz_pk.plans, plans, strict=True))
     assert op_hctz_pk.runner_initialized.simulator is simulator
@@ -72,6 +72,8 @@ def test_an_unsupported_feature_raises_instead_of_failing_the_evaluation(
 def test_a_problem_of_roadrunner_keeps_the_settings_of_cvode(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
+    # the settings of the CVODE of roadrunner, which the other engines ignore
+    op_hctz_pk.engine = Engine.ROADRUNNER
     op_hctz_pk.initialize(fit_settings)
     simulator = op_hctz_pk.runner_initialized.simulator
     assert simulator is not None
@@ -107,12 +109,12 @@ def test_a_failed_set_simulator_leaves_the_problem_as_it_was(
         op_hctz_pk.set_simulator(Simulator(n_workers=1, engine="copasi"))
     monkeypatch.undo()
 
-    assert op_hctz_pk.engine is Engine.ROADRUNNER
+    assert op_hctz_pk.engine is DEFAULT_ENGINE
     assert all(a is b for a, b in zip(op_hctz_pk.models, models, strict=True))
     assert all(a is b for a, b in zip(op_hctz_pk.plans, plans, strict=True))
     assert runner.models is runner_models
     assert runner.simulator is runner_simulator
-    assert runner.engine is Engine.ROADRUNNER
+    assert runner.engine is DEFAULT_ENGINE
     for sid, experiment in runner.experiments.items():
         assert experiment._models is experiments[sid][0]
         assert experiment.simulator is experiments[sid][1]

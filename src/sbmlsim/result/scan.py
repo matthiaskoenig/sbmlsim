@@ -77,7 +77,6 @@ from sbmlsim.result.timecourse import (
     GridWeights,
     apply_weights,
     grid_weights,
-    interpolate,
     plot_times,
     without_states_before,
 )
@@ -378,6 +377,11 @@ class ScanResult:
         attrs = copy.deepcopy(ds.attrs)
         units_of: dict[str, str] = attrs.setdefault("units", {})
         overrides: dict[str, str] = attrs.get("statistic_units", {})
+        # the converted variables and coordinates are assigned in one call each
+        # and not one key at a time, which a dataset of many variables pays for
+        # in every one of them (#607)
+        variables: dict[str, Any] = {}
+        coords: dict[str, Any] = {}
         for key, unit in units.items():
             array = self[key]
             if array.dtype.kind not in "fiu":
@@ -407,9 +411,9 @@ class ScanResult:
                     f"'{key}' in '{source}' cannot be converted into '{unit}': {err}"
                 ) from err
             if key in ds.coords:
-                ds = ds.assign_coords({key: (array.dims, converted, array.attrs)})
+                coords[key] = (array.dims, converted, array.attrs)
             else:
-                ds[key] = (array.dims, converted, array.attrs)
+                variables[key] = (array.dims, converted, array.attrs)
             units_of[key] = str(target)
             if key == TIME and attrs.get(CHANGES):
                 attrs[CHANGES] = (
@@ -417,6 +421,10 @@ class ScanResult:
                     .to(target)
                     .magnitude.tolist()
                 )
+        if coords:
+            ds = ds.assign_coords(coords)
+        if variables:
+            ds = ds.assign(variables)
         ds.attrs = attrs
         return ScanResult(ds)
 
@@ -493,6 +501,7 @@ class ScanResult:
         changes = np.asarray(self.ds.attrs.get(CHANGES, []), dtype=float)
         variables: dict[str, Any] = {}
         weights: GridWeights | None = None
+        timecourses: dict[str, np.ndarray] = {}
         for name, array in self.ds.data_vars.items():
             if name == TIME:
                 continue
@@ -500,28 +509,35 @@ class ScanResult:
                 variables[str(name)] = array
                 continue
             if self.ragged:
-                order = time_dims
-                values = np.asarray(array.transpose(*order).values, dtype=float)
+                # the weights of a point are the same for every variable of the
+                # result, so the points and not the variables are walked and a
+                # point computes them once, below (#607)
+                timecourses[str(name)] = np.asarray(
+                    array.transpose(*time_dims).values, dtype=float
+                )
+                continue
+            order = (*[d for d in array.dims if d != TIME], TIME)
+            values = np.asarray(array.transpose(*order).values, dtype=float)
+            if weights is None:
                 times_of = np.asarray(self.ds[TIME].values, dtype=float)
-                out = np.full((*values.shape[:-1], grid.size), np.nan)
-                for index in np.ndindex(*values.shape[:-1]):
-                    out[index] = interpolate(
-                        times_of[index],
-                        values[index],
-                        grid,
-                        _resolution(times_of[index]),
-                        changes,
-                    )
-            else:
-                order = (*[d for d in array.dims if d != TIME], TIME)
-                values = np.asarray(array.transpose(*order).values, dtype=float)
-                if weights is None:
-                    times_of = np.asarray(self.ds[TIME].values, dtype=float)
-                    weights = grid_weights(
-                        times_of, grid, _resolution(times_of), changes
-                    )
-                out = apply_weights(weights, values)
-            variables[str(name)] = ([*order[:-1], TIME], out)
+                weights = grid_weights(times_of, grid, _resolution(times_of), changes)
+            variables[str(name)] = (
+                [*order[:-1], TIME],
+                apply_weights(weights, values),
+            )
+        if timecourses:
+            times_of = np.asarray(self.ds[TIME].values, dtype=float)
+            shape = (*times_of.shape[:-1], grid.size)
+            out = {name: np.full(shape, np.nan) for name in timecourses}
+            for index in np.ndindex(*times_of.shape[:-1]):
+                time_of_point = times_of[index]
+                point = grid_weights(
+                    time_of_point, grid, _resolution(time_of_point), changes
+                )
+                for name, values in timecourses.items():
+                    out[name][index] = apply_weights(point, values[index])
+            for name, interpolated in out.items():
+                variables[name] = ([*time_dims[:-1], TIME], interpolated)
         coords = {
             name: coord
             for name, coord in self.ds.coords.items()
@@ -1036,18 +1052,25 @@ def _statistics(
     statistics: Sequence[str],
     quantiles: Sequence[float],
 ) -> tuple[list[xr.Dataset], list[str]]:
-    """Reduce a dataset over dimensions, a part per statistic."""
+    """Reduce a dataset over dimensions, a part per statistic.
+
+    The mean and the standard deviation are reduced once and `cv` divides
+    them, so the default statistics reduce the dataset five times and not
+    seven (#607).
+    """
     parts: list[xr.Dataset] = []
     labels: list[str] = []
+    wanted = set(statistics)
+    shared: dict[str, xr.Dataset] = {}
+    if wanted & {"mean", "cv"}:
+        shared["mean"] = ds.mean(dim=reduced, skipna=True)
+    if wanted & {"sd", "cv"}:
+        shared["sd"] = ds.std(dim=reduced, skipna=True, ddof=1)
     for statistic in statistics:
-        if statistic == "mean":
-            part = ds.mean(dim=reduced, skipna=True)
-        elif statistic == "sd":
-            part = ds.std(dim=reduced, skipna=True, ddof=1)
-        elif statistic == "cv":
-            part = ds.std(dim=reduced, skipna=True, ddof=1) / ds.mean(
-                dim=reduced, skipna=True
-            )
+        if statistic == "cv":
+            part = shared["sd"] / shared["mean"]
+        elif statistic in shared:
+            part = shared[statistic]
         elif statistic == "min":
             part = ds.min(dim=reduced, skipna=True)
         else:

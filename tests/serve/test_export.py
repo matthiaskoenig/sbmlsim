@@ -26,6 +26,7 @@ import pytest
 
 import sbmlsim
 from examples.panels.hctz import CRCL, HCTZ_PATIENT_PLASMA, PROJECT
+from sbmlsim.engine import Engine
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -63,6 +64,32 @@ VARIANTS = "examples.panels.hctz_variants:PROJECT_VARIANTS"
 RTOL = 1e-9
 
 
+def _model_registry(reference: str, engine: Engine | None = None) -> ModelRegistry:
+    """Get the registry of the model `hctz` of a reference of a project.
+
+    Args:
+        reference: the reference of the project of the model.
+        engine: the engine of the simulator of the project, the one the
+            project itself names without. A bundle carries the tolerances of
+            roadrunner and its recipe is simulated with roadrunner, so the
+            tests which compare the recipe with the service name roadrunner
+            rather than the default engine of the package (#607).
+
+    Returns:
+        The registry of the one model.
+    """
+    registry = ModelRegistry.of({"hctz": reference})
+    if engine is None:
+        return registry
+    entry = registry.entry("hctz")
+    project = entry.project.replace(
+        simulator=entry.project.simulator.model_copy(update={"engine": engine})
+    )
+    return ModelRegistry(
+        {"hctz": ModelEntry(id=entry.id, project=project, title=entry.title)}
+    )
+
+
 @pytest.fixture(scope="module")
 def exported(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The bundle of the HCTZ demo, written as the command line writes it."""
@@ -73,8 +100,15 @@ def exported(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="module")
 def hctz_model() -> SBMLModel:
-    """The model the service runs the panels of the HCTZ demo on."""
-    registry = ModelRegistry.of({"hctz": HCTZ})
+    """The HCTZ demo as the model of roadrunner whose tolerances the bundle carries.
+
+    A bundle carries the absolute tolerance of every state as roadrunner
+    computes it whatever the engine of the project, loading the model in
+    roadrunner where the warm model is one of another engine
+    (`sbmlsim.serve.export._tolerances`), so the model of the fixture names
+    roadrunner and not the default engine of the package (#607).
+    """
+    registry = _model_registry(HCTZ, Engine.ROADRUNNER)
     return PanelRunner(registry).model(registry.entry("hctz"))
 
 
@@ -450,13 +484,13 @@ def test_the_command_line_refuses_a_model_which_is_no_project(
     assert not any(tmp_path.iterdir())
 
 
-def _client(reference: str) -> Any:
+def _client(reference: str, engine: Engine | None = None) -> Any:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
     from sbmlsim.serve.app import create_app
 
-    return TestClient(create_app(ModelRegistry.of({"hctz": reference})))
+    return TestClient(create_app(_model_registry(reference, engine)))
 
 
 @pytest.mark.parametrize("reference", [HCTZ, VARIANTS])
@@ -508,7 +542,9 @@ def test_the_recipe_reproduces_the_simulation_of_the_service(
     request: dict[str, Any] = {"values": values, "grid": grid}
     if query:
         request["variant"] = query
-    with _client(reference) as client:
+    # the recipe is simulated with roadrunner below, so the service answers
+    # with roadrunner as well and the two agree to the bit (#607)
+    with _client(reference, Engine.ROADRUNNER) as client:
         response = client.post(
             f"/api/models/hctz/panels/{panel_id}/simulate", json=request
         )
@@ -557,6 +593,9 @@ def _recipe_curves(
     scalar = settings["absolute_tolerance"]["scalar"]
     simulator = Simulator(
         n_workers=1,
+        # the tolerances of the bundle are the ones of roadrunner, which is
+        # also the engine the answers are compared with (#607)
+        engine=Engine.ROADRUNNER,
         relative_tolerance=settings["relative_tolerance"],
         absolute_tolerance=AbsoluteTolerance(
             amount=scalar,

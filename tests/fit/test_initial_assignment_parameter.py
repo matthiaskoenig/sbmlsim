@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from sbmlsim.data import DataSet
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit.objects import FitData, FitMapping, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -260,7 +261,15 @@ class SteadyExperiment(IAExperiment):
 
 
 def test_fit_with_data_at_steady_state(tmp_path: Path) -> None:
-    """A measurement at `inf` is the steady state of its simulation."""
+    """A measurement at `inf` is the steady state of its simulation.
+
+    The problem is one of roadrunner: the steady state after the end of a
+    simulation, the output time `inf` of `Plan.steady_state_output`, is no
+    part of the contract `simulation/1` of the engine core, whose
+    `steady_state` is the pre-equilibration before the start, so its executor
+    refuses such a plan by name instead of leaving the row out (see the
+    module of `sbmlsim.simulator.executor_core`).
+    """
     MODEL_PATH["path"] = tmp_path / "probe.xml"
     MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
@@ -279,6 +288,7 @@ def test_fit_with_data_at_steady_state(tmp_path: Path) -> None:
         ],
         base_path=tmp_path,
         data_path=tmp_path,
+        engine=Engine.ROADRUNNER,
     )
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
     predictions = problem.predictions(np.array([0.0]))

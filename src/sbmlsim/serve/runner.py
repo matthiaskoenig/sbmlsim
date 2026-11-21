@@ -82,10 +82,13 @@ the model which ran it. A run is kept by its last use (`BoundedCache`), and a
 panel whose curves a stored run of its state lacks runs it again with the
 curves of both, so two groups of panels of one state do not evict each other.
 
-A run is shared only where sharing is bitwise, which is the engine roadrunner
-(`SHARED_ENGINES`): its integrator takes its steps whatever a scan selects, so
-a curve does not change with the selections a scan keeps and an answer read
-out of a shared run is the answer of a run of the panel alone, bitwise. AMICI
+A run is shared only where sharing is bitwise, which is roadrunner and the
+engine core (`SHARED_ENGINES`): the integrator of each takes its steps whatever
+a scan selects, so a curve does not change with the selections a scan keeps and
+an answer read out of a shared run is the answer of a run of the panel alone,
+bitwise (measured for both in #607: the shared curves of two runs of one state
+which keep different selections are equal bitwise, on a grid and on the steps
+of the integrator, and two runs of one request agree bitwise). AMICI
 outputs a substitute of the steps of its integrator which it refines where the
 interpolation between two rows misses a selection
 (`sbmlsim.simulator.executor_amici`), so a curve of another panel refines the
@@ -208,7 +211,7 @@ MAX_WAITING: Final = 8
 
 #: the engines whose runs the panels of one simulation share, see the module:
 #: the ones whose curves do not change with the selections of a scan
-SHARED_ENGINES: Final = frozenset({Engine.ROADRUNNER})
+SHARED_ENGINES: Final = frozenset({Engine.ROADRUNNER, Engine.CORE})
 
 #: the samples of the uncertainties of the models which are kept, one per
 #: model, number of draws and seed; a sample is drawn by reading the SBML and

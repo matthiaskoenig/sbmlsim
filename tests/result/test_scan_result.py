@@ -693,3 +693,43 @@ def test_to_refuses_what_it_cannot_convert(
 ) -> None:
     with pytest.raises(error, match=match):
         _grid().to(units)
+
+
+def test_a_ragged_result_of_several_variables_interpolates_point_by_point() -> None:
+    """The weights of a point serve every variable of the result (#607).
+
+    `interpolate` walks the points and not the variables, so the linear
+    interpolation of a point is computed once instead of once per variable;
+    the values are the ones of `sbmlsim.result.timecourse.interpolate` of
+    every point and variable on its own.
+    """
+    rng = np.random.default_rng(7)
+    points, rows = 5, 9
+    time = np.sort(rng.uniform(0.0, 10.0, size=(points, rows)), axis=-1)
+    time[-1, -3:] = np.nan  # a shorter point, padded
+    names = [f"y{k}" for k in range(4)]
+    values = {name: rng.normal(size=(points, rows)) for name in names}
+    values[names[0]][-1, -3:] = np.nan
+    ds = xr.Dataset(
+        {
+            "time": (("d", "_point"), time),
+            **{name: (("d", "_point"), value) for name, value in values.items()},
+        },
+        coords={"d": np.arange(points)},
+        attrs={"dims": ["d"], "units": {"time": "min", **dict.fromkeys(names, "mM")}},
+    )
+    grid = np.linspace(0.0, 10.0, 13)
+
+    interpolated = ScanResult(ds).interpolate(grid)
+
+    assert list(interpolated.ds.data_vars) == list(ds.data_vars)[1:]
+    for name in names:
+        expected = np.stack(
+            [
+                interpolate(time[point], values[name][point], grid)
+                for point in range(points)
+            ]
+        )
+        np.testing.assert_array_equal(
+            interpolated.ds[name].transpose("d", "time").values, expected, strict=True
+        )

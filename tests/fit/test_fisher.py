@@ -13,6 +13,7 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fisher import (
     CENTRAL_DIFFERENCES,
     DEFAULT_STEP,
+    SENSITIVITIES,
     FisherInformation,
     default_step,
     evaluator,
@@ -131,6 +132,9 @@ def test_the_information_of_another_engine_takes_the_differences(
 ) -> None:
     """A problem of roadrunner has no sensitivities, so python differentiates (#556)."""
     problem = op_hctz_pk
+    # the differences are the python path, which a problem of the engine core
+    # does not take: it integrates the sensitivities with its states
+    problem.engine = Engine.ROADRUNNER
     problem.initialize(fit_settings)
 
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
@@ -144,6 +148,8 @@ def test_the_sensitivities_of_the_engine_can_be_required(
 ) -> None:
     """A required jacobian of the engine names what keeps the problem from it."""
     problem = op_hctz_pk
+    # a problem of another engine than the core, so there is a gap to name
+    problem.engine = Engine.ROADRUNNER
     problem.initialize(fit_settings)
 
     with pytest.raises(ValueError, match="engine: the problem simulates with"):
@@ -158,13 +164,21 @@ def test_the_sensitivities_of_the_engine_can_be_required(
 def test_the_fisher_information_of_the_example(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The information of the parameters the model starts from."""
+    """The information of the parameters the model starts from.
+
+    The problem runs on `sbmlsim.engine.DEFAULT_ENGINE`, the engine core,
+    which integrates the forward sensitivities of the residuals with their
+    states: they are the jacobian of the information, exactly and without a
+    step, where the central differences of python take a step of the noise of
+    the integrator (`test_the_information_of_another_engine_takes_the_differences`).
+    """
     problem = op_hctz_pk
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 
-    # the step follows the noise of the integrator of the fit
-    assert fim.step == pytest.approx(default_step(fit_settings.relative_tolerance))
+    # the exact derivatives of the engine, which take no step
+    assert fim.jacobian_of == SENSITIVITIES
+    assert fim.step == 0.0
     assert fim.k == len(problem.pids)
     assert fim.targets == [p.target_id for p in problem.parameters]
     assert fim.matrix.shape == (fim.k, fim.k)

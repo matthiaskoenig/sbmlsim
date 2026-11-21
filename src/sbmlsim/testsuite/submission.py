@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 from sbmlsim import __version__
+from sbmlsim.engine import Engine
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
@@ -48,6 +49,8 @@ def case_csv(case: SemanticCase) -> tuple[str | None, str]:
     """
     simulator = Simulator(
         n_workers=1,
+        # the submission is libroadrunner's, see `run_case`
+        engine=Engine.ROADRUNNER,
         absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
         relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
         variable_step_size=False,

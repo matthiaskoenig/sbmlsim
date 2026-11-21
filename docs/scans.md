@@ -37,7 +37,7 @@ print(f"{res.q['Ka_dis_hctz']:~}")
 ```
 
 ```text title="Output"
-ScanResult(dissolution: 4, _point: 956; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+ScanResult(dissolution: 4, _point: 933; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ('dissolution', '_point')
 [0.1 0.35 1.0 3.0] / h
 ```
@@ -186,7 +186,7 @@ ax.legend()
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, _point: 2641; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+ScanResult(regimen: 2, _point: 2635; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
 ![Output figure](images/outputs/scans-06.png)
@@ -268,7 +268,7 @@ print(res.ds[["cmax", "cmean"]].to_pandas().round(1))
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, _point: 2641; cp, cmax, cmean)
+ScanResult(regimen: 2, _point: 2635; cp, cmax, cmean)
                     cmax  cmean
 regimen
 50 mg once daily   285.4  100.0
@@ -337,7 +337,7 @@ print(state_after_changes(by_dose))
 ```
 
 ```text title="Output"
-dose 840 0.000452
+dose 841 0.000452
 <xarray.DataArray 'PODOSE_hctz' (dose: 3)> Size: 24B
 array([12.5, 25. , 50. ])
 Coordinates:

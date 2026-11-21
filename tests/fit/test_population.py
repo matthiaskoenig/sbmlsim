@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.optimization import OptimizationProblem, PoolError
 from sbmlsim.fit.options import ObjectiveType, OptimizationAlgorithmType
@@ -130,6 +131,21 @@ def fail_always(token: str, problem: Any, settings: Any, task: dict[str, Any]) -
 def _analytic_jacobian(x: np.ndarray) -> np.ndarray:
     """A jacobian of the caller, which is no jacobian of finite differences."""
     raise AssertionError("not called")
+
+
+@pytest.fixture
+def op_hctz_pk(op_hctz_pk: OptimizationProblem) -> OptimizationProblem:
+    """Get the problem of the pharmacokinetics data on roadrunner.
+
+    The module overrides the problem of the conftest, which runs on
+    `sbmlsim.engine.DEFAULT_ENGINE`: a fit of a problem without a gap of
+    `sbmlsim.fit.fit_core` runs its optimizer in the engine core, on the
+    threads of one batch, so it has no pool of workers, no member on a worker
+    and no trajectory the parent records. The pool is the python path, which
+    every test of this module is about, so the module names roadrunner.
+    """
+    op_hctz_pk.engine = Engine.ROADRUNNER
+    return op_hctz_pk
 
 
 @pytest.fixture

@@ -15,9 +15,15 @@ out of date.
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from sbmlsim.engine import Engine
+from sbmlsim.fit import fit_core
+from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.testsuite import (
+    CASE_SETTINGS,
     MATH,
     PETAB_SUITE_COMMIT,
     SBML,
@@ -25,6 +31,7 @@ from sbmlsim.fit.petab_v2.testsuite import (
     CaseResult,
     PetabSuite,
 )
+from tests.engines import require_core_fit
 
 pytestmark = pytest.mark.petab_testsuite
 
@@ -47,6 +54,21 @@ def _case_ids() -> list[tuple[str, str]]:
     if suite is None:
         return []
     return [(group, cid) for group in (SBML, V1_SBML) for cid in suite.case_ids(group)]
+
+
+def _engine_ids() -> list[str]:
+    """Get the cases of the group `sbml`, which the fit of the engine runs on."""
+    suite = PetabSuite.cached()
+    return [] if suite is None else list(suite.case_ids(SBML))
+
+
+def _engine_problem(suite: PetabSuite, cid: str) -> OptimizationProblem:
+    """Get the problem of a case, initialized on the engine core."""
+    reader = PetabReader.from_yaml(suite.case(cid, SBML).problem_file)
+    problem = reader.to_optimization_problem(opid=f"case_{cid}")
+    problem.engine = Engine.CORE
+    problem.initialize(CASE_SETTINGS)
+    return problem
 
 
 def _math_ids() -> list[int]:
@@ -114,3 +136,59 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
     )
     for key, expected in baseline["expected_failures"].items():
         assert expected["reason"] != "reason missing", f"'{key}' has no reason"
+
+
+# the cases as fits of the engine core: a case which has no gap is fitted by the
+# engine itself, and its residuals are the residuals of the problem
+
+
+#: the cases of the group `sbml` which are no fit of the engine core, each with
+#: the code of its gap, see `sbmlsim.fit.fit_core.gaps_of`. `unsupported` is
+#: what the engine does not simulate, for a fit as for a simulation: a value
+#: before the initialization or at a change which the executor cannot fold into
+#: a number (0020, 0026, 0027, 0032 read a parameter the fit estimates, 0016 and
+#: 0030 the state of the model at the change) and a steady state after the end
+#: of a simulation (0023); 0025 has parameters which have a prior and no bounds.
+ENGINE_GAPS: dict[str, str] = {
+    "0016": "unsupported",
+    "0020": "unsupported",
+    "0023": "unsupported",
+    "0025": "parameter",
+    "0026": "unsupported",
+    "0027": "unsupported",
+    "0030": "unsupported",
+    "0032": "unsupported",
+}
+
+
+@pytest.mark.parametrize("cid", _engine_ids(), ids=_engine_ids())
+def test_the_engine_fits_the_case_as_the_problem_computes_it(
+    cid: str, suite: PetabSuite
+) -> None:
+    """A case is a fit of the engine, or has the gap which keeps it out.
+
+    The residuals the engine computes from the request are the ones the
+    problem computes at the nominal parameters, point for point, which is what
+    makes the fit of the engine the fit of the problem.
+    """
+    require_core_fit()
+    problem = _engine_problem(suite, cid)
+    gaps = fit_core.gaps_of(problem)
+    expected = ENGINE_GAPS.get(cid)
+
+    if expected is not None:
+        assert gaps, f"'{cid}' is a fit of the engine now, remove it from ENGINE_GAPS"
+        assert {gap.code for gap in gaps} == {expected}, [gap.message for gap in gaps]
+        return
+
+    assert gaps == [], [gap.message for gap in gaps]
+    core = fit_core.loaded_model(problem).fit_problem(
+        fit_core.fit_request(problem), threads=1
+    )
+    x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
+    reference = np.asarray(problem.residuals(x), dtype=float)
+
+    residuals = np.asarray(core.residuals(x), dtype=float)
+
+    assert residuals.shape == reference.shape
+    np.testing.assert_array_equal(residuals, reference)

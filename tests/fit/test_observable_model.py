@@ -8,7 +8,9 @@ import pandas as pd
 import pytest
 
 from sbmlsim.data import DataSet
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.fit.fit_core import fit_request, gaps_of, loaded_model
 from sbmlsim.fit.objects import (
     FitData,
     FitMapping,
@@ -16,12 +18,14 @@ from sbmlsim.fit.objects import (
     FitParameter,
     ObservableModel,
 )
+from sbmlsim.fit.observable_sbml import OBSERVABLE_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
+from tests.engines import require_core_fit
 from tests.simulator.models import sbml
 
 
@@ -201,3 +205,60 @@ def test_fit_observable_scales_with_parameter(problem: OptimizationProblem) -> N
     low = problem.predictions(np.array([1.0]))[0] - offset
     high = problem.predictions(np.array([4.0]))[0] - offset
     np.testing.assert_allclose(high, 4.0 * low)
+
+
+# the observable in the fit of the engine core: it is written into the model of
+# the fit as a parameter of an assignment rule, see `sbmlsim.fit.observable_sbml`
+
+
+def test_an_observable_keeps_a_problem_out_of_no_fit_of_the_engine(
+    problem: OptimizationProblem,
+) -> None:
+    """The observable of a mapping is a column of the model of the fit."""
+    require_core_fit()
+    assert problem.engine is Engine.CORE
+
+    assert gaps_of(problem) == []
+
+
+def test_a_placeholder_of_a_value_per_measurement_splits_the_curve(
+    problem: OptimizationProblem,
+) -> None:
+    """A curve of the request reads one observable, so one row of the values.
+
+    The three measurements which are kept have the offsets `0.0`, `1.0` and
+    `k1`, three rows, so the mapping is three curves of one point each, in the
+    order of the points: the residuals of the request are the residuals of the
+    problem in their places.
+    """
+    require_core_fit()
+
+    request = fit_request(problem)
+
+    curves = request["curves"]
+    assert len(curves) == 3
+    assert [curve["times"] for curve in curves] == [[0.0], [1.5], [2.0]]
+    assert [curve["id"] for curve in curves] == ["fm[0:1]", "fm[1:2]", "fm[2:3]"]
+    columns = [curve["column"] for curve in curves]
+    assert len(set(columns)) == 3
+    assert all(column.startswith(OBSERVABLE_PREFIX) for column in columns)
+    # the condition selects every one of them
+    selections = request["conditions"][0]["request"]["selections"]
+    assert set(columns) <= set(selections)
+
+
+def test_the_residuals_of_the_engine_are_the_ones_of_the_problem(
+    problem: OptimizationProblem,
+) -> None:
+    """The engine computes the residuals of the problem, point for point."""
+    require_core_fit()
+    core = loaded_model(problem).fit_problem(fit_request(problem), threads=1)
+
+    for value in (2.0, 3.0, 0.5):
+        x = problem.to_scale(np.array([value]))
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        assert residuals.shape == expected.shape
+        np.testing.assert_allclose(residuals, expected, rtol=1e-9, atol=1e-12)

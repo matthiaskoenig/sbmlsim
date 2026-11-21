@@ -13,6 +13,7 @@ variants, the action `rates` writes a table of the rates of the variants
 
 from pathlib import Path
 
+from sbmlsim.engine import Engine
 from sbmlsim.project import (
     CheckSettings,
     FigureOutputs,
@@ -80,3 +81,14 @@ PROJECT = Project(
     ),
 )
 """The project of the toy model."""
+
+PROJECT_ROADRUNNER = PROJECT.replace(
+    simulator=PROJECT.simulator.model_copy(update={"engine": Engine.ROADRUNNER})
+)
+"""The same project on roadrunner, for the tests of its JIT level.
+
+`jit_optimization` is a setting of roadrunner alone
+(`ROADRUNNER_ONLY_SETTINGS`), so a test which follows the level of the project
+to the models it compiles needs a project of that engine; `PROJECT` itself
+takes the default engine of the package, which is the engine core (#607).
+"""

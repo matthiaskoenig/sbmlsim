@@ -62,7 +62,13 @@ from typing import Any, Literal, NamedTuple, cast, override
 import matplotlib
 
 from sbmlsim import cgroup, parallel
-from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
+from sbmlsim.engine import (
+    DEFAULT_ENGINE,
+    Engine,
+    amici_cache,
+    resolve_engine,
+    using_amici_cache,
+)
 from sbmlsim.experiment import progress
 from sbmlsim.experiment.draws import UncertaintyRun
 from sbmlsim.experiment.experiment import (
@@ -134,7 +140,7 @@ class ModelKey(NamedTuple):
 
 
 def model_key(
-    abstract_model: AbstractModel, engine: Engine | str = Engine.ROADRUNNER
+    abstract_model: AbstractModel, engine: Engine | str = DEFAULT_ENGINE
 ) -> ModelKey:
     """Get the key a loaded model is cached under.
 
@@ -284,9 +290,7 @@ class ExperimentRunner:
 
         Roadrunner without a simulator.
         """
-        return (
-            self.simulator.engine if self.simulator is not None else Engine.ROADRUNNER
-        )
+        return self.simulator.engine if self.simulator is not None else DEFAULT_ENGINE
 
     def set_simulator(self, simulator: Simulator | None) -> None:
         """Set the simulator on the runner and the experiments.

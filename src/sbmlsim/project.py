@@ -64,7 +64,7 @@ from pydantic import (
 )
 
 from sbmlsim.atomic import write_text_atomic
-from sbmlsim.engine import Engine, JitOptimization
+from sbmlsim.engine import DEFAULT_ENGINE, Engine, JitOptimization
 from sbmlsim.panel import App, Panel
 from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
@@ -391,7 +391,7 @@ class SimulatorSettings(BaseModel):
 
     model_config = _CONFIG
 
-    engine: Engine = Engine.ROADRUNNER
+    engine: Engine = DEFAULT_ENGINE
     absolute_tolerance: float | AbsoluteTolerance | None = None
     relative_tolerance: float | None = None
     jit_optimization: JitOptimization | None = None
@@ -2082,8 +2082,9 @@ class Project(BaseModel):
         simulator of the project (`SimulatorSettings.jit_optimization`), so its
         problems compile their models at it in every process. A definition
         without an engine gets the engine of the simulator
-        (`SimulatorSettings.engine`), so its problems optimize on it (roadrunner is what a definition without
-        an engine runs on, so it stays without).
+        (`SimulatorSettings.engine`), so its problems optimize on it (the
+        default engine of the package, `DEFAULT_ENGINE`, is what a definition
+        without an engine runs on, so it stays without).
 
         Returns:
             The definitions by subset, empty for a project without fits.
@@ -2112,8 +2113,9 @@ class Project(BaseModel):
         defaults: dict[str, Any] = {}
         if simulator.jit_optimization is not None:
             defaults["jit_optimization"] = simulator.jit_optimization
-        if simulator.engine is not Engine.ROADRUNNER:
-            # roadrunner is what a definition without an engine runs on anyway
+        if simulator.engine is not DEFAULT_ENGINE:
+            # the default engine of the package is what a definition without an
+            # engine runs on anyway
             defaults["engine"] = simulator.engine
         resolved = {}
         for subset, definition in fits.items():

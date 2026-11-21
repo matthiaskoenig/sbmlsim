@@ -28,7 +28,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import FitMetrics, FitSettings, cli, methods
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.provenance import collect_versions
@@ -78,11 +78,26 @@ def _unique_models(problem: OptimizationProblem) -> list[Any]:
     return list({id(model): model for model in problem.models}.values())
 
 
+def on_roadrunner(problem: OptimizationProblem) -> OptimizationProblem:
+    """Put an uninitialized problem on roadrunner, the reference of the module.
+
+    `sbmlsim.engine.DEFAULT_ENGINE` is the engine core, so a problem of the
+    conftest is one of the engines under test: the reference side of a
+    comparison would compare the engine with itself, and `set_simulator` of
+    the same engine keeps the models instead of loading them again.
+
+    Returns:
+        The problem, which its caller initializes.
+    """
+    problem.engine = Engine.ROADRUNNER
+    return problem
+
+
 def test_residuals_equal_roadrunner(
     other_engine: Engine, op_hctz_pk: OptimizationProblem, settings_tight: FitSettings
 ) -> None:
     """The residuals of the engine are the ones of roadrunner, see the module."""
-    op_hctz_pk.initialize(settings_tight)
+    on_roadrunner(op_hctz_pk).initialize(settings_tight)
     assert op_hctz_pk.engine is Engine.ROADRUNNER
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
     r = np.asarray(op_hctz_pk.residuals(x), dtype=float)
@@ -104,7 +119,7 @@ def test_set_simulator_of_another_engine_loads_the_models_again(
     The models of the mappings keep their grouping: one model of roadrunner
     is one model of the engine.
     """
-    op_hctz_pk.initialize(fit_settings)
+    on_roadrunner(op_hctz_pk).initialize(fit_settings)
     groups = [list(group) for group in op_hctz_pk.mapping_groups]
     identity = [
         [k for k, other in enumerate(op_hctz_pk.models) if other is model]
@@ -160,12 +175,12 @@ def test_problem_pickles_with_its_engine(
     other_engine: Engine, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """A worker of a parallel fit evaluates with the engine of the problem."""
-    assert pickle.loads(pickle.dumps(op_hctz_pk)).engine is Engine.ROADRUNNER
+    assert pickle.loads(pickle.dumps(op_hctz_pk)).engine is DEFAULT_ENGINE
     problem = engine_problem(op_hctz_pk, other_engine)
     assert pickle.loads(pickle.dumps(problem)).engine is other_engine
 
     # the engine a simulator set is the engine of the problem
-    op_hctz_pk.initialize(fit_settings)
+    on_roadrunner(op_hctz_pk).initialize(fit_settings)
     op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=other_engine))
     copy = pickle.loads(pickle.dumps(op_hctz_pk))
     assert copy.engine is other_engine
@@ -185,7 +200,7 @@ def test_metrics_ipred(
     6.3e-11 and 6.4e-11 of at most 0.41; the largest difference is 0.026 %
     of what the tolerances allow.
     """
-    op_hctz_pk.initialize(settings_tight)
+    on_roadrunner(op_hctz_pk).initialize(settings_tight)
     pset = op_hctz_pk.parameter_set_model()
     roadrunner = FitMetrics(op_hctz_pk, pset).datapoints_df()
 
@@ -211,7 +226,7 @@ def test_fit_report_of_stored_parameters(
     tmp_path: Path,
 ) -> None:
     """A report of stored parameters evaluates them with the engine."""
-    op_hctz_pk.initialize(fit_settings)
+    on_roadrunner(op_hctz_pk).initialize(fit_settings)
     op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=other_engine))
     report = FitReport(
         problem=op_hctz_pk,
@@ -268,7 +283,7 @@ def test_an_evaluation_logs_no_warning(
     report them as ignored on `set_simulator`, in the copy of a report and in
     every worker.
     """
-    op_hctz_pk.initialize(fit_settings)
+    on_roadrunner(op_hctz_pk).initialize(fit_settings)
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
     with caplog.at_level(logging.WARNING):
         op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=other_engine))
@@ -340,7 +355,7 @@ def test_initialize_after_set_simulator_keeps_the_engine(
     other_engine: Engine, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Other settings initialize the problem again, in its engine."""
-    op_hctz_pk.initialize(fit_settings)
+    on_roadrunner(op_hctz_pk).initialize(fit_settings)
     op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=other_engine))
     other = dataclasses.replace(fit_settings, relative_tolerance=1e-8)
     op_hctz_pk.initialize(other)
@@ -365,7 +380,7 @@ def test_the_complete_data_equal_roadrunner(
     the data differ by at most 6.8e-9 relative and the costs of the mappings
     by 5.5e-8 relative.
     """
-    op_hctz_pk.initialize(settings_tight)
+    on_roadrunner(op_hctz_pk).initialize(settings_tight)
     x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
     roadrunner = op_hctz_pk.residuals(x, complete_data=True)
     op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=other_engine))
@@ -409,9 +424,12 @@ def test_the_methods_name_the_engine(
     other_engine: Engine, fit_settings: FitSettings
 ) -> None:
     """The engine integrates with its integrator, without the settings of CVODE."""
-    roadrunner = _html(methods._integrator(fit_settings))
-    assert roadrunner == _html(methods._integrator(fit_settings, Engine.ROADRUNNER))
+    # roadrunner is named, not taken from the default, which is the engine core
+    roadrunner = _html(methods._integrator(fit_settings, Engine.ROADRUNNER))
     assert "libRoadRunner" in roadrunner and "its integrator CVODE " in roadrunner
+    assert _html(methods._integrator(fit_settings)) == _html(
+        methods._integrator(fit_settings, DEFAULT_ENGINE)
+    )
 
     name = {
         Engine.COPASI: "COPASI",

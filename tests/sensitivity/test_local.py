@@ -17,19 +17,30 @@ from sbmlsim.simulation import Custom, Dimension, Formula, Scan, Simulation, sam
 from sbmlsim.simulator import Simulator
 from sbmlsim.units import ureg
 from tests.sensitivity.models import CHAIN, POWER_LAW, s2_end_fails_for_high_s1_and_k1
-from tests.simulator.models import roadrunner_model, sbml, sbml_pk
+from tests.simulator.models import (
+    roadrunner_model,
+    roadrunner_simulator,
+    sbml,
+    sbml_pk,
+)
 
 
 @pytest.fixture(scope="module")
 def model() -> RoadrunnerSBMLModel:
-    return roadrunner_model(Simulator().load(sbml(POWER_LAW)))
+    """The power law as a model of roadrunner, which its tests simulate on.
+
+    The analysis itself does not depend on the engine - the tests which load a
+    model of their own run on the default engine - so the model of the shared
+    fixture is one of roadrunner and its simulations name roadrunner (#607).
+    """
+    return roadrunner_model(roadrunner_simulator().load(sbml(POWER_LAW)))
 
 
 def test_the_normalized_sensitivities_are_the_exponents(
     model: RoadrunnerSBMLModel,
 ) -> None:
     design = sampling.local(["a", "b", "c"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [design]),
         [Formula("y_max", "max(y)")],
@@ -55,7 +66,7 @@ def test_a_clamped_step_is_differentiated_over_the_values_it_reached(
     design = sampling.local(
         ["a"], 0.001, model=model, domains={"a": Domain(0.0, 2.001)}
     )
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [design]),
         [Formula("y_max", "max(y)")],
@@ -73,7 +84,7 @@ def test_a_target_the_design_cannot_move_has_no_sensitivities(
     design = sampling.local(
         ["a"], 0.001, model=model, domains={"a": Domain(0.0, 3.0, Values.INTEGER)}
     )
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [design]),
         [Formula("y_max", "max(y)")],
@@ -86,7 +97,7 @@ def test_a_target_the_design_cannot_move_has_no_sensitivities(
 def test_the_design_dimension_need_not_be_first(model: RoadrunnerSBMLModel) -> None:
     design = sampling.local(["b"], 0.001, model=model)
     scale = Dimension("scale", values={"c": [4.0, 16.0]})
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [scale, design]),
         [Formula("y_max", "max(y)")],
@@ -98,7 +109,7 @@ def test_the_design_dimension_need_not_be_first(model: RoadrunnerSBMLModel) -> N
 
 def test_a_timecourse_has_indices_per_time(model: RoadrunnerSBMLModel) -> None:
     design = sampling.local(["a"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model, Scan(Simulation(end=1, steps=2), [design]), [Formula("yt", "y")]
     )
     s = sensitivity.local(res)
@@ -147,7 +158,7 @@ def test_the_coordinates_of_other_dimensions_are_kept(
 ) -> None:
     design = sampling.local(["b"], 0.001, model=model)
     scale = Dimension("scale", values={"c": [4.0, 16.0]}, labels=["low", "high"])
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [scale, design]),
         [Formula("y_max", "max(y)")],
@@ -200,7 +211,7 @@ def test_a_zero_parameter_has_no_sensitivity() -> None:
 
 def test_observables_restrict_the_variables(model: RoadrunnerSBMLModel) -> None:
     design = sampling.local(["a"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [design]),
         [Formula("y_max", "max(y)"), Formula("y_min", "min(y)")],
@@ -211,7 +222,7 @@ def test_observables_restrict_the_variables(model: RoadrunnerSBMLModel) -> None:
 
 def test_an_unknown_observable_raises(model: RoadrunnerSBMLModel) -> None:
     design = sampling.local(["a"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
     )
     with pytest.raises(ValueError, match="nope"):
@@ -221,7 +232,7 @@ def test_an_unknown_observable_raises(model: RoadrunnerSBMLModel) -> None:
 def test_dim_chooses_one_of_two_designs(model: RoadrunnerSBMLModel) -> None:
     first = sampling.local(["a"], 0.001, model=model, id="first")
     second = sampling.local(["b"], 0.001, model=model, id="second")
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model,
         Scan(Simulation(end=1, steps=1), [first, second]),
         [Formula("y_max", "max(y)")],
@@ -281,7 +292,7 @@ def test_a_failed_point_gives_nan_indices_and_one_warning(
 
 def test_a_cut_result_raises(model: RoadrunnerSBMLModel) -> None:
     design = sampling.local(["a", "b"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
     )
     with pytest.raises(ValueError, match="was cut"):
@@ -292,7 +303,7 @@ def test_a_stored_result_is_analysed(
     model: RoadrunnerSBMLModel, tmp_path: Path
 ) -> None:
     design = sampling.local(["a", "b", "c"], 0.001, model=model)
-    res = Simulator().run(
+    res = roadrunner_simulator().run(
         model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
     )
     path = tmp_path / "r.nc"

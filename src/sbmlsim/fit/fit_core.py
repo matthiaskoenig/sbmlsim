@@ -42,14 +42,22 @@ from __future__ import annotations
 import inspect
 import logging
 import math
+import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from packaging.version import InvalidVersion, Version
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, UnsupportedModelError
 from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.observable_sbml import (
+    Entities,
+    add_observable,
+    observable_id,
+    observable_model,
+)
 from sbmlsim.fit.options import (
     ObjectiveType,
     OptimizationAlgorithmType,
@@ -61,6 +69,7 @@ from sbmlsim.fit.sampling import SamplingType
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
 
+    from sbmlsim.fit.objects import ObservableModel
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.fit.options import FitSettings
     from sbmlsim.fit.provenance import FitProvenance
@@ -76,6 +85,18 @@ logger = logging.getLogger(__name__)
 
 #: the contract of a fit of the engine
 CONTRACT = "fit/1"
+
+#: the release of sbmlsim-core whose curve reads `after_change`, the state
+#: after a change of a measurement, see `reads_after_change`
+AFTER_CHANGE_VERSION = "0.16.0"
+
+#: the model of the fit of a problem which has observables of its own, kept
+#: per problem with the entities it was built from, see `fit_model`; a weak
+#: dictionary, so it holds no problem alive, and `__getstate__` pickles the
+#: definition of a problem, so a worker builds its own
+_FIT_MODELS: weakref.WeakKeyDictionary[OptimizationProblem, tuple[Entities, Any]] = (
+    weakref.WeakKeyDictionary()
+)
 
 #: the scale of a parameter in a request of the engine, by the scale of the fit
 SCALES: dict[ParameterScaleType, str] = {
@@ -169,7 +190,7 @@ def loaded_model(problem: OptimizationProblem) -> Any:
             f"'{problem.opid}': the engine fits one model, but the fit mappings "
             f"of the problem have {len(models)} of them."
         )
-    model = models[0]
+    model = fit_model(problem)
     loaded = getattr(model, "loaded", None)
     if loaded is None:
         raise ValueError(
@@ -177,6 +198,47 @@ def loaded_model(problem: OptimizationProblem) -> Any:
             f"core, so the engine cannot fit it; the problem simulates with "
             f"'{problem.engine.value}'."
         )
+    return loaded
+
+
+def fit_model(problem: OptimizationProblem) -> Any:
+    """Get the model the engine fits, with the observables of the problem.
+
+    A mapping which observes a formula of the selections is a column of the
+    model of the fit and not of the model of the problem
+    (`sbmlsim.fit.observable_sbml`), so a problem which has one is fitted
+    against a model of its own, loaded from the SBML of the model of the
+    problem with those observables added. The model of the problem itself is
+    not touched, and it is the model of a problem without such a mapping.
+
+    The model is kept per problem, so the SBML of a fit is read and compiled
+    once however often a request is built, and a problem which is
+    initialized again gets a new one.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The model, a `CoreSBMLModel`.
+
+    Raises:
+        ValueError: if the problem has no model or more than one.
+    """
+    models = _models_of(problem)
+    if len(models) != 1:
+        raise ValueError(
+            f"'{problem.opid}': the engine fits one model, but the fit mappings "
+            f"of the problem have {len(models)} of them."
+        )
+    model = models[0]
+    entities = _observable_entities(problem)
+    if not entities:
+        return model
+    kept = _FIT_MODELS.get(problem)
+    if kept is not None and kept[0] == entities:
+        return kept[1]
+    loaded = observable_model(model, entities)
+    _FIT_MODELS[problem] = (entities, loaded)
     return loaded
 
 
@@ -196,6 +258,39 @@ def fits_requests(loaded: Any) -> bool:
         Whether the engine of the bindings fits a request.
     """
     return loaded is not None and hasattr(loaded, "fit")
+
+
+def reads_after_change(loaded: Any) -> bool:
+    """Whether the bindings read the `after_change` of a curve of a request.
+
+    `CurveRequest.after_change` is new in sbmlsim-core
+    `AFTER_CHANGE_VERSION`, and a curve of the engine does not deny the
+    fields it does not know: bindings before it **ignore** the field rather
+    than refusing it, so every point would read the state before its change
+    and the residuals would be wrong without an error. The fit of a problem
+    whose data is compared with the state after a change therefore stays in
+    python with such bindings, see `_gaps_at_the_changes`.
+
+    A pre-release or development build of the version carries the field, so
+    the release of the version is compared and not the version itself,
+    i.e. `0.16.0.dev1` reads it.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            the engine core.
+
+    Returns:
+        Whether the bindings read the field.
+    """
+    if loaded is None:
+        return False
+    import sbmlsim_core
+
+    try:
+        installed = Version(sbmlsim_core.__version__).release
+    except InvalidVersion:
+        return False
+    return installed >= Version(AFTER_CHANGE_VERSION).release
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -285,6 +380,7 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
                 )
             )
     gaps.extend(_gaps_of_the_targets(problem))
+    gaps.extend(_gaps_of_the_bounds(problem))
     for group, mappings in enumerate(problem.mapping_groups):
         training = [
             k for k in mappings if problem.mapping_kinds[k] is MappingKind.TRAINING
@@ -292,7 +388,86 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
         if not training:
             continue
         gaps.extend(_gaps_of_a_group(problem, group, training))
+    if gaps:
+        return gaps
+    return _gaps_of_the_request(problem)
+
+
+def _gaps_of_the_bounds(problem: OptimizationProblem) -> list[Gap]:
+    """Get the gaps of the bounds of the parameters of a problem.
+
+    An optimizer of the engine searches between finite, increasing bounds,
+    and the lower bound of a parameter of a logarithmic scale is positive
+    (`check_parameters` of the engine). A problem whose bounds the engine
+    refuses is fitted in python, e.g. one of a parameter of a prior which has
+    no bounds of its own.
+    """
+    gaps: list[Gap] = []
+    factors = _factors_of(problem)
+    scales = problem.scales_initialized
+    for k, parameter in enumerate(problem.parameters):
+        lower = float(parameter.lower_bound) * factors[k]
+        upper = float(parameter.upper_bound) * factors[k]
+        if not math.isfinite(lower) or not math.isfinite(upper):
+            gaps.append(
+                Gap(
+                    "parameter",
+                    f"the parameter '{parameter.pid}' has the bounds "
+                    f"[{lower}, {upper}], and an optimizer of the engine searches "
+                    f"between finite bounds",
+                )
+            )
+        elif lower >= upper:
+            gaps.append(
+                Gap(
+                    "parameter",
+                    f"the parameter '{parameter.pid}' has the bounds "
+                    f"[{lower}, {upper}], which are not increasing",
+                )
+            )
+        elif SCALES[scales[k]] != "lin" and lower <= 0.0:
+            gaps.append(
+                Gap(
+                    "parameter",
+                    f"the parameter '{parameter.pid}' is searched on the scale "
+                    f"'{SCALES[scales[k]]}' and has the lower bound {lower}, which "
+                    f"is not positive",
+                )
+            )
     return gaps
+
+
+def _gaps_of_the_request(problem: OptimizationProblem) -> list[Gap]:
+    """Get what the engine refuses in the request of the fit of a problem.
+
+    The checks above are the ones of the fit, of its data and of its
+    parameters. What is left is everything the engine says about the
+    simulation of a condition, which is the authority on it and which no
+    check here repeats: a formula before the initialization the engine cannot
+    fold into a number, a steady state after the end of a simulation, a
+    selection which is no entity of the model, and whatever a later release
+    adds (the module docstring of `sbmlsim.simulator.executor_core` lists
+    them). The request of the fit is built and what it raises is the gap, so
+    a problem the engine would refuse is fitted in python instead of failing.
+
+    Args:
+        problem: the problem, whose other gaps are closed.
+
+    Returns:
+        The gap the engine names, empty for a request it accepts.
+    """
+    try:
+        fit_request(problem)
+    except UnsupportedModelError as err:
+        return [Gap("unsupported", f"the engine does not simulate the fit: {err}")]
+    except (ValueError, KeyError, TypeError) as err:
+        return [
+            Gap(
+                "request",
+                f"the request of the fit cannot be built: {type(err).__name__}: {err}",
+            )
+        ]
+    return []
 
 
 def fit_request(
@@ -303,6 +478,8 @@ def fit_request(
     max_iterations: int = 100,
     max_seconds: float | None = None,
     gradient_tolerance: float | None = None,
+    step_tolerance: float | None = None,
+    cost_tolerance: float | None = None,
     evolution: Mapping[str, Any] | None = None,
     identifiability: Mapping[str, Any] | None = None,
     jacobian: str | None = None,
@@ -321,6 +498,14 @@ def fit_request(
             stops at its best point; no budget without one.
         gradient_tolerance: the tolerance of the scaled gradient a step
             converges at; the one of the optimizer without.
+        step_tolerance: the tolerance of the step a run converges at,
+            relative to the point it steps from, the `xtol` of
+            `scipy.optimize.least_squares`; no test of the step without one,
+            which spends the last iterations of a run on the noise of the
+            integrator (#607).
+        cost_tolerance: the tolerance of the change of the cost a run
+            converges at, relative to the cost before the step, the `ftol` of
+            `scipy.optimize.least_squares`; no test of the cost without one.
         evolution: the population of a differential evolution and how it is
             drawn, the fields of `Evolution` of the engine, e.g. the `seed`.
         identifiability: the identifiability of the optimum, the fields of
@@ -343,21 +528,20 @@ def fit_request(
             f"'{problem.opid}': the request of a fit needs the resolved data "
             f"of the problem, which 'initialize' builds."
         )
-    model = _models_of(problem)[0] if len(_models_of(problem)) == 1 else None
-    if model is None:
-        raise ValueError(
-            f"'{problem.opid}': the engine fits one model, but the fit mappings "
-            f"of the problem have {len(_models_of(problem))} of them."
-        )
-    conditions, curves = _conditions_and_curves(problem, model)
+    conditions, curves = _conditions_and_curves(problem, fit_model(problem))
     optimizer: dict[str, Any] = {
         "algorithm": _algorithm(algorithm, evolution),
         "max_iterations": int(max_iterations),
     }
     if max_seconds is not None:
         optimizer["max_seconds"] = float(max_seconds)
-    if gradient_tolerance is not None:
-        optimizer["gradient_tolerance"] = float(gradient_tolerance)
+    for name, tolerance in (
+        ("gradient_tolerance", gradient_tolerance),
+        ("step_tolerance", step_tolerance),
+        ("cost_tolerance", cost_tolerance),
+    ):
+        if tolerance is not None:
+            optimizer[name] = float(tolerance)
     request: dict[str, Any] = {
         "contract": CONTRACT,
         "parameters": _parameters(problem),
@@ -466,6 +650,7 @@ def _conditions_and_curves(
 
     settings = model.request_settings()
     x = np.asarray(problem.xmodel, dtype=float)
+    parts = {k: _parts_of(problem, k) for k in problem.indices(MappingKind.TRAINING)}
     conditions: list[dict[str, Any]] = []
     of_the_group: dict[int, str] = {}
     for group, mappings in enumerate(problem.mapping_groups):
@@ -475,7 +660,13 @@ def _conditions_and_curves(
         if not training:
             continue
         plan = problem.evaluated_plan(group, x, [])
-        selections = problem._selections_of(group, training)
+        selections = list(problem._selections_of(group, training))
+        # the observable of a mapping is a column of the model of the fit, so
+        # the condition selects it instead of what its formula reads
+        for k in training:
+            for part in parts[k]:
+                if part.column is not None and part.column not in selections:
+                    selections.append(part.column)
         condition = _condition_id(problem, group, training[0])
         of_the_group[group] = condition
         conditions.append(
@@ -486,8 +677,9 @@ def _conditions_and_curves(
         )
     groups = {k: group for group, ks in enumerate(problem.mapping_groups) for k in ks}
     curves = [
-        _curve(problem, k, of_the_group[groups[k]])
+        _curve(problem, k, of_the_group[groups[k]], groups[k], part, len(parts[k]) > 1)
         for k in problem.indices(MappingKind.TRAINING)
+        for part in parts[k]
     ]
     return conditions, curves
 
@@ -500,27 +692,58 @@ def _condition_id(problem: OptimizationProblem, group: int, mapping: int) -> str
 
 
 def _curve(
-    problem: OptimizationProblem, mapping: int, condition: str
+    problem: OptimizationProblem,
+    mapping: int,
+    condition: str,
+    group: int,
+    part: _Part,
+    numbered: bool,
 ) -> dict[str, Any]:
     """Get the curve of a training fit mapping, its data and its weights.
 
     The engine divides the residual of a point by its standard deviation, so
     the weight `w` of the problem is `1/sqrt(w)` here, and the mean of the
     data of a normalized residual goes into it as well.
+
+    A point which is compared with the state after a change carries its flag
+    (`after_change_of`), and a curve no point of which is gets no field at
+    all, which is the request every release of the engine reads.
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the training fit mapping.
+        condition: the id of the condition of its group.
+        group: the simulation group of the mapping.
+        part: the part of the mapping the curve is (`_parts_of`), which is
+            the whole of it for a mapping which is one curve.
+        numbered: whether the mapping has more than one part, whose curves
+            carry the positions of their points in their id, so that the id
+            of a curve of a request is unique.
+
+    Returns:
+        The curve, a dictionary of the fields of the contract.
     """
+    at = list(part.at)
     weights = np.asarray(problem.weights[mapping], dtype=float)
     scale = 1.0
     if problem.residual is ResidualType.NORMALIZED:
+        # the mean of the whole mapping, which is what the problem divides by
         scale = float(np.mean(problem.y_references[mapping]))
-    noise = [float(scale / math.sqrt(weight)) for weight in weights]
-    return {
-        "id": problem.mapping_keys[mapping],
+    times = np.asarray(problem.x_references[mapping], dtype=float)
+    values = np.asarray(problem.y_references[mapping], dtype=float)
+    key = problem.mapping_keys[mapping]
+    curve: dict[str, Any] = {
+        "id": f"{key}[{at[0]}:{at[-1] + 1}]" if numbered else key,
         "condition": condition,
-        "column": problem.yid_observable[mapping],
-        "times": [float(time) for time in problem.x_references[mapping]],
-        "values": [float(value) for value in problem.y_references[mapping]],
-        "noise": noise,
+        "column": part.column or problem.yid_observable[mapping],
+        "times": [float(time) for time in times[at]],
+        "values": [float(value) for value in values[at]],
+        "noise": [float(scale / math.sqrt(weights[point])) for point in at],
     }
+    after = after_change_of(problem, group, mapping)
+    if after is not None:
+        curve["after_change"] = [bool(flag) for flag in after[at]]
+    return curve
 
 
 def _gaps_of_the_targets(problem: OptimizationProblem) -> list[Gap]:
@@ -622,14 +845,9 @@ def _gaps_of_a_mapping(
     """Get the gaps of the data of a training fit mapping of a problem."""
     key = problem.mapping_keys[mapping]
     gaps: list[Gap] = []
-    if problem.observable_models[mapping] is not None:
-        gaps.append(
-            Gap(
-                "observable",
-                f"the mapping '{key}' observes a model of its own, which is no "
-                f"column of a simulation",
-            )
-        )
+    observable = _gap_of_an_observable(problem, mapping)
+    if observable is not None:
+        gaps.append(observable)
         return gaps
     if problem._rows[mapping] is None:
         gaps.append(
@@ -663,33 +881,250 @@ def _gaps_of_a_mapping(
     return gaps
 
 
+def after_change_of(
+    problem: OptimizationProblem, group: int, mapping: int
+) -> np.ndarray | None:
+    """Get which points of a fit mapping read the state after a change.
+
+    The output of a simulation has the state before a change and the one
+    after it at the time of the change. A point of a request reads the first
+    of those rows, the state before the change, and one whose flag is true
+    reads the last row of its time, the state after it
+    (`CurveRequest.after_change` of the engine): that is
+    `DataAtChangeType.AFTER` for every point and the default for the first
+    point of a curve, see `OptimizationProblem._first_after`.
+
+    Args:
+        problem: the initialized problem.
+        group: the simulation group of the mapping.
+        mapping: index of the fit mapping.
+
+    Returns:
+        One flag per point of the mapping, in the order of its data, or
+        `None` when no point of it reads the state after a change, which is
+        every mapping of a simulation without changes.
+    """
+    times = np.asarray(problem.x_references[mapping], dtype=float)
+    plan = problem.plans[group]
+    if plan is None or not plan.change_times or times.size == 0:
+        return None
+    at_change = plan.at_change(times - plan.time_shift)
+    before = problem._before_change[mapping]
+    after = at_change >= 0 if before is None else (at_change >= 0) & (before < 0)
+    if not bool(np.any(after)):
+        return None
+    return np.asarray(after, dtype=bool)
+
+
+def _gap_of_an_observable(problem: OptimizationProblem, mapping: int) -> Gap | None:
+    """Get the gap of the observable of a training fit mapping.
+
+    An observable which is a formula of the selections is written into the
+    model of the fit as a parameter of an assignment rule
+    (`sbmlsim.fit.observable_sbml`), so it is a column of a simulation like
+    any other and no gap. What is still a gap is a placeholder whose value
+    differs between the points of one curve, which is one value of the model
+    and several of the data, and a formula the model cannot carry, e.g. one
+    which reads the concentration of a species it has not.
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the training fit mapping.
+
+    Returns:
+        The gap, or `None` for an observable the model of the fit carries.
+    """
+    observable = problem.observable_models[mapping]
+    if observable is None:
+        return None
+    key = problem.mapping_keys[mapping]
+    model = _models_of(problem)[0] if len(_models_of(problem)) == 1 else None
+    if model is None:
+        return None
+    rows = _placeholder_rows(observable, problem.x_references[mapping])
+    if rows is None:
+        return Gap(
+            "observable",
+            f"the observable of the mapping '{key}' has the placeholders "
+            f"{list(observable.placeholders)} without a value per measurement",
+        )
+    try:
+        for values in rows.values():
+            add_observable(
+                observable_id(key), observable, values, model.symbols, Entities()
+            )
+    except ValueError as err:
+        return Gap(
+            "observable",
+            f"the observable '{observable.formula}' of the mapping '{key}' is no "
+            f"entity of the model of the fit: {err}",
+        )
+    return None
+
+
+def _placeholder_rows(
+    observable: ObservableModel, times: Any
+) -> dict[tuple[float | str, ...], dict[str, float | str]] | None:
+    """Get the values of the placeholders of an observable, by the row they are.
+
+    A placeholder has a value per measurement and the model of the fit
+    carries one value, so an observable whose placeholders differ between the
+    measurements of one curve becomes one observable per row of values, each
+    read by the points which have that row (`_parts_of`).
+
+    Args:
+        observable: the observable of a fit mapping.
+        times: the times of the data of the mapping, whose number the rows
+            have to match.
+
+    Returns:
+        The value of every placeholder by the row it belongs to, in the order
+        the rows first appear, a single empty row for an observable without
+        placeholders, or `None` if the observable has placeholders without a
+        value per measurement.
+    """
+    if not observable.placeholders:
+        return {(): {}}
+    rows = observable.placeholder_values
+    if len(rows) != len(times):
+        return None
+    out: dict[tuple[float | str, ...], dict[str, float | str]] = {}
+    for row in rows:
+        key = tuple(row)
+        if key not in out:
+            out[key] = dict(zip(observable.placeholders, row, strict=True))
+    return out
+
+
+def _observable_names(
+    key: str, rows: Mapping[tuple[float | str, ...], object]
+) -> dict[tuple[float | str, ...], str]:
+    """Get the column of every row of the placeholder values of an observable."""
+    if len(rows) == 1:
+        return {next(iter(rows)): observable_id(key)}
+    return {row: f"{observable_id(key)}__r{n}" for n, row in enumerate(rows)}
+
+
+def _observable_entities(problem: OptimizationProblem) -> Entities:
+    """Get the observables of the training mappings of a problem.
+
+    An observable whose placeholders have more than one row of values over
+    the points of its curve becomes one observable per row, which the parts
+    of the mapping read (`_parts_of`).
+
+    Args:
+        problem: the initialized problem, without the gap `observable`.
+
+    Returns:
+        The entities of the model of the fit, empty for a problem none of
+        whose mappings observes a formula.
+    """
+    entities = Entities()
+    models = _models_of(problem)
+    if len(models) != 1:
+        return entities
+    symbols = models[0].symbols
+    for mapping in problem.indices(MappingKind.TRAINING):
+        observable = problem.observable_models[mapping]
+        if observable is None:
+            continue
+        rows = _placeholder_rows(observable, problem.x_references[mapping])
+        if rows is None:
+            continue
+        key = problem.mapping_keys[mapping]
+        names = _observable_names(key, rows)
+        for row, values in rows.items():
+            add_observable(names[row], observable, values, symbols, entities)
+    return entities
+
+
+@dataclass(frozen=True)
+class _Part:
+    """One curve of a training fit mapping.
+
+    A mapping is one curve of the request, except for an observable whose
+    placeholders have a value per measurement: the model of the fit carries
+    one value per observable, so such a mapping is one curve per run of
+    consecutive points which share their values, each reading the observable
+    of those values. The runs are in the order of the points, so the
+    residuals of the request stay the residuals of the problem in their
+    order.
+
+    Attributes:
+        column: the column of the simulation the curve reads, `None` for the
+            selection of the mapping itself.
+        at: the positions of the points of the curve in the data of the
+            mapping, consecutive and increasing.
+    """
+
+    column: str | None
+    at: tuple[int, ...]
+
+
+def _parts_of(problem: OptimizationProblem, mapping: int) -> list[_Part]:
+    """Get the curves of a training fit mapping of a problem.
+
+    Args:
+        problem: the initialized problem, without the gap `observable`.
+        mapping: index of the training fit mapping.
+
+    Returns:
+        The parts, one for a mapping which is one curve.
+    """
+    points = tuple(range(len(problem.x_references[mapping])))
+    observable = problem.observable_models[mapping]
+    if observable is None:
+        return [_Part(None, points)]
+    rows = _placeholder_rows(observable, problem.x_references[mapping])
+    if rows is None:
+        return [_Part(None, points)]
+    names = _observable_names(problem.mapping_keys[mapping], rows)
+    if not observable.placeholders:
+        return [_Part(names[()], points)]
+    parts: list[_Part] = []
+    at: list[int] = []
+    row: tuple[float | str, ...] | None = None
+    for point, values in enumerate(observable.placeholder_values):
+        current = tuple(values)
+        if row is not None and current != row:
+            parts.append(_Part(names[row], tuple(at)))
+            at = []
+        row = current
+        at.append(point)
+    if row is not None:
+        parts.append(_Part(names[row], tuple(at)))
+    return parts
+
+
 def _gaps_at_the_changes(
     problem: OptimizationProblem, group: int, mapping: int
 ) -> list[Gap]:
     """Get the gap of the data of a mapping at the time of a change.
 
-    The output of a simulation has the state before a change and the one
-    after it at the time of the change, and the engine reads the row of the
-    state before it: a data point which is compared with the state after a
-    change, which `DataAtChangeType.AFTER` is for every point and the default
-    for the first point of a curve, is no point of a request.
+    A point which is compared with the state after a change is a point of a
+    request since sbmlsim-core 0.16.0, which reads the `after_change` of a
+    curve (`after_change_of`): bindings before it ignore the field instead of
+    refusing it, so such a point would quietly be compared with the state
+    before its change, and the fit of a problem which has one stays in python
+    there.
     """
+    after = after_change_of(problem, group, mapping)
+    if after is None:
+        return []
+    if reads_after_change(_loaded_of(problem)):
+        return []
+    import sbmlsim_core
+
     times = np.asarray(problem.x_references[mapping], dtype=float)
-    plan = problem.plans[group]
-    if plan is None or not plan.change_times or times.size == 0:
-        return []
-    at_change = plan.at_change(times - plan.time_shift)
-    before = problem._before_change[mapping]
-    after = at_change >= 0 if before is None else (at_change >= 0) & (before < 0)
-    if not bool(np.any(after)):
-        return []
     which = times[after]
     return [
         Gap(
             "data_at_change",
             f"the mapping '{problem.mapping_keys[mapping]}' measures at the time "
             f"of a change, {list(which[:3])}, and compares with the state after "
-            f"it, where the engine reads the state before it",
+            f"it, which the bindings of sbmlsim-core "
+            f"{sbmlsim_core.__version__} do not read, and "
+            f"{AFTER_CHANGE_VERSION} is the first which does",
         )
     ]
 
@@ -734,6 +1169,8 @@ def run(
     timeout: float | None = None,
     max_iterations: int = 100,
     gradient_tolerance: float | None = None,
+    step_tolerance: float | None = None,
+    cost_tolerance: float | None = None,
     evolution: Mapping[str, Any] | None = None,
     jacobian: str | None = None,
     identifiability: Mapping[str, Any] | None = None,
@@ -775,6 +1212,10 @@ def run(
         max_iterations: the largest number of iterations of a run.
         gradient_tolerance: the tolerance of the scaled gradient a step
             converges at; the one of the optimizer without.
+        step_tolerance: the tolerance of the step a run converges at, see
+            `fit_request`.
+        cost_tolerance: the tolerance of the change of the cost a run
+            converges at, see `fit_request`.
         evolution: the population of a differential evolution and how it is
             drawn, see `fit_request`.
         jacobian: where the jacobian of a step comes from, see `fit_request`.
@@ -820,6 +1261,8 @@ def run(
         max_iterations=max_iterations,
         max_seconds=timeout,
         gradient_tolerance=gradient_tolerance,
+        step_tolerance=step_tolerance,
+        cost_tolerance=cost_tolerance,
         evolution=evolution,
         identifiability=identifiability,
         jacobian=jacobian,
@@ -943,8 +1386,11 @@ def gaps_of_a_fit(
     the optimizer of the fit and its arguments: the arguments of a fit are the
     ones of `scipy.optimize.least_squares` or of
     `scipy.optimize.differential_evolution`, and the settings of the engine
-    are its iterations, the tolerance of its gradient and the population of a
-    differential evolution, so an argument which is none of them is a gap.
+    are its iterations, the tolerances of its gradient, of its step and of its
+    cost (`gtol`, `xtol` and `ftol`) and the population of a differential
+    evolution, so an argument which is none of them is a gap. The tolerances
+    the arguments do not give are `default_tolerance` of the relative
+    tolerance of the integrator, as a fit in python gets them (#607).
 
     Args:
         problem: the initialized problem.
@@ -972,6 +1418,10 @@ def gaps_of_a_fit(
     for key, value in (kwargs or {}).items():
         if key == "gtol":
             settings["gradient_tolerance"] = float(value)
+        elif key == "xtol":
+            settings["step_tolerance"] = float(value)
+        elif key == "ftol":
+            settings["cost_tolerance"] = float(value)
         elif key == "method" and value == "trf":
             continue
         elif key == "maxiter" and evolving:
@@ -998,6 +1448,16 @@ def gaps_of_a_fit(
             )
     if evolution:
         settings["evolution"] = evolution
+    # the tolerances a fit in python gets from `default_tolerance`, which the
+    # optimizer of the engine has no default of: without them it tests neither
+    # its step nor the change of its cost and spends its last iterations on the
+    # noise of the integrator, 2.3 times the evaluations of a fit of the HCTZ
+    # example to the same optima (#607)
+    from sbmlsim.fit.optimization import default_tolerance
+
+    tolerance = default_tolerance(problem.settings_initialized.relative_tolerance)
+    for name in ("gradient_tolerance", "step_tolerance", "cost_tolerance"):
+        settings.setdefault(name, tolerance)
     return gaps, settings
 
 
@@ -1039,7 +1499,10 @@ def gaps_of_the_profiles(
     walk of the analysis has to be the walk of the engine (`walk_of`): a scan
     which holds the other parameters at the optimum instead of fitting them
     again is none of it, and neither is an argument of the optimizer of a
-    point which is no setting of the engine.
+    point which is no setting of the engine. A fit of one parameter is none of
+    it either: every point of its profile holds that parameter and fits
+    nothing, which the optimizer of the engine refuses and python evaluates as
+    the cost at the point.
 
     Args:
         problem: the initialized problem.
@@ -1049,6 +1512,14 @@ def gaps_of_the_profiles(
         The gaps of the analysis, empty for one the engine walks.
     """
     gaps = gaps_of(problem)
+    if len(problem.parameters) < 2:
+        gaps.append(
+            Gap(
+                "parameters",
+                "the fit has one parameter, so a point of its profile holds "
+                "that parameter and has none left to fit again",
+            )
+        )
     if not settings.reoptimize:
         gaps.append(
             Gap(
