@@ -81,6 +81,16 @@ def test_an_interval_whose_bounds_are_reversed_is_kept() -> None:
     assert Domain(0.0, 1.0).clip(1.2, -0.1) == (1.2, -0.1)
 
 
+def test_an_integer_domain_whose_interval_holds_no_integer_is_refused() -> None:
+    """A domain which accepts no value is a mistake where it is written."""
+    with pytest.raises(ValueError, match=r"\[0\.2, 0\.8\] holds no integer"):
+        Domain(0.2, 0.8, Values.INTEGER)
+
+
+def test_an_integer_domain_of_one_integer_is_a_domain() -> None:
+    assert Domain(0.2, 1.8, Values.INTEGER).clip(0.5, 1.5) == (1.0, 1.0)
+
+
 def test_an_interval_of_a_boolean_domain_is_widened_onto_its_values() -> None:
     """A fractional span of a switch is widened onto the values of the switch.
 

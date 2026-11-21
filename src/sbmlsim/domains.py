@@ -97,6 +97,29 @@ class Domain:
     upper: float
     values: Values = Values.CONTINUOUS
 
+    def __post_init__(self) -> None:
+        """Reject an integer or boolean domain whose interval holds no integer.
+
+        Such a domain accepts no value at all, so a tool which asks it for one
+        has nothing to answer: `Domain(0.2, 0.8, Values.INTEGER)` is a
+        statement about a quantity which no step, no draw and no clip can
+        satisfy, and it is a mistake where it is written and not where it is
+        read.
+
+        Raises:
+            ValueError: if no integer lies in the interval of an integer or
+                boolean domain.
+        """
+        if self.values is Values.CONTINUOUS:
+            return
+        lowest = math.ceil(self.lower) if math.isfinite(self.lower) else self.lower
+        highest = math.floor(self.upper) if math.isfinite(self.upper) else self.upper
+        if lowest > highest:
+            raise ValueError(
+                f"the interval [{_bound(self.lower)}, {_bound(self.upper)}] "
+                f"holds no integer, so no {self.values.value} domain has a value"
+            )
+
     @overload
     def clip(self, lower: float, upper: float) -> tuple[float, float]: ...
 
