@@ -47,8 +47,9 @@ loads, each with its own tolerance per state. A setting of a model which the
 simulator does not set stays, and a worker loads the model with the
 integrator and the settings the model has in the calling process.
 
-The engine of a simulator, roadrunner by default, COPASI, AMICI or the engine
-core, simulates every model it runs: a model of another engine is loaded
+The engine of a simulator, the engine core by default
+(`sbmlsim.engine.DEFAULT_ENGINE`), roadrunner, COPASI or AMICI, simulates
+every model it runs: a model of another engine is loaded
 again in the engine of the simulator, see
 `sbmlsim.model.model_sbml.load_model`, and a plan runs with the executor of
 the engine, see `sbmlsim.simulator.engines`. The engine is the attribute
@@ -90,6 +91,7 @@ from numpy.typing import ArrayLike
 
 from sbmlsim import parallel
 from sbmlsim.engine import (
+    DEFAULT_ENGINE,
     Engine,
     import_amici,
     import_copasi,
@@ -168,7 +170,7 @@ class Simulator:
     def __init__(
         self,
         n_workers: int | None = None,
-        engine: Engine | str = Engine.ROADRUNNER,
+        engine: Engine | str = DEFAULT_ENGINE,
         **integrator_settings: Unpack[IntegratorSettings],
     ) -> None:
         """Create a simulator.

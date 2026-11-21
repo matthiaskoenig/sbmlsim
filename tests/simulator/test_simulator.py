@@ -38,6 +38,7 @@ from tests.simulator.models import (
     VOLUME_OF_A_RULE,
     VOLUME_OF_THE_REST,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
     sbml_minutes,
 )
@@ -325,7 +326,7 @@ def test_every_model_of_a_dimension_has_its_own_tolerances(
     big = RoadrunnerSBMLModel(source=sbml(PROBE.replace("C = 2", "C = 4")))
     big.set_selections(SEL)
     tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
-    simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
+    simulator = roadrunner_simulator(n_workers=1, absolute_tolerance=tolerance)
     scan = Scan(
         Simulation(end=1, steps=2),
         [Dimension("model", models={"probe": model, "big": big})],
@@ -733,8 +734,11 @@ def test_ragged_chunks_are_padded_to_the_longest(
 
 
 def test_the_chunks_share_a_plan_and_are_bounded(
-    simulator: Simulator, model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
+    model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # the chunks of `run_chunk` are the ones of a run of roadrunner; the
+    # engine core hands the requests of a chunk to the engine as one batch
+    simulator = roadrunner_simulator(n_workers=1)
     sizes: list[tuple[int, int]] = []
     run_chunk = simulator_module.run_chunk
 
@@ -790,7 +794,7 @@ def test_a_result_is_written_and_read(
 
 def test_the_integrator_settings_reach_the_model(model: RoadrunnerSBMLModel) -> None:
     tolerance = AbsoluteTolerance(ids={"A": 1e-14})
-    simulator = Simulator(
+    simulator = roadrunner_simulator(
         n_workers=1, absolute_tolerance=tolerance, relative_tolerance=1e-8
     )
     assert simulator.load(model) is model
@@ -848,7 +852,7 @@ def test_integrator_settings_are_passed_on_and_kept(tmp_path: Path) -> None:
     """Every setting of the integrator reaches roadrunner, also for a later model."""
     path = tmp_path / "probe.xml"
     path.write_text(sbml(), encoding="utf-8")
-    simulator = Simulator(n_workers=1, initial_time_step=1e-9)
+    simulator = roadrunner_simulator(n_workers=1, initial_time_step=1e-9)
     simulator.set_integrator_settings(maximum_num_steps=1234)
     # a new model, as for every task of an experiment; the model keeps the
     # instance of roadrunner which owns the integrator
@@ -864,7 +868,7 @@ def test_the_tolerance_of_every_state_reaches_cvode(tmp_path: Path) -> None:
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
-    simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
+    simulator = roadrunner_simulator(n_workers=1, absolute_tolerance=tolerance)
     # A and S are concentration species in C = 2 and U = 1e-12 (raised to
     # 2e-6), X an amount species, D a parameter with a rate rule, which
     # roadrunner integrates before the species
@@ -885,7 +889,7 @@ def test_the_tolerances_name_the_compartment_of_every_species(tmp_path: Path) ->
     """An amount species has its compartment, only a concentration a volume."""
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
-    model = roadrunner_model(Simulator(n_workers=1).load(path))
+    model = roadrunner_model(roadrunner_simulator(n_workers=1).load(path))
     table = model.tolerances().set_index("sid")
 
     assert table.loc["X", "kind"] == "amount"
@@ -905,7 +909,7 @@ def test_a_float_tolerance_is_the_same_for_every_kind(tmp_path: Path) -> None:
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     model = roadrunner_model(
-        Simulator(n_workers=1, absolute_tolerance=1e-10).load(path)
+        roadrunner_simulator(n_workers=1, absolute_tolerance=1e-10).load(path)
     )
     expected = {"A": 1e-10 * 2, "S": 1e-10 * 2e-6, "X": 1e-10, "D": 1e-10}
     assert _vector(model) == pytest.approx(expected, rel=1e-12, abs=0)
@@ -947,7 +951,7 @@ def test_a_degenerate_compartment_is_logged(
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     with caplog.at_level("WARNING"):
-        simulator = Simulator(n_workers=1)
+        simulator = roadrunner_simulator(n_workers=1)
         model = simulator.load(path)
         simulator.set_integrator_settings(absolute_tolerance=1e-9)
         simulator.load(model)
@@ -964,7 +968,7 @@ def test_the_tolerances_are_the_ones_of_the_model_as_loaded(volume: str) -> None
     the pre-initialization of the simulation before.
     """
     model = RoadrunnerSBMLModel(source=sbml(VOLUME.replace("C = 2*f", volume)))
-    simulator = Simulator(n_workers=1, absolute_tolerance=1e-6)
+    simulator = roadrunner_simulator(n_workers=1, absolute_tolerance=1e-6)
     simulator.load(model)
     loaded = _vector(model)
     assert loaded == pytest.approx({"A": 1e-6 * 2}, rel=1e-12, abs=0)
@@ -1220,7 +1224,7 @@ def test_a_longer_simulation_of_a_model_with_a_delayed_event_and_a_rule_species(
     `setIndividualTolerance`, which raised for a species of an assignment
     rule up to libroadrunner 2.10 (#305).
     """
-    simulator = Simulator(n_workers=1)
+    simulator = roadrunner_simulator(n_workers=1)
     simulation = Simulation(end=10, steps=10)
     alone = np.asarray(simulator.simulate(_delayed_event_rule(), simulation)["A"])
     model = _delayed_event_rule()
@@ -1242,7 +1246,7 @@ def test_a_failed_regeneration_keeps_the_tolerances(
     When it raises, the vector is set again, and the next simulation
     regenerates the model.
     """
-    simulator = Simulator(n_workers=1)
+    simulator = roadrunner_simulator(n_workers=1)
     simulation = Simulation(end=10, steps=10)
     alone = np.asarray(simulator.simulate(_delayed_event_rule(), simulation)["A"])
     model = _delayed_event_rule()
@@ -1353,7 +1357,7 @@ def test_the_tolerances_are_set_once_per_roadrunner_instance(
     monkeypatch.setattr(RoadrunnerSBMLModel, "_set_absolute_tolerance", spy)
     model = RoadrunnerSBMLModel(source=sbml())
     tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
-    simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
+    simulator = roadrunner_simulator(n_workers=1, absolute_tolerance=tolerance)
     simulation = Simulation(end=1, steps=2)
     calls.clear()
     simulator.simulate(model, simulation)
@@ -1592,7 +1596,7 @@ def test_a_chunk_of_a_pool_run_keeps_its_own_values(
         Simulation(end=1, steps=2),
         [Dimension("d", values={"k1": [0.1, 0.2, 0.3, 0.4]})],
     )
-    pooled = Simulator(n_workers=2)
+    pooled = roadrunner_simulator(n_workers=2)
     res = pooled.run(pooled.load(model), scan)
     # a pool run never asks for one
     assert offered == []

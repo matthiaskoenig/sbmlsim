@@ -20,7 +20,13 @@ from scipy import interpolate
 
 from sbmlsim import cgroup
 from sbmlsim.console import console
-from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
+from sbmlsim.engine import (
+    DEFAULT_ENGINE,
+    Engine,
+    amici_cache,
+    resolve_engine,
+    using_amici_cache,
+)
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.derived import (
     DerivedChanges,
@@ -877,7 +883,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         data_path: Path | Sequence[Path] | None = None,
         hybridizations: Sequence[DerivedChanges] | None = None,
         jit_optimization: JitOptimization | str | None = None,
-        engine: Engine | str = Engine.ROADRUNNER,
+        engine: Engine | str = DEFAULT_ENGINE,
         prior_correlation: Covariance | None = None,
     ):
         """Optimization problem.
@@ -903,7 +909,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 with, see `RoadrunnerSBMLModel`. It is resolved here, so the
                 workers of a parallel fit compile at the level of the parent.
             engine: the engine or its name which the problem simulates with,
-                roadrunner by default; `initialize` loads the models in it,
+                `sbmlsim.engine.DEFAULT_ENGINE` by default; `initialize` loads the models in it,
                 `set_simulator` with a simulator of another engine loads them
                 again. It is pickled with the problem, so the workers of a
                 parallel fit and a report evaluate with it.

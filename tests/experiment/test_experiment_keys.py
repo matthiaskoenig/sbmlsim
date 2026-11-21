@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.data import Data
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
@@ -91,7 +92,7 @@ def test_selections_which_are_no_sid_are_recorded() -> None:
             self.add_selections_data(["time", "C'", "[C]", "eigenReal(C)"])
             return {}
 
-    runner = _runner(Rates)
+    runner = _runner(Rates, engine=Engine.ROADRUNNER)
     experiment = runner.experiments["Rates"]
     assert {"task_sim__C_x27_", "task_sim__eigenReal_x28_C_x29_"} <= set(
         experiment._data

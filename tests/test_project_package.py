@@ -33,7 +33,7 @@ from sbmlsim.project import (
     same_sbml,
     write_adopted,
 )
-from tests.project_toy import PROJECT, TOY_PATH
+from tests.project_toy import PROJECT, PROJECT_ROADRUNNER, TOY_PATH
 
 REPOSITORY = Path(__file__).parents[1]
 
@@ -740,7 +740,11 @@ def test_run_experiments_compiles_at_the_level_of_the_project(
             )
 
     monkeypatch.setattr(runner, "ExperimentRunner", Recording)
-    PROJECT.run_experiments(["studies"], tmp_path, n_workers=1, progress=False)
+    # the level is a setting of roadrunner, so the project of the test is the
+    # one of that engine and not the default engine of the package (#607)
+    PROJECT_ROADRUNNER.run_experiments(
+        ["studies"], tmp_path, n_workers=1, progress=False
+    )
     assert levels == [JitOptimization.O0, JitOptimization.O0]
 
 
@@ -761,7 +765,8 @@ def test_a_scan_compiles_at_the_level_of_the_project(
         return model
 
     monkeypatch.setattr(model_sbml, "load_model", recording)
-    spec = {"project": "tests.project_toy:PROJECT", "analysis": "decay"}
+    # the level is a setting of roadrunner, see above
+    spec = {"project": "tests.project_toy:PROJECT_ROADRUNNER", "analysis": "decay"}
     run.execute("scan", spec, tmp_path / "out", workers=1)
     assert loaded == [(JitOptimization.O0, JitOptimization.O0)]
     result = ScanResult.from_netcdf(tmp_path / "out" / "result.nc")

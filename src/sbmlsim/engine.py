@@ -5,6 +5,7 @@ import importlib
 import locale
 import os
 import sys
+import threading
 from collections.abc import Generator, Iterable
 from enum import StrEnum
 from importlib import metadata
@@ -186,6 +187,28 @@ class Engine(StrEnum):
     CORE = "core"
 
 
+#: the engine of a simulator, a project, an experiment runner and a fit which
+#: names none (#607).
+#:
+#: The engine core, which every install of sbmlsim brings (`sbmlsim-core`, see
+#: `import_core`), leads every model of `docs/benchmarks.md` in a simulation
+#: and in a scan: on the HCTZ model one simulation takes 0.877 ms against
+#: roadrunner's 1.68 ms, a serial scan of 1000 points 0.760 s against 1.50 s
+#: and a parallel one 0.162 s against 0.237 s, and a scan of it runs its
+#: points on the threads of the engine in one python process instead of a pool
+#: of workers which loads the model again in each of them. A fit of the HCTZ
+#: example takes 5.26 s against 10.23 s for its 40 repeats, to the same
+#: optima, and a fit without a gap of `sbmlsim.fit.fit_core` runs its
+#: optimizer in the engine as well.
+#:
+#: It is not roadrunner bitwise: the engine integrates with the tolerance
+#: vector roadrunner computes but with its own build of CVODE, which chooses
+#: its own steps, so a result of it is roadrunner's within the integration and
+#: not to the last bit (`Simulator(engine="roadrunner")` is the way back). The
+#: differences of the engines are in `docs/simulation.md`, section Engines.
+DEFAULT_ENGINE: Engine = Engine.CORE
+
+
 class JitOptimization(StrEnum):
     """The optimization level LLJIT compiles the code of a model of roadrunner with (#331).
 
@@ -231,22 +254,97 @@ def resolve_engine(engine: Engine | str) -> Engine:
         ) from None
 
 
-def _import_optional(name: str, message: str) -> ModuleType:
+def _import_optional(
+    name: str, message: str, *, lasting_thread: bool = False
+) -> ModuleType:
     """Import an optional module, setting the encoding of the locale back.
+
+    The module of `sys.modules` is returned only once it is initialized:
+    python puts a module into `sys.modules` before it executes its body, so
+    a thread which reads it while another thread imports it for the first
+    time would get a module whose attributes do not exist yet (its spec is
+    `_initializing`, which is how `importlib` itself tells the two apart).
+    Every other call goes through `importlib.import_module`, which holds the
+    lock of the module and returns once it is initialized, so the bindings of
+    an engine are imported once however many threads ask for them at the same
+    time (the service answers the panels of a model in the threads of its
+    server, see `sbmlsim.serve.runner`).
+
+    :param name: the name of the module
+    :param message: the message of the `ImportError` when the module is missing
+    :param lasting_thread: import the module on a thread which lives as long
+        as the process when this one may not, see `_imported_lastingly`
+    :return: the module
+    :raises ImportError: when the module is not installed
+    """
+    module = sys.modules.get(name)
+    if module is not None and not getattr(
+        getattr(module, "__spec__", None), "_initializing", False
+    ):
+        return module
+    if lasting_thread and threading.current_thread() is not threading.main_thread():
+        return _imported_lastingly(name, message)
+    return _imported(name, message)
+
+
+def _imported(name: str, message: str) -> ModuleType:
+    """Import a module, setting the encoding of the locale back.
 
     :param name: the name of the module
     :param message: the message of the `ImportError` when the module is missing
     :return: the module
     :raises ImportError: when the module is not installed
     """
-    module = sys.modules.get(name)
-    if module is not None:
-        return module
     with kept_encoding():
         try:
             return importlib.import_module(name)
         except ImportError as err:
             raise ImportError(message) from err
+
+
+def _imported_lastingly(name: str, message: str) -> ModuleType:
+    """Import a module on a thread which lives as long as the process.
+
+    The bindings of the engine core do not outlive the thread which imported
+    them: a process which imported them on a thread which then exited crashes
+    when another thread compiles a model or simulates with them, while
+    bindings whose thread is alive are used from any thread (measured in
+    #607). The threads of a server come and go, so the first request of a
+    panel imported them on a thread which was reaped before the next request
+    came (`sbmlsim.serve.runner`, whose panels the service answers in the
+    threads of its server), and the second request crashed the process.
+
+    The thread imports the module, hands it over and parks on an event which
+    is never set, so it never exits and the module stays valid for every
+    thread. It is a daemon, so it does not keep the process alive, and it is
+    started only for the first import and only off the main thread, which
+    lives as long as the process itself.
+
+    :param name: the name of the module
+    :param message: the message of the `ImportError` when the module is missing
+    :return: the module
+    :raises ImportError: when the module is not installed
+    """
+    imported: list[ModuleType] = []
+    failed: list[BaseException] = []
+    ready = threading.Event()
+
+    def own() -> None:
+        try:
+            imported.append(_imported(name, message))
+        except BaseException as err:
+            failed.append(err)
+            ready.set()
+            return
+        ready.set()
+        # park forever: the bindings are valid only while this thread lives
+        threading.Event().wait()
+
+    threading.Thread(target=own, name=f"sbmlsim-{name}", daemon=True).start()
+    ready.wait()
+    if failed:
+        raise failed[0]
+    return imported[0]
 
 
 @contextlib.contextmanager
@@ -326,6 +424,7 @@ def import_core() -> ModuleType:
         "The engine 'core' needs the python bindings of sbmlsim-core, which "
         "is a dependency of sbmlsim, install them with "
         "`pip install sbmlsim-core`.",
+        lasting_thread=True,
     )
 
 

@@ -303,6 +303,8 @@ def fit_request(
     max_iterations: int = 100,
     max_seconds: float | None = None,
     gradient_tolerance: float | None = None,
+    step_tolerance: float | None = None,
+    cost_tolerance: float | None = None,
     evolution: Mapping[str, Any] | None = None,
     identifiability: Mapping[str, Any] | None = None,
     jacobian: str | None = None,
@@ -321,6 +323,14 @@ def fit_request(
             stops at its best point; no budget without one.
         gradient_tolerance: the tolerance of the scaled gradient a step
             converges at; the one of the optimizer without.
+        step_tolerance: the tolerance of the step a run converges at,
+            relative to the point it steps from, the `xtol` of
+            `scipy.optimize.least_squares`; no test of the step without one,
+            which spends the last iterations of a run on the noise of the
+            integrator (#607).
+        cost_tolerance: the tolerance of the change of the cost a run
+            converges at, relative to the cost before the step, the `ftol` of
+            `scipy.optimize.least_squares`; no test of the cost without one.
         evolution: the population of a differential evolution and how it is
             drawn, the fields of `Evolution` of the engine, e.g. the `seed`.
         identifiability: the identifiability of the optimum, the fields of
@@ -356,8 +366,13 @@ def fit_request(
     }
     if max_seconds is not None:
         optimizer["max_seconds"] = float(max_seconds)
-    if gradient_tolerance is not None:
-        optimizer["gradient_tolerance"] = float(gradient_tolerance)
+    for name, tolerance in (
+        ("gradient_tolerance", gradient_tolerance),
+        ("step_tolerance", step_tolerance),
+        ("cost_tolerance", cost_tolerance),
+    ):
+        if tolerance is not None:
+            optimizer[name] = float(tolerance)
     request: dict[str, Any] = {
         "contract": CONTRACT,
         "parameters": _parameters(problem),
@@ -734,6 +749,8 @@ def run(
     timeout: float | None = None,
     max_iterations: int = 100,
     gradient_tolerance: float | None = None,
+    step_tolerance: float | None = None,
+    cost_tolerance: float | None = None,
     evolution: Mapping[str, Any] | None = None,
     jacobian: str | None = None,
     identifiability: Mapping[str, Any] | None = None,
@@ -775,6 +792,10 @@ def run(
         max_iterations: the largest number of iterations of a run.
         gradient_tolerance: the tolerance of the scaled gradient a step
             converges at; the one of the optimizer without.
+        step_tolerance: the tolerance of the step a run converges at, see
+            `fit_request`.
+        cost_tolerance: the tolerance of the change of the cost a run
+            converges at, see `fit_request`.
         evolution: the population of a differential evolution and how it is
             drawn, see `fit_request`.
         jacobian: where the jacobian of a step comes from, see `fit_request`.
@@ -820,6 +841,8 @@ def run(
         max_iterations=max_iterations,
         max_seconds=timeout,
         gradient_tolerance=gradient_tolerance,
+        step_tolerance=step_tolerance,
+        cost_tolerance=cost_tolerance,
         evolution=evolution,
         identifiability=identifiability,
         jacobian=jacobian,
@@ -943,8 +966,11 @@ def gaps_of_a_fit(
     the optimizer of the fit and its arguments: the arguments of a fit are the
     ones of `scipy.optimize.least_squares` or of
     `scipy.optimize.differential_evolution`, and the settings of the engine
-    are its iterations, the tolerance of its gradient and the population of a
-    differential evolution, so an argument which is none of them is a gap.
+    are its iterations, the tolerances of its gradient, of its step and of its
+    cost (`gtol`, `xtol` and `ftol`) and the population of a differential
+    evolution, so an argument which is none of them is a gap. The tolerances
+    the arguments do not give are `default_tolerance` of the relative
+    tolerance of the integrator, as a fit in python gets them (#607).
 
     Args:
         problem: the initialized problem.
@@ -972,6 +998,10 @@ def gaps_of_a_fit(
     for key, value in (kwargs or {}).items():
         if key == "gtol":
             settings["gradient_tolerance"] = float(value)
+        elif key == "xtol":
+            settings["step_tolerance"] = float(value)
+        elif key == "ftol":
+            settings["cost_tolerance"] = float(value)
         elif key == "method" and value == "trf":
             continue
         elif key == "maxiter" and evolving:
@@ -998,6 +1028,16 @@ def gaps_of_a_fit(
             )
     if evolution:
         settings["evolution"] = evolution
+    # the tolerances a fit in python gets from `default_tolerance`, which the
+    # optimizer of the engine has no default of: without them it tests neither
+    # its step nor the change of its cost and spends its last iterations on the
+    # noise of the integrator, 2.3 times the evaluations of a fit of the HCTZ
+    # example to the same optima (#607)
+    from sbmlsim.fit.optimization import default_tolerance
+
+    tolerance = default_tolerance(problem.settings_initialized.relative_tolerance)
+    for name in ("gradient_tolerance", "step_tolerance", "cost_tolerance"):
+        settings.setdefault(name, tolerance)
     return gaps, settings
 
 
@@ -1039,7 +1079,10 @@ def gaps_of_the_profiles(
     walk of the analysis has to be the walk of the engine (`walk_of`): a scan
     which holds the other parameters at the optimum instead of fitting them
     again is none of it, and neither is an argument of the optimizer of a
-    point which is no setting of the engine.
+    point which is no setting of the engine. A fit of one parameter is none of
+    it either: every point of its profile holds that parameter and fits
+    nothing, which the optimizer of the engine refuses and python evaluates as
+    the cost at the point.
 
     Args:
         problem: the initialized problem.
@@ -1049,6 +1092,14 @@ def gaps_of_the_profiles(
         The gaps of the analysis, empty for one the engine walks.
     """
     gaps = gaps_of(problem)
+    if len(problem.parameters) < 2:
+        gaps.append(
+            Gap(
+                "parameters",
+                "the fit has one parameter, so a point of its profile holds "
+                "that parameter and has none left to fit again",
+            )
+        )
     if not settings.reoptimize:
         gaps.append(
             Gap(

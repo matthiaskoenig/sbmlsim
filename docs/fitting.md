@@ -66,15 +66,15 @@ parameter      start   lower   upper   unit
 Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                4
-workers             1 (serial)
+workers             1 (threads of the engine, one fit)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.1 s
+optimizer time      0.0 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
-0    1  0.049603     0.304794      0.005028
-1    0  0.049603     0.304794      0.005028
-2    2  0.049603     0.304797      0.005028
-3    3  0.049604     0.304750      0.005027
+0    1  0.049603     0.304811      0.005028
+1    0  0.049603     0.304812      0.005028
+2    2  0.049603     0.304812      0.005028
+3    3  0.049603     0.304795      0.005028
 ```
 
 `show_progress` says whether the fit reports what it does: on a terminal a bar per activity (the runs of the fit and the points of their jacobians), without one a line every 30 seconds, each with the count, the elapsed time, the estimate of the time which is left and the cores, the CPU and the memory of the run, see [Progress](run.md#progress-and-provenance). The setting is the same everywhere, `--progress` of `python -m sbmlsim.run` or `SBMLSIM_PROGRESS`.
@@ -431,7 +431,7 @@ print(ParameterSets.from_json(Path("parameters.json")).to_df())
 
 ```text title="Output"
       parameter  unit  hctz_patel_0  hctz_patel_1
-0   Ka_dis_hctz  1/hr      0.304794      0.304794
+0   Ka_dis_hctz  1/hr      0.304811      0.304812
 1  KI__HCTZEX_k  1/ml      0.005028      0.005028
 ```
 

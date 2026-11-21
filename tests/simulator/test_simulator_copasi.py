@@ -33,7 +33,11 @@ from sbmlsim.simulator.worker import (  # noqa: E402
     OnError,
     run_chunk,
 )
-from tests.simulator.models import PREINIT_FORMULAS, sbml  # noqa: E402
+from tests.simulator.models import (  # noqa: E402
+    PREINIT_FORMULAS,
+    roadrunner_simulator,
+    sbml,
+)
 
 #: the delayed event of the model fires across a change after the start,
 #: which COPASI does not simulate, see `executor_copasi.check_supported`
@@ -171,13 +175,13 @@ def test_a_preinit_formula_reading_a_rule_while_a_value_outside_the_state_is_set
     """COPASI keeps a parameter whose value is not a number out of its state."""
     source = sbml(PREINIT_FORMULAS.replace("  u = 7\n", "  u = NaN\n  ru := 3 * u\n"))
     simulation = Simulation(end=10, preinit_changes={"u": 5, "y": "ru"})
-    Simulator().simulate(source, simulation)
+    roadrunner_simulator().simulate(source, simulation)
     with pytest.raises(
         NotImplementedError, match=r"reads the assignment rules \['ru'\]"
     ):
         Simulator(engine="copasi").simulate(source, simulation)
     # a formula which reads no rule reads the value which is set
     simulation = Simulation(end=10, times=[0, 10], preinit_changes={"u": 5, "y": "u"})
-    r = Simulator().simulate(source, simulation)
+    r = roadrunner_simulator().simulate(source, simulation)
     c = Simulator(engine="copasi").simulate(source, simulation)
     np.testing.assert_allclose(c["y"], r["y"])

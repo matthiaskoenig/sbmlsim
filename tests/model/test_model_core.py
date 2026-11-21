@@ -1,6 +1,8 @@
 """The model of an SBML model in the engine core."""
 
 import logging
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -17,7 +19,7 @@ from sbmlsim.model.model_core import (
 )
 from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.resources import HCTZ_SBML, REPRESSILATOR_SBML
+from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulator.plan import Assignment
 from tests.simulator.models import ALGEBRAIC
 
@@ -388,3 +390,78 @@ def test_the_pre_initialization_of_a_plan_is_recorded(hctz_core: CoreSBMLModel) 
     assert hctz_core.assignments == assignments
     hctz_core.reset()
     assert hctz_core.assignments == ()
+
+
+def test_a_model_is_compiled_once_however_many_threads_ask_for_it() -> None:
+    """The caches of the engine are filled once under a lock (#607).
+
+    The service answers the panels of a model in the threads of its server,
+    so a model of the engine core is loaded from several threads at once. The
+    bindings were imported through `sys.modules` without the check that the
+    module is initialized, which handed a thread a module whose attributes do
+    not exist yet while another thread imported it, and the process crashed in
+    the compiler of the engine; `COMPILED` is filled under a lock per key, so
+    one SBML is compiled once while two are compiled at the same time.
+    """
+    import concurrent.futures as futures
+
+    sbmls = [str(path) for path in (REPRESSILATOR_SBML, DEMO_SBML)]
+
+    def load(index: int) -> tuple[int, int]:
+        model = CoreSBMLModel(source=sbmls[index % len(sbmls)], sid=f"m{index}")
+        assert model.state_ids()
+        return index % len(sbmls), id(model.loaded)
+
+    with futures.ThreadPoolExecutor(max_workers=8) as pool:
+        loaded = list(pool.map(load, range(16)))
+
+    assert len(loaded) == 16
+    # every model of one SBML shares the compiled model of `COMPILED`, so the
+    # SBML was compiled once whichever thread got there first
+    for which in range(len(sbmls)):
+        shared = {address for index, address in loaded if index == which}
+        assert len(shared) == 1, shared
+
+
+#: imports the bindings of the engine on a thread which then exits and
+#: compiles a model on another thread, which crashed the process before #607,
+#: see `sbmlsim.engine._imported_lastingly`; a subprocess, because the
+#: bindings of this process are imported already
+_DYING_THREAD = """
+import concurrent.futures as futures
+
+from sbmlsim.engine import import_core
+from sbmlsim.model.model_core import CoreSBMLModel
+from sbmlsim.resources import REPRESSILATOR_SBML
+
+with futures.ThreadPoolExecutor(max_workers=1) as first:
+    first.submit(import_core).result()
+with futures.ThreadPoolExecutor(max_workers=1) as second:
+    model = second.submit(
+        CoreSBMLModel, source=str(REPRESSILATOR_SBML), sid="m"
+    ).result()
+assert model.state_ids()
+print("compiled")
+"""
+
+
+def test_the_bindings_outlive_the_thread_which_imported_them() -> None:
+    """The bindings are imported on a thread which lasts (#607).
+
+    They do not outlive the thread which imported them: a process which
+    imported them on a thread which then exited crashed with a segmentation
+    fault when another thread compiled a model, which is what the service did
+    when the threads of its server came and went (`sbmlsim.serve.runner`).
+    """
+    done = subprocess.run(
+        [sys.executable, "-c", _DYING_THREAD],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+
+    assert done.returncode == 0, (
+        f"the process exited with {done.returncode}\n{done.stderr[-2000:]}"
+    )
+    assert "compiled" in done.stdout

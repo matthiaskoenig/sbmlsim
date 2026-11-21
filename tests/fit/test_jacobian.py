@@ -105,6 +105,23 @@ def fail_always(token: str, problem: Any, settings: Any, task: dict[str, Any]) -
 
 
 @pytest.fixture
+def op_hctz_pk(op_hctz_pk: OptimizationProblem) -> OptimizationProblem:
+    """Get the problem of the pharmacokinetics data on roadrunner.
+
+    The module overrides the problem of the conftest, which runs on
+    `sbmlsim.engine.DEFAULT_ENGINE`: a fit of a problem without a gap of
+    `sbmlsim.fit.fit_core` hands the points of a jacobian to the engine core
+    as one batch on its threads (`_worker_residuals_many`, see
+    `test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit`),
+    not one point per worker. The points on the workers are the python path,
+    which every test of this module is about, so the module names roadrunner;
+    `_core` is the problem of the engine where a test wants it.
+    """
+    op_hctz_pk.engine = Engine.ROADRUNNER
+    return op_hctz_pk
+
+
+@pytest.fixture
 def fit_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """Give the next fit a token which is a path in `tmp_path`."""
     token = str(tmp_path / "fit")

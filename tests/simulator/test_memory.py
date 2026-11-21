@@ -11,7 +11,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Custom, Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.worker import Chunk, ChunkResult
-from tests.simulator.models import fails_for_large_k1, sbml
+from tests.simulator.models import fails_for_large_k1, roadrunner_simulator, sbml
 
 
 @pytest.mark.parametrize("grid", [None, [0.0, 0.5, 1.0]])
@@ -86,7 +86,10 @@ def test_the_chunks_are_released_when_written(
     """A run holds its result once (#411).
 
     A chunk on a grid is written when it arrives and released, the chunks of
-    a ragged result are released while `finish` writes them.
+    a ragged result are released while `finish` writes them. The four chunks
+    are the ones of a run of roadrunner, which cuts the points into four
+    chunks per worker; the engine core runs the points of a chunk as one
+    batch, so a run of it has one.
     """
     chunks: list[weakref.ref[ChunkResult]] = []
     run_chunk = worker_module.run_chunk
@@ -116,12 +119,14 @@ def test_the_chunks_are_released_when_written(
     values = np.linspace(0.1, 20.0, 8)
     simulation = Simulation(end=1)
     scan = Scan(simulation, [Dimension("rate", values={"k1": values})])
-    result = Simulator(n_workers=1).run(sbml(), scan, time=grid)
+    result = roadrunner_simulator(n_workers=1).run(sbml(), scan, time=grid)
 
     assert len(chunks) == 4
     assert alive == ([0, 0] if grid else [4, 0])
     expected = [
-        Simulator(n_workers=1).run(sbml(), simulation.with_values({"k1": k}), time=grid)
+        roadrunner_simulator(n_workers=1).run(
+            sbml(), simulation.with_values({"k1": k}), time=grid
+        )
         for k in values
     ]
     tdim = "time" if grid else "_point"

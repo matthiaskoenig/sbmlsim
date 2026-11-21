@@ -14,6 +14,7 @@ from tests.simulator.models import (
     SPECIES_KINDS,
     VOLUME_OF_THE_REST,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
     sbml_minutes,
     sbml_pk,
@@ -65,7 +66,7 @@ def test_the_ids_of_the_sbml_are_read_once_per_instance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The SBML of an instance of roadrunner is parsed once, not per call (#332)."""
-    model = roadrunner_model(Simulator().load(sbml()))
+    model = roadrunner_model(roadrunner_simulator().load(sbml()))
     parsed: list[str] = []
     read = libsbml.readSBMLFromString
 
@@ -83,7 +84,7 @@ def test_the_ids_of_the_sbml_are_read_once_per_instance(
 
 def test_the_ids_of_the_sbml_follow_a_replaced_instance() -> None:
     """An instance of roadrunner which replaces `r` is read again (#332)."""
-    model = roadrunner_model(Simulator().load(sbml()))
+    model = roadrunner_model(roadrunner_simulator().load(sbml()))
     assert "k1" in model.sbml_ids().constant_parameters
     assert "ke" not in parameters_of(model)
     model.r = load_roadrunner(sbml_pk())
@@ -115,7 +116,7 @@ def test_the_references_leave_the_model_as_loaded() -> None:
 
     A fit reads the start values of its parameters from the model.
     """
-    model = roadrunner_model(Simulator().load(sbml()))
+    model = roadrunner_model(roadrunner_simulator().load(sbml()))
     refs = references(
         model, ["k1", "pinit"], Simulation(end=1, preinit_changes={"f": 5.0, "k1": 2.0})
     )
@@ -143,7 +144,10 @@ def test_a_simulation_after_the_references_is_the_simulation_alone(
 
     def run(model: RoadrunnerSBMLModel) -> np.ndarray:
         model.set_selections(["time", "S", "[S]"])
-        result = Simulator(n_workers=1).run(model, simulation)
+        # the trace the references could leave is the state of the instance of
+        # roadrunner, so the model of roadrunner is the one which is simulated
+        # and a simulator of another engine would load one of its own (#607)
+        result = roadrunner_simulator(n_workers=1).run(model, simulation)
         return np.stack([np.asarray(result[k].values) for k in ("S", "[S]")])
 
     model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_THE_REST))

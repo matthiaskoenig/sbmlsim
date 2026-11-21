@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import methods
 from sbmlsim.fit.derived import HookSummary
 from sbmlsim.fit.fisher import DEFAULT_STEP, FisherInformation
@@ -166,7 +167,14 @@ def test_text_follows_the_settings(fitted: Fitted) -> None:
     assert "seed 1234" in html
 
 
-def test_only_what_the_fit_used(fitted: Fitted) -> None:
+def test_only_what_the_fit_used(
+    fitted: Fitted, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    problem, _ = fitted
+    # the variable step size is a setting of libRoadRunner, which the text
+    # names only for a problem of that engine; the problem is the one of the
+    # session, so monkeypatch puts its engine back
+    monkeypatch.setattr(problem, "engine", Engine.ROADRUNNER)
     html = _html(_section(fitted, FitSettings()))
     assert "standard least squares problem" in html
     assert "coefficient of variation" not in html
@@ -300,7 +308,15 @@ def test_provenance(fitted: Fitted) -> None:
 
 
 def test_without_result(fitted: Fitted) -> None:
+    """A section without a result says so and still names the simulator.
+
+    The fit of the fixture runs on `sbmlsim.engine.DEFAULT_ENGINE`, the engine
+    core, which the methods cite with its CVODE where a fit of roadrunner
+    cites libRoadRunner, see
+    `tests.fit.test_evaluation_engines.test_the_methods_name_the_engine`.
+    """
     problem, _ = fitted
+    assert problem.engine is DEFAULT_ENGINE
     section = methods_section(
         problem=problem,
         settings=FitSettings(),
@@ -311,7 +327,7 @@ def test_without_result(fitted: Fitted) -> None:
     )
     html = _html(section)
     assert "was not recorded" in html
-    assert "libRoadRunner" in html
+    assert "sbmlsim-core" in html
 
 
 def test_differential_evolution(fitted: Fitted) -> None:

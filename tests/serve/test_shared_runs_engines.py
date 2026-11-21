@@ -6,6 +6,8 @@ which shares the simulation (`sbmlsim.serve.runner`). The tests compare every
 answer with the one of a runner which shares nothing (`max_run_bytes=0`), bitwise,
 on the page `patient` of the HCTZ demo, whose two panels share a simulation,
 and on a page whose two panels do not, and count the runs of the simulator.
+The project of the registry runs on the default engine of the package, the
+engine core, which shares its runs as roadrunner does (`SHARED_ENGINES`, #607).
 The name ends in `_engines` so that the job `amici engine` of the continuous
 integration runs the case of AMICI, which runs alone and shares nothing.
 """
@@ -52,6 +54,11 @@ from tests.engines import OTHER_ENGINES, require
 
 #: the seconds a wait which must succeed gives up after, i.e. a failed test
 TIMEOUT = 60.0
+#: the engines of `OTHER_ENGINES` which share no run and run a panel alone
+#: with the curves of that panel, i.e. the ones outside `SHARED_ENGINES`
+ALONE_ENGINES: list[Engine] = [
+    engine for engine in OTHER_ENGINES if engine not in SHARED_ENGINES
+]
 #: the states of the page `patient` the shell asks for: the default, gridded
 #: over the creatinine clearance, and the patient of a severe impairment,
 #: gridded over the dose, and a point of a moderate one
@@ -144,11 +151,21 @@ SHARED_PROJECT: Project = PROJECT.replace(
 )
 
 
-@pytest.fixture(scope="module")
-def registry() -> ModelRegistry:
-    return ModelRegistry(
-        {"hctz": ModelEntry(id="hctz", project=SHARED_PROJECT, title="HCTZ")}
+@pytest.fixture(scope="module", params=sorted(SHARED_ENGINES), ids=lambda e: e.value)
+def registry(request: pytest.FixtureRequest) -> ModelRegistry:
+    """The demo on every engine which shares a run (`SHARED_ENGINES`).
+
+    Sharing is a claim about an engine, that its integrator takes its steps
+    whatever a scan selects, so every test of it runs on each of the engines
+    which make that claim and not only on the default engine (#607).
+    """
+    engine: Engine = request.param
+    if engine is not Engine.ROADRUNNER:
+        require(engine)
+    project = SHARED_PROJECT.replace(
+        simulator=SHARED_PROJECT.simulator.model_copy(update={"engine": engine})
     )
+    return ModelRegistry({"hctz": ModelEntry(id="hctz", project=project, title="HCTZ")})
 
 
 @pytest.fixture(scope="module")
@@ -369,13 +386,13 @@ def test_a_run_is_kept_by_its_last_use(
     assert len(runs) == 4
 
 
-def test_only_roadrunner_shares_a_run() -> None:
+def test_the_engines_which_share_a_run() -> None:
     """A run is shared only where a curve does not change with the selections."""
-    assert frozenset({Engine.ROADRUNNER}) == SHARED_ENGINES
-    assert not SHARED_ENGINES.intersection(OTHER_ENGINES)
+    assert frozenset({Engine.ROADRUNNER, Engine.CORE}) == SHARED_ENGINES
+    assert ALONE_ENGINES == [Engine.COPASI, Engine.AMICI]
 
 
-@pytest.mark.parametrize("engine", OTHER_ENGINES, ids=lambda one: one.value)
+@pytest.mark.parametrize("engine", ALONE_ENGINES, ids=lambda one: one.value)
 def test_a_panel_of_another_engine_runs_alone(
     engine: Engine, runs: list[list[str]]
 ) -> None:

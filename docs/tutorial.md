@@ -55,7 +55,7 @@ print(f"peak: {res.q['[Cve_hctz]'].max().to('µM'):~.3g}")
 ```
 
 ```text title="Output"
-ScanResult(_point: 840; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
+ScanResult(_point: 841; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
 peak: 0.452 μM
 ```
 
@@ -99,7 +99,7 @@ for key, unit in units.items():
 pk.cmax         134.6 ng / ml
 pk.tmax         2.078 h
 pk.auc_inf_obs  1253 h * ng / ml
-pk.thalf        6.834 h
+pk.thalf        6.837 h
 ```
 
 `Mr_hctz` is the molar mass of HCTZ, so `cp` is the mass concentration. The PK parameters come in the units of their timecourse and of the model, e.g. the peak time `tmax` in minutes, and `.to(...)` gives them in the units of a study.
@@ -161,13 +161,13 @@ print(res["pk.cmax"].round(1).to_pandas())
 ```
 
 ```text title="Output"
-ScanResult(dose: 4, renal: 3, _point: 957; cp, pk.cmax, pk.tmax, pk.cmin, pk.tmin, pk.clast, pk.clast_pred, pk.tlast, ... (45 variables))
+ScanResult(dose: 4, renal: 3, _point: 961; cp, pk.cmax, pk.tmax, pk.cmin, pk.tmin, pk.clast, pk.clast_pred, pk.tlast, ... (45 variables))
 renal    normal   mild  severe
 dose
 12.5 mg    67.3   87.1   104.5
 25 mg     134.6  174.1   208.9
 50 mg     269.2  348.2   417.9
-100 mg    538.4  696.5   835.8
+100 mg    538.3  696.5   835.8
 ```
 
 The values of the `dose` dimension replace the 25 mg of the `Change`. The peak concentration in ng/ml doubles with the dose, and it rises as the kidney function drops. Every simulation keeps its own time points, so `time` is a variable over `_point` and not one shared axis. `sel` selects points by their labels, here the curves of normal kidney function:
@@ -203,7 +203,7 @@ print(local.index("normalized").to_pandas().round(2))
 ```text title="Output"
 observable      pk.cmax  pk.auc_inf_obs
 parameter
-Ka_dis_hctz        0.62            0.01
+Ka_dis_hctz        0.62            0.00
 GU__F_hctz_abs     1.00            1.00
 KI__HCTZEX_k      -0.42           -0.84
 Kp_hctz           -0.45            0.00
@@ -315,10 +315,10 @@ KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                5
 workers             1 (serial)
 converged           5/5 runs
-best cost           425.867
-optimizer time      0.1 s
+best cost           425.864
+optimizer time      0.3 s
 Ka_dis_hctz   0.297 / h
-KI__HCTZEX_k  0.00511 / ml
+KI__HCTZEX_k  0.00512 / ml
 ```
 
 To compare the fitted model with the data, set the fitted values before the start of the simulation. The data become quantities as well, so they share the axes with the simulation:
@@ -395,8 +395,8 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 
 ```text title="Output"
    scenario      mean       sd    q0.05     q0.95
-0   healthy   66253.0  26028.0  33722.0  114601.0
-1  impaired  193090.0  84096.0  90798.0  350928.0
+0   healthy   66249.0  26027.0  33720.0  114594.0
+1  impaired  193077.0  84090.0  90795.0  350905.0
        variable  index  correlated
 0            BW   0.54       False
 1  KI__HCTZEX_k   0.36       False

@@ -44,6 +44,7 @@ from tests.simulator.models import (
     INDIRECT_VOLUME,
     PROBE,
     TOLERANCE_PROBE,
+    roadrunner_simulator,
     sbml,
 )
 
@@ -210,7 +211,7 @@ def test_a_timecourse_matches_roadrunner(probe_sbml: str, model_id: str) -> None
     model = probe_sbml if model_id == "probe" else HCTZ_SBML
     simulation = TIMECOURSES[model_id]
     core = Simulator(engine="core", **TIGHT).simulate(model, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model, simulation)
     _compare(core, roadrunner)
 
 
@@ -236,7 +237,7 @@ def test_the_changes_of_a_plan_match_roadrunner(
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     _compare(core, roadrunner)
 
 
@@ -273,7 +274,7 @@ def test_a_steady_state_matches_roadrunner(
         times=np.linspace(0, 5, 11).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     _compare(core, roadrunner)
 
 
@@ -364,7 +365,7 @@ def test_the_pre_initialization_matches_roadrunner(
     """The values before the initialization are set and the initial assignments see them."""
     simulation = Simulation(end=10, preinit_changes={"f": 3.0, "a0": 2.0}, steps=10)
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     # `pinit` follows `f` by an initial assignment and `X` follows `pinit`
     assert core["X"][0] == pytest.approx(18.0)
     _compare(core, roadrunner)
@@ -411,7 +412,7 @@ def test_a_relative_change_matches_roadrunner() -> None:
         times=np.linspace(0, 30, 31).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     assert core.columns == roadrunner.columns
     times = core.values[:, 0]
     assert core["p"][times == 5.0].tolist() == [0.0]
@@ -431,7 +432,7 @@ def test_a_formula_at_a_change_reads_another_parameter() -> None:
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     assert core["p"][core.values[:, 0] == 15.0].tolist() == [7.0]
     _compare(core, roadrunner)
 
@@ -445,7 +446,7 @@ def test_a_formula_at_a_change_at_the_start_reads_its_target() -> None:
         times=np.linspace(0, 10, 11).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     # the values of a change are evaluated before any of them is set, so `p`
     # reads `q` as it is after the initialization, 3
     assert core["q"][0] == 5.0
@@ -472,7 +473,7 @@ def test_a_formula_at_a_change_reads_a_species(
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     at_five = core.values[:, 0] == 5.0
     read = core[symbol][at_five][0]
     other = core["[A]" if symbol == "A" else "A"][at_five][0]
@@ -497,7 +498,7 @@ def test_a_repeated_dose_of_a_dose_state_matches_roadrunner() -> None:
         times=np.linspace(0, 48, 49).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     times = core.values[:, 0]
     # the first dose is the whole state, the second one adds to what is left
     assert core["PODOSE_ra"][times == 0.0][-1] == 2.0
@@ -522,7 +523,7 @@ def test_ten_relative_doses_match_roadrunner() -> None:
         times=np.linspace(0, 240, 121).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     times = core.values[:, 0]
     # the doses accumulate towards the steady state of the protocol
     first = core["PODOSE_ra"][times == 24.0]
@@ -552,7 +553,7 @@ def test_the_fold_of_a_state_the_executor_cannot_set_matches_roadrunner(
         times=np.linspace(0, 72, 37).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     rest = core["PODOSE_ra"][core.values[:, 0] == 48.0]
     assert rest[1] == pytest.approx(rest[0] + 2.0)
     _compare(core, roadrunner)
@@ -574,7 +575,7 @@ def test_a_relative_change_on_the_steps_of_the_integrator_matches_roadrunner() -
     # of the integrator and no grid of times
     assert request_of(plan, model, ["time", "p"])["output"] == INTEGRATOR_STEPS
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     times = core.values[:, 0]
     assert core["p"][times == 10.0].tolist() == [0.0, 2.0]
     assert core["p"][times == 20.0].tolist() == [2.0, 4.0]
@@ -607,7 +608,7 @@ def test_a_change_which_reads_the_state_of_a_model_with_an_event_is_refused() ->
     assert "5.0" in message
     assert "after the events" in message
     # roadrunner reads the state before the event of the time fires
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     assert roadrunner["p"][roadrunner.values[:, 0] == 5.0][-1] < 1.0
 
 
@@ -620,7 +621,7 @@ def test_a_change_of_numbers_runs_on_a_model_with_an_event() -> None:
         times=[0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 9.0, 10.0],
     )
     core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
     times = core.values[:, 0]
     assert core["p"][-1] == 1.0
     # the event of the time fired at 5, which added 10 to `x`
@@ -645,7 +646,7 @@ def test_a_relative_change_after_a_presimulation_matches_roadrunner(
         times=np.linspace(0, 10, 11).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     times = core.values[:, 0]
     assert core["k1"][times == 0.0][-1] == pytest.approx(0.9)
     assert core["k1"][times == 5.0][-1] == pytest.approx(1.0)
@@ -695,7 +696,7 @@ def test_a_formula_of_the_time_at_a_change_is_folded(
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert core["X"][core.values[:, 0] == 5.0][-1] == 10.0
     _compare(core, roadrunner)
 
@@ -715,7 +716,7 @@ def test_a_pre_initialization_formula_is_folded_against_the_model_as_loaded(
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert core["k1"][0] == 3.0
     _compare(core, roadrunner)
 
@@ -730,7 +731,7 @@ def test_a_pre_initialization_formula_of_the_values_it_sets_is_folded(
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert core["k1"][0] == 0.1 * 3.0
     _compare(core, roadrunner)
 
@@ -750,7 +751,7 @@ def test_a_formula_of_a_steady_state_reads_the_whole_pre_initialization(
         times=np.linspace(0, 5, 11).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert core["k1"][0] == 0.1 * 2.0
     _compare(core, roadrunner)
 
@@ -772,22 +773,44 @@ def test_a_pre_initialization_formula_of_a_value_which_is_not_set_is_refused(
     with pytest.raises(UnsupportedModelError, match="formula") as failure:
         Simulator(engine="core").simulate(model_core, simulation)
     assert "'kk'" in str(failure.value)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert roadrunner["k1"][0] == 0.1 * 9.0
     assert roadrunner["k1"][0] != 0.1 * 6.0
 
 
 @pytest.mark.parametrize("target", ["C", "X"], ids=["a compartment", "a species"])
-def test_a_pre_initialization_formula_of_a_compartment_or_a_species_is_refused(
-    model_core: CoreSBMLModel, target: str
+def test_a_pre_initialization_formula_of_a_compartment_or_a_species_is_folded(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, target: str
 ) -> None:
-    """Only a formula of a parameter is folded, see the module of the executor."""
+    """A formula of any target is folded, not only one of a parameter (#607).
+
+    The fold gives the number the formula has, and the engine applies that
+    number to the target with the bookkeeping of the volumes and the amounts
+    of its initialization, exactly as it applies a number the
+    pre-initialization states for the same target, so the answer is
+    roadrunner's. A PEtab v2 condition which estimates a concentration needs
+    it.
+    """
     simulation = Simulation(
         end=10, preinit_changes={target: "2 * f"}, times=[0.0, 10.0]
     )
-    with pytest.raises(UnsupportedModelError, match="formula") as failure:
-        Simulator(engine="core").simulate(model_core, simulation)
-    assert f"'{target}'" in str(failure.value)
+
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
+    for column in (target, "A", "X", "C"):
+        assert core[column] == pytest.approx(roadrunner[column], rel=1e-6), column
+    # the number of the formula reached the target and the model as loaded has
+    # another one, so the fold is what the test sees
+    plain = Simulation(end=10, preinit_changes={target: 2 * 2.0}, times=[0.0, 10.0])
+    assert core[target][0] == pytest.approx(
+        roadrunner_simulator(**TIGHT).simulate(model_rr, plain)[target][0], rel=1e-12
+    )
+    assert core[target][0] != pytest.approx(
+        roadrunner_simulator(**TIGHT).simulate(
+            model_rr, Simulation(end=10, times=[0.0, 10.0])
+        )[target][0]
+    )
 
 
 def test_a_steady_state_after_the_end_is_refused(
@@ -803,7 +826,7 @@ def test_a_steady_state_after_the_end_is_refused(
     simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
     with pytest.raises(UnsupportedModelError, match="steady state after the end"):
         Simulator(engine="core").simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert roadrunner.values[-1, 0] == float("inf")
 
 
@@ -824,7 +847,7 @@ def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_l
         times=np.linspace(0, 20, 21).tolist(),
     )
     core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
     assert core["k1"][0] == 3.0 * 2.0
     assert core["k2"][0] == 2.0 * 0.8
     _compare(core, roadrunner)
@@ -903,7 +926,7 @@ def test_a_pre_initialization_of_a_changed_volume_is_the_one_of_roadrunner(
     for values in _orders(preinit):
         simulation = Simulation(end=10, preinit_changes=values, times=[0.0, 10.0])
         core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
-        roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+        roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
         _compare(core, roadrunner)
 
 
@@ -922,7 +945,7 @@ def test_a_change_of_a_species_and_its_compartment_is_simultaneous(
             end=10, changes=[Change(5, values)], times=[0.0, 5.0, 10.0]
         )
         core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
-        roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+        roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
         _compare(core, roadrunner)
 
 

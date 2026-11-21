@@ -24,6 +24,7 @@ import numpy as np
 
 from sbmlsim import cgroup, parallel
 from sbmlsim.comparison.diff import within_tolerance
+from sbmlsim.engine import Engine
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Simulation, SteadyState
@@ -441,6 +442,9 @@ def run_case(case: SemanticCase) -> CaseResult:
 
     simulator = Simulator(
         n_workers=1,
+        # the cases answer what libroadrunner supports, so they name the
+        # engine and do not follow the default engine of the package
+        engine=Engine.ROADRUNNER,
         absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
         relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
         variable_step_size=False,

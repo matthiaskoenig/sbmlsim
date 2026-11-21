@@ -22,6 +22,7 @@ from tests.simulator.models import (
     doubled,
     doubled_c,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
     sbml_pk,
 )
@@ -31,13 +32,13 @@ SCALAR, TIMECOURSE = ObservableKind.SCALAR, ObservableKind.TIMECOURSE
 
 @pytest.fixture(scope="module")
 def pk_model() -> RoadrunnerSBMLModel:
-    return roadrunner_model(Simulator().load(sbml_pk()))
+    return roadrunner_model(roadrunner_simulator().load(sbml_pk()))
 
 
 @pytest.fixture(scope="module")
 def plan(pk_model: RoadrunnerSBMLModel) -> Plan:
     simulation = Simulation(end=48, changes=[Change(0, {"PODOSE": Q(100, "mg")})])
-    return Simulator().compile(pk_model, simulation)
+    return roadrunner_simulator().compile(pk_model, simulation)
 
 
 def _equal(unit: str, expected: str) -> bool:

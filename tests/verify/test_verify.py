@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure
 from sbmlsim.project import FigureOutputs
@@ -503,7 +503,8 @@ def test_a_dump_simulates_with_the_settings_of_the_project(tmp_path: Path) -> No
     out = tmp_path / "dump.pkl"
     assert verify(dump_args(out, "ToyDecay")) == 0
     simulator = load(str(out))["simulator"]
-    assert simulator["engine"] == "roadrunner"
+    # the project names no engine, so it takes the default of the package
+    assert simulator["engine"] == DEFAULT_ENGINE.value == "core"
     # the toy project simulates with the tolerances of its own
     assert simulator["absolute_tolerance"] == "1e-10"
     assert simulator["relative_tolerance"] == "1e-10"
@@ -546,7 +547,7 @@ def test_a_compare_names_the_engines_and_the_settings_which_differ(
     verify(["compare", str(old), str(new)])
 
     out = capsys.readouterr().out
-    assert "engine: old roadrunner, new roadrunner" in out
+    assert "engine: old core, new core" in out
     assert "relative_tolerance: old 1e-10, new 1e-08" in out
     # a setting which both dumps share is no line of the compare
     assert "absolute_tolerance" not in out
@@ -569,7 +570,7 @@ def test_a_compare_of_a_dump_without_a_simulator(
     verify(["compare", str(old), str(new)])
 
     out = capsys.readouterr().out
-    assert "engine: old unknown, new roadrunner" in out
+    assert "engine: old unknown, new core" in out
     assert "relative_tolerance: old unknown, new 1e-10" in out
 
 

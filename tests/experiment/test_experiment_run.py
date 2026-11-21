@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from sbmlsim.data import Data, DataSet, to_quantity
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
@@ -157,7 +158,7 @@ def _runner_of(*classes: type[SimulationExperiment]) -> ExperimentRunner:
     """Get a runner of several experiment classes."""
     return ExperimentRunner(
         experiment_classes=list(classes),
-        simulator=Simulator(),
+        simulator=Simulator(engine=Engine.ROADRUNNER),
         base_path=Path("."),
         data_path=Path("."),
         on_error="raise",

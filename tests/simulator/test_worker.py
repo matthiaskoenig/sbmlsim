@@ -17,7 +17,6 @@ from sbmlsim.model import RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import Custom, Formula
-from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.observables import compile_observables, identity_graph
 from sbmlsim.simulator.plan import Plan, compile_simulation
@@ -41,6 +40,7 @@ from tests.simulator.models import (
     BLOWUP,
     fails_for_large_k1,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
     sbml_pk,
 )
@@ -553,7 +553,8 @@ def _large_cmax(time: np.ndarray, values: dict[str, Any]) -> float:
 
 
 def _pk_points(doses: list[float]) -> tuple[RoadrunnerSBMLModel, list[Plan], list[Any]]:
-    simulator = Simulator()
+    # the solutions are the ones of `executor.execute`, roadrunner's
+    simulator = roadrunner_simulator()
     model = roadrunner_model(simulator.load(sbml_pk()))
     simulation = Simulation(end=24, steps=48, changes=[Change(0, {"PODOSE": 0.0})])
     plan = simulator.compile(model, simulation)

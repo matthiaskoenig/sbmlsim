@@ -7,6 +7,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.optimization import (
     FitTimeout,
@@ -64,7 +65,12 @@ def test_a_failing_run_keeps_the_other_runs(
 def test_timeout_keeps_what_a_run_reached(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """A run which is out of time contributes the best point it found."""
+    """A run which is out of time contributes the best point it found.
+
+    `FitTimeout` is raised by the objective in python, the budget of a run on
+    the engine core is one of its own, so the test names roadrunner.
+    """
+    op_hctz_pk.engine = Engine.ROADRUNNER
     opt_result = run_optimization(
         problem=op_hctz_pk,
         settings=fit_settings,
@@ -79,6 +85,40 @@ def test_timeout_keeps_what_a_run_reached(
     assert not any(fit.success for fit in opt_result.fits)
     for fit in opt_result.fits:
         assert "FitTimeout" in fit.message
+        # the parameters it reached, not nothing
+        assert fit.x is not None
+        assert np.all(np.isfinite(fit.x))
+
+
+def test_a_run_on_the_engine_which_is_out_of_time_keeps_what_it_reached(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The core twin of `test_timeout_keeps_what_a_run_reached` (#607).
+
+    A fit without a gap of `sbmlsim.fit.fit_core` runs its optimizer in the
+    engine, which reports a budget of its own (`MaxTime`) instead of the
+    `FitTimeout` the objective in python raises, and the engine core is the
+    default engine of every fit, so the path has a test of its own: a run
+    which is out of its budget is no success and still contributes the finite
+    point it reached.
+    """
+    assert op_hctz_pk.engine is DEFAULT_ENGINE
+
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        n_cores=1,
+        serial=True,
+        seed=1234,
+        timeout=1e-9,
+        show_progress=False,
+    )
+
+    assert opt_result.size == 2
+    assert not any(fit.success for fit in opt_result.fits)
+    for fit in opt_result.fits:
+        assert fit.message, "a run which stopped says why"
         # the parameters it reached, not nothing
         assert fit.x is not None
         assert np.all(np.isfinite(fit.x))

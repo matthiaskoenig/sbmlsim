@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
@@ -315,13 +316,25 @@ def test_the_start_values_are_the_values_of_the_model_as_loaded(
     np.testing.assert_array_equal(problem.xmodel, [TRUE_V])
 
 
-def test_the_start_values_are_read_from_the_model_as_loaded(
-    scalar_problem: OptimizationProblem,
-) -> None:
-    """A simulation which left the model pre-initialized does not change `xmodel` (#315)."""
-    problem = scalar_problem
+def test_the_start_values_are_read_from_the_model_as_loaded(tmp_path: Path) -> None:
+    """A simulation which left the model pre-initialized does not change `xmodel` (#315).
+
+    The problem is one of roadrunner: the state the test is about is the one
+    of an instance of roadrunner, which a simulation of it leaves
+    pre-initialized, while a model of the engine core is stateless and holds
+    nothing of the simulations which ran.
+    """
+    problem = OptimizationProblem(
+        "lifecycle_rr",
+        [FitMappingCollection(experiment=ScalarStudy, mappings=["fm_cmax"])],
+        [FitParameter("V", 5.0, 1.0, 100.0, unit="l")],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.ROADRUNNER,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
     model = problem.models[0]
-    Simulator(n_workers=1).run(
+    Simulator(n_workers=1, engine=Engine.ROADRUNNER).run(
         model, Simulation(end=1, steps=2, preinit_changes={"V": 3 * TRUE_V})
     )
     assert model.r_loaded["V"] == 3 * TRUE_V

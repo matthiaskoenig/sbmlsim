@@ -8,9 +8,8 @@ import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Change, Simulation
-from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.changes import MAX_EXECUTIONS_PER_EVENT
-from tests.simulator.models import sbml
+from tests.simulator.models import roadrunner_simulator, sbml
 
 
 def _document(
@@ -25,10 +24,13 @@ def _document(
 
 
 def _run(doc: libsbml.SBMLDocument, selection: str) -> list[float]:
+    # the events a change fires are the executor's, `sbmlsim.simulator.changes`,
+    # whose warnings the tests of this module read; the engine core fires them
+    # inside the engine
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", selection]
     )
-    result = Simulator(n_workers=1).simulate(
+    result = roadrunner_simulator(n_workers=1).simulate(
         model,
         Simulation(end=2, changes=[Change(1, {"q": 1})], times=[0, 1, 2]),
     )
@@ -172,7 +174,7 @@ def test_a_change_fires_an_event_with_numbers_with_units() -> None:
         source=libsbml.writeSBMLToString(doc),
         selections=["time", "necrosis", "alt", "alt_ext"],
     )
-    result = Simulator(n_workers=1).simulate(
+    result = roadrunner_simulator(n_workers=1).simulate(
         model,
         Simulation(end=2, changes=[Change(1, {"threshold": 1000})], times=[0, 1, 2]),
     )
@@ -194,7 +196,7 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", "X"]
     )
-    simulator = Simulator(n_workers=1)
+    simulator = roadrunner_simulator(n_workers=1)
     simulation = Simulation(
         end=3, changes=[Change(1, {"q": 1}), Change(2, {"q": 2})], times=[0, 1, 2, 3]
     )
@@ -212,7 +214,7 @@ def _fired(doc: libsbml.SBMLDocument, selections: list[str]) -> dict[str, float]
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", *selections]
     )
-    result = Simulator(n_workers=1).simulate(
+    result = roadrunner_simulator(n_workers=1).simulate(
         model, Simulation(end=2, changes=[Change(1, {"q": 5})], times=[0, 1, 2])
     )
     assert result["time"].tolist() == [0, 1, 1, 2]

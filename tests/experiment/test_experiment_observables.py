@@ -8,6 +8,7 @@ import pytest
 
 from sbmlsim import Q
 from sbmlsim.data import Data
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
@@ -62,11 +63,21 @@ class PKExperiment(SimulationExperiment):
         }
 
 
-def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
-    # the definition of the experiment is tested, its errors are raised
+def _runner(
+    experiment_class: type[SimulationExperiment], engine: Engine | None = None
+) -> ExperimentRunner:
+    """Get a runner of one experiment class.
+
+    Args:
+        experiment_class: the class, whose definition is tested, so its errors
+            are raised.
+        engine: the engine of its simulator, the default engine without. A
+            test of a selection of roadrunner, e.g. the rate of change `C'`,
+            names roadrunner.
+    """
     return ExperimentRunner(
         experiment_classes=[experiment_class],
-        simulator=Simulator(),
+        simulator=Simulator() if engine is None else Simulator(engine=engine),
         base_path=Path("."),
         data_path=Path("."),
         on_error="raise",

@@ -19,7 +19,7 @@ from sbmlsim import cgroup, parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
-from sbmlsim.simulator import IntegratorSettings, ScanError, Simulator, shared
+from sbmlsim.simulator import IntegratorSettings, ScanError, shared
 from sbmlsim.simulator.shared import SharedArray
 from sbmlsim.simulator.worker import ModelSpec, run_chunk_in_worker
 from tests.simulator.models import (
@@ -29,6 +29,7 @@ from tests.simulator.models import (
     VOLUME,
     VOLUME_OF_A_RULE,
     roadrunner_model,
+    roadrunner_simulator,
     sbml,
 )
 
@@ -120,12 +121,12 @@ def test_the_result_does_not_depend_on_the_workers(
     n_workers: int, points: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Chunks of one point and one chunk of every point give the serial result."""
-    serial = Simulator(n_workers=1).run(_model(), _scan())
+    serial = roadrunner_simulator(n_workers=1).run(_model(), _scan())
     monkeypatch.setattr(
         simulator_module, "_chunk_size", lambda n, workers, most, batched=False: points
     )
     sizes = _chunk_sizes(monkeypatch)
-    pooled = Simulator(n_workers=n_workers).run(_model(), _scan())
+    pooled = roadrunner_simulator(n_workers=n_workers).run(_model(), _scan())
     assert sizes == [[points] * (12 // points)]
     assert _pools() == ([n_workers] if n_workers > 1 else [])
     xr.testing.assert_identical(pooled.ds, serial.ds)
@@ -140,10 +141,10 @@ def test_serial_runs_on_one_model_give_the_result_of_the_pool() -> None:
         [Dimension("scale", values={"f": [3.0, 100.0]})],
     )
     settings: dict[str, Any] = {"absolute_tolerance": 1e-6, "relative_tolerance": 1e-6}
-    serial = Simulator(n_workers=1, **settings)
+    serial = roadrunner_simulator(n_workers=1, **settings)
     first = serial.run(model, scan)
     second = serial.run(model, scan)
-    pooled = Simulator(n_workers=2, **settings).run(model, scan)
+    pooled = roadrunner_simulator(n_workers=2, **settings).run(model, scan)
     assert _pools() == [2]
     xr.testing.assert_identical(second.ds, first.ds)
     xr.testing.assert_identical(pooled.ds, first.ds)
@@ -162,7 +163,9 @@ def test_chunks_of_several_points_give_every_point_alone() -> None:
         model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_A_RULE))
         model.set_selections(["time", "S"])
         scan = Scan(simulation, [Dimension("bw", values={"BW": body_weights})])
-        return np.asarray(Simulator(n_workers=workers).run(model, scan)["S"].values)
+        return np.asarray(
+            roadrunner_simulator(n_workers=workers).run(model, scan)["S"].values
+        )
 
     pooled = run(values, workers=2)
     assert _pools() == [2]
@@ -181,8 +184,8 @@ def test_a_scan_over_models_in_the_pool(tmp_path: Path) -> None:
             Dimension("d", values={"b0": [1.0, 2.0]}),
         ],
     )
-    serial = Simulator(n_workers=1).run(None, scan)
-    pooled = Simulator(n_workers=2).run(None, scan)
+    serial = roadrunner_simulator(n_workers=1).run(None, scan)
+    pooled = roadrunner_simulator(n_workers=2).run(None, scan)
     assert _pools() == [2]
     xr.testing.assert_identical(pooled.ds, serial.ds)
     # the models differ, the pool did not run one model for both
@@ -202,11 +205,11 @@ def test_a_failed_point_is_flagged_in_the_pool(
         [Dimension("rate", values={"k": [0.1, 2.0, 0.2, 0.3]})],
     )
     try:
-        serial = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
+        serial = roadrunner_simulator(n_workers=1).run(blowup, scan, on_error="flag")
     finally:
         _c_output(capfd)
     caplog.clear()
-    pooled = Simulator(n_workers=2).run(blowup, scan, on_error="flag")
+    pooled = roadrunner_simulator(n_workers=2).run(blowup, scan, on_error="flag")
     assert _pools() == [2]
     assert pooled["status"].values.tolist() == [0, 1, 0, 0]
     assert np.isnan(pooled["S"].values[1]).all()
@@ -227,10 +230,10 @@ def test_a_failed_point_raises_in_the_pool() -> None:
         Simulation(end=1, steps=4), [Dimension("rate", values={"k": [0.1, 2.0]})]
     )
     with pytest.raises(ScanError, match=r"The point rate=1, k=2\.0 of the scan"):
-        Simulator(n_workers=2).run(blowup, scan)
+        roadrunner_simulator(n_workers=2).run(blowup, scan)
     # the pool is fine after a point failed and runs the next scan
     assert 2 in parallel._POOLS
-    res = Simulator(n_workers=2).run(blowup, scan, on_error="flag")
+    res = roadrunner_simulator(n_workers=2).run(blowup, scan, on_error="flag")
     assert res["status"].values.tolist() == [0, 1]
 
 
@@ -244,7 +247,7 @@ def test_the_first_failed_point_raises_in_the_pool(
     scan = Scan(Simulation(end=1, steps=4), [Dimension("rate", values={"k": rates})])
     for _ in range(3):
         with pytest.raises(ScanError, match=r"The point rate=2, k=3\.0 of the scan"):
-            Simulator(n_workers=4).run(blowup, scan)
+            roadrunner_simulator(n_workers=4).run(blowup, scan)
         assert _pools() == [4]
 
 
@@ -256,10 +259,10 @@ def test_the_errors_are_in_the_order_of_the_scan_in_the_pool(
     rates = [0.1, 0.2, 3.0, 0.3, 2.0, 4.0, 0.4, 5.0]
     scan = Scan(Simulation(end=1, steps=4), [Dimension("rate", values={"k": rates})])
     try:
-        serial = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
+        serial = roadrunner_simulator(n_workers=1).run(blowup, scan, on_error="flag")
     finally:
         _c_output(capfd)
-    pooled = Simulator(n_workers=4).run(blowup, scan, on_error="flag")
+    pooled = roadrunner_simulator(n_workers=4).run(blowup, scan, on_error="flag")
     assert _pools() == [4]
     assert pooled["status"].values.tolist() == [0, 0, 1, 0, 1, 1, 0, 1]
     labels = [error.split(",")[0] for error in pooled.ds.attrs["errors"]]
@@ -278,7 +281,7 @@ def test_the_tolerances_reach_the_workers() -> None:
     tolerance = AbsoluteTolerance(
         amount=1e-12, concentration=1e-9, other=1e-8, ids={"A": 1e-14}
     )
-    simulator = Simulator(n_workers=2, absolute_tolerance=tolerance)
+    simulator = roadrunner_simulator(n_workers=2, absolute_tolerance=tolerance)
     model = roadrunner_model(simulator.load(_model()))
     expected = [
         float(v) for v in model.r_loaded.getIntegrator().getAbsoluteToleranceVector()
@@ -297,7 +300,7 @@ def test_every_model_of_a_dimension_gets_the_tolerances(tmp_path: Path) -> None:
     slow = tmp_path / "slow.xml"
     slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")), encoding="utf-8")
     tolerance = AbsoluteTolerance(amount=1e-12, concentration=1e-9, ids={"A": 1e-14})
-    simulator = Simulator(n_workers=2, absolute_tolerance=tolerance)
+    simulator = roadrunner_simulator(n_workers=2, absolute_tolerance=tolerance)
     scan = Scan(
         Simulation(end=1, steps=2),
         [Dimension("model", models={"fast": _model(), "slow": slow})],
@@ -323,8 +326,8 @@ def test_a_kept_pool_runs_other_settings_with_them() -> None:
         {"absolute_tolerance": 1e-4, "relative_tolerance": 1e-4},
     )
     for settings in cases:
-        serial = Simulator(n_workers=1, **settings).run(_model(), _scan())
-        pooled = Simulator(n_workers=2, **settings).run(_model(), _scan())
+        serial = roadrunner_simulator(n_workers=1, **settings).run(_model(), _scan())
+        pooled = roadrunner_simulator(n_workers=2, **settings).run(_model(), _scan())
         assert _pools() == [2]
         xr.testing.assert_identical(pooled.ds, serial.ds)
         results.append(pooled)
@@ -356,12 +359,14 @@ def test_the_settings_of_the_model_reach_the_workers(
         [Dimension("d", values={"k2": [0.1, 0.2, 0.4, 0.8]})],
     )
     try:
-        serial = Simulator(n_workers=1).run(
+        serial = roadrunner_simulator(n_workers=1).run(
             _model_with_steps(how), scan, on_error="flag"
         )
     finally:
         _c_output(capfd)
-    pooled = Simulator(n_workers=2).run(_model_with_steps(how), scan, on_error="flag")
+    pooled = roadrunner_simulator(n_workers=2).run(
+        _model_with_steps(how), scan, on_error="flag"
+    )
     assert _pools() == [2]
     assert serial["status"].values.tolist() == [1, 1, 1, 0]
     xr.testing.assert_identical(pooled.ds, serial.ds)
@@ -369,7 +374,7 @@ def test_the_settings_of_the_model_reach_the_workers(
 
 def test_an_unknown_setting_raises_before_a_pool_starts() -> None:
     with pytest.raises(ValueError, match="no settings"):
-        Simulator(n_workers=2, nope=1.0).run(_model(), _scan())
+        roadrunner_simulator(n_workers=2, nope=1.0).run(_model(), _scan())
     assert parallel._POOLS == {}
 
 
@@ -386,9 +391,9 @@ def test_a_late_change_agrees_in_the_pool_and_does_not_warn(
         [Dimension("d", values={"k2": [0.1, 0.2, 0.4, 0.8]})],
     )
     _c_output(capfd)
-    serial = Simulator(n_workers=1).run(_model(), scan)
+    serial = roadrunner_simulator(n_workers=1).run(_model(), scan)
     assert "t + h = t" not in _c_output(capfd)
-    pooled = Simulator(n_workers=4).run(_model(), scan)
+    pooled = roadrunner_simulator(n_workers=4).run(_model(), scan)
     assert _pools() == [4]
     xr.testing.assert_identical(pooled.ds, serial.ds)
 
@@ -404,16 +409,16 @@ def test_an_interrupted_run_stops_the_pool(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(simulator_module, "wait", interrupt)
     with pytest.raises(KeyboardInterrupt):
-        Simulator(n_workers=2).run(_model(), _scan())
+        roadrunner_simulator(n_workers=2).run(_model(), _scan())
     # the run had a pool, Ctrl-C stopped its workers and dropped it
     executor, processes = started[0]
     assert processes
     assert not any(process.is_alive() for process in processes)
     assert parallel._POOLS == {}
     monkeypatch.undo()
-    serial = Simulator(n_workers=1).run(_model(), _scan())
+    serial = roadrunner_simulator(n_workers=1).run(_model(), _scan())
     xr.testing.assert_identical(
-        Simulator(n_workers=2).run(_model(), _scan()).ds, serial.ds
+        roadrunner_simulator(n_workers=2).run(_model(), _scan()).ds, serial.ds
     )
     # the next run started a new pool
     assert parallel._POOLS[2] is not executor
@@ -424,7 +429,7 @@ def test_none_runs_a_small_scan_serially(monkeypatch: pytest.MonkeyPatch) -> Non
         raise AssertionError("a scan of 12 points started a pool")
 
     monkeypatch.setattr(parallel, "pool", no_pool)
-    res = Simulator().run(_model(), _scan())
+    res = roadrunner_simulator().run(_model(), _scan())
     assert res["[A]"].shape[:2] == (3, 4)
     assert np.isfinite(res["[A]"].values[..., 0]).all()
 
@@ -432,10 +437,10 @@ def test_none_runs_a_small_scan_serially(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_none_runs_a_scan_from_the_threshold_in_the_pool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    serial = Simulator(n_workers=1).run(_model(), _scan())
+    serial = roadrunner_simulator(n_workers=1).run(_model(), _scan())
     monkeypatch.setattr(parallel, "POOL_THRESHOLD", 12)
     monkeypatch.setattr(cgroup, "available_cpus", lambda: 2)
-    pooled = Simulator().run(_model(), _scan())
+    pooled = roadrunner_simulator().run(_model(), _scan())
     assert _pools() == [2]
     xr.testing.assert_identical(pooled.ds, serial.ds)
 
@@ -464,8 +469,9 @@ def main():
     mode, blowup_path = sys.argv[1], sys.argv[2]
     model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
     model.set_selections(["time", "PX"])
-    simulator = Simulator(n_workers=2)
-    expected = Simulator(n_workers=1).run(model, scan(8, 10))
+    # the pool of workers is roadrunner's, the engine core runs on threads
+    simulator = Simulator(engine="roadrunner", n_workers=2)
+    expected = Simulator(engine="roadrunner", n_workers=1).run(model, scan(8, 10))
     simulator.run(model, scan(64, 10), progress=False)
     # a point which fails in a worker
     blowup = RoadrunnerSBMLModel(source=blowup_path)
@@ -601,10 +607,10 @@ def test_a_large_result_arrives_in_shared_memory(
     else:
         # ragged: the parent keeps the chunks until the last one arrived
         scan, grid = Scan(Simulation(end=2, steps=40_000), _scan().dimensions), None
-    serial = Simulator(n_workers=1).run(_model(), scan, time=grid)
+    serial = roadrunner_simulator(n_workers=1).run(_model(), scan, time=grid)
     prefix = _prefixed(monkeypatch)
     names = _received(monkeypatch)
-    pooled = Simulator(n_workers=2).run(_model(), scan, time=grid)
+    pooled = roadrunner_simulator(n_workers=2).run(_model(), scan, time=grid)
     xr.testing.assert_identical(pooled.ds, serial.ds)
     if shared.supported():
         assert names
@@ -615,8 +621,8 @@ def test_a_large_result_arrives_in_shared_memory(
 
 def test_a_small_result_is_pickled(monkeypatch: pytest.MonkeyPatch) -> None:
     names = _received(monkeypatch)
-    serial = Simulator(n_workers=1).run(_model(), _scan())
-    pooled = Simulator(n_workers=2).run(_model(), _scan())
+    serial = roadrunner_simulator(n_workers=1).run(_model(), _scan())
+    pooled = roadrunner_simulator(n_workers=2).run(_model(), _scan())
     xr.testing.assert_identical(pooled.ds, serial.ds)
     assert names == []
 
@@ -627,7 +633,7 @@ def test_a_serial_run_uses_no_shared_memory(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(shared, "share", no_segment)
     monkeypatch.setattr(shared, "run_prefix", no_segment)
-    res = Simulator(n_workers=1).run(_model(), _scan(), time=LARGE_GRID * 2)
+    res = roadrunner_simulator(n_workers=1).run(_model(), _scan(), time=LARGE_GRID * 2)
     assert np.isfinite(res["[A]"].values).all()
 
 
@@ -648,7 +654,7 @@ def test_no_segment_outlives_a_failed_point(monkeypatch: pytest.MonkeyPatch) -> 
     rates = [0.1, 0.2, 3.0, 0.3, 2.0, 4.0, 0.4, 5.0]
     scan = Scan(Simulation(end=1), [Dimension("rate", values={"k": rates})])
     with pytest.raises(ScanError, match=r"The point rate=2, k=3\.0 of the scan"):
-        Simulator(n_workers=2).run(blowup, scan, time=LARGE_GRID)
+        roadrunner_simulator(n_workers=2).run(blowup, scan, time=LARGE_GRID)
     assert names
     assert _segments(prefix) == []
 
@@ -658,7 +664,7 @@ def test_no_segment_outlives_a_dead_worker(monkeypatch: pytest.MonkeyPatch) -> N
     prefix = _prefixed(monkeypatch)
     monkeypatch.setattr(simulator_module, "run_chunk_in_worker", _share_and_die)
     with pytest.raises(RuntimeError, match="A worker of the pool died"):
-        Simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
+        roadrunner_simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
     assert _segments(prefix) == []
 
 
@@ -677,6 +683,6 @@ def test_no_segment_outlives_an_interrupted_run(
 
     monkeypatch.setattr(simulator_module, "wait", interrupt)
     with pytest.raises(KeyboardInterrupt):
-        Simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
+        roadrunner_simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
     assert left[0]
     assert _segments(prefix) == []

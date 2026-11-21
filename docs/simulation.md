@@ -27,7 +27,7 @@ print("time unit of the result:", res.units["time"])
 ```
 
 ```text title="Output"
-ScanResult(_point: 840; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
+ScanResult(_point: 841; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
 time unit of the result: min
 ```
 
@@ -240,10 +240,12 @@ print(res.variables)
 ['[Cve_hctz]', 'Aurine_hctz', 'Ri_hctz']
 ```
 
-The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes. [Engines](#engines) lists the settings the other engines take:
+The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes. [Engines](#engines) lists the settings the other engines take. The settings of this section and the table of the tolerances below are roadrunner's, so the simulator names that engine:
 
 ```python
-simulator = Simulator(absolute_tolerance=1e-10, relative_tolerance=1e-10)
+simulator = Simulator(
+    engine="roadrunner", absolute_tolerance=1e-10, relative_tolerance=1e-10
+)
 simulator.set_integrator_settings(stiff=True)
 ```
 
@@ -289,6 +291,7 @@ scales = typical_scales(
     simulator, HCTZ_SBML, Simulation(time_unit="hr", end=48, changes=[tablet])
 )
 scaled = Simulator(
+    engine="roadrunner",
     absolute_tolerance=AbsoluteTolerance(relative=1e-10, scales=scales),
     relative_tolerance=1e-10,
 )
@@ -337,9 +340,9 @@ res.to_netcdf(Path("hctz.nc"))
 68.65 μmol excreted after 12 hours
               time  [Cve_hctz]  Aurine_hctz  Ri_hctz
 _point
-695     695.657933    0.000128     0.068032      0.0
-696     708.571128    0.000126     0.068365      0.0
-697     720.000000    0.000123     0.068654      0.0
+698     695.657528    0.000128     0.068032      0.0
+699     708.570699    0.000126     0.068365      0.0
+700     720.000000    0.000123     0.068654      0.0
 ```
 
 With the steps of the integrator the table has the index `_point` and the time as a column. `simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of the engine with its column names.

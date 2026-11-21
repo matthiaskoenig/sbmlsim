@@ -158,6 +158,8 @@ def test_a_problem_of_another_engine_is_no_fit_of_the_engine(
     op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
     """Only a problem which simulates in the engine core fits in it."""
+    # a problem of another engine than the core, so there is a gap to name
+    op_hctz_iv.engine = Engine.ROADRUNNER
     op_hctz_iv.initialize(fit_settings)
     assert op_hctz_iv.engine is Engine.ROADRUNNER
 
@@ -747,6 +749,8 @@ def test_a_problem_of_another_engine_has_no_jacobian_of_the_engine(
 ) -> None:
     """A problem of roadrunner is a gap of the jacobian, as it is one of the fit."""
     problem = op_hctz_iv
+    # a problem of another engine than the core, so there is a gap to name
+    problem.engine = Engine.ROADRUNNER
     problem.initialize(fit_settings)
 
     gaps = fit_core.gaps_of_a_jacobian(problem)

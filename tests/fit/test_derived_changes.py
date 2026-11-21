@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from sbmlsim import Q
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitParameter, FitSettings
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.derived import DerivedChanges
@@ -45,6 +46,19 @@ def _problem(
     )
 
 
+def _roadrunner_problem(
+    definition: FitDefinition, parameters: list[FitParameter], **kwargs: object
+) -> OptimizationProblem:
+    """Build that problem on roadrunner, whatever the default engine is.
+
+    A test which reads the values of the instance of roadrunner
+    (`RoadrunnerSBMLModel.r`), which the stateless model of the engine core
+    does not have, names roadrunner here instead of relying on the default
+    engine of the package (#607).
+    """
+    return _problem(definition, parameters, engine=Engine.ROADRUNNER, **kwargs)
+
+
 def test_the_hook_is_the_protocol() -> None:
     """A hybridization is what provides the derived changes."""
     assert isinstance(Scaling(), DerivedChanges)
@@ -63,7 +77,9 @@ def test_an_external_parameter_writes_no_change_and_the_hook_reads_it(
 ) -> None:
     """The prediction with the factor is the prediction with the scaled entity."""
     scaling = Scaling()
-    problem = _problem(definition_hctz_iv, [_factor(2.0)], hybridizations=[scaling])
+    problem = _roadrunner_problem(
+        definition_hctz_iv, [_factor(2.0)], hybridizations=[scaling]
+    )
     problem.initialize(fit_settings)
     assert problem.pids == [FACTOR]
     assert problem.parameter_mapping_initialized.changes_for(0, [1.0]) == {}
@@ -77,7 +93,7 @@ def test_an_external_parameter_writes_no_change_and_the_hook_reads_it(
     changes = _preinit(problem, 0, np.array([2.0]))
     assert changes[TARGET] == pytest.approx(2.0 * nominal)
 
-    plain = _problem(
+    plain = _roadrunner_problem(
         definition_hctz_iv,
         [FitParameter(TARGET, 2.0 * nominal, 1e-10, 1.0, unit="1/ml")],
     )
@@ -95,7 +111,7 @@ def test_the_hook_reads_the_changes_of_the_fit(
     definition_hctz_iv: FitDefinition, fit_settings: FitSettings
 ) -> None:
     """A value of the fit has precedence over the value of the model."""
-    problem = _problem(
+    problem = _roadrunner_problem(
         definition_hctz_iv,
         [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
         hybridizations=[Scaling(target="Ka_dis_hctz", factor=TARGET)],
@@ -124,7 +140,7 @@ def test_a_parameter_in_a_unit_id_of_the_model_reaches_the_hook(
     `per_min_l` of the HCTZ model is `1/(l * min)`, so `per_min_l*min` is `1/l`
     and the value reaches the hook in the `1/ml` of the model.
     """
-    problem = _problem(
+    problem = _roadrunner_problem(
         definition_hctz_iv,
         [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="per_min_l*min")],
         hybridizations=[Scaling(target="Ka_dis_hctz", factor=TARGET)],
@@ -309,7 +325,7 @@ def test_a_hook_reads_its_constants(
     definition_hctz_iv: FitDefinition, fit_settings: FitSettings
 ) -> None:
     """A symbol which is neither an entity nor a parameter is a constant."""
-    problem = _problem(
+    problem = _roadrunner_problem(
         definition_hctz_iv,
         [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
         hybridizations=[
@@ -327,7 +343,7 @@ def test_a_change_of_the_simulation_has_precedence_over_the_model(
     definition_hctz_iv: FitDefinition, fit_settings: FitSettings
 ) -> None:
     """The hook reads the dose of the simulation, not the dose of the model."""
-    problem = _problem(
+    problem = _roadrunner_problem(
         definition_hctz_iv,
         [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="1/ml")],
         hybridizations=[Scaling(target="Ka_dis_hctz", factor="IVDOSE_hctz")],
@@ -480,11 +496,13 @@ def test_the_values_of_the_model_are_the_values_as_loaded() -> None:
     from sbmlsim.fit.derived import model_values
     from sbmlsim.model import RoadrunnerSBMLModel
     from sbmlsim.simulation import Simulation
-    from sbmlsim.simulator import Simulator
-    from tests.simulator.models import sbml
+    from tests.simulator.models import roadrunner_simulator, sbml
 
     model = RoadrunnerSBMLModel(source=sbml())
-    Simulator(n_workers=1).run(
+    # the values a hook reads are the ones of the instance of roadrunner, so
+    # the simulation before them runs on that model and not on one a simulator
+    # of another engine would load of its own (#607)
+    roadrunner_simulator(n_workers=1).run(
         model, Simulation(end=1, steps=2, preinit_changes={"k1": 2.0, "f": 5.0})
     )
     assert model.r_loaded["k1"] == 2.0

@@ -22,7 +22,7 @@ from sbmlsim.model.model_roadrunner import (
     resolve_jit_optimization,
 )
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import Simulator
+from sbmlsim.simulator import Engine, Simulator
 from sbmlsim.simulator.worker import ModelSpec
 from sbmlsim.task import Task
 from tests.simulator.models import sbml
@@ -133,6 +133,8 @@ def test_a_runner_compiles_its_models_at_its_level(tmp_path: Path) -> None:
         data_path=tmp_path,
         on_error="raise",
         jit_optimization="O1",
+        # the level is the JIT of roadrunner, which the engine core has not
+        simulator=Simulator(n_workers=1, engine=Engine.ROADRUNNER),
     )
     assert runner.jit_optimization is JitOptimization.O1
     models = list(runner.models.values())
