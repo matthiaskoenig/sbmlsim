@@ -564,18 +564,6 @@ class ExperimentRunner:
                 stack.callback(display.stop)
                 for sid in self.failed:
                     display.finished(sid, failed=True)
-            executor = (
-                parallel.start_pool(
-                    workers,
-                    preload=_modules(jobs.values()),
-                    initializer=_set_events if events is not None else None,
-                    initargs=(events,) if events is not None else (),
-                )
-                if workers > 1
-                else None
-            )
-            if executor is not None:
-                stack.callback(parallel.stop, executor)
             stack.enter_context(reporting(listener, shown=display is not None))
             # a reporter of the context, e.g. of the run layer, reports the
             # run; without one the display of the run draws the experiments
@@ -636,14 +624,26 @@ class ExperimentRunner:
                 return result
 
             # the experiments whose scans need the pool of the simulator run
-            # here and before the pool of the others gets its work, so that
-            # the two pools never run at the same time (#554)
+            # here and before the pool of the others starts, so that the two
+            # pools never run at the same time and the imports of the workers
+            # take no core from a scan which runs here (#554)
             for sid in self._order:
                 if sid in spread.in_process and sid not in self.failed:
                     done[sid] = run_one(sid)
-            # the most expensive experiments first, so that none of them
-            # starts last and keeps the others waiting
+            executor = (
+                parallel.start_pool(
+                    workers,
+                    preload=_modules(jobs.values()),
+                    initializer=_set_events if events is not None else None,
+                    initargs=(events,) if events is not None else (),
+                )
+                if workers > 1
+                else None
+            )
             if executor is not None:
+                stack.callback(parallel.stop, executor)
+                # the most expensive experiments first, so that none of them
+                # starts last and keeps the others waiting
                 futures.update(
                     (sid, executor.submit(_run_job, jobs[sid]))
                     for sid in sorted(
