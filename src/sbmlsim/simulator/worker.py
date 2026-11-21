@@ -433,6 +433,13 @@ def _run_chunk_core(
     batch are the ones whose request was built, and `on_error` decides about
     the others.
 
+    The requests of the points are built together, their folds batched over
+    the points of the chunk (`executor_core.requests_of`, #550): a relative
+    protocol costs one segment of a simulation per change and point, which
+    run on the threads of the engine as the points themselves do and not one
+    after the other in this process. Every point folds its own state, so the
+    chunk is the one of the points folded one by one, bitwise.
+
     The model records no pre-initialization here, unlike `executor_core.execute`
     of a single simulation: the engine is stateless and every point of the
     batch carries its own values in its request.
@@ -482,22 +489,24 @@ def _run_chunk_core(
     # the tolerance of every state is computed once for the whole chunk
     settings = model.request_settings()
     failures: list[tuple[int, str, BaseException]] = []
-    plans: list[Plan] = []
+    # a definition which does not fit the plan is no failed point
+    plans: list[Plan] = [chunk.plan_of(k) for k in range(len(chunk.indices))]
     batched: list[int] = []
     requests: list[dict[str, Any]] = []
-    for k in range(len(chunk.indices)):
-        # a definition which does not fit the plan is no failed point
-        plan = chunk.plan_of(k)
-        plans.append(plan)
-        try:
-            requests.append(executor_core.request_of(plan, model, columns, settings))
-        except NotImplementedError:
-            raise
-        except Exception as err:
-            failures.append((k, f"{type(err).__name__}: {err}", err))
-            if chunk.on_error == "raise":
-                break
+    # the requests of the points of the chunk, the k-th segment of the folds
+    # of all of them simulated as one batch (#550)
+    for k, request in enumerate(
+        executor_core.requests_of(
+            [(plan, columns) for plan in plans],
+            model,
+            lambda segments: _batch(model, segments, threads),
+            settings,
+        )
+    ):
+        if isinstance(request, Exception):
+            failures.append((k, f"{type(request).__name__}: {request}", request))
             continue
+        requests.append(request)
         batched.append(k)
     outputs = _batch(model, requests, threads)
     # the requests of the batch are released with it, the engine has read them

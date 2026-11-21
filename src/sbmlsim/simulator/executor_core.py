@@ -30,7 +30,9 @@ scan is flagged and an evaluation of a fit is infinite as with the other
 engines. A scan does not run its points through `execute` but hands the
 requests of a chunk to the engine as one batch, which answers with a
 `PointError` instead of raising (`point_error`, the same mapping of the
-errors), see `sbmlsim.simulator.worker._run_chunk_core`.
+errors), see `sbmlsim.simulator.worker._run_chunk_core`; the folds of the
+changes of those points are batched over the points as well (`requests_of`),
+so an error of a fold is the error of its point and of no other.
 
 The known differences to the executor of roadrunner, the first five of which
 the engine documents:
@@ -104,12 +106,19 @@ the engine documents:
    change asks for the symbols of its formula alone, since no later segment
    resumes from it.
 
-   The segments of the points of a scan are simulated where the requests are
-   built, one after the other in the python process of the run and not on the
-   threads of a batch, so a scan of 20 points of three doses of HCTZ costs
-   171 ms against the 84 ms of the doses as numbers and the 92 ms of
-   roadrunner; folding the k-th change of every point of a chunk as one batch
-   would run them on the threads again and is not done.
+   The folds of the points of a chunk are batched over its points: the k-th
+   segment of every point of the chunk is one batch of the engine
+   (`requests_of`, #550), since the segment of a point depends on the
+   segments of that point alone, so a chunk pays as many rounds of the
+   threads as its longest protocol has changes which read the model and no
+   fold runs in the python process of the run. Measured on the HCTZ model
+   with 200 output times and four threads, against the same scan with the
+   doses as numbers: 20 points of 3 doses cost 120 ms against 109, where the
+   folds one after the other cost 136 ms, 20 points of 10 doses 170 against
+   133 (249 ms), and 100 points of 3 doses 202 against 159 (305 ms). So the
+   fold of a relative protocol costs a third of what it did, near the four
+   threads it now runs on, and the scan of 20 points of three doses is
+   faster than roadrunner's 138 ms.
 
    A formula before the initialization is folded where the executor
    evaluates it without the model: a formula of a parameter whose symbols
@@ -151,7 +160,7 @@ the engine documents:
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from math import isfinite
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Final
@@ -317,17 +326,25 @@ def execute_many(
         of_point: dict[int, TimecourseResult | Exception] = {}
         requests: list[dict[str, Any]] = []
         built: list[tuple[int, Plan, Sequence[str]]] = []
-        for k, (plan, selections) in enumerate(chunk):
-            columns = output_columns(selections)
-            try:
-                requests.append(request_of(plan, model, columns, settings))
-            except NotImplementedError:
-                # a feature the engine does not simulate fails every point
-                raise
-            except Exception as err:  # the point fails alone
-                of_point[k] = err
+        # the requests of the chunk, the folds of its points batched (#550); a
+        # point whose request cannot be built fails alone
+        for k, (request, (plan, selections)) in enumerate(
+            zip(
+                requests_of(
+                    chunk,
+                    model,
+                    lambda segments: _batch(model, segments, threads),
+                    settings,
+                ),
+                chunk,
+                strict=True,
+            )
+        ):
+            if isinstance(request, Exception):
+                of_point[k] = request
                 continue
-            built.append((k, plan, columns))
+            requests.append(request)
+            built.append((k, plan, output_columns(selections)))
         outputs = _batch(model, requests, threads)
         # the requests of the batch are released with it, the engine has read them
         del requests
@@ -408,10 +425,11 @@ def request_of(
     change, so building the request simulates: the executor asks the engine
     for the symbols the formula reads over the segment which ends at the
     change, one request per such change, each resuming from the state of the
-    segment before it, see `_changes` and `_state_at`. A plan whose changes
-    are numbers and formulas of the time, which every plan of
-    `compile_simulation` without a formula of an entity is, simulates nothing
-    here.
+    segment before it, see `_Fold`. The segments of one plan run one after the
+    other here; the points of a chunk fold their k-th segment as one batch,
+    see `requests_of`. A plan whose changes are numbers and formulas of the
+    time, which every plan of `compile_simulation` without a formula of an
+    entity is, simulates nothing here.
 
     Args:
         plan: the plan, compiled against the model.
@@ -436,6 +454,154 @@ def request_of(
         RuntimeError: if the engine fails to simulate such a segment, see
             `_failed`.
     """
+    request = requests_of([(plan, selections)], model, _one_by_one(model), settings)[0]
+    if isinstance(request, Exception):
+        raise request
+    return request
+
+
+def requests_of(
+    points: Sequence[tuple[Plan, Sequence[str]]],
+    model: CoreSBMLModel,
+    simulate: Callable[[list[dict[str, Any]]], Sequence[Any]],
+    settings: dict[str, object] | None = None,
+) -> list[dict[str, Any] | Exception]:
+    """Get the requests of the points of a chunk, their folds batched (#550).
+
+    The plural of `request_of`: the request of every point of a chunk of a
+    scan or of an evaluation of a fit, with the k-th segment of the fold of
+    every point of the chunk simulated as one batch instead of the segments of
+    one point after the other. The k-th segment of a point is independent of
+    the ones of the other points - every point folds its own state, as it does
+    alone - so the folds of a chunk run on the threads of the engine and not
+    in this process one at a time, which is where a relative protocol spends
+    its time: a scan of 20 points of three doses of HCTZ costs 171 ms with the
+    folds of its points one after the other against 84 ms with the doses as
+    numbers (roadrunner: 92 ms).
+
+    The batch of a round is the points which still have a segment to fold, so
+    a chunk pays as many rounds as its longest protocol has changes which read
+    the model, and a point whose changes are numbers is in none of them. The
+    chunk holds the tables of one round, one segment per point of the round,
+    which carry the symbols of the folds and the output times inside the
+    segment and no selection of the result; every one of them is read and
+    released as soon as its round is answered.
+
+    Args:
+        points: the plan of every point and the columns of its output, in
+            their order.
+        model: the model of every point, which gives the settings of the
+            integrator and the values the folds read.
+        simulate: what simulates the segments of a round, the batch of the
+            caller: it answers with the output of every segment in the order
+            of the requests, or with the error of a segment which failed
+            among them (a `PointError` of the engine, or an exception), see
+            `_one_by_one` for the segments of a single plan.
+        settings: the settings of the requests, `model.request_settings()` by
+            default, which computes the absolute tolerance of every state once
+            for every point of the chunk.
+
+    Returns:
+        The request of every point in the order of the points, the exception
+        which failed it instead: a plan the executor refuses, a formula it
+        cannot evaluate or the error of a segment of its fold, which the
+        caller flags as the failure of that point.
+
+    Raises:
+        NotImplementedError: for a plan or a simulation the engine does not
+            support, which fails every point of a chunk alike, see
+            `check_supported` and `point_error`.
+    """
+    request_settings = model.request_settings() if settings is None else settings
+    folds: list[_Fold | Exception] = []
+    for plan, selections in points:
+        try:
+            folds.append(
+                _fold_of(plan, model, output_columns(selections), request_settings)
+            )
+        except NotImplementedError:
+            # a feature the engine does not simulate fails every point
+            raise
+        except Exception as err:  # the point fails alone
+            folds.append(err)
+    while True:
+        segments: list[dict[str, Any]] = []
+        waiting: list[_Fold] = []
+        for fold in folds:
+            if isinstance(fold, Exception):
+                continue
+            segment = fold.step()
+            if segment is not None:
+                segments.append(segment)
+                waiting.append(fold)
+        if not segments:
+            break
+        outputs = list(simulate(segments))
+        del segments
+        for position, fold in enumerate(waiting):
+            output = outputs[position]
+            # the table of a segment is released once its row is read
+            outputs[position] = None
+            fold.take(output)
+    return [fold if isinstance(fold, Exception) else fold.result() for fold in folds]
+
+
+def _one_by_one(
+    model: CoreSBMLModel,
+) -> Callable[[list[dict[str, Any]]], Sequence[Any]]:
+    """Get the `simulate` of a fold which runs its segments one after the other.
+
+    What `request_of` folds a single plan with: the segments of one plan
+    resume from each other, so they are one request after the other anyway
+    and run on an instance of the model, as the simulation of the plan does,
+    and not on the executor of a batch.
+
+    Args:
+        model: the model the segments run on.
+
+    Returns:
+        What simulates the segments of a round, see `requests_of`.
+    """
+    core = import_core()
+
+    def simulate(requests: list[dict[str, Any]]) -> Sequence[Any]:
+        outputs: list[Any] = []
+        for request in requests:
+            try:
+                outputs.append(model.instance().simulate(request))
+            except core.SimulationError as err:
+                failure = _failed(err, model, core)
+                failure.__cause__ = err
+                outputs.append(failure)
+        return outputs
+
+    return simulate
+
+
+def _fold_of(
+    plan: Plan,
+    model: CoreSBMLModel,
+    columns: Sequence[str],
+    settings: dict[str, object],
+) -> _Fold:
+    """Get the fold of the changes of a plan, its request without them.
+
+    Args:
+        plan: the plan, compiled against the model.
+        model: the model.
+        columns: the columns of the result of the point.
+        settings: the settings of the request.
+
+    Returns:
+        The fold, whose request is every field of the contract but the
+        changes.
+
+    Raises:
+        UnsupportedModelError: for a plan the engine does not simulate as
+            roadrunner, see `check_supported`.
+        ValueError: for a formula before the initialization which the
+            executor cannot evaluate, see `_preinit_value`.
+    """
     check_supported(plan, model)
     output: Any = (
         INTEGRATOR_STEPS
@@ -451,13 +617,168 @@ def request_of(
         "preinit": _preinit_values(plan.preinit, plain, model),
         "changes": [],
         "steady_state": _steady_state(plan.steady_state, plain, model),
-        "selections": output_columns(selections),
-        "settings": model.request_settings() if settings is None else settings,
+        "selections": output_columns(columns),
+        "settings": settings,
     }
-    # the changes last: a formula of a change is folded with the state at its
-    # time, which the executor reads with a request of its own, see `_changes`
-    request["changes"] = _changes(plan, model, request)
-    return request
+    return _Fold(plan=plan, model=model, request=request)
+
+
+class _Fold:
+    """The changes of one plan, folded into the numbers of its request.
+
+    A formula at a change is evaluated by the executor of roadrunner with the
+    state of the model at the time of the change (`apply_changes` of
+    `sbmlsim.simulator.changes`), which a request carries no formula of: the
+    executor reads that state as the outputs of the segment which ends at the
+    change, with a request of its own, and sends the number. The changes are
+    folded in their order, the one of their times, so the request of a segment
+    carries the changes before it, already folded, and resumes from the state
+    of the segment before it.
+
+    The fold is a step at a time so that the folds of the points of a chunk
+    run as one batch per step (`requests_of`): `step` gives the request of the
+    next segment, which the caller simulates, `take` folds the change that
+    segment was simulated for, and `result` is the request of the plan once
+    `step` answers with nothing. Every change whose values are numbers or
+    formulas of the time is folded by `step` itself, so a plan without a
+    formula of an entity asks for no segment at all.
+
+    A failure of the fold is the failure of its point alone and is kept
+    (`error`): the plan of another point of the chunk folds whatever happened
+    here. A feature the engine does not support is raised instead, it fails
+    every point of the chunk alike.
+    """
+
+    def __init__(self, plan: Plan, model: CoreSBMLModel, request: dict[str, Any]):
+        """Create the fold of the changes of a plan.
+
+        Args:
+            plan: the plan, whose events are sorted by their time.
+            model: the model, which the engine reads the state of.
+            request: the request which is built, whose fields the request of a
+                segment takes, its changes excluded.
+        """
+        self.plan = plan
+        self.model = model
+        self.request = request
+        #: the symbols of the model every change reads, by the position of
+        #: its event: the state of the model is read only where a formula
+        #: reads it
+        self.reads = [_change_symbols(event) for event in plan.events]
+        #: the targets a segment resumes from, `None` for a model whose state
+        #: the executor cannot hand to the engine, whose segments start at
+        #: `plan.start`
+        self.targets = _state_targets(model)
+        #: the changes which are folded, in their order
+        self.changes: list[dict[str, Any]] = []
+        #: the event which is folded, the one the pending segment ends at
+        self.index = 0
+        #: the time of the last segment which was simulated and the state
+        #: after the change at that time, which the next segment resumes from
+        self.resume: tuple[float, list[list[Any]]] | None = None
+        #: the selections of the pending segment
+        self.columns: list[str] = []
+        #: what failed the point, if anything
+        self.error: Exception | None = None
+
+    def step(self) -> dict[str, Any] | None:
+        """Get the request of the next segment of the fold, or nothing.
+
+        Every change until the next one which reads the model is folded here,
+        a change of numbers and of formulas of the time among them.
+
+        Returns:
+            The request of the segment which ends at the next change which
+            reads the state of the model, `None` if the fold has no such
+            change left or failed.
+
+        Raises:
+            NotImplementedError: for a feature the engine does not support.
+        """
+        if self.error is not None:
+            return None
+        try:
+            return self._segment()
+        except NotImplementedError:
+            raise
+        except Exception as err:
+            self.error = err
+            return None
+
+    def take(self, output: Any) -> None:
+        """Fold the change the segment of `step` was simulated for.
+
+        Args:
+            output: the output of the segment, or the error which failed it
+                (a `PointError` of the engine or an exception).
+
+        Raises:
+            NotImplementedError: for a feature the engine does not support.
+        """
+        try:
+            self._consume(output)
+        except NotImplementedError:
+            raise
+        except Exception as err:
+            self.error = err
+
+    def result(self) -> dict[str, Any] | Exception:
+        """Get the request of the plan, or the error which failed its point."""
+        if self.error is not None:
+            return self.error
+        self.request["changes"] = self.changes
+        return self.request
+
+    def _segment(self) -> dict[str, Any] | None:
+        """Fold the changes of numbers and build the request of the next segment."""
+        while self.index < len(self.plan.events):
+            event = self.plan.events[self.index]
+            symbols = self.reads[self.index]
+            if symbols:
+                self.columns = output_columns(
+                    sorted({*symbols, *(self._resumed() or ())})
+                )
+                return _segment_request(
+                    self.plan,
+                    self.request,
+                    self.changes,
+                    self.resume,
+                    event.time,
+                    self.columns,
+                )
+            self.changes.append(
+                {"time": event.time, "values": _change_values(event, {})}
+            )
+            self.index += 1
+        return None
+
+    def _consume(self, output: Any) -> None:
+        """Read the state of the segment and fold the change at its end."""
+        core = import_core()
+        if isinstance(output, core.PointError):
+            raise point_error(output, self.model)
+        if isinstance(output, BaseException):
+            raise output
+        event = self.plan.events[self.index]
+        start = self.plan.start if self.resume is None else self.resume[0]
+        state = _state_of(output, self.columns, event.time, start)
+        values = _change_values(event, state)
+        self.changes.append({"time": event.time, "values": values})
+        resumed = self._resumed()
+        if resumed is not None:
+            self.resume = (
+                event.time,
+                _resume_values(resumed, self.model, state, values),
+            )
+        self.index += 1
+
+    def _resumed(self) -> list[str] | None:
+        """Get the targets the next segment resumes from, or nothing.
+
+        The state is read only where a later change resumes from it, so a plan
+        with one such change asks for the symbols of its formula alone.
+        """
+        return self.targets if any(self.reads[self.index + 1 :]) else None
 
 
 def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
@@ -681,62 +1002,6 @@ def _preinit_values(
     ]
 
 
-def _changes(
-    plan: Plan, model: CoreSBMLModel, request: Mapping[str, Any]
-) -> list[dict[str, Any]]:
-    """Get the changes of a request, the values of a plan folded into numbers.
-
-    A formula at a change is evaluated by the executor of roadrunner with the
-    state of the model at the time of the change (`apply_changes` of
-    `sbmlsim.simulator.changes`), which a request carries no formula of: the
-    executor reads that state as the outputs of the segment which ends at the
-    change, with a request of its own, and sends the number, see `_state_at`.
-    The changes are folded in their order, the one of their times, so the
-    request of a segment carries the changes before it, already folded, and
-    resumes from the state of the segment before it.
-
-    Args:
-        plan: the plan, whose events are sorted by their time.
-        model: the model, which the engine reads the state of.
-        request: the request which is built, whose fields the request of a
-            segment takes, its `changes` excluded.
-
-    Returns:
-        The `changes` of the request, one entry per event of the plan.
-
-    Raises:
-        SteadyStateError: if the presimulation of a segment reaches no steady
-            state.
-        RuntimeError: if the engine fails to simulate a segment, see
-            `_failed`.
-    """
-    changes: list[dict[str, Any]] = []
-    # the symbols of the model every change reads, by the position of its
-    # event: the state of the model is read only where a formula reads it
-    reads = [_change_symbols(event) for event in plan.events]
-    # the targets a segment resumes from, `None` for a model whose state the
-    # executor cannot hand to the engine, whose segments start at `plan.start`
-    targets = _state_targets(model)
-    # the time of the last segment which was simulated and the state after the
-    # change at that time, which the next segment resumes from
-    resume: tuple[float, list[list[Any]]] | None = None
-    for index, event in enumerate(plan.events):
-        symbols = reads[index]
-        if not symbols:
-            changes.append({"time": event.time, "values": _change_values(event, {})})
-            continue
-        # the state is read only where a later change resumes from it, so a
-        # plan with one such change asks for the symbols of its formula alone
-        resumed = targets if any(reads[index + 1 :]) else None
-        selections = sorted({*symbols, *(resumed or ())})
-        state = _state_at(plan, model, request, changes, resume, event.time, selections)
-        values = _change_values(event, state)
-        changes.append({"time": event.time, "values": values})
-        if resumed is not None:
-            resume = (event.time, _resume_values(resumed, model, state, values))
-    return changes
-
-
 def _state_targets(model: CoreSBMLModel) -> list[str] | None:
     """Get the targets a segment of the fold resumes from, or `None`.
 
@@ -850,24 +1115,21 @@ def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[An
     return values
 
 
-def _state_at(
+def _segment_request(
     plan: Plan,
-    model: CoreSBMLModel,
     request: Mapping[str, Any],
     changes: Sequence[dict[str, Any]],
     resume: tuple[float, list[list[Any]]] | None,
     time: float,
     selections: Sequence[str],
-) -> dict[str, float]:
-    """Get the values of the selections at the time of a change.
+) -> dict[str, Any]:
+    """Get the request which reads the state of the model at the time of a change.
 
     The engine hands out no state of a model, only the outputs of a request,
     so the executor asks it for the values a formula reads over the segment
     which ends at the change, with a request of its own. The state at the
-    change is the last row of its output, the one the engine integrates up to
-    before it applies a change there (the first row for a change at the start,
-    whose segment is empty), and its selections are the executor's own and no
-    column of the result of the caller.
+    change is the last row of its output, see `_state_of`, and its selections
+    are the executor's own and no column of the result of the caller.
 
     A segment resumes from the state of the segment before it where the
     executor can hand the whole state of the model to the engine
@@ -889,7 +1151,6 @@ def _state_at(
 
     Args:
         plan: the plan, which gives the output of the segment.
-        model: the model, which the engine simulates the segment on.
         request: the request which is built, whose fields the one of the
             segment takes, its `start`, `end`, `output`, `preinit`,
             `steady_state`, `changes` and `selections` excluded.
@@ -902,23 +1163,15 @@ def _state_at(
             read and the state a later segment resumes from.
 
     Returns:
-        The value of every selection at the time of the change.
-
-    Raises:
-        SteadyStateError: if the presimulation reaches no steady state.
-        RuntimeError: if the engine fails to simulate the segment, see
-            `_failed`, which it fails the simulation of the plan with as
-            well.
+        The request of the segment.
     """
-    core = import_core()
-    columns = output_columns(selections)
     start = plan.start if resume is None else resume[0]
     segment = {
         **request,
         "start": start,
         "end": time,
         "output": _segment_output(plan, start, time),
-        "selections": columns,
+        "selections": output_columns(selections),
     }
     if resume is None:
         segment["changes"] = list(changes)
@@ -938,10 +1191,27 @@ def _state_at(
             {"time": start, "values": resume[1]},
             *(c for c in changes if c["time"] > start),
         ]
-    try:
-        output = model.instance().simulate(segment)
-    except core.SimulationError as err:
-        raise _failed(err, model, core) from err
+    return segment
+
+
+def _state_of(
+    output: Any, columns: Sequence[str], time: float, start: float
+) -> dict[str, float]:
+    """Get the state of the model at the time of a change from the output of a segment.
+
+    The last row of the output of the segment, the one the engine integrates
+    up to before it applies a change there, the first row for a change at the
+    start of the segment, whose interval is empty.
+
+    Args:
+        output: the output of the segment, see `_segment_request`.
+        columns: the selections of the segment, the columns of its output.
+        time: the time of the change, the end of the segment.
+        start: the start of the segment.
+
+    Returns:
+        The value of every selection at the time of the change.
+    """
     row = output.values[-1 if time > start else 0]
     return dict(zip(columns, (float(v) for v in row), strict=True))
 

@@ -22,7 +22,7 @@ from sbmlsim.model import load_model
 from sbmlsim.model.model_core import CoreSBMLModel
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.result.scan import ScanResult
-from sbmlsim.simulation import PK, Dimension, Formula, Scan, Simulation
+from sbmlsim.simulation import PK, Change, Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import IntegratorSettings, ScanError, Simulator, executor_core
 from sbmlsim.simulator import simulator as simulator_module
 from sbmlsim.simulator.executor import SteadyStateError
@@ -285,6 +285,124 @@ def test_a_batch_the_engine_refuses_names_the_workers_of_the_run(
     assert isinstance(refused.value.__cause__, ValueError)
 
 
+def test_the_folds_of_a_chunk_are_one_batch_per_change(
+    model_core: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The k-th segment of the fold of every point of a chunk is one batch (#550).
+
+    A relative protocol costs one segment per change and point, which were
+    simulated one after the other in this process while the request of every
+    point was built: a chunk of three points of a protocol of two relative
+    doses is now a batch of the first segment of all three, a batch of their
+    second one and the batch of the points themselves.
+    """
+    batches = _spy(model_core, monkeypatch)
+    day = 24 * 60
+    simulation = Simulation(
+        end=2 * day,
+        changes=[Change([0.0, float(day)], {"PODOSE_hctz": "PODOSE_hctz + 100"})],
+        times=np.linspace(0, 2 * day, 25).tolist(),
+    )
+    scan = Scan(
+        simulation, [Dimension("ka", values={"GU__HCTZABS_k": [0.05, 0.1, 0.2]})]
+    )
+
+    result = Simulator(engine="core", n_workers=2, **TIGHT).run(model_core, scan)
+
+    assert result.ds.sizes["ka"] == 3
+    assert batches.batches == [(3, 2), (3, 2), (3, 2)]
+
+
+def test_the_batched_folds_of_a_chunk_are_the_folds_of_its_points(
+    model_core: CoreSBMLModel,
+) -> None:
+    """The points of a chunk fold their own state, as a single simulation does.
+
+    The segments of the points of a chunk run as one batch (#550), which is
+    where they run and not what they compute: every point resumes from its
+    own state, so the scan is the one of roadrunner and the one of the points
+    simulated one by one.
+    """
+    day = 24 * 60
+    simulation = Simulation(
+        end=3 * day,
+        changes=[
+            Change(
+                [0.0, float(day), float(2 * day)],
+                {"PODOSE_hctz": "PODOSE_hctz + 100"},
+            )
+        ],
+        times=np.linspace(0, 3 * day, 37).tolist(),
+    )
+    scan = Scan(
+        simulation,
+        [Dimension("ka", values={"GU__HCTZABS_k": [0.05, 0.1, 0.2, 0.4]})],
+    )
+
+    core = Simulator(engine="core", n_workers=4, **TIGHT).run(model_core, scan)
+    one_by_one = Simulator(engine="core", n_workers=1, **TIGHT).run(model_core, scan)
+    roadrunner = Simulator(n_workers=1, **TIGHT).run(HCTZ_SBML, scan)
+
+    # the doses of a point accumulate with the absorption of that point
+    dose = core["PODOSE_hctz"].values
+    assert dose[:, 0].tolist() == [100.0, 100.0, 100.0, 100.0]
+    assert len(set(dose[:, -1].tolist())) == 4
+    np.testing.assert_array_equal(dose, one_by_one["PODOSE_hctz"].values)
+    np.testing.assert_allclose(
+        core["[Cve_hctz]"].values,
+        roadrunner["[Cve_hctz]"].values,
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+def test_a_point_whose_fold_fails_is_that_point(
+    model_core: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A segment of a fold which the engine refuses fails its own point (#550).
+
+    The segments of the points of a chunk are one batch, which answers with a
+    `PointError` of a segment which failed: the point of that segment fails
+    as one whose simulation fails, and the other points of the batch fold
+    their changes and run.
+    """
+    segment_request = executor_core._segment_request
+
+    def refusing(plan: Any, *args: Any, **kwargs: Any) -> Any:
+        """Refuse the segment of the point of the middle absorption."""
+        segment = segment_request(plan, *args, **kwargs)
+        if any(a.value == 0.1 for a in plan.preinit):
+            segment["end"] = segment["start"] - 1.0
+        return segment
+
+    monkeypatch.setattr(executor_core, "_segment_request", refusing)
+    monkeypatch.setattr(
+        simulator_module,
+        "_chunk_size",
+        lambda n_points, workers, most, batched=False: n_points,
+    )
+    day = 24 * 60
+    simulation = Simulation(
+        end=2 * day,
+        changes=[Change([0.0, float(day)], {"PODOSE_hctz": "PODOSE_hctz + 100"})],
+        times=np.linspace(0, 2 * day, 25).tolist(),
+    )
+    scan = Scan(
+        simulation, [Dimension("ka", values={"GU__HCTZABS_k": [0.05, 0.1, 0.2]})]
+    )
+
+    flagged = Simulator(engine="core", n_workers=2).run(
+        model_core, scan, on_error="flag"
+    )
+
+    assert flagged.ds["status"].values.tolist() == [0, 1, 0]
+    assert np.isnan(flagged.ds["[Cve_hctz]"].values[1]).all()
+    (error,) = flagged.ds.attrs["errors"]
+    assert error.startswith("ka=1,")
+    with pytest.raises(ScanError):
+        Simulator(engine="core", n_workers=2).run(model_core, scan)
+
+
 def test_a_point_whose_request_fails_is_that_point(
     model_core: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -295,15 +413,15 @@ def test_a_point_whose_request_fails_is_that_point(
     and `on_error` decides about it as it decides about a simulation which
     fails.
     """
-    request_of = executor_core.request_of
+    fold_of = executor_core._fold_of
 
     def refusing(plan: Any, *args: Any, **kwargs: Any) -> Any:
         """Refuse the request of the point of the second dose."""
         if any(assignment.value == 50.0 for assignment in plan.preinit):
             raise RuntimeError("no request of this point")
-        return request_of(plan, *args, **kwargs)
+        return fold_of(plan, *args, **kwargs)
 
-    monkeypatch.setattr(executor_core, "request_of", refusing)
+    monkeypatch.setattr(executor_core, "_fold_of", refusing)
     # the three points in one chunk, so that the two which keep their request
     # are one batch and run
     monkeypatch.setattr(
