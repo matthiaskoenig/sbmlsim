@@ -683,7 +683,7 @@ class ScanAnalysis(BaseModel):
     time: Sequence[float] | None = None
     keep: Sequence[str] | None = None
     on_error: Literal["raise", "flag"] = "flag"
-    indices: Literal["local", "sobol", "fast", "morris"] | None = None
+    indices: Literal["local", "sobol", "fast", "morris", "pce"] | None = None
     index_options: dict[str, Any] = {}
     description: str = ""
 

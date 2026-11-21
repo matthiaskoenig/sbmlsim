@@ -408,6 +408,45 @@ def _drawn(
     )
 
 
+def _draw_random(
+    rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
+) -> np.ndarray:
+    """Draw the points of the unit cube of a `random` design.
+
+    Args:
+        rng: the generator of the seed of the design.
+        n: the number of points.
+        d: the number of targets.
+        factor: the Cholesky factor of the correlation of the normal scores,
+            `None` without a correlation.
+
+    Returns:
+        The points, a row per point.
+    """
+    if factor is None:
+        return rng.random((n, d))
+    return stats.norm.cdf(rng.standard_normal((n, d)) @ factor.T)
+
+
+def _draw_lhs(
+    rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
+) -> np.ndarray:
+    """Draw the points of the unit cube of an `lhs` design.
+
+    Args:
+        rng: the generator of the seed of the design.
+        n: the number of points.
+        d: the number of targets.
+        factor: the Cholesky factor of the correlation of the normal scores,
+            `None` without a correlation.
+
+    Returns:
+        The points, a row per point.
+    """
+    u = qmc.LatinHypercube(d=d, rng=rng).random(n=n)
+    return u if factor is None else _iman_conover(u, factor, rng)
+
+
 def random(
     distributions: Mapping[str, Distribution],
     n: int,
@@ -444,16 +483,16 @@ def random(
         ValueError: if `n` is no positive integer, the seed is negative, the
             correlation is not valid, or a relative distribution has no model.
     """
-
-    def draw(
-        rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
-    ) -> np.ndarray:
-        if factor is None:
-            return rng.random((n, d))
-        return stats.norm.cdf(rng.standard_normal((n, d)) @ factor.T)
-
     return _drawn(
-        "random", distributions, n, seed, correlation, model, simulation, id, draw
+        "random",
+        distributions,
+        n,
+        seed,
+        correlation,
+        model,
+        simulation,
+        id,
+        _draw_random,
     )
 
 
@@ -492,15 +531,8 @@ def lhs(
         TypeError: if the distributions or the seed have the wrong type.
         ValueError: see `random`, and a correlated hypercube with too few points.
     """
-
-    def draw(
-        rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
-    ) -> np.ndarray:
-        u = qmc.LatinHypercube(d=d, rng=rng).random(n=n)
-        return u if factor is None else _iman_conover(u, factor, rng)
-
     return _drawn(
-        "lhs", distributions, n, seed, correlation, model, simulation, id, draw
+        "lhs", distributions, n, seed, correlation, model, simulation, id, _draw_lhs
     )
 
 
@@ -521,15 +553,19 @@ def unit_problem(d: int) -> dict[str, Any]:
     }
 
 
+#: the methods whose unit cube `unit_cube` creates again from the record
+CUBE_METHODS: tuple[str, ...] = ("sobol", "fast", "morris", "random", "lhs")
+
+
 def unit_cube(design: Design, d: int) -> np.ndarray:
-    """Get the points of the unit cube of a recorded design of SALib.
+    """Get the points of the unit cube of a recorded design.
 
     The points follow from the method, the options and the seed of the
-    record, so a result of the design needs not store them; phase 2 creates
-    them again for the analysis.
+    record, so a result of the design needs not store them; an analysis
+    creates them again from the record of the result.
 
     Args:
-        design: the record of a `sobol`, `fast` or `morris` design.
+        design: the record of a design of `CUBE_METHODS`.
         d: the number of targets.
 
     Returns:
@@ -539,6 +575,14 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
         ValueError: if the record is of another method.
     """
     options = design.options
+    if design.method in ("random", "lhs"):
+        draw = _draw_random if design.method == "random" else _draw_lhs
+        return draw(
+            np.random.default_rng(options["seed"]),
+            options["n"],
+            d,
+            _correlation(options["correlation"], d),
+        )
     if design.method == "sobol":
         from SALib.sample import sobol as sobol_sampler
 
@@ -567,7 +611,10 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
         )
         # the centre of the stratum of every level, so an unbounded marginal is finite
         return (grid * (levels - 1) + 0.5) / levels
-    raise ValueError(f"The design '{design.method}' is no design of SALib.")
+    raise ValueError(
+        f"The points of the design '{design.method}' do not follow from its record; "
+        f"the methods which do are {', '.join(CUBE_METHODS)}."
+    )
 
 
 def _salib(

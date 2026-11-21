@@ -16,7 +16,7 @@ from sbmlsim.simulation.sampling import (
     local,
     random,
 )
-from sbmlsim.simulation.sampling.designs import _iman_conover
+from sbmlsim.simulation.sampling.designs import _iman_conover, unit_cube
 from sbmlsim.simulation.scan import Design
 from sbmlsim.simulator import Simulator
 from tests.simulator.models import (
@@ -283,3 +283,26 @@ def test_the_cheap_arguments_are_checked_before_the_model_is_read() -> None:
         random({"k1": LogNormal(cv=0.1)}, 5, seed=-1)
     with pytest.raises(ValueError, match="'n'"):
         lhs({"k1": LogNormal(cv=0.1)}, 0, seed=1)
+
+
+def test_the_record_recreates_the_unit_cube() -> None:
+    for design in (random, lhs):
+        for correlation in (None, [[1.0, 0.6], [0.6, 1.0]]):
+            dimension = design(
+                {"a": Uniform(2.0, 5.0), "b": Uniform(0.0, 1.0)},
+                32,
+                seed=7,
+                correlation=correlation,
+            )
+            assert dimension.design is not None and dimension.values is not None
+            u = unit_cube(dimension.design, 2)
+            np.testing.assert_allclose(
+                2.0 + 3.0 * u[:, 0], np.asarray(dimension.values["a"])
+            )
+            np.testing.assert_allclose(u[:, 1], np.asarray(dimension.values["b"]))
+
+
+def test_a_design_without_a_recreatable_cube_is_refused() -> None:
+    record = Design("local", {"a": {"kind": "uniform"}}, {"delta": 0.1})
+    with pytest.raises(ValueError, match="do not follow from its record"):
+        unit_cube(record, 1)

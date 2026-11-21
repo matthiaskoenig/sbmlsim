@@ -165,7 +165,7 @@ The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), 
 
 ## Sensitivity analysis
 
-The global methods of `sbmlsim.sensitivity` are the implementations of [SALib](https://salib.readthedocs.io), see [Sensitivity analysis](sensitivity.md).
+The designs of the global methods of `sbmlsim.sensitivity` are the ones of [SALib](https://salib.readthedocs.io) and their estimators follow it, see [Sensitivity analysis](sensitivity.md).
 
 > Herman J, Usher W.
 > **SALib: An open-source Python library for Sensitivity Analysis.**
@@ -212,6 +212,23 @@ The global methods of `sbmlsim.sensitivity` are the implementations of [SALib](h
 > **A quantitative model-independent method for global sensitivity analysis of model output.**
 > *Technometrics.* 1999;41(1):39-56.
 > [doi:10.1080/00401706.1999.10485594](https://doi.org/10.1080/00401706.1999.10485594)
+
+**Polynomial chaos.** The expansion of an output in polynomials of its inputs, its indices, the truncation of its basis and the leave-one-out error which chooses its degree, see `sbmlsim.sensitivity.chaos`.
+
+> Sudret B.
+> **Global sensitivity analysis using polynomial chaos expansions.**
+> *Reliability Engineering & System Safety.* 2008;93(7):964-979.
+> [doi:10.1016/j.ress.2007.04.002](https://doi.org/10.1016/j.ress.2007.04.002)
+
+> Blatman G, Sudret B.
+> **An adaptive algorithm to build up sparse polynomial chaos expansions for stochastic finite element analysis.**
+> *Probabilistic Engineering Mechanics.* 2010;25(2):183-197.
+> [doi:10.1016/j.probengmech.2009.10.003](https://doi.org/10.1016/j.probengmech.2009.10.003)
+
+> Chapelle O, Vapnik V, Bengio Y.
+> **Model selection for small sample regression.**
+> *Machine Learning.* 2002;48(1):231-241.
+> [doi:10.1023/A:1013903520737](https://doi.org/10.1023/A:1013903520737)
 
 ## Data structures
 
