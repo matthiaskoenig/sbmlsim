@@ -7,6 +7,7 @@ import logging
 import os
 from collections.abc import Callable, Sequence
 
+from sbmlsim.engine import Engine
 from sbmlsim.run.cli import EXIT_CONFIGURATION, EXIT_USAGE
 from sbmlsim.verify.common import ProjectNotLoaded, UsageError, add_project_arguments
 from sbmlsim.verify.compare import compare, ranges
@@ -63,6 +64,11 @@ def parser() -> argparse.ArgumentParser:
     )
     s.add_argument(
         "--rtol", help="relative tolerance, or `model` for that of the project"
+    )
+    s.add_argument(
+        "--engine",
+        choices=[engine.value for engine in Engine],
+        help="the engine which simulates, that of the project by default",
     )
     s.add_argument(
         "--reduced-selections",
