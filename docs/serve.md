@@ -336,7 +336,7 @@ The address of the service is written on stdout, everything else is logged on st
 A lecture, a talk or a page of the documentation is one command, which serves the pages and the API from one process. A fresh environment installs the build of libroadrunner sbmlsim needs from its index first, as [Installation](installation.md) describes it, and then sbmlsim with the extra `web`:
 
 ```bash
-pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev700"
+pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.12.0.dev714"
 pip install "sbmlsim[web]"
 python -m sbmlsim.serve --model hctz=hctz_model.project:PROJECT --static slides --open
 ```

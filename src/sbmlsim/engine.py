@@ -50,7 +50,7 @@ def roadrunner_requirement() -> str | None:
     """Get the requirement of libroadrunner of the package.
 
     The requirement of the metadata of the installed sbmlsim, e.g.
-    `libroadrunner>=2.12.0.dev700`, so the requirement of `pyproject.toml` is
+    `libroadrunner>=2.12.0.dev714`, so the requirement of `pyproject.toml` is
     the only place the build is named.
 
     :return: the requirement, `None` when the metadata of sbmlsim or the
@@ -81,7 +81,8 @@ def roadrunner_problem(installed: str | None, requirement: str) -> str | None:
     """Report an installed libroadrunner which does not satisfy the requirement.
 
     The simulations of the package rely on fixes of libroadrunner which are
-    not released yet (roadrunner #1381, #1382, #1383, #1384, #1420), so it
+    not released yet (roadrunner #1381, #1382, #1383, #1384, #1420, #1430,
+    #1445, #1446, #1460), so it
     needs a build of the `develop` branch of libroadrunner, which the index
     `ROADRUNNER_INDEX` serves and PyPI does not have. The release of PyPI
     loads the models and simulates them, with other rows at the events and
@@ -91,7 +92,7 @@ def roadrunner_problem(installed: str | None, requirement: str) -> str | None:
     :param installed: the version of the installed libroadrunner, `None` when
         it is not installed
     :param requirement: the requirement of the package, e.g.
-        `libroadrunner>=2.12.0.dev700`
+        `libroadrunner>=2.12.0.dev714`
     :return: the message which names the install, `None` when the installed
         version satisfies the requirement
     """
@@ -123,12 +124,12 @@ def satisfies_requirement(installed: str, requirement: str) -> bool:
     compared with `packaging.version`, which costs 2 ms of the import of the
     package; a requirement of another form is parsed with
     `packaging.requirements`, which imports `packaging.tags` and costs 30 ms.
-    A development version satisfies a floor which is one (`>=2.12.0.dev700`
-    is satisfied by `2.12.0.dev700`, by a later build and by the release
+    A development version satisfies a floor which is one (`>=2.12.0.dev714`
+    is satisfied by `2.12.0.dev714`, by a later build and by the release
     `2.11.1`), which is why the comparison is not a comparison of the texts.
 
     :param installed: the installed version
-    :param requirement: the requirement, e.g. `libroadrunner>=2.12.0.dev700`
+    :param requirement: the requirement, e.g. `libroadrunner>=2.12.0.dev714`
     :return: whether the installed version satisfies the requirement
     """
     from packaging.version import InvalidVersion, Version
