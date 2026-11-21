@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit.petab_v2.benchmark import (
     BENCHMARK_COMMIT,
     BENCHMARK_SETTINGS,
@@ -57,6 +58,10 @@ def _problem(collection: Path, name: str = NAME) -> BenchmarkProblem:
 
     reader = PetabReader.from_yaml(v2_dir / "problem.yaml")
     problem = reader.to_optimization_problem()
+    # the reference is simulated with the engine a problem of the collection
+    # runs with, so the comparison is the one of the collection and not the
+    # agreement of two integrators
+    problem.engine = Engine.ROADRUNNER
     problem.initialize(BENCHMARK_SETTINGS)
     nominal = reader.nominal_parameters(problem)
     predictions = problem.predictions(nominal.x(problem.pids))
@@ -84,6 +89,7 @@ def _llh(problem: BenchmarkProblem) -> float:
     """Get the log-likelihood of a problem at its nominal values."""
     reader = PetabReader.from_yaml(problem.v2_dir / "problem.yaml")
     optimization_problem = reader.to_optimization_problem()
+    optimization_problem.engine = Engine.ROADRUNNER
     optimization_problem.initialize(BENCHMARK_SETTINGS)
     return log_likelihood(
         optimization_problem, reader.nominal_parameters(optimization_problem)
