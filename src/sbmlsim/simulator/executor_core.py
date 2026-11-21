@@ -167,7 +167,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from sbmlsim.engine import UnsupportedModelError, import_core
 from sbmlsim.model.symbols import EventSymbols, ModelSymbols, TargetKind
-from sbmlsim.result.timecourse import TimecourseResult
+from sbmlsim.result.timecourse import TimecourseResult, TimecourseSensitivities
 from sbmlsim.simulator.executor import SteadyStateError, output_columns, output_time
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.simulator.plan import (
@@ -265,6 +265,79 @@ def execute(
     # of a batch of points, reads the values of each of them once as well
     values = output_time(output.values, columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
+
+
+def execute_sensitivities(
+    plan: Plan,
+    model: CoreSBMLModel,
+    selections: Sequence[str],
+    parameters: Sequence[str],
+) -> TimecourseSensitivities:
+    """Run a plan with the forward sensitivities of the parameters.
+
+    `execute` with the `sensitivities` of the request of `simulation/1`: the
+    engine integrates one sensitivity vector per parameter along with the
+    states (CVODES, `CV_STAGGERED`), so one run of `k` parameters answers what
+    the `2 k + 1` runs of a central difference answer, and to the tolerance of
+    the integration instead of the step of a difference. The states of such a
+    run are the ones of the same run without it, the sensitivities being no
+    part of the error test of a step.
+
+    The engine integrates them only for a run it carries them for: a plan with
+    a change, with a presimulation or of a model with events is refused by the
+    engine, whose message the error names.
+
+    Args:
+        plan: the plan, compiled against the model.
+        model: the model.
+        selections: the columns of the result, `time` is added as the first
+            column if it is missing.
+        parameters: the ids the derivatives are taken in, in their order: a
+            parameter of the model, a compartment, or a species as its amount
+            (`S`) or its concentration (`[S]`).
+
+    Returns:
+        The result and the derivatives of its columns.
+
+    Raises:
+        ValueError: if no parameter is given, or one is named twice.
+        UnsupportedModelError: for a plan, a simulation or a request of
+            sensitivities the engine does not carry.
+        SteadyStateError: if a presimulation does not reach a steady state.
+        RuntimeError: if the engine fails to simulate the request.
+    """
+    ids = list(parameters)
+    if not ids:
+        raise ValueError("The forward sensitivities need at least one parameter.")
+    if len(set(ids)) != len(ids):
+        raise ValueError(f"The parameters of the sensitivities repeat: {ids}.")
+    core = import_core()
+    columns = output_columns(selections)
+    request = request_of(plan, model, columns)
+    request["sensitivities"] = ids
+    model.initialize(preinit_targets(plan))
+    try:
+        output = model.instance().simulate(request)
+    except core.SimulationError as err:
+        raise _failed(err, model, core) from err
+    finally:
+        model.simulated()
+    # `None` for a request without them, and missing in the bindings before
+    # 0.14.0, which carried the sensitivities of a run only inside Rust
+    sensitivities = getattr(output, "sensitivities", None)
+    if sensitivities is None:
+        raise RuntimeError(
+            f"The engine answered the request of the sensitivities of {ids} without "
+            f"them; sbmlsim-core {core.__version__} carries them on the output of a "
+            f"simulation since 0.14.0."
+        )
+    values = output_time(output.values, columns, plan, model.symbols)
+    return TimecourseSensitivities(
+        result=TimecourseResult(columns=tuple(columns), values=values),
+        parameters=tuple(ids),
+        # the array of the bindings, as the values of the result are, read once
+        values=sensitivities.values,
+    )
 
 
 def execute_many(

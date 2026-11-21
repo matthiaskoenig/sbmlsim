@@ -10,6 +10,9 @@ dimensions and every time point of a timecourse on a grid.
 
 - [`sensitivity.indices`](../api/sensitivity.indices.md): the four analyses of
   a design of its own.
+- [`sensitivity.forward`](../api/sensitivity.forward.md): `forward`, the local
+  sensitivities of a simulation from the forward sensitivities of the engine
+  core, without a design and without a step.
 - [`sensitivity.estimators`](../api/sensitivity.estimators.md): the
   estimators of the three global methods, over every element of an
   observable at once.
@@ -32,6 +35,7 @@ dimensions and every time point of a timecourse on a grid.
 """
 
 from .chaos import PolynomialChaos, fit_chaos, pce
+from .forward import forward
 from .indices import fast, local, morris, sobol
 from .plots import plot_heatmap, plot_indices, plot_morris
 from .result import SensitivityResult
@@ -41,6 +45,7 @@ __all__ = [
     "SensitivityResult",
     "fast",
     "fit_chaos",
+    "forward",
     "local",
     "morris",
     "pce",

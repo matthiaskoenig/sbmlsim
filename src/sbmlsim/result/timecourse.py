@@ -6,6 +6,11 @@ a column per selection, and the names of the columns.
 `sbmlsim.simulator.Simulator.run` places the results of the simulations of a
 scan into a `ScanResult`.
 
+`TimecourseSensitivities` is such a result with the forward sensitivities of
+its columns, which `sbmlsim.simulator.Simulator.sensitivities` answers and
+`sbmlsim.sensitivity.forward` reads as the local sensitivities of the
+simulation.
+
 It is deliberately not a data frame. A fit simulates its groups on every
 evaluation of the residuals and a scan simulates every combination of its
 dimensions, so building a frame per simulation, concatenating the frames and
@@ -115,6 +120,72 @@ class TimecourseResult:
     def time(self) -> np.ndarray:
         """Get the time points, i.e., the column `time`."""
         return self["time"]
+
+
+@dataclass(frozen=True, eq=False)
+class TimecourseSensitivities:
+    """The forward sensitivities of the columns of a timecourse.
+
+    The derivatives of the values of a simulation in the values its
+    parameters had at its start, which the engine core integrates along with
+    the states of the model (`Simulator.sensitivities`): one simulation
+    answers what a central difference answers with two simulations per
+    parameter, and to the tolerance of the integration instead of the step of
+    a difference.
+
+    Attributes:
+        result: the values of the simulation.
+        parameters: the ids the derivatives are taken in, in their order.
+        values: the derivatives over `(row, column, parameter)`, the rows and
+            columns of `result`; the derivatives of `time` are 0.
+    """
+
+    result: TimecourseResult
+    parameters: tuple[str, ...]
+    values: np.ndarray
+
+    def __post_init__(self) -> None:
+        """Validate the shape against the result and the parameters.
+
+        Raises:
+            ValueError: if the derivatives do not have a row per row of the
+                result, a column per column of it and one value per
+                parameter.
+        """
+        shape = (*self.result.values.shape, len(self.parameters))
+        if self.values.shape != shape:
+            raise ValueError(
+                f"The derivatives have the shape {self.values.shape}, the result and "
+                f"the parameters {shape}."
+            )
+
+    def __getitem__(self, key: tuple[str, str]) -> np.ndarray:
+        """Get the derivatives of a column in a parameter, a view into `values`.
+
+        Args:
+            key: the column and the parameter, e.g. `("PX", "n")`.
+
+        Returns:
+            The derivative at every row.
+
+        Raises:
+            KeyError: if there is no such column or no such parameter.
+        """
+        column, parameter = key
+        if column not in self.result.columns:
+            raise KeyError(
+                f"'{column}' is not a column of the result, the columns are "
+                f"{self.result.columns}."
+            )
+        if parameter not in self.parameters:
+            raise KeyError(
+                f"No parameter '{parameter}' of the sensitivities, they are "
+                f"{list(self.parameters)}."
+            )
+        # the first column of a name, as `TimecourseResult.__getitem__` reads it
+        return self.values[
+            :, self.result.columns.index(column), self.parameters.index(parameter)
+        ]
 
 
 class GridWeights(NamedTuple):

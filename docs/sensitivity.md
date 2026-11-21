@@ -6,6 +6,8 @@ A sensitivity analysis tells you which parameters an output depends on, and how 
 2. Run the scan with `Simulator.run` and the observables you are interested in.
 3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast`, `sensitivity.morris` or `sensitivity.pce`. They read the design from the result and compute the global indices, the first three with the estimators of `sensitivity.estimators`, which follow [SALib](https://salib.readthedocs.io) and apply to every element of an output at once, see [References](references.md#sensitivity-analysis).
 
+The exact local sensitivities of a single simulation are the exception: they come from the engine and need no design and no scan, see [Exact local sensitivities](#exact-local-sensitivities).
+
 The examples use the repressilator, three of its parameters and two observables: the peak `px_max` and the time-weighted mean `px_mean` of the protein `PX`. For the global methods every parameter varies uniformly within ±20 % of its value in the model:
 
 ```python
@@ -57,6 +59,33 @@ fig = sensitivity.plot_heatmap(local, "normalized")
 
 A normalized index is `NaN` when the output is zero at the reference. A parameter whose reference is zero is not moved by the design, so both of its indices are `NaN`: undefined rather than insensitive. Its row in the heatmap stays, in grey.
 
+## Exact local sensitivities
+
+The central differences above cost `2 d + 1` simulations and are as accurate as the step `delta` you choose: a large step measures the curvature of the model, a small one the error of the integrator. The [engine core](simulation.md#engines) integrates the derivatives themselves along with the states of the model (forward sensitivities, CVODES), so one simulation of `d` parameters gives `dy/dp` at every output time, with no step to choose:
+
+```python
+core = Simulator(engine="core")
+exact = sensitivity.forward(
+    core,
+    REPRESSILATOR_SBML,
+    Simulation(end=200, steps=4),
+    ["tau_prot", "ps_a"],
+    selections=["PX"],
+)
+print(exact.ds["PX.normalized"].to_pandas().round(3))
+```
+
+```text title="Output"
+time       0.0    50.0   100.0  150.0  200.0
+parameter
+tau_prot     NaN  2.482 -7.533  6.824 -8.435
+ps_a         NaN  0.036  1.205 -0.158  0.561
+```
+
+`PX` is zero at the start of the simulation, where there is no relative change, so the first column is `NaN`. The indices are the `raw` and `normalized` of the local analysis, over `(parameter, time)` instead of over the observables of a scan, and the reference of a normalized index is the value the parameter has at the start of the simulation, so a pre-initialization of the simulation is the point the indices are taken at. On the oscillating repressilator the central differences of a design at `delta = 0.01` agree with them to three digits at the first peak and drift to about 1 % by the fourth, where the oscillation amplifies the step. `Simulator.sensitivities` gives the same derivatives as a table of `(row, column, parameter)` next to the values of the simulation.
+
+What the design does and this does not: the derivatives are the ones of the selections of the model, not of reduced observables such as `max(PX)` or the parameters of a PK analysis, which are no derivatives the engine integrates; the simulation is one interval without changes and without a presimulation, of a model without events, and the engine refuses the others; and a parameter which enters the model as an exponent of a state which reaches zero, the Hill coefficient `n` of the repressilator, has no finite derivative there, so its integration fails. Take the central differences of a `local` design for all of those.
+
 ## Sobol indices
 
 The Sobol method decomposes the variance of an output over the whole parameter range. The design of Saltelli has `n (d + 2)` points for `d` parameters, `n` a power of two.
@@ -88,7 +117,7 @@ ps_a         0.033    0.033
 fig = sensitivity.plot_indices(sobol, "px_max")
 ```
 
-![Output figure](images/outputs/sensitivity-05.png)
+![Output figure](images/outputs/sensitivity-06.png)
 
 The Hill coefficient `n` explains almost all of the variance of the peak. The small negative `S1` values and the wide intervals are the noise of a small design; more base points (the second argument of `sampling.sobol`) narrow them.
 
@@ -142,7 +171,7 @@ ps_a         269.6     55.8
 fig = sensitivity.plot_morris(morris, "px_max")
 ```
 
-![Output figure](images/outputs/sensitivity-07.png)
+![Output figure](images/outputs/sensitivity-08.png)
 
 ## Polynomial chaos
 
@@ -239,7 +268,7 @@ fig = sensitivity.plot_heatmap(
 )
 ```
 
-![Output figure](images/outputs/sensitivity-10.png)
+![Output figure](images/outputs/sensitivity-11.png)
 
 With a high leak, `n` has much less effect on the peak, and the sign of its index flips.
 

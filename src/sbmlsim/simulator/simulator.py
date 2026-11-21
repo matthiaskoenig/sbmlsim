@@ -115,7 +115,7 @@ from sbmlsim.result.scan import (
     ScanResult,
     time_magnitudes,
 )
-from sbmlsim.result.timecourse import TimecourseResult
+from sbmlsim.result.timecourse import TimecourseResult, TimecourseSensitivities
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.observables import Observable
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
@@ -291,6 +291,66 @@ class Simulator:
         )
         plan.check_model(loaded.symbols, loaded.uinfo)
         return execute_plan(plan, loaded, loaded.selections or [TIME])
+
+    def sensitivities(
+        self,
+        model: ModelLike,
+        simulation: Simulation | Plan,
+        parameters: Sequence[str],
+        *,
+        selections: Sequence[str] | None = None,
+    ) -> TimecourseSensitivities:
+        """Run one simulation with the forward sensitivities of the parameters.
+
+        The derivatives of the columns of the simulation in the values the
+        parameters have at its start, which the engine core integrates along
+        with the states: one simulation answers what a central difference
+        answers with two simulations per parameter, and to the tolerance of
+        the integration instead of the step of a difference, which is what
+        `sbmlsim.sensitivity.forward` reads. Only the engine core carries
+        them.
+
+        Args:
+            model: the model, see `load`.
+            simulation: the simulation or a plan of it.
+            parameters: the ids the derivatives are taken in, in their order:
+                a parameter of the model, a compartment, or a species as its
+                amount (`S`) or its concentration (`[S]`).
+            selections: the columns of the result, the selections of the model
+                by default.
+
+        Returns:
+            The result and the derivatives of its columns.
+
+        Raises:
+            ValueError: if the simulation does not fit the model, or no
+                parameter is given.
+            NotImplementedError: if the engine of the simulator is not the
+                engine core, or for a plan or a model whose sensitivities the
+                engine does not carry (`UnsupportedModelError`).
+            RuntimeError: if the engine fails to integrate.
+        """
+        if self.engine is not Engine.CORE:
+            raise NotImplementedError(
+                f"The forward sensitivities of a simulation come from the engine core, "
+                f"the simulator runs on '{self.engine.value}'; use "
+                f"Simulator(engine='core')."
+            )
+        from sbmlsim.simulator.executor_core import execute_sensitivities
+
+        loaded = self.load(model)
+        plan = (
+            simulation
+            if isinstance(simulation, Plan)
+            else self.compile(loaded, simulation)
+        )
+        plan.check_model(loaded.symbols, loaded.uinfo)
+        return execute_sensitivities(
+            plan,
+            loaded,  # ty: ignore[invalid-argument-type]
+            selections if selections is not None else loaded.selections or [TIME],
+            parameters,
+        )
 
     def run(
         self,
