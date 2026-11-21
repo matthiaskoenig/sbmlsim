@@ -10,7 +10,7 @@ import pytest
 
 pytest.importorskip("amici")
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.model.model_amici import AmiciSBMLModel, cache_root
 from tests.engines import another_cache
@@ -53,12 +53,21 @@ def test_a_worker_of_a_fit_loads_the_models_from_the_cache_of_the_parent(
 def test_a_problem_switched_to_another_engine_carries_no_cache_of_amici(
     fit_settings: FitSettings, tmp_path: Path
 ) -> None:
-    """A problem of AMICI which `set_simulator` switched to roadrunner pickles without the directory of AMICI."""
+    """A problem of AMICI which `set_simulator` switched away pickles without the directory of AMICI.
+
+    The simulator of the switch names no engine, so the problem takes the
+    default engine, which is the engine core (#607) where it was roadrunner.
+    What the test is about is that the directory of the compiled models of
+    AMICI does not survive a switch to another engine, whichever one.
+    """
     from sbmlsim.simulator import Simulator
 
     copy = pickle.loads(pickle.dumps(scalar_problem(tmp_path, Engine.AMICI)))
     assert copy._amici_cache is not None
     copy.initialize(fit_settings)
+
     copy.set_simulator(Simulator())
-    assert copy.engine is Engine.ROADRUNNER
+
+    assert copy.engine is DEFAULT_ENGINE
+    assert copy.engine is not Engine.AMICI
     assert pickle.loads(pickle.dumps(copy))._amici_cache is None
