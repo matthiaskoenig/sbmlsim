@@ -14,6 +14,7 @@ import pytest
 from sbmlsim import parallel
 from sbmlsim.experiment import ExperimentResult, ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import EXPERIMENTS_PER_WORKER, _Collect, _run_job
+from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from tests.experiment.test_runner_errors import (
     BrokenTask,
@@ -76,6 +77,28 @@ class DiesInAWorker(_Recorded):
         if parallel.in_worker():
             os._exit(1)
         return super().run(*args, **kwargs)
+
+
+#: the points of the scan of `Scanned`
+SCAN_POINTS = 4
+
+
+class Scanned(_Recorded):
+    """An experiment whose simulation is a scan, which a simulator may pool."""
+
+    @override
+    def simulations(self) -> dict:
+        return {
+            "sim": Scan(
+                Simulation(end=20, steps=20),
+                [Dimension("k", values={"KM": [40.0 + k for k in range(SCAN_POINTS)]})],
+            )
+        }
+
+    @override
+    def figures(self) -> dict:
+        """No figure: a curve of the task would need the scan dimension."""
+        return {}
 
 
 CLASSES: list[type[SimulationExperiment]] = [
@@ -190,20 +213,79 @@ def test_a_number_of_workers_below_one_raises(tmp_path: Path) -> None:
         _run(tmp_path, 0, [First])
 
 
-def test_a_simulator_with_a_pool_runs_the_experiments_serially_by_default(
+def test_the_experiments_without_a_scan_run_in_a_pool_beside_a_pooled_simulator(
     tmp_path: Path,
 ) -> None:
-    """The scans of an experiment run serially in a worker.
+    """A simulator with a pool of its own is no reason to keep an experiment here.
 
-    A simulator with a pool of its own runs every scan on all its workers, a
-    pool of experiments would run them serially; an explicit number of
-    workers runs the experiments in a pool all the same.
+    Only a scan runs in the pool of the simulator, so an experiment which has
+    none is faster in a worker whatever the simulator does (#554).
     """
     _run(tmp_path / "default", None, CLASSES, Simulator(n_workers=4))
     _run(tmp_path / "explicit", 2, CLASSES, Simulator(n_workers=4))
 
-    assert _process(tmp_path / "default", "First")["pid"] == os.getpid()
+    assert _process(tmp_path / "default", "First")["pid"] != os.getpid()
     assert _process(tmp_path / "explicit", "First")["pid"] != os.getpid()
+
+
+def test_an_experiment_whose_scans_need_the_pool_of_the_simulator_runs_here(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A scan of a simulator with a pool runs in this process, not in a worker (#554).
+
+    An experiment runs its scans serially in a worker, so an experiment of a
+    scan which the simulator would run in a pool of its own is faster here:
+    it runs in this process and the experiments which have no such scan run
+    in the pool beside it, also when the run named its workers itself, which
+    skipped this guard and left every scan of such a run on one core.
+    """
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.runner"):
+        results = _run(tmp_path, 2, [Scanned, First, Second, Third], Simulator(4))
+
+    assert [r.error for r in results] == [None, None, None, None]
+    assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
+    for sid in ("First", "Second", "Third"):
+        assert _process(tmp_path, sid)["pid"] != os.getpid(), sid
+    assert (
+        "1 experiments run in this process: the simulator runs the scans in a pool of 4 workers"
+        in caplog.text
+    )
+
+
+def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A simulator without a pool runs a scan of many points in one of every CPU."""
+    monkeypatch.setattr(parallel, "POOL_THRESHOLD", SCAN_POINTS)
+
+    _run(tmp_path, 2, [Scanned, First, Second, Third], Simulator())
+
+    assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
+    assert _process(tmp_path, "First")["pid"] != os.getpid()
+
+
+def test_a_run_of_nothing_but_such_experiments_is_serial(tmp_path: Path) -> None:
+    """A pool of one experiment is no pool, so the run is serial with its reason."""
+    results = _run(tmp_path, 2, [Scanned, First], Simulator(n_workers=4))
+
+    assert [r.error for r in results] == [None, None]
+    assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
+    assert _process(tmp_path, "First")["pid"] == os.getpid()
+
+
+def test_the_timings_name_the_experiments_which_ran_in_this_process(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The table of the timings says what was overridden and why (#554)."""
+    _runner(
+        Scanned, First, Second, Third, simulator=Simulator(n_workers=4)
+    ).run_experiments(output_path=tmp_path, n_workers=2, progress=True)
+
+    words = " ".join(capsys.readouterr().out.split())
+    assert (
+        "on 2 workers, 1 in this process (the simulator runs the scans in a pool "
+        "of 4 workers)" in words
+    )
 
 
 class _OwnSimulator(Simulator):

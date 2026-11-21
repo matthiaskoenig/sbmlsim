@@ -17,6 +17,15 @@ the report is created from, and logs the messages of the workers in the order
 of the experiments. A run is serial when an experiment cannot be sent to a
 worker, see `ExperimentRunner._serial_reason`.
 
+The pool of the experiments and the pool of the simulator do not compose, so
+the experiments of a run are spread over the two (`ExperimentRunner._workers`,
+`_Spread`): an experiment of a scan which the simulator would run in a pool of
+its own runs in the calling process, with that pool and the whole machine, and
+the experiments which have no such scan run in the pool of the experiments
+after it, so a project of a few scans and many cheap experiments uses the
+machine for both. The table of the timings says how many experiments ran in
+the calling process and why.
+
 The models of the experiments are loaded in the engine of the simulator of the
 runner, roadrunner without one, see `ExperimentRunner.engine`: a simulator of
 another engine loads them again, and a worker loads them in the engine of the
@@ -170,6 +179,29 @@ def model_key(
         parameters=tuple(sorted(abstract_model.parameters.items())),
         selections=tuple(selections) if selections is not None else None,
     )
+
+
+@dataclasses.dataclass(frozen=True)
+class _Spread:
+    """How a run spreads its experiments over its processes, see `_workers`.
+
+    Attributes:
+        workers: the processes of the pool of the experiments, `1` for a run
+            whose experiments all run in the calling process.
+        reason: why a run which asked for a pool, or would get one by
+            default, runs its experiments, or the ones of `in_process`, in
+            this process; `None` otherwise. The table of the timings of the
+            run shows it.
+        in_process: the experiments which run in this process beside the pool
+            of the others, those whose scans need the pool of the simulator
+            (`ExperimentRunner._scan_pool`): they run before the pool of the
+            others gets its work, so the two pools never run at the same
+            time.
+    """
+
+    workers: int
+    reason: str | None = None
+    in_process: frozenset[str] = frozenset()
 
 
 class ExperimentRunner:
@@ -452,7 +484,10 @@ class ExperimentRunner:
                 worker per `EXPERIMENTS_PER_WORKER` experiments, at most one
                 per CPU, i.e. serially for a few experiments, and serially in a
                 worker. In a pool every experiment
-                runs serially in its worker, its scans included; a run with
+                runs serially in its worker, its scans included, so an
+                experiment whose scans the simulator would run in a pool of
+                its own runs in the calling process, whatever this says, and
+                the others in the pool after it (`_scan_pool`); a run with
                 `show_figures`, `keep_results`, a unit registry of its own or
                 an experiment which cannot be pickled is serial, see the
                 module. The pool starts worker processes, a script which runs
@@ -495,7 +530,8 @@ class ExperimentRunner:
             "figure_settings": settings,
         }
         jobs = self._jobs(output_path, formats, figure_formats, options)
-        workers, reason = self._workers(n_workers, jobs, options)
+        spread = self._workers(n_workers, jobs, options)
+        workers = spread.workers
         started = time.perf_counter()
         # the initialization of the experiments before this run, which the
         # timings of a serial run include, see `_run_timings`
@@ -519,7 +555,7 @@ class ExperimentRunner:
             if listener is not None and workers > 1
             else None
         )
-        exp_results: list[ExperimentResult] = []
+        done: dict[str, ExperimentResult] = {}
         counted: set[str] = set()
         with contextlib.ExitStack() as stack:
             if display is not None:
@@ -577,29 +613,10 @@ class ExperimentRunner:
                     close=True,
                 )
             )
-            # the most expensive experiments first, so that none of them
-            # starts last and keeps the others waiting
-            futures: dict[str, Future[_Outcome]] = (
-                {
-                    sid: executor.submit(_run_job, jobs[sid])
-                    for sid in sorted(
-                        jobs, key=lambda sid: -_cost(self.experiments[sid])
-                    )
-                }
-                if executor is not None
-                else {}
-            )
-            for sid, future in futures.items():
-                future.add_done_callback(_on_done(display, count, sid))
-            for sid in self._order:
-                if sid in self.failed:
-                    # the definition raised, the experiment is reported, not run
-                    exp_results.append(
-                        self._failed_result(
-                            self.failed[sid], output_path / sid, formats
-                        )
-                    )
-                    continue
+            futures: dict[str, Future[_Outcome]] = {}
+
+            def run_one(sid: str) -> ExperimentResult:
+                """Run an experiment here, or take the outcome of its worker."""
                 logger.debug("Running SimulationExperiment: '%s'", sid)
                 # ExperimentResult used to create report; an error of the
                 # experiment or of a figure is logged and recorded in it
@@ -616,15 +633,51 @@ class ExperimentRunner:
                     else outcome.result(self.experiments[sid], output_path / sid)
                 )
                 count(sid, failed=result.failed)
-                exp_results.append(result)
+                return result
+
+            # the experiments whose scans need the pool of the simulator run
+            # here and before the pool of the others gets its work, so that
+            # the two pools never run at the same time (#554)
+            for sid in self._order:
+                if sid in spread.in_process and sid not in self.failed:
+                    done[sid] = run_one(sid)
+            # the most expensive experiments first, so that none of them
+            # starts last and keeps the others waiting
+            if executor is not None:
+                futures.update(
+                    (sid, executor.submit(_run_job, jobs[sid]))
+                    for sid in sorted(
+                        (s for s in jobs if s not in spread.in_process),
+                        key=lambda sid: -_cost(self.experiments[sid]),
+                    )
+                )
+            for sid, future in futures.items():
+                future.add_done_callback(_on_done(display, count, sid))
+            for sid in self._order:
+                if sid in done:
+                    continue
+                if sid in self.failed:
+                    # the definition raised, the experiment is reported, not run
+                    done[sid] = self._failed_result(
+                        self.failed[sid], output_path / sid, formats
+                    )
+                    continue
+                done[sid] = run_one(sid)
+        exp_results = [done[sid] for sid in self._order if sid in done]
         # the initialization is in the timings of this run, not of the next
         self._timings.clear()
         if display is not None:
-            where = (
-                f"on {workers} workers"
-                if workers > 1
-                else "in this process" + (f" ({reason})" if reason else "")
-            )
+            if workers > 1 and spread.in_process:
+                where = (
+                    f"on {workers} workers, {len(spread.in_process)} in this "
+                    f"process ({spread.reason})"
+                )
+            elif workers > 1:
+                where = f"on {workers} workers"
+            else:
+                where = "in this process" + (
+                    f" ({spread.reason})" if spread.reason else ""
+                )
             show_timings(
                 exp_results,
                 initialized=initialized,
@@ -674,60 +727,93 @@ class ExperimentRunner:
 
     def _workers(
         self, n_workers: int | None, jobs: dict[str, _Job], options: dict[str, Any]
-    ) -> tuple[int, str | None]:
-        """Get the number of processes which run the experiments, see `run_experiments`.
+    ) -> _Spread:
+        """Get how the experiments of a run are spread, see `run_experiments`.
+
+        The pool of the experiments and the pool of the simulator do not
+        compose: a worker starts no pool, so an experiment runs its scans
+        serially in it. The experiments whose scans the simulator would run in
+        a pool therefore run in this process whatever the run asked for
+        (`_scan_pool`, #554) - a number of workers which is given is no reason
+        to leave a scan on one core - and the others in the pool, whose size
+        the default takes from those others alone.
 
         Returns:
-            The number of processes, and why a run which asked for a pool, or
-            would get one by default, runs in this process, `None` otherwise;
-            the table of the timings shows it.
+            The processes of the pool, the experiments which run in this
+            process beside it and why.
         """
+        wanted = n_workers is None or n_workers > 1
+        scans, scan_reason = self._scan_pool(jobs) if wanted else ([], None)
+        pooled = [sid for sid in jobs if sid not in scans]
         if n_workers is None:
             if parallel.in_worker():
-                return 1, None
+                return _Spread(1)
             n_workers = min(
                 cgroup.available_cpus(),
-                math.ceil(len(jobs) / EXPERIMENTS_PER_WORKER),
+                math.ceil(len(pooled) / EXPERIMENTS_PER_WORKER),
             )
-            if n_workers > 1 and (reason := self._scan_pool()) is not None:
-                logger.debug("The experiments run in this process: %s", reason)
-                return 1, reason
-        n_workers = min(n_workers, len(jobs))
-        if n_workers <= 1:
-            return 1, None
-        reason = self._serial_reason(jobs, options)
-        if reason is not None:
+        n_workers = min(n_workers, len(pooled))
+        if n_workers > 1 and (reason := self._serial_reason(jobs, options)) is not None:
             logger.debug("The experiments run in this process: %s", reason)
-            return 1, reason
-        return n_workers, None
+            return _Spread(1, reason)
+        if n_workers <= 1:
+            # nothing, or one experiment, is left for a pool of the experiments
+            if scan_reason is not None:
+                logger.debug("The experiments run in this process: %s", scan_reason)
+            return _Spread(1, scan_reason)
+        if not scans:
+            return _Spread(n_workers)
+        logger.debug("%d experiments run in this process: %s", len(scans), scan_reason)
+        return _Spread(n_workers, scan_reason, frozenset(scans))
 
-    def _scan_pool(self) -> str | None:
-        """Get why the scans need the pool of the simulator, `None` if they do not.
+    def _scan_pool(self, jobs: Mapping[str, _Job]) -> tuple[list[str], str | None]:
+        """Get the experiments whose scans need the pool of the simulator, and why.
 
-        An experiment runs its scans serially in a worker: a simulator which
-        runs every scan in a pool of its own (`n_workers` above one), or a
-        scan which the simulator runs in a pool of every CPU (`n_workers=None`
-        and `parallel.POOL_THRESHOLD` points), is faster in this process.
+        An experiment runs its scans serially in a worker, so an experiment of
+        a scan which the simulator would run in a pool is faster in this
+        process: a simulator which runs every scan in a pool of its own
+        (`n_workers` above one), or a scan which it runs in a pool of every
+        CPU (`n_workers=None` and `parallel.POOL_THRESHOLD` points). An
+        experiment of no such scan is faster in a worker, which is where it
+        runs, so a project of a few scans and many cheap experiments uses the
+        machine for both (#554).
+
+        Args:
+            jobs: the experiments of the run.
+
+        Returns:
+            The sids of those experiments, in the order of the run, and why
+            their scans need the pool; `([], None)` without such an
+            experiment.
         """
         if self.simulator is None or self.simulator.n_workers == 1:
-            return None
+            return [], None
+        scans = {
+            sid: [
+                len(simulation)
+                for simulation in self.experiments[sid]._simulations.values()
+                if isinstance(simulation, Scan)
+            ]
+            for sid in jobs
+        }
         if self.simulator.n_workers is not None:
-            return (
+            sids = [sid for sid, points in scans.items() if points]
+            if not sids:
+                return [], None
+            return sids, (
                 f"the simulator runs the scans in a pool of "
                 f"{self.simulator.n_workers} workers"
             )
-        largest = max(
-            (
-                len(simulation)
-                for experiment in self.experiments.values()
-                for simulation in experiment._simulations.values()
-                if isinstance(simulation, Scan)
-            ),
-            default=0,
+        pooled = {
+            sid: max(points)
+            for sid, points in scans.items()
+            if points and max(points) >= parallel.POOL_THRESHOLD
+        }
+        if not pooled:
+            return [], None
+        return list(pooled), (
+            f"the simulator runs a scan of {max(pooled.values())} points in a pool"
         )
-        if largest >= parallel.POOL_THRESHOLD:
-            return f"the simulator runs a scan of {largest} points in a pool"
-        return None
 
     def _serial_reason(
         self, jobs: dict[str, _Job], options: dict[str, Any]

@@ -168,7 +168,9 @@ def test_run_experiments_in_a_pool_with_the_engine(
         results = run_experiments(
             classes,
             output_path=tmp_path,
-            simulator=Simulator(engine=other_engine),
+            # the scan of the demo experiment would run in the pool of a
+            # simulator of its own, which runs it in this process (#554)
+            simulator=Simulator(engine=other_engine, n_workers=1),
             n_workers=2,
             progress=False,
         )

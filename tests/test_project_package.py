@@ -682,12 +682,12 @@ def test_the_experiments_run_in_a_pool_with_serial_scans(
     from sbmlsim import cgroup
     from sbmlsim.experiment import runner
 
-    seen: list[tuple[int | None, tuple[int, str | None]]] = []
+    seen: list[tuple[int | None, runner._Spread]] = []
     workers = runner.ExperimentRunner._workers
 
     def recording(
         self: runner.ExperimentRunner, n_workers: int | None, *args: Any
-    ) -> tuple[int, str | None]:
+    ) -> runner._Spread:
         chosen = workers(self, n_workers, *args)
         assert self.simulator is not None
         seen.append((self.simulator.n_workers, chosen))
@@ -702,7 +702,7 @@ def test_the_experiments_run_in_a_pool_with_serial_scans(
     )
     assert len(results) == 3
     assert not any(result.failed for result in results)
-    assert seen == [(1, (2, None))]
+    assert seen == [(1, runner._Spread(2))]
 
 
 def test_the_scans_take_the_workers_of_the_run_by_default(
