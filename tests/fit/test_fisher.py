@@ -11,6 +11,7 @@ from sbmlsim import progress
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fisher import (
+    CENTRAL_DIFFERENCES,
     DEFAULT_STEP,
     FisherInformation,
     default_step,
@@ -123,6 +124,35 @@ def test_the_jacobian_has_a_column_per_parameter(
     assert sensitivity["GU__HCTZABS_k"] == 0.0
     # and it says a lot about the renal excretion
     assert sensitivity["KI__HCTZEX_k"] > 0.0
+
+
+def test_the_information_of_another_engine_takes_the_differences(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A problem of roadrunner has no sensitivities, so python differentiates (#556)."""
+    problem = op_hctz_pk
+    problem.initialize(fit_settings)
+
+    fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
+
+    assert fim.jacobian_of == CENTRAL_DIFFERENCES
+    assert fim.step == pytest.approx(default_step(fit_settings.relative_tolerance))
+
+
+def test_the_sensitivities_of_the_engine_can_be_required(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A required jacobian of the engine names what keeps the problem from it."""
+    problem = op_hctz_pk
+    problem.initialize(fit_settings)
+
+    with pytest.raises(ValueError, match="engine: the problem simulates with"):
+        fisher_information(
+            problem,
+            fit_settings,
+            problem.parameter_set_model(),
+            engine_jacobian=True,
+        )
 
 
 def test_the_fisher_information_of_the_example(
@@ -285,8 +315,12 @@ def test_fisher_from_dict_round_trip(
     record = json.loads(json.dumps(fisher.to_dict()))
     again = FisherInformation.from_dict(record)
     assert again.step == 1e-4
+    assert again.jacobian_of == CENTRAL_DIFFERENCES
     del record["step"]
-    assert FisherInformation.from_dict(record).step == DEFAULT_STEP, "an old record"
+    del record["jacobian_of"]
+    old = FisherInformation.from_dict(record)
+    assert old.step == DEFAULT_STEP, "an old record"
+    assert old.jacobian_of == CENTRAL_DIFFERENCES, "an old record"
     assert again.pids == fisher.pids
     assert again.scale == fisher.scale
     assert again.parameter_scales == fisher.parameter_scales
