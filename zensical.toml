@@ -184,6 +184,7 @@ nav = [
     ] },
     { "sbmlsim.sensitivity" = [
       { "indices" = "api/sensitivity.indices.md" },
+      { "estimators" = "api/sensitivity.estimators.md" },
       { "result" = "api/sensitivity.result.md" },
       { "uncertainty" = "api/sensitivity.uncertainty.md" },
       { "classification" = "api/sensitivity.classification.md" },
