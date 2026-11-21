@@ -167,7 +167,7 @@ print(domains(model_path)["f_renal_function"])  # [0, 1]
 design = sampling.local(parameters, 0.15, model=model, domains={"k": Domain(0.0, 1.0)})
 ```
 
-A random design draws from the distributions it is given, which state their own support, so bound a distribution by the domain of its parameter where the two differ, e.g. with `Domain.clip` on the bounds of a `Uniform`.
+A random design draws from the distributions it is given, which state their own support, so bound a distribution by the domain of its parameter where the two differ, e.g. with `Domain.clip` on the bounds of a `Uniform`. `clip` of a single value snaps onto the values the domain holds, and `clip` of an interval limits each bound on its own side and widens a finite bound of an integer or boolean domain onto a value of it, the lower one down and the upper one up, with a warning: a fractional span of a switch or of a count is a modelling error, not a rounding one. An interval whose bounds are reversed is returned as it is, which `set_relative_bounds` builds for a negative value and `distributions` refuses by name later.
 
 `correlation` is a matrix of Spearman rank correlations between the parameters, in the order of the distributions. `random` correlates its draws with a Gaussian copula, `lhs` reorders its points (Iman and Conover), which keeps the even coverage of each parameter:
 

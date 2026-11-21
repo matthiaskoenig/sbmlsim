@@ -30,6 +30,7 @@ reads a domain is the sampler, which keeps the values of a design inside it
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from enum import StrEnum
@@ -46,6 +47,8 @@ __all__ = [
     "domain_of",
     "domains",
 ]
+
+logger = logging.getLogger(__name__)
 
 DOMAIN = "domain"
 """The name of the uncertainty which carries a domain."""
@@ -94,6 +97,29 @@ class Domain:
     upper: float
     values: Values = Values.CONTINUOUS
 
+    def __post_init__(self) -> None:
+        """Reject an integer or boolean domain whose interval holds no integer.
+
+        Such a domain accepts no value at all, so a tool which asks it for one
+        has nothing to answer: `Domain(0.2, 0.8, Values.INTEGER)` is a
+        statement about a quantity which no step, no draw and no clip can
+        satisfy, and it is a mistake where it is written and not where it is
+        read.
+
+        Raises:
+            ValueError: if no integer lies in the interval of an integer or
+                boolean domain.
+        """
+        if self.values is Values.CONTINUOUS:
+            return
+        lowest = math.ceil(self.lower) if math.isfinite(self.lower) else self.lower
+        highest = math.floor(self.upper) if math.isfinite(self.upper) else self.upper
+        if lowest > highest:
+            raise ValueError(
+                f"the interval [{_bound(self.lower)}, {_bound(self.upper)}] "
+                f"holds no integer, so no {self.values.value} domain has a value"
+            )
+
     @overload
     def clip(self, lower: float, upper: float) -> tuple[float, float]: ...
 
@@ -107,9 +133,16 @@ class Domain:
 
         An interval has each of its bounds limited to the interval of the
         domain, each on its own side, so an interval whose bounds are reversed
-        is returned as it is; a caller may rely on that. A single value is
-        limited to the interval and, for an integer or boolean domain, rounded
-        to the nearest integer the domain contains.
+        is returned as it is; a caller may rely on that
+        (`sampling.set_relative_bounds` builds an inverted pair for a negative
+        value on purpose and `sampling.distributions` refuses it by name
+        later). An interval of an integer or boolean domain which is not
+        reversed has each finite bound widened onto a value the domain
+        contains, the lower one down and the upper one up, which is logged: a
+        fractional span of a switch or of a count is a modelling error, not a
+        rounding one. A single value is limited to the interval and, for an
+        integer or boolean domain, rounded to the nearest integer the domain
+        contains.
 
         Args:
             lower: the value, or the lower bound of an interval.
@@ -125,7 +158,10 @@ class Domain:
             ValueError: if a single value is not a number.
         """
         if upper is not None:
-            return max(lower, self.lower), min(upper, self.upper)
+            low, high = max(lower, self.lower), min(upper, self.upper)
+            if self.values is Values.CONTINUOUS or low > high:
+                return low, high
+            return self._onto_values(low, high)
         if math.isnan(lower):
             raise ValueError("a value which is not a number cannot be clipped")
         x = min(max(lower, self.lower), self.upper)
@@ -137,6 +173,45 @@ class Domain:
         if x > self.upper:
             x = float(math.floor(self.upper))
         return x
+
+    def _onto_values(self, low: float, high: float) -> tuple[float, float]:
+        """Widen the bounds of an interval onto the values this domain holds.
+
+        The lower bound moves down and the upper bound moves up, so the
+        interval which was asked for stays inside the one which is returned
+        and the result is never empty, and neither bound leaves the interval
+        of the domain. A bound which is not finite stays as it is, since no
+        integral value lies nearer to it than it does itself.
+
+        Args:
+            low: the lower bound, inside the domain.
+            high: the upper bound, inside the domain and not below `low`.
+
+        Returns:
+            The bounds, each on a value of the domain.
+        """
+        wide_low, wide_high = low, high
+        if math.isfinite(low):
+            wide_low = float(math.floor(low))
+            if wide_low < self.lower:
+                wide_low = float(math.ceil(self.lower))
+        if math.isfinite(high):
+            wide_high = float(math.ceil(high))
+            if wide_high > self.upper:
+                wide_high = float(math.floor(self.upper))
+        if (wide_low, wide_high) != (low, high):
+            logger.warning(
+                "The domain %s holds integral values only, so the interval "
+                "(%s, %s) is widened to (%s, %s). A fractional span of a "
+                "switch or of a count is a modelling error, not a rounding "
+                "one.",
+                self,
+                low,
+                high,
+                wide_low,
+                wide_high,
+            )
+        return wide_low, wide_high
 
     def contains(self, value: float) -> bool:
         """Get whether a value is one the domain accepts, the bounds included.
