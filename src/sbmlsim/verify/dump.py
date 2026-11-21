@@ -15,13 +15,14 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 import numpy as np
 
+from sbmlsim.engine import Engine
 from sbmlsim.verify.common import UsageError, load_project_of, report
 
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
     from sbmlsim.fit import FitData, FitMapping
     from sbmlsim.plot import Figure
-    from sbmlsim.project import Project
+    from sbmlsim.project import Project, SimulatorSettings
     from sbmlsim.simulation import Scan, Simulation
 
 __all__ = [
@@ -38,6 +39,8 @@ __all__ = [
     "on_grid",
     "package_versions",
     "serialize",
+    "simulator_metadata",
+    "simulator_settings",
     "store_experiment",
     "variant_of",
 ]
@@ -82,6 +85,9 @@ class Dump(TypedDict):
     #: the intervals of the common output grid of every simulation (`--grid`),
     #: missing for the steps of the integrator
     grid: NotRequired[int]
+    #: the engine and the settings of the integrator the experiments ran with
+    #: (`simulator_metadata`), missing in a dump written before #549
+    simulator: NotRequired[dict[str, str]]
 
 
 # --- dump -----------------------------------------------------------------------
@@ -393,6 +399,53 @@ def _tolerance(
         raise UsageError(f"{option} is a number or `model`, not {text}") from None
 
 
+def simulator_settings(args: argparse.Namespace, project: Project) -> SimulatorSettings:
+    """Get the settings of the simulator of a dump (#549).
+
+    A dump measures the project, so it simulates the way a run of the project
+    does: with its engine and the settings of its integrator. `--atol` and
+    `--rtol` override its tolerances (`--grid` is no setting of the simulator,
+    it replaces the output times of the simulations), `--engine` its engine.
+
+    Args:
+        args: the arguments of the command.
+        project: the project of the dump.
+
+    Returns:
+        The settings of the project with the overrides of the command.
+
+    Raises:
+        UsageError: for a tolerance which is neither a number nor `model`, or
+            `model` for a tolerance the project does not have.
+    """
+    overrides: dict[str, Any] = {}
+    for name, text in (("absolute", args.atol), ("relative", args.rtol)):
+        value = _tolerance(name, text, project, f"--{name[0]}tol")
+        if value is not None:
+            overrides[f"{name}_tolerance"] = value
+    if getattr(args, "engine", None):
+        overrides["engine"] = Engine(args.engine)
+    return project.simulator.model_copy(update=overrides)
+
+
+def simulator_metadata(settings: SimulatorSettings) -> dict[str, str]:
+    """Describe the simulator of a dump for its metadata.
+
+    Everything which makes the numbers of a dump the numbers they are, as
+    text, so that `compare` says which engines and tolerances it compares. The
+    optimization level of the JIT is no part of it: it compiles the same model.
+
+    Args:
+        settings: the settings of the simulator.
+
+    Returns:
+        The engine and the settings of the integrator by their names.
+    """
+    return {"engine": str(settings.engine)} | {
+        key: str(value) for key, value in sorted(settings.integrator_settings().items())
+    }
+
+
 def dump(args: argparse.Namespace) -> int:
     """Run the experiments of a project and store everything in a pickle.
 
@@ -403,8 +456,6 @@ def dump(args: argparse.Namespace) -> int:
         UsageError: for an unknown experiment or tolerance, or a project
             without experiments.
     """
-    from sbmlsim.simulator import Simulator
-
     project = load_project_of(args)
     errors: dict[str, str] = {}
     try:
@@ -425,11 +476,12 @@ def dump(args: argparse.Namespace) -> int:
     classes = [c for c in classes if c.__name__ not in args.skip]
     logger.info("%d experiments", len(classes))
 
-    tolerances: dict[str, Any] = {}
-    for name, text in (("absolute", args.atol), ("relative", args.rtol)):
-        value = _tolerance(name, text, project, f"--{name[0]}tol")
-        if value is not None:
-            tolerances[f"{name}_tolerance"] = value
+    settings = simulator_settings(args, project)
+    simulator = simulator_metadata(settings)
+    logger.info(
+        "the simulator of the dump: %s",
+        ", ".join(f"{k} {v}" for k, v in simulator.items()),
+    )
 
     versions = package_versions(project)
     result = Dump(
@@ -443,6 +495,7 @@ def dump(args: argparse.Namespace) -> int:
         ranges={},
         versions=versions,
         builds={},
+        simulator=simulator,
     )
     if args.grid is not None:
         result["grid"] = args.grid
@@ -452,7 +505,7 @@ def dump(args: argparse.Namespace) -> int:
                 [cls],
                 # a dump runs serially, the order of its experiments is the
                 # order of the run
-                simulator=Simulator(n_workers=1, **tolerances),
+                simulator=settings.simulator(n_workers=1),
                 # an experiment which cannot be initialized raises and is
                 # recorded below
                 on_error="raise",
@@ -485,7 +538,8 @@ def dump(args: argparse.Namespace) -> int:
     with Path(args.out).open("wb") as f:
         pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
     report(
-        f"{len(classes)} experiments, {len(result['results'])} arrays, "
+        f"{len(classes)} experiments on {simulator['engine']}, "
+        f"{len(result['results'])} arrays, "
         f"{len(result['errors'])} errors -> {args.out}"
     )
     return 1 if result["errors"] else 0

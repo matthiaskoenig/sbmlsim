@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure
 from sbmlsim.project import FigureOutputs
@@ -24,6 +25,7 @@ from sbmlsim.verify.cli import verify
 from sbmlsim.verify.dump import Dump, figure_spec, load
 from sbmlsim.verify.match import matched_rows
 from sbmlsim.verify.renames import apply_renames, load_renames, rename_mapping
+from tests.engines import require
 from tests.project_toy import PROJECT, TOY_PATH
 from tests.project_toy.experiments import ToyDecay
 
@@ -494,6 +496,98 @@ def test_a_dump_names_the_versions(tmp_path: Path) -> None:
     assert verify(dump_args(out, "ToyDecay")) == 0
     versions = load(str(out))["versions"]
     assert versions["sbmlsim"] == importlib.metadata.version("sbmlsim")
+
+
+def test_a_dump_simulates_with_the_settings_of_the_project(tmp_path: Path) -> None:
+    """The engine and the tolerances of the project, which `dump` names (#549)."""
+    out = tmp_path / "dump.pkl"
+    assert verify(dump_args(out, "ToyDecay")) == 0
+    simulator = load(str(out))["simulator"]
+    assert simulator["engine"] == "roadrunner"
+    # the toy project simulates with the tolerances of its own
+    assert simulator["absolute_tolerance"] == "1e-10"
+    assert simulator["relative_tolerance"] == "1e-10"
+
+
+def test_a_tolerance_of_a_dump_overrides_the_project(tmp_path: Path) -> None:
+    out = tmp_path / "dump.pkl"
+    assert verify(dump_args(out, "--rtol", "1e-08", "ToyDecay")) == 0
+    simulator = load(str(out))["simulator"]
+    assert simulator["relative_tolerance"] == "1e-08"
+    assert simulator["absolute_tolerance"] == "1e-10", "the one of the project"
+
+
+def test_a_dump_of_another_engine(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--engine` simulates the experiments of the project with that engine."""
+    require(Engine.CORE)
+    out = tmp_path / "core.pkl"
+    assert verify(dump_args(out, "--engine", "core", "ToyDecay")) == 0
+    assert "experiments on core" in capsys.readouterr().out
+    dumped = load(str(out))
+    assert dumped["simulator"]["engine"] == "core"
+    assert dumped["results"]
+
+
+def test_a_dump_of_an_unknown_engine_exits_with_2(tmp_path: Path) -> None:
+    assert verify(dump_args(tmp_path / "d.pkl", "--engine", "nothing")) == 2
+
+
+def test_a_compare_names_the_engines_and_the_settings_which_differ(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """So that a difference is read against the simulators it came from (#549)."""
+    old, new = tmp_path / "old.pkl", tmp_path / "new.pkl"
+    assert verify(dump_args(old, "ToyDecay")) == 0
+    assert verify(dump_args(new, "--rtol", "1e-08", "ToyDecay")) == 0
+    capsys.readouterr()
+
+    verify(["compare", str(old), str(new)])
+
+    out = capsys.readouterr().out
+    assert "engine: old roadrunner, new roadrunner" in out
+    assert "relative_tolerance: old 1e-10, new 1e-08" in out
+    # a setting which both dumps share is no line of the compare
+    assert "absolute_tolerance" not in out
+
+
+def test_a_compare_of_a_dump_without_a_simulator(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A dump of an earlier release names no simulator, which is unknown."""
+    old, new = tmp_path / "old.pkl", tmp_path / "new.pkl"
+    assert verify(dump_args(old, "ToyDecay")) == 0
+    dumped = load(str(old))
+    del dumped["simulator"]
+    with old.open("wb") as f:
+        pickle.dump(dumped, f)
+    shutil.copyfile(old, new)
+    assert verify(dump_args(new, "ToyDecay")) == 0
+    capsys.readouterr()
+
+    verify(["compare", str(old), str(new)])
+
+    out = capsys.readouterr().out
+    assert "engine: old unknown, new roadrunner" in out
+    assert "relative_tolerance: old unknown, new 1e-10" in out
+
+
+def test_two_dumps_without_a_simulator_report_none(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old, new = tmp_path / "old.pkl", tmp_path / "new.pkl"
+    assert verify(dump_args(old, "ToyDecay")) == 0
+    dumped = load(str(old))
+    del dumped["simulator"]
+    for path in (old, new):
+        with path.open("wb") as f:
+            pickle.dump(dumped, f)
+    capsys.readouterr()
+
+    assert verify(["compare", str(old), str(new)]) == 0
+
+    assert "engine:" not in capsys.readouterr().out
 
 
 def test_a_dump_stores_the_settings_and_the_size_of_a_figure(tmp_path: Path) -> None:

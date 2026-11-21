@@ -29,7 +29,46 @@ __all__ = [
     "diff_lines",
     "json_paths",
     "ranges",
+    "report_simulators",
 ]
+
+
+def report_simulators(old: Dump, new: Dump) -> None:
+    """Report the simulators of two dumps, their engines and what else differs.
+
+    A dump says which engine and which settings of the integrator its numbers
+    came from (`simulator_metadata`, #549), which is what a difference of two
+    dumps is read against: the engines are reported whenever one of the dumps
+    names them, and of the settings of the integrator those which differ, so
+    that a compare of two tolerances says so. A dump written before #549 names
+    nothing, which is reported as unknown.
+
+    Args:
+        old: the old dump.
+        new: the new dump.
+    """
+    simulators = [dump_.get("simulator") for dump_ in (old, new)]
+    if not any(simulators):
+        return
+    labels = ("old", "new")
+    engines = [(s or {}).get("engine", "unknown") for s in simulators]
+    report(
+        "engine: "
+        + ", ".join(
+            f"{label} {engine}" for label, engine in zip(labels, engines, strict=True)
+        )
+    )
+    keys = sorted({k for s in simulators for k in s or {}} - {"engine"})
+    for key in keys:
+        values = [(s or {}).get(key, "unknown") for s in simulators]
+        if values[0] != values[1]:
+            report(
+                f"{key}: "
+                + ", ".join(
+                    f"{label} {value}"
+                    for label, value in zip(labels, values, strict=True)
+                )
+            )
 
 
 def _flat(
@@ -130,6 +169,7 @@ def compare(args: argparse.Namespace) -> int:
                 for label, g in zip(("old", "new"), grids, strict=True)
             )
         )
+    report_simulators(old, new)
     for label, dump_ in (("old", old), ("new", new)):
         if versions := dump_.get("versions"):
             report(
