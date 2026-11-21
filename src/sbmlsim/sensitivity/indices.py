@@ -373,6 +373,25 @@ def _unit_points(
     return parameters, cube
 
 
+def _elements(flat: np.ndarray, tolerance: float) -> tuple[np.ndarray, np.ndarray]:
+    """Get the elements an analysis estimates and which of them vary.
+
+    Args:
+        flat: the values, a row per point and a column per element.
+        tolerance: the tolerance of a constant element, see
+            `constant_tolerance`.
+
+    Returns:
+        The positions of the elements of no failed point, and which of them
+        have values which differ by more than the tolerance times their
+        largest magnitude; the others count as constant.
+    """
+    usable = np.flatnonzero(np.isfinite(flat).all(axis=0))
+    columns = flat[:, usable]
+    span = np.ptp(columns, axis=0)
+    return usable, span > tolerance * np.max(np.abs(columns), axis=0, initial=0.0)
+
+
 def _check(conf_level: float, num_resamples: int) -> None:
     """Check the arguments of the bootstrap of an analysis.
 
@@ -501,16 +520,13 @@ def _global(
         out.update({key: np.full((d, d, flat.shape[1]), np.nan) for key in pairs})
         # the elements which are estimated: the ones of no failed point whose
         # values are not constant; a failed element keeps its NaN indices
-        usable = np.flatnonzero(np.isfinite(flat).all(axis=0))
+        usable, varying = _elements(flat, tolerance)
         failed += int(flat.shape[1] - usable.size)
-        columns = flat[:, usable]
-        span = np.ptp(columns, axis=0)
-        varying = span > tolerance * np.max(np.abs(columns), axis=0)
         for key in out:
             out[key][..., usable[~varying]] = constant
         estimated = usable[varying]
         if estimated.size:
-            found = analyze(design, cube, columns[:, varying], seed)
+            found = analyze(design, cube, flat[:, estimated], seed)
             for key in out:
                 out[key][..., estimated] = np.asarray(found[key], dtype=float)
         for key, array in out.items():

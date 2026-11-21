@@ -194,7 +194,8 @@ class SensitivityResult:
             compat="override",
         )
         dims = [
-            PARAMETER,
+            # a variable of the quality of a fit has no parameter, e.g. `loo`
+            *([PARAMETER] if PARAMETER in stacked.dims else []),
             "observable",
             *(d for d in stacked.dims if d not in (PARAMETER, "observable")),
         ]

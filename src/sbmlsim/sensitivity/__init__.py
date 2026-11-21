@@ -2,16 +2,19 @@
 
 An analysis is a design of the sampler, a run and the indices on the result.
 The design of [`sbmlsim.simulation.sampling`](../api/simulation.sampling.md)
-(`local`, `sobol`, `fast` or `morris`) is a dimension of a `Scan`,
-`Simulator.run` simulates it, and `local`, `sobol`, `fast` and `morris` read
-the record of the design from the result and compute the indices of every
-observable for every label of the other dimensions and every time point of a
-timecourse on a grid.
+(`local`, `sobol`, `fast`, `morris`, or `random` or `lhs` for an expansion) is
+a dimension of a `Scan`, `Simulator.run` simulates it, and `local`, `sobol`,
+`fast`, `morris` and `pce` read the record of the design from the result and
+compute the indices of every observable for every label of the other
+dimensions and every time point of a timecourse on a grid.
 
-- [`sensitivity.indices`](../api/sensitivity.indices.md): the four analyses.
+- [`sensitivity.indices`](../api/sensitivity.indices.md): the four analyses of
+  a design of its own.
 - [`sensitivity.estimators`](../api/sensitivity.estimators.md): the
   estimators of the three global methods, over every element of an
   observable at once.
+- [`sensitivity.chaos`](../api/sensitivity.chaos.md): `pce`, the indices of a
+  polynomial chaos expansion of a sample, and the expansion as a surrogate.
 - [`sensitivity.result`](../api/sensitivity.result.md): the `SensitivityResult`
   with the indices, their units, `to_dataframe`, `classify` and netCDF.
 - [`sensitivity.plots`](../api/sensitivity.plots.md): the heatmap, the bars of
@@ -28,15 +31,19 @@ timecourse on a grid.
   imported by this package.
 """
 
+from .chaos import PolynomialChaos, fit_chaos, pce
 from .indices import fast, local, morris, sobol
 from .plots import plot_heatmap, plot_indices, plot_morris
 from .result import SensitivityResult
 
 __all__ = [
+    "PolynomialChaos",
     "SensitivityResult",
     "fast",
+    "fit_chaos",
     "local",
     "morris",
+    "pce",
     "plot_heatmap",
     "plot_indices",
     "plot_morris",

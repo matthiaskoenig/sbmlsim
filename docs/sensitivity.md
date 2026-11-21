@@ -2,9 +2,9 @@
 
 A sensitivity analysis tells you which parameters an output depends on, and how strongly. In `sbmlsim` it takes three steps:
 
-1. Create a design with `sbmlsim.simulation.sampling` (`local`, `sobol`, `fast` or `morris`, see [Sampling](sampling.md)). The design is a dimension of a `Scan`.
+1. Create a design with `sbmlsim.simulation.sampling` (`local`, `sobol`, `fast` or `morris`, or the plain sample `lhs` or `random` for a polynomial chaos expansion, see [Sampling](sampling.md)). The design is a dimension of a `Scan`.
 2. Run the scan with `Simulator.run` and the observables you are interested in.
-3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast` or `sensitivity.morris`. They read the design from the result and compute the global indices with the estimators of [SALib](https://salib.readthedocs.io), which `sensitivity.estimators` applies to every element of an output at once, see [References](references.md#sensitivity-analysis).
+3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast`, `sensitivity.morris` or `sensitivity.pce`. They read the design from the result and compute the global indices, the first three with the estimators of `sensitivity.estimators`, which follow [SALib](https://salib.readthedocs.io) and apply to every element of an output at once, see [References](references.md#sensitivity-analysis).
 
 The examples use the repressilator, three of its parameters and two observables: the peak `px_max` and the time-weighted mean `px_mean` of the protein `PX`. For the global methods every parameter varies uniformly within ±20 % of its value in the model:
 
@@ -144,6 +144,56 @@ fig = sensitivity.plot_morris(morris, "px_max")
 
 ![Output figure](images/outputs/sensitivity-07.png)
 
+## Polynomial chaos
+
+A polynomial chaos expansion fits the output as a series of polynomials of the parameters which are orthonormal under their distributions, and reads the indices off its coefficients: the mean of the output is the constant coefficient, its variance is the sum of the squares of the others, and the share of a parameter is the share of the coefficients which read it. Nothing is estimated from differences of sample means, so the indices come from a plain sample of a few hundred points instead of the `n (d + 2)` points of a Saltelli design, and the fit is a surrogate of the model as well.
+
+The design is a sample of the distributions of the parameters, `sampling.lhs` or `sampling.random`, or the points of a Saltelli design which was simulated already. The parameters must be independent, a design with a `correlation` is refused, since the share of a variance is the share of independent inputs.
+
+```python
+design = sampling.lhs(bounds, 256, seed=1, model=model)
+result = simulator.run(model, Scan(simulation, [design]), observables)
+chaos = sensitivity.pce(result)
+print(chaos.index("ST").to_pandas().round(3))
+print(chaos.index("loo").to_pandas().round(4))
+print(chaos.index("degree").to_pandas())
+```
+
+```text title="Output"
+observable  px_max  px_mean
+parameter
+n            0.979    0.962
+tau_prot     0.008    0.044
+ps_a         0.029    0.029
+observable
+px_max     0.003
+px_mean    0.002
+Name: px_max.loo, dtype: float64
+observable
+px_max     4.0
+px_mean    5.0
+Name: px_max.degree, dtype: float64
+```
+
+The total indices are the ones of the Sobol and FAST sections above, from a design which carries no structure of its own and which an uncertainty analysis or a plot of the output can reuse.
+
+The indices are `S1` and `ST`, and `S2` with `second_order=True`, exact for the expansion and without a confidence interval: their uncertainty is the error of the fit, which the result carries per output next to them.
+
+- `loo` is the corrected leave-one-out error, the share of the variance of the simulated values which the expansion does not predict. Read the indices of an output of a large `loo` with care; 0.003 above means the expansion follows 99.7 % of the variance.
+- `degree` is the total degree of its basis. The degree is not given but chosen per output from `loo`, up to `degree=` (5 by default), so a higher limit costs decompositions and never accuracy.
+- `mean` and `sd` are the mean and standard deviation of the expansion over the distributions of the parameters, in the unit of the output. They are the moments of the distribution of the parameters and not of the sample.
+
+A basis of the degree `p` over `d` parameters has `(p + d)! / (p! d!)` terms and the fit needs at least two points per term, so a high dimension needs a truncated basis: `q` below 1 drops the terms which read many parameters at a high degree (the hyperbolic truncation of Blatman and Sudret, `q=0.5` keeps about the terms of one and two parameters) and `max_interaction` caps the number of parameters of a term. Without enough points for the first degree the analysis raises rather than reporting a fit nobody can trust.
+
+`sensitivity.fit_chaos` is the expansion itself, on the unit cube rather than on a result, which `PolynomialChaos.predict` evaluates at points which were never simulated:
+
+```py
+from sbmlsim.sensitivity import fit_chaos
+
+chaos = fit_chaos(u, y, degree=8, parameters=parameters)
+predicted = chaos.predict(other_points)
+```
+
 ## Conditions and time points
 
 The design can be combined with other dimensions of the scan, e.g. doses or conditions. The analysis then computes the indices for every condition. For a timecourse on a common time grid it also computes them at every time point. Here the leak transcription rate `ps_0` is low or high, and `px` is the whole timecourse of `PX`, every 5 minutes (`time=`):
@@ -189,7 +239,7 @@ fig = sensitivity.plot_heatmap(
 )
 ```
 
-![Output figure](images/outputs/sensitivity-09.png)
+![Output figure](images/outputs/sensitivity-10.png)
 
 With a high leak, `n` has much less effect on the peak, and the sign of its index flips.
 
