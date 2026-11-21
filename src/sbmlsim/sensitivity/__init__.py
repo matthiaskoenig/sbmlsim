@@ -9,6 +9,9 @@ observable for every label of the other dimensions and every time point of a
 timecourse on a grid.
 
 - [`sensitivity.indices`](../api/sensitivity.indices.md): the four analyses.
+- [`sensitivity.estimators`](../api/sensitivity.estimators.md): the
+  estimators of the three global methods, over every element of an
+  observable at once.
 - [`sensitivity.result`](../api/sensitivity.result.md): the `SensitivityResult`
   with the indices, their units, `to_dataframe`, `classify` and netCDF.
 - [`sensitivity.plots`](../api/sensitivity.plots.md): the heatmap, the bars of

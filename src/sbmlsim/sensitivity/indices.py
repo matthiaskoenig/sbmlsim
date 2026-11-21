@@ -11,10 +11,15 @@ ragged timecourse has no common time points; run the scan with `time=`.
 - `local`: central differences at the reference, `raw` (the change of the
   observable per change of the parameter) and `normalized` (`d ln y / d ln p`);
 - `sobol`: the first order and total Sobol indices `S1`, `ST` (and `S2`)
-  with their confidence intervals, SALib;
-- `fast`: `S1`, `ST` of the extended FAST, SALib;
-- `morris`: the elementary effects `mu`, `mu_star`, `sigma`, `mu_star_conf`,
-  SALib on the unit cube the record recreates.
+  with their confidence intervals;
+- `fast`: `S1`, `ST` of the extended FAST;
+- `morris`: the elementary effects `mu`, `mu_star`, `sigma`, `mu_star_conf`
+  on the unit cube the record recreates.
+
+The three global analyses estimate every element of an observable in one pass
+with `sbmlsim.sensitivity.estimators`, the estimators of SALib over the
+elements; SALib itself draws the points of a design
+(`sbmlsim.simulation.sampling`) and is the oracle of the tests.
 
 An element whose points contain a failed simulation (`NaN`) has `NaN`
 indices, one warning counts them. An element of a global analysis which is
@@ -26,7 +31,6 @@ has `NaN` indices of variance (Sobol, FAST) and zero effects (Morris), see
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Callable, Collection, Sequence
 from typing import Any
 
@@ -35,9 +39,14 @@ import xarray as xr
 
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT
+from sbmlsim.sensitivity.estimators import (
+    fast_indices,
+    morris_effects,
+    sobol_indices,
+)
 from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2, SensitivityResult
 from sbmlsim.simulation.sampling import Design
-from sbmlsim.simulation.sampling.designs import unit_cube, unit_problem
+from sbmlsim.simulation.sampling.designs import unit_cube
 from sbmlsim.units import ureg
 
 logger = logging.getLogger(__name__)
@@ -436,23 +445,26 @@ def _global(
     tolerance: float | None,
     pair_keys: Sequence[str] = (),
 ) -> SensitivityResult:
-    """Compute the indices of a SALib method for every element, see the module.
+    """Compute the indices of a method for every element, see the module.
 
-    An element is analysed on its own, with the same bootstrap seed, so its
-    intervals do not depend on the other elements. The points are in the order
-    of the rows of the cube, i.e. of the labels `0..n-1` of the dimension. An
-    element whose values differ by no more than the tolerance of
-    `constant_tolerance` times their largest magnitude counts as constant.
+    Every element of an observable is estimated in one pass, with the same
+    bootstrap resamples, so its indices and intervals do not depend on the
+    other elements. The points are in the order of the rows of the cube, i.e.
+    of the labels `0..n-1` of the dimension. An element whose values differ by
+    no more than the tolerance of `constant_tolerance` times their largest
+    magnitude counts as constant and is not estimated, and neither is one
+    whose points contain a failed simulation.
 
     Args:
         result: the result of the scan.
         methods: the methods of the design.
         dim: the dimension of the design.
         observables: the observables.
-        analyze: `analyze(design, cube, y, seed)` gives the indices of one
-            element, `y` the values of its points; a `d` vector per key and a
-            `d x d` matrix per pair key (second order, only when the design has
-            it).
+        analyze: `analyze(design, cube, y, seed)` gives the indices of the
+            elements of `y`, the values of the points of every element in a
+            column of its own; a `(d, elements)` array per key and a
+            `(d, d, elements)` array per pair key (second order, only when the
+            design has it).
         keys: the indices over the parameters.
         dimensionless: whether the indices are dimensionless (else they have
             the unit of the observable).
@@ -487,18 +499,20 @@ def _global(
             key: np.full((d, flat.shape[1]), np.nan) for key in keys
         }
         out.update({key: np.full((d, d, flat.shape[1]), np.nan) for key in pairs})
-        for k in range(flat.shape[1]):
-            y = flat[:, k]
-            if not np.isfinite(y).all():
-                failed += 1
-                continue
-            if np.ptp(y) <= tolerance * np.max(np.abs(y)):
-                for key in out:
-                    out[key][..., k] = constant
-                continue
-            found = analyze(design, cube, y, seed)
+        # the elements which are estimated: the ones of no failed point whose
+        # values are not constant; a failed element keeps its NaN indices
+        usable = np.flatnonzero(np.isfinite(flat).all(axis=0))
+        failed += int(flat.shape[1] - usable.size)
+        columns = flat[:, usable]
+        span = np.ptp(columns, axis=0)
+        varying = span > tolerance * np.max(np.abs(columns), axis=0)
+        for key in out:
+            out[key][..., usable[~varying]] = constant
+        estimated = usable[varying]
+        if estimated.size:
+            found = analyze(design, cube, columns[:, varying], seed)
             for key in out:
-                out[key][..., k] = np.asarray(found[key], dtype=float)
+                out[key][..., estimated] = np.asarray(found[key], dtype=float)
         for key, array in out.items():
             lead = [PARAMETER, PARAMETER_2] if key in pairs else [PARAMETER]
             shape = array.shape[: len(lead)] + values.shape[1:]
@@ -530,11 +544,12 @@ def sobol(
 
     The indices are `S1` and `ST` (and `S2` over `(parameter, parameter_2)` when
     the design has second order) with their bootstrap intervals `<index>_conf`,
-    computed by SALib on the unit cube the record recreates. The bootstrap is
-    seeded with the seed of the design for every element, so the intervals are
-    reproducible for every seed, and the global random state is not touched.
-    `S2` is the upper triangle of SALib: `NaN` on and below the diagonal, so
-    `S2` of `x1` and `x3` is at `(x1, x3)` only. A constant element (within
+    the estimators of Saltelli on the unit cube the record recreates, see
+    `sbmlsim.sensitivity.estimators`. The bootstrap is seeded with the seed of
+    the design and its resamples are the ones of every element, so the
+    intervals are reproducible for every seed, and the global random state is
+    not touched. `S2` is the upper triangle: `NaN` on and below the diagonal,
+    so `S2` of `x1` and `x3` is at `(x1, x3)` only. A constant element (within
     `tolerance`) has `NaN` indices. The options of the result are those of the
     design and the arguments of the analysis (`conf_level`, `num_resamples`,
     `bootstrap_seed`, `tolerance`).
@@ -558,25 +573,18 @@ def sobol(
             number of points than its record or labels other than `0..n-1`, or
             an argument is out of range.
     """
-    from SALib.analyze import sobol as analyzer
 
     def analyze(
         design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
-        found = analyzer.analyze(
-            unit_problem(cube.shape[1]),
+        return sobol_indices(
             y,
-            calc_second_order=bool(design.options["second_order"]),
-            num_resamples=num_resamples,
+            d=cube.shape[1],
+            second_order=bool(design.options["second_order"]),
             conf_level=conf_level,
-            print_to_console=False,
-            seed=np.random.default_rng(seed),
+            num_resamples=num_resamples,
+            seed=seed,
         )
-        return {
-            key: found[key]
-            for key in ("S1", "S1_conf", "ST", "ST_conf", "S2", "S2_conf")
-            if key in found
-        }
 
     return _global(
         result,
@@ -598,8 +606,10 @@ def sobol(
 def _fast_seed(seed: int) -> int:
     """Get the non-zero seed of the bootstrap of FAST from the seed of the design.
 
-    SALib seeds FAST only for a seed which is true, so 0 would leave the global
-    random state in charge.
+    SALib seeded its generator only for a seed which is true, so the seed 0 of
+    a design would have left the global random state in charge. The estimators
+    of sbmlsim seed a generator of their own, which 0 is a seed of as well, and
+    the derived seed is kept so the intervals of a result do not change.
 
     Args:
         seed: the seed of the design.
@@ -621,14 +631,17 @@ def fast(
 ) -> SensitivityResult:
     """Compute the FAST indices of a scan with a FAST design, see the module.
 
-    The indices are `S1` and `ST` with `S1_conf` and `ST_conf`, computed by
-    SALib on the unit cube the record recreates. SALib draws the bootstrap from
-    the global random state, so a call seeds it with a seed derived from the
-    seed of the design (`bootstrap_seed`) and restores the state of the caller
-    afterwards; the intervals are reproducible for every seed. A constant
-    element (within `tolerance`) has `NaN` indices. SALib documents that the
-    bootstrap intervals of FAST are unreliable, so `S1_conf` and `ST_conf` are
-    indicative only.
+    The indices are `S1` and `ST` with `S1_conf` and `ST_conf`, the spectral
+    estimators of the extended FAST on the unit cube the record recreates, see
+    `sbmlsim.sensitivity.estimators`. The windows of the bootstrap are drawn
+    from a generator of a seed derived from the seed of the design
+    (`bootstrap_seed`, which is never 0, where SALib leaves its generator
+    alone) and are the ones of every element, so the intervals are
+    reproducible for every seed, and the global random state is not touched. A
+    constant element (within `tolerance`) has `NaN` indices. SALib documents
+    that the bootstrap intervals of FAST are unreliable, so `S1_conf` and
+    `ST_conf` are indicative only, and they are most of the cost of a FAST
+    analysis of many elements: one transform per parameter and resample.
 
     Args:
         result: the result of a scan with a `sampling.fast` design.
@@ -649,31 +662,18 @@ def fast(
             number of points than its record or labels other than `0..n-1`, or
             an argument is out of range.
     """
-    from SALib.analyze import fast as analyzer
 
     def analyze(
         design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
-        state = np.random.get_state()
-        try:
-            with warnings.catch_warnings():
-                # SALib warns on every call that the bootstrap intervals are
-                # unreliable, which the docstring of `fast` says
-                warnings.filterwarnings(
-                    "ignore", message="FAST confidence intervals", category=UserWarning
-                )
-                found = analyzer.analyze(
-                    unit_problem(cube.shape[1]),
-                    y,
-                    M=int(design.options["m"]),
-                    num_resamples=num_resamples,
-                    conf_level=conf_level,
-                    print_to_console=False,
-                    seed=seed,
-                )
-        finally:
-            np.random.set_state(state)
-        return {key: found[key] for key in ("S1", "S1_conf", "ST", "ST_conf")}
+        return fast_indices(
+            y,
+            d=cube.shape[1],
+            m=int(design.options["m"]),
+            conf_level=conf_level,
+            num_resamples=num_resamples,
+            seed=seed,
+        )
 
     return _global(
         result,
@@ -702,10 +702,11 @@ def morris(
 ) -> SensitivityResult:
     """Compute the elementary effects of a scan with a Morris design, see the module.
 
-    The indices are `mu`, `mu_star`, `sigma` and `mu_star_conf`, computed by
-    SALib on the unit cube the record recreates (`scaled=False`). They are the
+    The indices are `mu`, `mu_star`, `sigma` and `mu_star_conf`, the
+    elementary effects of the trajectories of the unit cube the record
+    recreates, unscaled, see `sbmlsim.sensitivity.estimators`. They are the
     change of the observable divided by the jump `levels / (2 (levels - 1))` of
-    SALib's grid of levels on `[0, 1]`, i.e. per unit of that grid, so they have
+    the grid of levels of SALib on `[0, 1]`, i.e. per unit of that grid, so they have
     the unit of the observable: an effect is `2 (levels - 1) / levels` times the
     change of the observable over one step of a trajectory, which moves the
     probability of one parameter by `1/2` (`1.5` times for 4 levels). A
@@ -730,25 +731,19 @@ def morris(
             number of points than its record or labels other than `0..n-1`, or
             an argument is out of range.
     """
-    from SALib.analyze import morris as analyzer
-
     keys = ("mu", "mu_star", "sigma", "mu_star_conf")
 
     def analyze(
         design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
-        found = analyzer.analyze(
-            unit_problem(cube.shape[1]),
+        return morris_effects(
             cube,
             y,
-            num_resamples=num_resamples,
+            levels=int(design.options["levels"]),
             conf_level=conf_level,
-            scaled=False,
-            print_to_console=False,
-            num_levels=int(design.options["levels"]),
-            seed=np.random.default_rng(seed),
+            num_resamples=num_resamples,
+            seed=seed,
         )
-        return {key: found[key] for key in keys}
 
     return _global(
         result,

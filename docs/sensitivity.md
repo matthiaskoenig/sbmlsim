@@ -4,7 +4,7 @@ A sensitivity analysis tells you which parameters an output depends on, and how 
 
 1. Create a design with `sbmlsim.simulation.sampling` (`local`, `sobol`, `fast` or `morris`, see [Sampling](sampling.md)). The design is a dimension of a `Scan`.
 2. Run the scan with `Simulator.run` and the observables you are interested in.
-3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast` or `sensitivity.morris`. They read the design from the result and compute the global indices with [SALib](https://salib.readthedocs.io), see [References](references.md#sensitivity-analysis).
+3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast` or `sensitivity.morris`. They read the design from the result and compute the global indices with the estimators of [SALib](https://salib.readthedocs.io), which `sensitivity.estimators` applies to every element of an output at once, see [References](references.md#sensitivity-analysis).
 
 The examples use the repressilator, three of its parameters and two observables: the peak `px_max` and the time-weighted mean `px_mean` of the protein `PX`. For the global methods every parameter varies uniformly within ±20 % of its value in the model:
 
@@ -94,7 +94,7 @@ The Hill coefficient `n` explains almost all of the variance of the peak. The sm
 
 ## FAST and Morris
 
-The extended FAST method also gives `S1` and `ST` with intervals. Its design needs more than `4 m^2` points per parameter (`m = 4` by default, so at least 65). SALib documents its bootstrap intervals as unreliable, so read `S1_conf` and `ST_conf` of FAST as rough indications.
+The extended FAST method also gives `S1` and `ST` with intervals. Its design needs more than `4 m^2` points per parameter (`m = 4` by default, so at least 65). SALib documents its bootstrap intervals as unreliable, so read `S1_conf` and `ST_conf` of FAST as rough indications; they are also most of the cost of a FAST analysis, one transform per parameter and resample.
 
 Morris screening is the cheapest global method, with `trajectories (d + 1)` points. For every parameter it gives:
 
@@ -102,7 +102,7 @@ Morris screening is the cheapest global method, with `trajectories (d + 1)` poin
 - `sigma`, the standard deviation of the effects. A large `sigma` compared with `mu_star` points to interactions or nonlinear effects;
 - `mu_star_conf`, the confidence interval of `mu_star`.
 
-The elementary effects have the unit of the output. SALib divides the change of the output by the step on its grid of levels, so with the default of four levels an effect is 1.5 times the change of the output over one step.
+The elementary effects have the unit of the output. The change of the output is divided by the step on the grid of levels of SALib, so with the default of four levels an effect is 1.5 times the change of the output over one step.
 
 ```python
 fast = sensitivity.fast(
@@ -193,7 +193,7 @@ fig = sensitivity.plot_heatmap(
 
 With a high leak, `n` has much less effect on the peak, and the sign of its index flips.
 
-A timecourse needs common time points: pass `time=` to the run, or set `times` in the simulation. A timecourse with the time points of the integrator, which differ between the points of the scan, raises. Each index is one call of SALib per element, about 10 ms for a Sobol design with `n = 1024` and five parameters. A timecourse of 1000 time points under three conditions therefore takes about half a minute per output, so ask the run only for the time points you need.
+A timecourse needs common time points: pass `time=` to the run, or set `times` in the simulation. A timecourse with the time points of the integrator, which differ between the points of the scan, raises. Every element of an output is estimated in the same pass, so a timecourse costs little more than a scalar: a Sobol design with `n = 1024` and five parameters takes 0.1 s for 1000 elements and Morris 0.01 s, while FAST takes 1.1 s for the windows of its intervals (one call of SALib per element took 9.5 s, 9.2 s and 1.0 s).
 
 ## The result
 
