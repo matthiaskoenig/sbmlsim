@@ -242,6 +242,12 @@ def local(
     points contain a failed simulation (`NaN`) has `NaN` indices where they
     use such a point, one warning counts the elements.
 
+    A step which the design clamped to the domain of its target (`sbmlsim.domains`,
+    the `clamped` of its record) is differentiated over the two values the
+    design reached instead of `2 delta p_ref`, so the difference of a clamped
+    parameter is the one-sided difference it is; a target which the design
+    could not move at all has `NaN` indices.
+
     Args:
         result: the result of a scan with a `sampling.local` design.
         dim: the dimension of the design, needed when there are several.
@@ -258,6 +264,10 @@ def local(
     dim, design = design_of(result, {"local"}, dim)
     delta = float(design.options["delta"])
     targets = [str(t) for t in design.options["targets"]]
+    clamped: dict[str, tuple[float, float]] = {
+        str(target): (float(span[0]), float(span[1]))
+        for target, span in (design.options.get("clamped") or {}).items()
+    }
     labels = [str(label) for label in result.ds[dim].values.tolist()]
     expected = ["reference", *(f"{t}{sign}" for t in targets for sign in "+-")]
     if sorted(labels) != sorted(expected):
@@ -280,23 +290,25 @@ def local(
             up = values[labels.index(f"{target}+")]
             down = values[labels.index(f"{target}-")]
             p_ref = float(design.references[target]["value"])
-            if p_ref == 0.0:
+            # the step of a target whose domain clamped it ends at the values
+            # of the record, so the difference is taken over those
+            dp, dy = 2.0 * delta * p_ref, 2.0 * delta * y_ref
+            span = clamped.get(target)
+            if span is not None:
+                dp = span[0] - span[1]
+                dy = dp * y_ref / p_ref if p_ref != 0.0 else 0.0
+            if p_ref == 0.0 or dp == 0.0:
                 # the design does not move a parameter whose reference is zero
+                # and none whose domain clamped both of its steps to one value
                 raw.append(np.full_like(up, np.nan))
                 normalized.append(np.full_like(up, np.nan))
                 continue
             # a non-finite value at the reference or a moved point is a failed point
             usable = np.isfinite(up) & np.isfinite(down) & np.isfinite(y_ref)
             with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-                raw.append(
-                    np.where(usable, (up - down) / (2.0 * delta * p_ref), np.nan)
-                )
+                raw.append(np.where(usable, (up - down) / dp, np.nan))
                 normalized.append(
-                    np.where(
-                        usable & (y_ref != 0.0),
-                        (up - down) / (2.0 * delta * y_ref),
-                        np.nan,
-                    )
+                    np.where(usable & (y_ref != 0.0), (up - down) / dy, np.nan)
                 )
         dims = [PARAMETER, *others]
         indices[f"{name}.raw"] = (dims, np.stack(raw))
@@ -306,7 +318,15 @@ def local(
         units[f"{name}.raw"] = _unit_ratio(unit, shared)
         units[f"{name}.normalized"] = "dimensionless"
     _warn_failed(failed)
-    options = {"delta": delta, "targets": targets}
+    options: dict[str, Any] = {"delta": delta, "targets": targets}
+    if clamped:
+        options["clamped"] = {t: list(span) for t, span in clamped.items()}
+        logger.warning(
+            "The steps of the parameters %s were clamped to their domain, so "
+            "their differences are the one-sided differences of the values the "
+            "design reached.",
+            sorted(clamped),
+        )
     return _assemble(result, dim, "local", options, targets, indices, units)
 
 

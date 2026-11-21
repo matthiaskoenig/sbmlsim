@@ -423,3 +423,57 @@ ALGEBRAIC = """<?xml version="1.0" encoding="UTF-8"?>
   </model>
 </sbml>
 """
+
+
+#: a fraction whose reference is close to its upper bound, the parameters of a
+#: physiologically based model which state a domain: `f_renal` lies in `[0, 1]`
+#: and a relative step of 15% would leave it (sbmlsim#592), `stage` is a class
+#: of `[0, 3]` and `k` states no domain
+FRACTION = """
+model fraction
+  compartment C = 1
+  species A in C = 1
+  f_renal = 0.94
+  stage = 2
+  k = 0.5
+  J1: A -> ; k*f_renal*A
+end
+"""
+
+
+def with_domains(sbml_text: str, domains: dict[str, Any]) -> str:
+    """Get the SBML with the domains of `sbmlsim.domains` on its parameters.
+
+    Args:
+        sbml_text: the SBML of the model.
+        domains: the domain of a parameter, compartment or species, by its id.
+
+    Returns:
+        The SBML, with a distrib uncertainty named `domain` of one `range` span
+        on every such element, as the factory of a model writes it.
+    """
+    import libsbml
+
+    from sbmlsim.domains import DOMAIN, VALUE_SET_URL
+
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml_text)
+    doc.enablePackage(libsbml.DistribExtension.getXmlnsL3V1V1(), "distrib", True)
+    doc.setPackageRequired("distrib", True)
+    model: libsbml.Model = doc.getModel()
+    for sid, domain in domains.items():
+        sbase: libsbml.SBase = model.getElementBySId(sid)
+        uncertainty: libsbml.Uncertainty = sbase.getPlugin(
+            "distrib"
+        ).createUncertainty()
+        uncertainty.setName(DOMAIN)
+        span: libsbml.UncertSpan = uncertainty.createUncertSpan()
+        span.setType(libsbml.DISTRIB_UNCERTTYPE_RANGE)
+        span.setValueLower(float(domain.lower))
+        span.setValueUpper(float(domain.upper))
+        url = VALUE_SET_URL.get(domain.values)
+        if url is not None:
+            child: libsbml.UncertParameter = uncertainty.createUncertParameter()
+            child.setType(libsbml.DISTRIB_UNCERTTYPE_EXTERNALPARAMETER)
+            child.setDefinitionURL(url)
+            child.setValue(1.0)
+    return libsbml.writeSBMLToString(doc)

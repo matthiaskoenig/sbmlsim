@@ -66,6 +66,7 @@ from matplotlib.figure import Figure
 
 from sbmlsim import display
 from sbmlsim.console import console
+from sbmlsim.domains import Domain
 from sbmlsim.sensitivity import indices, plots
 from sbmlsim.sensitivity.classification import (
     sensitivity_classification,
@@ -85,6 +86,7 @@ from sbmlsim.sensitivity.parameters import (
 )
 from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
 from sbmlsim.simulation import PK, Dimension, Observable, Scan, Simulation, sampling
+from sbmlsim.simulation.sampling.designs import model_domains
 
 if TYPE_CHECKING:
     from sbmlsim.model.model_sbml import SBMLModel
@@ -232,6 +234,8 @@ class _Context:
         builds: the values of the parameters in the variants of the groups
             other than the default one, which the table has, by variant.
         models: the models loaded by the run, by the SBML file of a variant.
+        domains: the domains which the models state for their quantities, by
+            the SBML file of a variant.
     """
 
     simulator: Simulator
@@ -243,6 +247,7 @@ class _Context:
         default_factory=lambda: MappingProxyType({})
     )
     models: dict[Path, SBMLModel] = field(default_factory=dict)
+    domains: dict[Path, dict[str, Domain]] = field(default_factory=dict)
 
     def model_path(self, group: SensitivityGroup) -> Path:
         """Get the SBML file of the variant which a group runs."""
@@ -265,6 +270,18 @@ class _Context:
                 )
             )
         return self.models[path]
+
+    def domains_of(self, group: SensitivityGroup) -> dict[str, Domain]:
+        """Get the domains the model of a group states, read once per run.
+
+        The domains of the flat SBML the engine simulates
+        (`sbmlsim.simulation.sampling.designs.model_domains`), which a design
+        keeps the values of its targets inside.
+        """
+        path = self.model_path(group)
+        if path not in self.domains:
+            self.domains[path] = model_domains(self.model(group))
+        return self.domains[path]
 
     def design(
         self,
@@ -652,13 +669,25 @@ class LocalAnalysis(Analysis):
     outputs by name, cutoff 0.05, no clustering), in the folder of the
     analysis.
 
+    A step which would leave the domain of its parameter, the values the model
+    accepts for it (`sbmlsim.domains`), is clamped to it and the sensitivity of
+    that parameter is the one-sided difference of the values the design reached
+    (#592): a fraction whose reference is 0.94 is not evaluated at 1.081, and a
+    parameter which is a class of integers is not stepped at all, so its
+    indices are `NaN`. The domains are the ones the model of a group states
+    unless `domains` gives them.
+
     Attributes:
         delta: the relative change of a parameter, in (0, 1).
         n_var: the number of steps of sbmlsim 0.8.5 up to `delta`, at least 1.
+        domains: the domain of a parameter, by its id, for a model which states
+            none or to override what it states; the domains of the model of
+            every group by default, and an empty mapping clamps nothing.
     """
 
     delta: float = 0.01
     n_var: int = 3
+    domains: Mapping[str, Domain] | None = None
 
     def __post_init__(self) -> None:
         """Check the groups, the change and its steps.
@@ -691,6 +720,9 @@ class LocalAnalysis(Analysis):
         prefix = f"local_d{self.delta}_nvar{self.n_var}"
         path.mkdir(parents=True, exist_ok=True)
         for kg, group in enumerate(self.groups):
+            domains = (
+                context.domains_of(group) if self.domains is None else self.domains
+            )
             results = [
                 indices.local(
                     context.scan(
@@ -700,6 +732,7 @@ class LocalAnalysis(Analysis):
                             delta=kv / self.n_var * self.delta,
                             model=context.model(group),
                             simulation=group.simulation,
+                            domains=domains,
                         ),
                     )
                 )
@@ -722,8 +755,13 @@ class LocalAnalysis(Analysis):
 
     @override
     def _settings(self) -> dict[str, Any]:
-        """Get the change and its steps."""
-        return {"delta": self.delta, "n_var": self.n_var}
+        """Get the change, its steps and the domains the analysis was given."""
+        settings: dict[str, Any] = {"delta": self.delta, "n_var": self.n_var}
+        if self.domains is not None:
+            settings["domains"] = {
+                uid: str(domain) for uid, domain in sorted(self.domains.items())
+            }
+        return settings
 
     def _mean(
         self, results: Sequence[SensitivityResult], outputs: Sequence[SensitivityOutput]
