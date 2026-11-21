@@ -387,6 +387,8 @@ The engine integrates with CVODE of SUNDIALS, as roadrunner does, and its absolu
 
 The engine is stateless: a simulation is one request which carries the values before the initialization, the changes, the output and the settings of the integrator, and the engine answers with the table of the selections, so a model holds nothing of the simulations which ran. A scan hands the requests of a chunk to the engine as one batch, which runs its points on threads of the engine inside one python process: a run of the engine core starts no worker processes at all, and `n_workers` is the number of those threads.
 
+The engine integrates the derivatives of a simulation in its parameters along with its states (forward sensitivities, CVODES), which no other engine of sbmlsim does: `Simulator.sensitivities(model, simulation, parameters)` answers the simulation and that table, and `sensitivity.forward` reads it as the local sensitivities of the simulation, one simulation of `k` parameters instead of the `2 k + 1` of a design and with no step to choose, see [Exact local sensitivities](sensitivity.md#exact-local-sensitivities). They need `sbmlsim-core` 0.14.0 or newer.
+
 The engine core refuses:
 
 - A model the compiler refuses, e.g. one with a fast reaction, a package it requires, a cycle of assignment rules or a draw of a distribution of `distrib`, raises a `ValueError` with the message of the compiler, which names the feature, and so does a model the engine cannot load. Algebraic rules and the `delay` csymbol are simulated: the engine integrates a model with algebraic rules with IDA since sbmlsim-core 0.10.0 and a model with delays with the integrator of its delays since 0.11.0.

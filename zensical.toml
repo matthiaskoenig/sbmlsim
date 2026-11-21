@@ -186,6 +186,7 @@ nav = [
       { "indices" = "api/sensitivity.indices.md" },
       { "estimators" = "api/sensitivity.estimators.md" },
       { "chaos" = "api/sensitivity.chaos.md" },
+      { "forward" = "api/sensitivity.forward.md" },
       { "result" = "api/sensitivity.result.md" },
       { "uncertainty" = "api/sensitivity.uncertainty.md" },
       { "classification" = "api/sensitivity.classification.md" },
