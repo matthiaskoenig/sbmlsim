@@ -1752,7 +1752,10 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
     which is the variable of no rule and of no initial assignment, and
     nothing of the plan assigns it at a time, so neither the integration nor
     a change moves it: the number the executor folds a formula of such
-    symbols into is the same at every point of the search.
+    symbols into is the same at every point of the search. A parameter the
+    pre-initialization sets by a formula is none, since a derived value of the
+    condition moves it with the search (`_derived_of`), while one it sets to a
+    number holds that number through the simulation.
 
     Args:
         plan: the plan of the condition.
@@ -1764,6 +1767,11 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
     assigned = {
         assignment.target for event in plan.events for assignment in event.assignments
     }
+    by_formula = {
+        assignment.target
+        for assignment in plan.preinit
+        if assignment.formula is not None
+    }
     symbols = model.symbols
     return {
         parameter
@@ -1772,6 +1780,7 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
         and parameter not in symbols.initial_assignments
         and parameter not in symbols.assignment_rules
         and parameter not in symbols.rate_rules
+        and parameter not in by_formula
     }
 
 

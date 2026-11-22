@@ -1085,6 +1085,41 @@ def test_a_change_which_reads_a_state_the_pre_initialization_sets_is_a_gap() -> 
     assert "'Aurine'" in gaps[0].message
 
 
+class DerivedFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose pre-initialization sets `ka` by a formula over `ke`.
+
+    A derived value of the condition moves `ka` with the search, so the number
+    the executor folds the change `ka * ka` into is the one of the point the
+    request was built at.
+    """
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                preinit_changes={"ka": "2 * ke"},
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "ka * ka"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_which_reads_a_parameter_a_formula_sets_is_a_gap() -> None:
+    """A parameter the pre-initialization assigns by a formula is no constant."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", DerivedFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert "change_value" in [gap.code for gap in gaps]
+    assert "'ka'" in next(g for g in gaps if g.code == "change_value").message
+
+
 class ConstantFoldStudy(FoldedChangeStudy):
     """`FoldedChangeStudy` whose change reads a constant parameter of the model.
 
