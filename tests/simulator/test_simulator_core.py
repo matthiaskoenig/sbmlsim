@@ -813,21 +813,43 @@ def test_a_pre_initialization_formula_of_a_compartment_or_a_species_is_folded(
     )
 
 
-def test_a_steady_state_after_the_end_is_refused(
+def test_a_steady_state_after_the_end_continues_from_the_end(
     model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
 ) -> None:
-    """The steady state after the end of a simulation is no part of the contract.
+    """The steady state after the end is a second request from the state of the end.
 
     The `steady_state` of a request is the pre-equilibration before the start,
-    so one request cannot continue from the state the timecourse ended in:
-    roadrunner answers the output time `inf` with the row of the steady state
-    after the end, which the engine refuses rather than leaving out.
+    so one request cannot continue from the state the timecourse ended in: the
+    executor carries that state into the pre-initialization of a second
+    request whose steady state is the criterion of the plan, and its row is
+    the one of roadrunner at the output time `inf`.
     """
     simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
-    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
-        Simulator(engine="core").simulate(model_core, simulation)
+    core = Simulator(engine="core").simulate(model_core, simulation)
     roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core.values[-1, 0] == float("inf")
     assert roadrunner.values[-1, 0] == float("inf")
+    assert core.columns == roadrunner.columns
+    # the row of the steady state, which neither integrator carries an error
+    # of the timecourse into: both equilibrate from the state of the end
+    np.testing.assert_allclose(
+        core.values[-1, 1:], roadrunner.values[-1, 1:], rtol=1e-6, atol=1e-9
+    )
+
+
+def test_a_steady_state_after_the_end_of_a_model_with_events_is_refused() -> None:
+    """A model with events keeps the refusal, since a request carries no trigger state.
+
+    A request initializes the model, where a trigger which the state carried
+    into it makes true fires again, while the executor of roadrunner
+    continues with the triggers as the timecourse left them: case 0023 of the
+    PEtab test suite, whose event adds 1000 to its state at the threshold its
+    steady state is past, answered 2500 against roadrunner's 1500.
+    """
+    source = sbml(EVENT_AT_FIVE)
+    simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
+    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
+        Simulator(engine="core").simulate(source, simulation)
 
 
 def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_loaded(

@@ -58,8 +58,20 @@ the engine documents:
 6. A steady state after the end of a simulation, the output at the time
    `inf` of `Plan.steady_state_output`, is no part of the contract: the
    `steady_state` of a request is the pre-equilibration before the start
-   alone, so such a plan cannot be expressed as one request and
-   `check_supported` refuses it rather than leaving its last row out.
+   alone, so such a plan cannot be expressed as one request. The executor
+   continues from the state the timecourse ended in with a second request
+   whose pre-initialization carries that state and whose `steady_state` is
+   the criterion of the plan (`steady_state_rows`, `steady_state_request`; a
+   pre-initialization value holds over the initial assignment of its target,
+   as PEtab v2 says, and the requests of the points of a chunk are simulated
+   as one batch, as their folds are). Three models keep the refusal of
+   `check_supported`, each named by `steady_state_gap`: a model with events
+   of its own, whose triggers a request cannot be told the state of, so one
+   which the carried state makes true fires again; a model which reads the
+   time, since the steady state of a request is integrated from the time 0
+   whatever the start of its simulation, while the executor of roadrunner
+   continues at the time the timecourse ended at; and a model whose state the
+   executor cannot set (`resume_targets`).
 7. A value of a request is a number, so a value which a plan sets by a
    formula is folded before the request is sent and refused where the
    executor cannot fold it (`check_supported`).
@@ -169,9 +181,12 @@ the engine documents:
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from math import isfinite
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Any, Final
+
+import numpy as np
 
 from sbmlsim.engine import UnsupportedModelError, import_core
 from sbmlsim.model.symbols import EventSymbols, ModelSymbols, TargetKind
@@ -262,7 +277,10 @@ def execute(
     """
     core = import_core()
     columns = output_columns(selections)
-    request = request_of(plan, model, columns)
+    # the steady state after the end continues from the state the timecourse
+    # ended in, which the output of the timecourse carries (`steady_state_rows`)
+    run = steady_state_columns([plan], model, columns)
+    request = request_of(plan, model, run)
     # the engine is stateless, the request carries every value of the
     # simulation: the model only records what the request sends and that it
     # was simulated, see `CoreSBMLModel.initialize`
@@ -277,8 +295,17 @@ def execute(
     # gives out again by every access: the output is read once here and
     # dropped with this call, and a caller which keeps several outputs, e.g.
     # of a batch of points, reads the values of each of them once as well
-    values = output_time(output.values, columns, plan, model.symbols)
-    return TimecourseResult(columns=tuple(columns), values=values)
+    values = output_time(output.values, run, plan, model.symbols)
+    if plan.steady_state_output is not None:
+        row = steady_state_rows(
+            [(plan, request, values)], model, run, _one_by_one(model)
+        )[0]
+        if isinstance(row, Exception):
+            raise row
+        values = np.vstack([values, row])
+    return TimecourseResult(
+        columns=tuple(columns), values=steady_state_kept(values, run, columns)
+    )
 
 
 def execute_sensitivities(
@@ -900,13 +927,16 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
             steady state after the end of its simulation and for a formula
             the executor cannot fold into a number.
     """
-    if plan.steady_state_output is not None:
+    if plan.steady_state_output is not None and (
+        reason := steady_state_gap(plan, model)
+    ):
         raise UnsupportedModelError(
             f"The engine 'core' does not simulate the steady state after the end "
             f"of the simulation of the model '{model.label}', the output at the "
             f"time 'inf': the steady state of a request is the pre-equilibration "
-            f"before the start of the simulation, so one request cannot continue "
-            f"from the state the timecourse ended in."
+            f"before the start of the simulation, so the executor continues from "
+            f"the state the timecourse ended in with a request of its own, which "
+            f"it cannot do here, since {reason}."
         )
     # the values before the initialization the request carries, folded here
     # and discarded: a formula the executor cannot fold raises, see
@@ -1362,6 +1392,223 @@ def _segment_output(plan: Plan, start: float, time: float) -> Any:
     tolerance = time_tolerance(plan.start, plan.end)
     times = [t for t in plan.times if start <= t < time - tolerance]
     return {TIMES: [*times, time]}
+
+
+def steady_state_columns(
+    plans: Sequence[Plan], model: CoreSBMLModel, columns: Sequence[str]
+) -> list[str]:
+    """Get the columns a run with a steady state after the end reads.
+
+    The caller's columns and, for a plan which has a steady state after the
+    end, the targets the executor carries the state of the timecourse into
+    the request of the steady state with (`_state_targets`), which the output
+    of the timecourse must have for `steady_state_rows` to read it.
+
+    Args:
+        plans: the plans of the run, one for a single simulation and one per
+            point for a chunk of a scan.
+        model: the model.
+        columns: the columns of the result.
+
+    Returns:
+        The columns of the run, the caller's first and in their order.
+    """
+    if all(plan.steady_state_output is None for plan in plans):
+        return list(columns)
+    targets = _state_targets(model) or ()
+    seen = set(columns)
+    return [*columns, *(t for t in targets if t not in seen)]
+
+
+def steady_state_kept(
+    values: np.ndarray, run: Sequence[str], columns: Sequence[str]
+) -> np.ndarray:
+    """Drop the columns a run added for the state of the steady state.
+
+    Args:
+        values: the values of the run, over the columns of the run.
+        run: the columns of the run, see `steady_state_columns`.
+        columns: the columns of the result, the first of the run.
+
+    Returns:
+        The values over the columns of the result, the array itself when the
+        run read nothing else.
+    """
+    if len(run) == len(columns):
+        return values
+    return values[:, : len(columns)]
+
+
+def steady_state_rows(
+    points: Sequence[tuple[Plan, dict[str, Any], np.ndarray]],
+    model: CoreSBMLModel,
+    columns: Sequence[str],
+    simulate: Callable[[list[dict[str, Any]]], Sequence[Any]],
+) -> list[np.ndarray | Exception]:
+    """Get the row of the steady state after the end of every point which has one.
+
+    The contract has no steady state after the end of a simulation, so the
+    executor continues from the state the timecourse ended in with a second
+    request per point (`steady_state_request`), and the requests of the points
+    of a chunk are simulated as one batch, as their folds are, so a chunk pays
+    one round for all of them.
+
+    Args:
+        points: the plan, the request of the timecourse and the values of its
+            output, in their order; a plan without a steady state after the
+            end is left out by the caller.
+        model: the model, which reads the state out of the output.
+        columns: the columns of the output, which carry the state.
+        simulate: what simulates the requests, the batch of the caller, as in
+            `requests_of`.
+
+    Returns:
+        The row of the steady state of every point, in its order, with the
+        time `inf`, or the exception which failed it.
+    """
+    targets = _state_targets(model)
+    assert targets is not None
+    requests: list[dict[str, Any]] = []
+    for plan, request, values in points:
+        state = _state_of(_Values(values), columns, 1.0, 0.0)
+        requests.append(
+            steady_state_request(request, plan, {t: state[t] for t in targets}, columns)
+        )
+    rows: list[np.ndarray | Exception] = []
+    for output in simulate(requests):
+        if isinstance(output, BaseException):
+            rows.append(
+                output if isinstance(output, Exception) else RuntimeError(str(output))
+            )
+            continue
+        core = import_core()
+        if isinstance(output, core.PointError):
+            rows.append(point_error(output, model))
+            continue
+        row = np.array(output.values[-1], dtype=float)
+        row[0] = np.inf
+        # the time of the row is `inf` in every `time` column, as
+        # `output_time` copies it, except in a model with an entity of that
+        # name, whose later column is the value of the entity (#445)
+        rows.append(output_time(row[np.newaxis, :], columns, _AT_INF, model.symbols)[0])
+    return rows
+
+
+#: the plan of the row of a steady state: no shift of the time, which is
+#: `inf` there, so `output_time` only copies it into a later `time` column
+_AT_INF: Final[Any] = SimpleNamespace(time_shift=0.0)
+
+
+@dataclass(frozen=True)
+class _Values:
+    """The output of a request as `_state_of` reads it, its values alone."""
+
+    values: np.ndarray
+
+
+def steady_state_gap(plan: Plan, model: CoreSBMLModel) -> str | None:
+    """Get why the executor cannot continue a steady state from the end, or `None`.
+
+    The contract has no steady state after the end of a simulation, so the
+    executor continues from the state the timecourse ended in with a second
+    request, whose pre-initialization carries that state and whose
+    `steady_state` is the criterion of the plan (`steady_state_request`). Two
+    things keep it from doing so:
+
+    - a model with events of its own, whose triggers the second request
+      cannot be told the state of: a request initializes the model, where a
+      trigger which the state carried into it makes true fires again, while
+      the executor of roadrunner continues with the triggers as the
+      timecourse left them and such an event does not fire twice (case 0023
+      of the PEtab test suite, whose event adds 1000 to its state at the
+      threshold the steady state is past);
+    - a model whose state it cannot set, the one `resume_targets` answers
+      `None` for, e.g. a species reference which is not constant: the state
+      of the second request would silently be the one of the model as loaded;
+    - a model which reads the time, since the steady state of a request is
+      integrated from the time 0 whatever the start of its simulation, while
+      the executor of roadrunner continues at the time the timecourse ended
+      at (`executor.execute`, which starts at 0 for a model which does not
+      read the time, so the two agree exactly there).
+
+    Args:
+        plan: the plan, whose model symbols give the events and say whether
+            it reads the time.
+        model: the model.
+
+    Returns:
+        The reason, a clause of the message of the refusal, or `None` when
+        the executor continues the steady state.
+    """
+    if plan.symbols.events:
+        return (
+            "the model has events of its own, whose triggers a request "
+            "cannot be told the state of, so one which the state carried "
+            "into it makes true would fire again"
+        )
+    if plan.symbols.time_dependent:
+        return (
+            "the model reads the time and the steady state of a request is "
+            "integrated from the time 0, while the executor of roadrunner "
+            "continues at the time the timecourse ended at"
+        )
+    if _state_targets(model) is None:
+        return (
+            "the model has a state the executor cannot set, so the state the "
+            "timecourse ended in cannot be carried into a request"
+        )
+    return None
+
+
+def steady_state_request(
+    request: Mapping[str, Any],
+    plan: Plan,
+    state: Mapping[str, float],
+    columns: Sequence[str],
+) -> dict[str, Any]:
+    """Get the request of the steady state after the end of a simulation.
+
+    The state the timecourse ended in is set before the initialization, where
+    it holds over the initial assignment of its target (PEtab v2, which the
+    engine applies), and the `steady_state` of the request is the criterion of
+    the plan, so the engine initializes the model in that state and
+    equilibrates it. The simulation which follows is the one output time at
+    the end of the plan, whose single row is the steady state; the caller
+    gives it the time `inf`, as `Plan.steady_state_output` has it.
+
+    The pre-initialization of the plan and its presimulation are not carried:
+    the state replaces them, and a value of theirs which is no state, e.g. a
+    parameter of a rule, is the one of the model as loaded, which the
+    initialization gives it again.
+
+    Args:
+        request: the request of the timecourse, whose fields it takes but its
+            interval, output, pre-initialization, steady state, changes and
+            selections.
+        plan: the plan, which gives the end and the criterion.
+        state: the state at the end of the timecourse, by `_state_targets`.
+        columns: the columns of the result.
+
+    Returns:
+        The request of the steady state.
+    """
+    steady = plan.steady_state_output
+    assert steady is not None
+    return {
+        **request,
+        "start": plan.end,
+        "end": plan.end,
+        "output": {TIMES: [plan.end]},
+        "preinit": [[target, value] for target, value in state.items()],
+        "changes": [],
+        "steady_state": {
+            "preinit": [],
+            "absolute_tolerance": steady.absolute_tolerance,
+            "relative_tolerance": steady.relative_tolerance,
+            "max_time": steady.max_time,
+        },
+        "selections": output_columns(columns),
+    }
 
 
 def _check_change(

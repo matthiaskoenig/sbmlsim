@@ -621,11 +621,8 @@ def test_a_later_time_column_is_the_time_of_the_rows(
             times=times,
         )
     )
-    # the last of the given times is the steady state after the end
-    if other_engine is Engine.CORE and times is not None:
-        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
-            Simulator(engine=other_engine).simulate(model, simulation)
-        return
+    # the last of the given times is the steady state after the end, which the
+    # engine core continues from the state the timecourse ended in
     results = {
         engine: Simulator(engine=engine).simulate(model, simulation)
         for engine in (Engine.ROADRUNNER, other_engine)
