@@ -59,7 +59,7 @@ FORMULAS: list[str] = [
 
 @pytest.fixture
 def model(tmp_path: Path) -> Any:
-    """Get the probe model loaded in the engine core."""
+    """Get the probe model loaded in sbmlsim-core."""
     require(Engine.CORE)
     path = tmp_path / "probe.xml"
     path.write_text(sbml(), encoding="utf-8")

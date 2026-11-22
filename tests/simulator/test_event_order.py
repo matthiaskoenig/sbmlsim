@@ -25,7 +25,7 @@ def _document(
 
 def _run(doc: libsbml.SBMLDocument, selection: str) -> list[float]:
     # the events a change fires are the executor's, `sbmlsim.simulator.changes`,
-    # whose warnings the tests of this module read; the engine core fires them
+    # whose warnings the tests of this module read; sbmlsim-core fires them
     # inside the engine
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", selection]

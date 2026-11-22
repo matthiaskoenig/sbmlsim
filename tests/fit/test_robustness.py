@@ -68,7 +68,7 @@ def test_timeout_keeps_what_a_run_reached(
     """A run which is out of time contributes the best point it found.
 
     `FitTimeout` is raised by the objective in python, the budget of a run on
-    the engine core is one of its own, so the test names roadrunner.
+    sbmlsim-core is one of its own, so the test names roadrunner.
     """
     op_hctz_pk.engine = Engine.ROADRUNNER
     opt_result = run_optimization(
@@ -97,7 +97,7 @@ def test_a_run_on_the_engine_which_is_out_of_time_keeps_what_it_reached(
 
     A fit without a gap of `sbmlsim.fit.fit_core` runs its optimizer in the
     engine, which reports a budget of its own (`MaxTime`) instead of the
-    `FitTimeout` the objective in python raises, and the engine core is the
+    `FitTimeout` the objective in python raises, and sbmlsim-core is the
     default engine of every fit, so the path has a test of its own: a run
     which is out of its budget is no success and still contributes the finite
     point it reached.

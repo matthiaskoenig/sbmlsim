@@ -7,7 +7,7 @@ answer with the one of a runner which shares nothing (`max_run_bytes=0`), bitwis
 on the page `patient` of the HCTZ demo, whose two panels share a simulation,
 and on a page whose two panels do not, and count the runs of the simulator.
 The project of the registry runs on the default engine of the package, the
-engine core, which shares its runs as roadrunner does (`SHARED_ENGINES`, #607).
+sbmlsim-core, which shares its runs as roadrunner does (`SHARED_ENGINES`, #607).
 The name ends in `_engines` so that the job `amici engine` of the continuous
 integration runs the case of AMICI, which runs alone and shares nothing.
 """

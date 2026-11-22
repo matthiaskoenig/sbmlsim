@@ -737,7 +737,7 @@ def test_the_chunks_share_a_plan_and_are_bounded(
     model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # the chunks of `run_chunk` are the ones of a run of roadrunner; the
-    # engine core hands the requests of a chunk to the engine as one batch
+    # sbmlsim-core hands the requests of a chunk to the engine as one batch
     simulator = roadrunner_simulator(n_workers=1)
     sizes: list[tuple[int, int]] = []
     run_chunk = simulator_module.run_chunk

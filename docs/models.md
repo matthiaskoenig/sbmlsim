@@ -1,6 +1,6 @@
 # Models
 
-`sbmlsim` simulates models written in the [Systems Biology Markup Language](https://sbml.org) (SBML). It loads a model into an engine, reads the units of the model and keeps a few settings with it: values to change before every simulation, the variables to record and the settings of the integrator. The engine is the [engine core](benchmarks.md) by default, the Rust SBML engine compiled to WebAssembly which every install brings, and [libroadrunner](https://libroadrunner.org), COPASI and AMICI are the others, see [Engines](simulation.md#engines). This page uses the HCTZ model of the [Tutorial](tutorial.md), a whole body model of the diuretic hydrochlorothiazide.
+`sbmlsim` simulates models written in the [Systems Biology Markup Language](https://sbml.org) (SBML). It loads a model into an engine, reads the units of the model and keeps a few settings with it: values to change before every simulation, the variables to record and the settings of the integrator. The engine is the [sbmlsim-core](benchmarks.md) by default, the Rust SBML engine compiled to WebAssembly which every install brings, and [libroadrunner](https://libroadrunner.org), COPASI and AMICI are the others, see [Engines](simulation.md#engines). This page uses the HCTZ model of the [Tutorial](tutorial.md), a whole body model of the diuretic hydrochlorothiazide.
 
 ## Loading a model
 

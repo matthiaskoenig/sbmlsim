@@ -133,7 +133,7 @@ def test_the_information_of_another_engine_takes_the_differences(
 ) -> None:
     """A problem of roadrunner has no sensitivities, so python differentiates (#556)."""
     problem = op_hctz_pk
-    # the differences are the python path, which a problem of the engine core
+    # the differences are the python path, which a problem of sbmlsim-core
     # does not take: it integrates the sensitivities with its states
     problem.engine = Engine.ROADRUNNER
     problem.initialize(fit_settings)
@@ -167,7 +167,7 @@ def test_the_fisher_information_of_the_example(
 ) -> None:
     """The information of the parameters the model starts from.
 
-    The problem runs on `sbmlsim.engine.DEFAULT_ENGINE`, the engine core,
+    The problem runs on `sbmlsim.engine.DEFAULT_ENGINE`, sbmlsim-core,
     which integrates the forward sensitivities of the residuals with their
     states: they are the jacobian of the information, exactly and without a
     step, where the central differences of python take a step of the noise of
@@ -387,7 +387,7 @@ def test_the_jacobian_of_the_engine_core_is_one_batch_in_one_worker(
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The points of a jacobian of the engine core run on the threads of a worker.
+    """The points of a jacobian of sbmlsim-core run on the threads of a worker.
 
     The engine simulates them at once, so the cores of the jacobian are the
     threads of one worker and the jacobian is the one of this process, see

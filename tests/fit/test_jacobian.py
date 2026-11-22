@@ -110,7 +110,7 @@ def op_hctz_pk(op_hctz_pk: OptimizationProblem) -> OptimizationProblem:
 
     The module overrides the problem of the conftest, which runs on
     `sbmlsim.engine.DEFAULT_ENGINE`: a fit of a problem without a gap of
-    `sbmlsim.fit.fit_core` hands the points of a jacobian to the engine core
+    `sbmlsim.fit.fit_core` hands the points of a jacobian to sbmlsim-core
     as one batch on its threads (`_worker_residuals_many`, see
     `test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit`),
     not one point per worker. The points on the workers are the python path,
@@ -152,7 +152,7 @@ def _lsq(
 
 
 def _core(op: OptimizationProblem) -> OptimizationProblem:
-    """Get the definition of a problem on the engine core, see `tests.engines`."""
+    """Get the definition of a problem on sbmlsim-core, see `tests.engines`."""
     require(Engine.CORE)
     return OptimizationProblem(
         opid=op.opid,
@@ -408,7 +408,7 @@ def test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit(
     fit_token: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fit of the engine core evaluates the points of a jacobian in one batch.
+    """A fit of sbmlsim-core evaluates the points of a jacobian in one batch.
 
     The engine simulates them at once on the threads of one worker, see
     `runner.FitPool.threads`, where the other engines evaluate one point per
@@ -431,7 +431,7 @@ def test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit(
 def test_a_jacobian_on_the_threads_of_the_engine_is_one_task() -> None:
     """A jacobian of a pool with threads is one task, its points the outcome.
 
-    The engine core simulates the points of the whole jacobian at once on its
+    sbmlsim-core simulates the points of the whole jacobian at once on its
     threads, so the jacobian is one task of one worker, see
     `runner.FitPool.threads`.
     """
@@ -557,7 +557,7 @@ def _profile_of(
     """Profile the first parameter of the problem with re-optimization.
 
     The scans run in python, which is what the cores of an analysis and the
-    jacobian of a point are about: an analysis of a problem of the engine core
+    jacobian of a point are about: an analysis of a problem of sbmlsim-core
     walks its profiles in the engine itself, which has no workers and no
     jacobian of its own, see `sbmlsim.fit.fit_core`.
     """

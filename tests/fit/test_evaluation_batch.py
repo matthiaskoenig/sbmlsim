@@ -3,7 +3,7 @@
 One evaluation of the objective of a fit is one simulation per condition, and
 the Jacobian of a step of a least squares optimizer is that evaluation once
 per parameter: `(parameters + 1) * conditions` simulations which do not depend
-on each other. The engine core simulates such a batch on threads of its own,
+on each other. sbmlsim-core simulates such a batch on threads of its own,
 so a problem of that engine evaluates a batch of vectors as one batch of
 simulations instead of one simulation per call, see
 `OptimizationProblem.evaluate_residuals_many`.
@@ -27,7 +27,7 @@ from tests.engines import require
 def problem_core(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> OptimizationProblem:
-    """Get the initialized problem of the pharmacokinetics on the engine core."""
+    """Get the initialized problem of the pharmacokinetics on sbmlsim-core."""
     require(Engine.CORE)
     op_hctz_pk.initialize(fit_settings)
     op_hctz_pk.set_simulator(Simulator(n_workers=1, engine=Engine.CORE))

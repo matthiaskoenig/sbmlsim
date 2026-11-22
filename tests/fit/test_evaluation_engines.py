@@ -81,7 +81,7 @@ def _unique_models(problem: OptimizationProblem) -> list[Any]:
 def on_roadrunner(problem: OptimizationProblem) -> OptimizationProblem:
     """Put an uninitialized problem on roadrunner, the reference of the module.
 
-    `sbmlsim.engine.DEFAULT_ENGINE` is the engine core, so a problem of the
+    `sbmlsim.engine.DEFAULT_ENGINE` is sbmlsim-core, so a problem of the
     conftest is one of the engines under test: the reference side of a
     comparison would compare the engine with itself, and `set_simulator` of
     the same engine keeps the models instead of loading them again.
@@ -424,7 +424,7 @@ def test_the_methods_name_the_engine(
     other_engine: Engine, fit_settings: FitSettings
 ) -> None:
     """The engine integrates with its integrator, without the settings of CVODE."""
-    # roadrunner is named, not taken from the default, which is the engine core
+    # roadrunner is named, not taken from the default, which is sbmlsim-core
     roadrunner = _html(methods._integrator(fit_settings, Engine.ROADRUNNER))
     assert "libRoadRunner" in roadrunner and "its integrator CVODE " in roadrunner
     assert _html(methods._integrator(fit_settings)) == _html(
@@ -444,7 +444,7 @@ def test_the_methods_name_the_engine(
     smallest = AbsoluteTolerance.of(fit_settings.absolute_tolerance).smallest()
     assert smallest == 1e-6
     if other_engine is Engine.CORE:
-        # the engine core integrates with the absolute tolerance of every
+        # sbmlsim-core integrates with the absolute tolerance of every
         # state of roadrunner, so it has no factor of one tolerance
         assert _rendered(smallest) in text
         assert "the smallest absolute tolerance of the fit" not in text

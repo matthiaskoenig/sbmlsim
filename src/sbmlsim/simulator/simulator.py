@@ -13,7 +13,7 @@
    parent. The points are cut into chunks which share a plan, at most
    `ceil(n_points / (4 * n_workers))` and at most `MAX_CHUNK` points each,
    four per process so that a process which finishes early takes another
-   chunk. A chunk of the engine core is one batch, whose points the engine
+   chunk. A chunk of sbmlsim-core is one batch, whose points the engine
    spreads over its threads itself, so there the parallelism is inside the
    chunk and a chunk holds every point `CORE_MAX_CHUNK` allows, the cap of
    the tables of a batch.
@@ -47,13 +47,13 @@ loads, each with its own tolerance per state. A setting of a model which the
 simulator does not set stays, and a worker loads the model with the
 integrator and the settings the model has in the calling process.
 
-The engine of a simulator, the engine core by default
+The engine of a simulator, sbmlsim-core by default
 (`sbmlsim.engine.DEFAULT_ENGINE`), roadrunner, COPASI or AMICI, simulates
 every model it runs: a model of another engine is loaded
 again in the engine of the simulator, see
 `sbmlsim.model.model_sbml.load_model`, and a plan runs with the executor of
 the engine, see `sbmlsim.simulator.engines`. The engine is the attribute
-`engine` of the result. A run of the engine core runs no chunk in a pool: the
+`engine` of the result. A run of sbmlsim-core runs no chunk in a pool: the
 engine simulates the points of a chunk as one batch on threads of its own, so
 such a run has one python worker and the threads of
 `core_threads(n_workers, n_points)` (`_workers`,
@@ -144,7 +144,7 @@ logger = logging.getLogger(__name__)
 #: the most points of a chunk
 MAX_CHUNK: int = 1000
 
-#: the most points of a chunk of the engine core, which simulates them as one
+#: the most points of a chunk of sbmlsim-core, which simulates them as one
 #: batch and holds the table of every point of it until the point is read, see
 #: `sbmlsim.simulator.worker._run_chunk_core`
 CORE_MAX_CHUNK: int = 250
@@ -179,7 +179,7 @@ class Simulator:
             n_workers: `1` runs serially, a number is the number of processes,
                 `None` uses every CPU for a scan of
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
-                smaller one serially. A run of the engine core has one
+                smaller one serially. A run of sbmlsim-core has one
                 process and counts them as the threads of the batches of its
                 chunks instead, see `_workers`.
             engine: the engine or its name, `roadrunner`, `copasi`, `amici`
@@ -202,7 +202,7 @@ class Simulator:
             ValueError: if `n_workers` is less than 1 or the engine is
                 unknown.
             ImportError: for the engine COPASI without python-copasi, for the
-                engine AMICI without AMICI and for the engine core without the
+                engine AMICI without AMICI and for sbmlsim-core without the
                 bindings of sbmlsim-core, which are no extra of sbmlsim, see
                 `sbmlsim.engine.import_core`.
         """
@@ -305,11 +305,11 @@ class Simulator:
         """Run one simulation with the forward sensitivities of the parameters.
 
         The derivatives of the columns of the simulation in the values the
-        parameters have at its start, which the engine core integrates along
+        parameters have at its start, which sbmlsim-core integrates along
         with the states: one simulation answers what a central difference
         answers with two simulations per parameter, and to the tolerance of
         the integration instead of the step of a difference, which is what
-        `sbmlsim.sensitivity.forward` reads. Only the engine core carries
+        `sbmlsim.sensitivity.forward` reads. Only sbmlsim-core carries
         them.
 
         Args:
@@ -328,13 +328,13 @@ class Simulator:
             ValueError: if the simulation does not fit the model, or no
                 parameter is given.
             NotImplementedError: if the engine of the simulator is not the
-                engine core, or for a plan or a model whose sensitivities the
+                sbmlsim-core, or for a plan or a model whose sensitivities the
                 engine does not carry (`UnsupportedModelError`).
             RuntimeError: if the engine fails to integrate.
         """
         if self.engine is not Engine.CORE:
             raise NotImplementedError(
-                f"The forward sensitivities of a simulation come from the engine core, "
+                f"The forward sensitivities of a simulation come from sbmlsim-core, "
                 f"the simulator runs on '{self.engine.value}'; use "
                 f"Simulator(engine='core')."
             )
@@ -434,7 +434,7 @@ class Simulator:
         compiled = self._compile(model, scan, time, observables, keep)
         workers, threads = self._workers(len(block))
         # the chunks of the processes of the run, and of the batches of a run
-        # of the engine core, which is one python process: a chunk of it is
+        # of sbmlsim-core, which is one python process: a chunk of it is
         # one batch which the engine spreads over its threads itself, so the
         # parallelism of such a run is inside its chunk and the chunk takes
         # every point the cap of a batch allows, where the four chunks per
@@ -642,7 +642,7 @@ class Simulator:
     def _workers(self, n_points: int) -> tuple[int, int]:
         """Get the processes and the engine threads the points of a run share.
 
-        A run of the engine core runs the points of a chunk as one batch on
+        A run of sbmlsim-core runs the points of a chunk as one batch on
         the threads of the engine inside this process, see
         `sbmlsim.simulator.worker._run_chunk_core`: it has one python worker
         and the threads a run of another engine has processes, which is what
@@ -688,7 +688,7 @@ class Simulator:
             chunks: the points, in the order of their first point.
             collect: what the result of a chunk goes to, with whether the
                 chunk wrote its values into the cube itself.
-            threads: the threads of the engine core a chunk of a model of
+            threads: the threads of sbmlsim-core a chunk of a model of
                 that engine is batched on, see `_workers`.
             destination: where a chunk may write its values, `None` for one
                 which keeps them.
@@ -1094,9 +1094,9 @@ class _Compiled:
                 whole scan; the sizes of the chunks follow its number of
                 points.
             most: the most points of a chunk, `CORE_MAX_CHUNK` for a run of
-                the engine core.
+                sbmlsim-core.
             batched: whether the points of a chunk run at once, which is a
-                run of the engine core, see `_chunk_size`.
+                run of sbmlsim-core, see `_chunk_size`.
 
         Returns:
             The chunks in the order of their first point.
@@ -1528,9 +1528,9 @@ def _chunk_size(
         n_points: the points of the scan.
         workers: the number of processes of the run.
         most: the most points of a chunk, `MAX_CHUNK` by default and
-            `CORE_MAX_CHUNK` for a run of the engine core.
+            `CORE_MAX_CHUNK` for a run of sbmlsim-core.
         batched: whether the points of a chunk run at once, a run of the
-            engine core.
+            sbmlsim-core.
 
     Returns:
         The size of a chunk.

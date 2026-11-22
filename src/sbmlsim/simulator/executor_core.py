@@ -1,4 +1,4 @@
-"""The executor of the engine core runs a plan on a model of the engine core.
+"""The executor of sbmlsim-core runs a plan on a model of sbmlsim-core.
 
 A plan is one request of the contract `simulation/1` (`request_of`) which one
 call of the engine simulates: the engine initializes the model with the values
@@ -236,7 +236,7 @@ REQUEST: Final[str] = "request"
 def execute(
     plan: Plan, model: CoreSBMLModel, selections: Sequence[str]
 ) -> TimecourseResult:
-    """Run a plan on a model of the engine core.
+    """Run a plan on a model of sbmlsim-core.
 
     The contract of `sbmlsim.simulator.executor.execute`: the output has two
     rows at the time of a change after the start, the state before the change
@@ -358,7 +358,7 @@ def execute_many(
     model: CoreSBMLModel,
     threads: int,
 ) -> list[TimecourseResult | Exception]:
-    """Run the plans of a batch on a model of the engine core as one batch.
+    """Run the plans of a batch on a model of sbmlsim-core as one batch.
 
     What `execute` is for one plan: the engine simulates the requests of a
     batch on threads of its own and answers with the output of every point or

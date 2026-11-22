@@ -1,4 +1,4 @@
-"""The fit of an optimization problem in the engine core, the contract `fit/1` (#556).
+"""The fit of an optimization problem in sbmlsim-core, the contract `fit/1` (#556).
 
 An optimizer in python evaluates one point at a time: it asks the problem for
 the residuals of a point, the problem simulates the conditions of that point
@@ -57,15 +57,18 @@ import math
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 from packaging.version import InvalidVersion, Version
 
 from sbmlsim.engine import Engine, UnsupportedModelError
+from sbmlsim.experiment.sids import to_sid
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.observable_sbml import (
+    OBSERVABLE_PREFIX,
     Entities,
+    add_formula,
     add_observable,
     observable_id,
     observable_model,
@@ -174,6 +177,18 @@ RESIDUALS: frozenset[ResidualType] = frozenset(
     {ResidualType.ABSOLUTE, ResidualType.NORMALIZED}
 )
 
+#: the noise distributions whose residual of the data is the residual the
+#: engine computes, a difference divided by a standard deviation: the normal
+#: one as it is and the log-normal one on a logarithmic column of the model,
+#: see `_gaps_of_the_objective`. The residual of a Laplace distribution is
+#: `sign(r) sqrt(2 |r|)` of that difference, which no curve of the contract
+#: expresses.
+LIKELIHOOD_DISTRIBUTIONS: frozenset[str] = frozenset({"normal", "log-normal"})
+
+#: the prefix of the observable of the model which is the logarithm of the
+#: column of a mapping of log-normal noise, see `_log_observable`
+LOG_PREFIX: Final = "log__"
+
 
 @dataclass(frozen=True)
 class Gap:
@@ -200,7 +215,7 @@ def loaded_model(problem: OptimizationProblem) -> Any:
 
     Raises:
         ValueError: if the problem has no model, more than one, or a model
-            which is not loaded in the engine core, see `gaps_of`.
+            which is not loaded in sbmlsim-core, see `gaps_of`.
     """
     models = _models_of(problem)
     if len(models) != 1:
@@ -265,12 +280,12 @@ def fits_requests(loaded: Any) -> bool:
 
     `LoadedModel.fit` is new in sbmlsim-core 0.12.0, which the floor of
     sbmlsim is at, so what answers `False` here is a model which is not
-    loaded in the engine core, and the optimizer in python fits the problem
+    loaded in sbmlsim-core, and the optimizer in python fits the problem
     of such a model as it did before.
 
     Args:
         loaded: the loaded model, `None` for a model which is not loaded in
-            the engine core.
+            sbmlsim-core.
 
     Returns:
         Whether the engine of the bindings fits a request.
@@ -295,7 +310,7 @@ def reads_after_change(loaded: Any) -> bool:
 
     Args:
         loaded: the loaded model, `None` for a model which is not loaded in
-            the engine core.
+            sbmlsim-core.
 
     Returns:
         Whether the bindings read the field.
@@ -308,7 +323,7 @@ def _reads(loaded: Any, release: str) -> bool:
 
     Args:
         loaded: the loaded model, `None` for a model which is not loaded in
-            the engine core.
+            sbmlsim-core.
         release: the release the field was added in.
 
     Returns:
@@ -337,7 +352,7 @@ def reads_derived(loaded: Any) -> bool:
 
     Args:
         loaded: the loaded model, `None` for a model which is not loaded in
-            the engine core.
+            sbmlsim-core.
 
     Returns:
         Whether the bindings read them.
@@ -373,7 +388,7 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
             Gap(
                 "engine",
                 f"the problem simulates with '{problem.engine.value}', and the "
-                f"fit of a request runs in the engine core",
+                f"fit of a request runs in sbmlsim-core",
             )
         )
         return gaps
@@ -388,31 +403,30 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
             )
         ]
     settings = problem.settings_initialized
-    if settings.objective is not ObjectiveType.LEAST_SQUARES:
-        return [
-            Gap(
-                "objective",
-                f"the fit minimizes the objective '{settings.objective.value}', "
-                f"whose noise parameters and priors are no part of a request",
-            )
-        ]
-    if settings.loss_function.name != "LINEAR":
-        return [
-            Gap(
-                "loss_function",
-                f"the residuals of the fit go through the loss function "
-                f"'{settings.loss_function.name.lower()}', which the engine "
-                f"does not apply",
-            )
-        ]
-    if settings.residual not in RESIDUALS:
-        return [
-            Gap(
-                "residual",
-                f"the residuals of the fit are '{settings.residual.name.lower()}', "
-                f"which subtract a baseline of the simulation",
-            )
-        ]
+    objective = _gaps_of_the_objective(problem)
+    if objective:
+        return objective
+    if settings.objective is ObjectiveType.LEAST_SQUARES:
+        # a likelihood applies neither the loss function nor the residual
+        # type of the settings, its residual is the one of its noise model
+        if settings.loss_function.name != "LINEAR":
+            return [
+                Gap(
+                    "loss_function",
+                    f"the residuals of the fit go through the loss function "
+                    f"'{settings.loss_function.name.lower()}', which the engine "
+                    f"does not apply",
+                )
+            ]
+        if settings.residual not in RESIDUALS:
+            return [
+                Gap(
+                    "residual",
+                    f"the residuals of the fit are "
+                    f"'{settings.residual.name.lower()}', which subtract a "
+                    f"baseline of the simulation",
+                )
+            ]
     models = _models_of(problem)
     if len(models) != 1:
         gaps.append(
@@ -444,6 +458,168 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
     if gaps:
         return gaps
     return _gaps_of_the_request(problem)
+
+
+def fixed_noise(problem: OptimizationProblem, mapping: int) -> np.ndarray | None:
+    """Get the scale of the noise of a fit mapping when the fit does not move it.
+
+    The engine divides the residual of a point by a number, so a noise model
+    is a curve of a request only when its scale is the same at every point of
+    the search: a formula which reads the simulation (`NoiseModel.observable`,
+    a selection of it) or a parameter of the fit has a scale which follows the
+    parameters and is none.
+
+    A noise parameter which is no parameter of the fit is its nominal value,
+    which is fixed, and a placeholder value which is a formula reads the
+    selections of the simulation and is not.
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the fit mapping.
+
+    Returns:
+        The scale of the noise of every measurement, `None` when it follows
+        the parameters of the fit or the simulation, or when the noise model
+        is not defined at the nominal values.
+    """
+    from sbmlsim.fit.petab_v2.likelihood import noise_model_of, noise_values
+
+    noise = noise_model_of(problem, mapping)
+    if noise.observable is not None or problem.noise_selections[mapping]:
+        return None
+    if any(
+        isinstance(value, str)
+        for values in noise.placeholder_values
+        for value in values
+    ):
+        return None
+    pids = set(problem.pids)
+    if any(parameter.pid in pids for parameter in noise.parameters):
+        return None
+    if any(symbol in pids for symbol in noise.symbols):
+        return None
+    size = len(problem.y_references[mapping])
+    try:
+        return np.asarray(noise_values(noise, size=size), dtype=float)
+    except ValueError:
+        return None
+
+
+def _gaps_of_the_objective(problem: OptimizationProblem) -> list[Gap]:
+    """Get what keeps the objective of a problem out of a request.
+
+    Weighted least squares, the default, is the objective of a request. A
+    likelihood is one too when its residuals are the ones the engine
+    computes: the negative log-likelihood of a measurement is
+    `0.5 res**2 + t` with `res` the normalized residual and `t` the term of
+    the scale of its noise (`likelihood_residuals`), so a noise model whose
+    scale the fit does not move (`fixed_noise`) has a constant `t`, which
+    shifts the cost and has no derivative, and a normal `res` is the residual
+    of a curve of `noise` that scale. A log-normal `res` is that of a curve
+    whose column is the logarithm of the observable, which the model of the
+    fit carries (`_log_observable`), and whose values are the logarithms of
+    the measurements.
+
+    The constant of the scales is `likelihood_constant`, which the cost of a
+    run of the engine is shifted by, so the cost of such a fit is the
+    negative log-likelihood as a fit in python reports it.
+
+    A posterior adds the residuals of the priors, which are functions of the
+    parameters alone and no part of a request, a Laplace distribution has a
+    residual no curve expresses (`LIKELIHOOD_DISTRIBUTIONS`), and a noise
+    whose scale is a parameter of the fit, e.g. `sd_obs`, or which reads the
+    simulation is one the engine would hold at the value it started from.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The gaps, empty for an objective the engine minimizes.
+    """
+    objective = problem.settings_initialized.objective
+    if objective is ObjectiveType.LEAST_SQUARES:
+        return []
+    if objective is not ObjectiveType.LIKELIHOOD:
+        return [
+            Gap(
+                "objective",
+                f"the fit minimizes the objective '{objective.value}', whose "
+                f"priors are functions of the parameters and no residual of a "
+                f"request",
+            )
+        ]
+    from sbmlsim.fit.petab_v2.likelihood import noise_model_of
+
+    gaps: list[Gap] = []
+    for mapping in problem.indices(MappingKind.TRAINING):
+        key = f"{problem.experiment_keys[mapping]}.{problem.mapping_keys[mapping]}"
+        noise = noise_model_of(problem, mapping)
+        distribution = str(noise.distribution.value)
+        if distribution not in LIKELIHOOD_DISTRIBUTIONS:
+            gaps.append(
+                Gap(
+                    "objective",
+                    f"the noise of '{key}' is '{distribution}', whose residual "
+                    f"is no difference divided by a standard deviation",
+                )
+            )
+            continue
+        if fixed_noise(problem, mapping) is None:
+            gaps.append(
+                Gap(
+                    "objective",
+                    f"the scale of the noise of '{key}', '{noise.formula}', "
+                    f"follows the parameters of the fit or its simulation, and "
+                    f"a curve of a request divides by a number",
+                )
+            )
+    return gaps
+
+
+def likelihood_constant(problem: OptimizationProblem) -> float:
+    """Get what the cost of a run of the engine misses for a likelihood.
+
+    The engine minimizes the half sum of the squares of the residuals of the
+    curves, which are the residuals of the data of the likelihood. The
+    negative log-likelihood is
+    `0.5 sum(data**2) + 0.5 sum(scale**2) - 0.5 sum(offsets)` with the
+    residuals of the scale and the offsets of `likelihood_residuals`, both of
+    which are constant for a noise the fit does not move (`fixed_noise`), so
+    this is the constant a run of the engine is shifted by.
+
+    Args:
+        problem: the initialized problem, without the gaps of its objective.
+
+    Returns:
+        The constant, `0.0` for a fit of least squares.
+    """
+    if problem.settings_initialized.objective is ObjectiveType.LEAST_SQUARES:
+        return 0.0
+    from sbmlsim.fit.petab_v2.likelihood import (
+        likelihood_offsets,
+        likelihood_residuals,
+        noise_model_of,
+    )
+
+    constant = 0.0
+    for mapping in problem.indices(MappingKind.TRAINING):
+        noise = noise_model_of(problem, mapping)
+        measurement = np.asarray(problem.y_references[mapping], dtype=float)
+        sigma = fixed_noise(problem, mapping)
+        if sigma is None:
+            raise ValueError(
+                f"'{problem.opid}': the noise of the mapping "
+                f"'{problem.mapping_keys[mapping]}' is not fixed, see "
+                f"'fixed_noise'."
+            )
+        # the residuals of the scale do not depend on the simulation, so the
+        # measurement itself stands in for it here
+        _, scale = likelihood_residuals(
+            measurement, measurement, sigma, noise.distribution
+        )
+        offsets = likelihood_offsets(measurement, noise.distribution)
+        constant += 0.5 * float(np.sum(np.square(scale))) - 0.5 * float(np.sum(offsets))
+    return constant
 
 
 def _gaps_of_the_bounds(problem: OptimizationProblem) -> list[Gap]:
@@ -733,11 +909,15 @@ def _conditions_and_curves(
         )
         selections = list(problem._selections_of(group, training))
         # the observable of a mapping is a column of the model of the fit, so
-        # the condition selects it instead of what its formula reads
+        # the condition selects it instead of what its formula reads, and a
+        # mapping of log-normal noise reads its logarithmic column
         for k in training:
             for part in parts[k]:
-                if part.column is not None and part.column not in selections:
-                    selections.append(part.column)
+                column = part.column
+                if _is_log_normal(problem, k):
+                    column = _log_observable(column or problem.yid_observable[k])
+                if column is not None and column not in selections:
+                    selections.append(column)
         condition = _condition_id(problem, group, training[0])
         of_the_group[group] = condition
         entry: dict[str, Any] = {
@@ -796,26 +976,66 @@ def _curve(
         The curve, a dictionary of the fields of the contract.
     """
     at = list(part.at)
-    weights = np.asarray(problem.weights[mapping], dtype=float)
-    scale = 1.0
-    if problem.residual is ResidualType.NORMALIZED:
-        # the mean of the whole mapping, which is what the problem divides by
-        scale = float(np.mean(problem.y_references[mapping]))
     times = np.asarray(problem.x_references[mapping], dtype=float)
     values = np.asarray(problem.y_references[mapping], dtype=float)
+    column = part.column or problem.yid_observable[mapping]
+    noise = _noise_of(problem, mapping)
+    if _is_log_normal(problem, mapping):
+        # the residual of a log-normal noise is the difference of the
+        # logarithms, which the logarithmic column of the model gives
+        column = _log_observable(column)
+        values = np.log(values)
     key = problem.mapping_keys[mapping]
     curve: dict[str, Any] = {
         "id": f"{key}[{at[0]}:{at[-1] + 1}]" if numbered else key,
         "condition": condition,
-        "column": part.column or problem.yid_observable[mapping],
+        "column": column,
         "times": [float(time) for time in times[at]],
         "values": [float(value) for value in values[at]],
-        "noise": [float(scale / math.sqrt(weights[point])) for point in at],
+        "noise": [float(noise[point]) for point in at],
     }
     after = after_change_of(problem, group, mapping)
     if after is not None:
         curve["after_change"] = [bool(flag) for flag in after[at]]
     return curve
+
+
+def _noise_of(problem: OptimizationProblem, mapping: int) -> np.ndarray:
+    """Get the standard deviation of every measurement of a fit mapping.
+
+    The engine divides the residual of a point by this number. For weighted
+    least squares it is the weight of the point, `1/sqrt(w)` of the problem,
+    with the mean of the data of a normalized residual in it; for a
+    likelihood it is the scale of the noise model, which the weights, the
+    residual type and the loss function of the settings play no part in, as
+    they do not in python (`OptimizationProblem.residuals`).
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the fit mapping.
+
+    Returns:
+        The standard deviation of every measurement of the mapping.
+
+    Raises:
+        ValueError: if the noise of a likelihood is not fixed, which
+            `_gaps_of_the_objective` reports as a gap.
+    """
+    if problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES:
+        sigma = fixed_noise(problem, mapping)
+        if sigma is None:
+            raise ValueError(
+                f"'{problem.opid}': the noise of the mapping "
+                f"'{problem.mapping_keys[mapping]}' is not fixed, see "
+                f"'fixed_noise'."
+            )
+        return sigma
+    weights = np.asarray(problem.weights[mapping], dtype=float)
+    reference = 1.0
+    if problem.residual is ResidualType.NORMALIZED:
+        # the mean of the whole mapping, which is what the problem divides by
+        reference = float(np.mean(problem.y_references[mapping]))
+    return reference / np.sqrt(weights)
 
 
 def _gaps_of_the_targets(problem: OptimizationProblem) -> list[Gap]:
@@ -1107,7 +1327,38 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
         names = _observable_names(key, rows)
         for row, values in rows.items():
             add_observable(names[row], observable, values, symbols, entities)
+    for mapping in problem.indices(MappingKind.TRAINING):
+        if not _is_log_normal(problem, mapping):
+            continue
+        for part in _parts_of(problem, mapping):
+            column = part.column or problem.yid_observable[mapping]
+            add_formula(_log_observable(column), f"log({column})", symbols, entities)
     return entities
+
+
+def _is_log_normal(problem: OptimizationProblem, mapping: int) -> bool:
+    """Whether the noise of a fit mapping of a likelihood is log-normal.
+
+    The residual of a log-normal noise is the difference of the logarithms,
+    which the curve of the mapping reads from a logarithmic column of the
+    model (`_log_observable`); a fit of least squares has no noise model.
+    """
+    if problem.settings_initialized.objective is ObjectiveType.LEAST_SQUARES:
+        return False
+    from sbmlsim.fit.petab_v2.likelihood import noise_model_of
+
+    return bool(noise_model_of(problem, mapping).distribution.is_log)
+
+
+def _log_observable(column: str) -> str:
+    """Get the id of the observable of the model which is the logarithm of a column.
+
+    The column is a selection of the model (`X`, `[X]`) or the observable of
+    a mapping which the model of the fit carries already, and the id is one
+    SId whatever it is, so a concentration and an observable of a part both
+    get one.
+    """
+    return f"{OBSERVABLE_PREFIX}{LOG_PREFIX}{to_sid(column)}"
 
 
 @dataclass(frozen=True)
@@ -1709,15 +1960,20 @@ def _fit_of(
 
     A run says where its jacobian came from; `jacobian` is what a run of
     bindings which do not answers with, the one of the whole fit.
+
+    The cost of a run of a likelihood is shifted by `likelihood_constant`,
+    the residuals of the scales of its noise and their offsets, so it is the
+    negative log-likelihood a fit in python reports.
     """
     from scipy.optimize import OptimizeResult
 
     factors = np.asarray(_factors_of(problem), dtype=float)
     status = str(run["status"])
+    constant = likelihood_constant(problem)
     return OptimizeResult(
         x=np.asarray(run["values"], dtype=float) / factors,
         x0=np.asarray(run["start"], dtype=float) / factors,
-        cost=float(run["cost"]),
+        cost=float(run["cost"]) + constant,
         success=status in CONVERGED,
         message=status,
         duration=float(run["seconds"]),
@@ -1916,7 +2172,7 @@ def profile_points(
     around.
 
     Args:
-        problem: the initialized problem, of the engine core.
+        problem: the initialized problem, of sbmlsim-core.
         settings: the settings of the analysis.
         at: the optimum, in the space the parameters are searched.
         pids: the parameters to profile, in the order of the profiles.
@@ -2006,6 +2262,17 @@ def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     gaps = gaps_of(problem)
     if gaps:
         return gaps
+    if problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES:
+        return [
+            Gap(
+                "objective",
+                f"the fit minimizes the objective "
+                f"'{problem.settings_initialized.objective.value}', whose "
+                f"residuals are the ones of the data and of the scales of its "
+                f"noise, while a jacobian of the engine has the rows of the "
+                f"curves of its request, the ones of the data",
+            )
+        ]
     loaded = _loaded_of(problem)
     if not hasattr(loaded, "fit_problem"):
         import sbmlsim_core

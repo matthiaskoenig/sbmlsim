@@ -19,7 +19,7 @@ uv run python scripts/testsuite.py report --output site/testsuite/report
 
 The cases run in parallel, one process per core. `--workers` sets the number of processes, and `--workers 1` runs everything in one process. `--commit latest` runs the head of the branch `develop` of the suite instead of the pinned commit.
 
-`--engine` picks the engine. The cases run on the engine core, the default engine of the package, and roadrunner is the reference they are measured against:
+`--engine` picks the engine. The cases run on sbmlsim-core, the default engine of the package, and roadrunner is the reference they are measured against:
 
 ```bash
 uv run python scripts/testsuite.py run --engine roadrunner
@@ -29,7 +29,7 @@ The cases are cached in `~/.cache/sbmlsim/test-suite/<commit>/` (or under `XDG_C
 
 ## What is run
 
-The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and **1754 of them pass on the engine core**. The 35 that do not are the 35 cases of a fast reaction, which the compiler of the engine does not support: 33 are refused when the model is read and 2 when it is converted (see [cases which are refused or cannot be integrated](#cases-which-are-refused-or-cannot-be-integrated)). There is no case the engine reads and then simulates outside the tolerances of the suite.
+The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and **1754 of them pass on sbmlsim-core**. The 35 that do not are the 35 cases of a fast reaction, which the compiler of the engine does not support: 33 are refused when the model is read and 2 when it is converted (see [cases which are refused or cannot be integrated](#cases-which-are-refused-or-cannot-be-integrated)). There is no case the engine reads and then simulates outside the tolerances of the suite.
 
 How the engines compare on the same 1789 cases:
 
@@ -38,11 +38,11 @@ How the engines compare on the same 1789 cases:
 | core (the default) | **1754** | 33 | 0 | 2 |
 | roadrunner (the reference) | 1576 | 206 | 5 | 2 |
 
-The 35 cases the engine core does not pass are **a strict subset of the 213 roadrunner does not**: there is no case which passes on roadrunner and fails on the engine core. The 178 cases the engine core passes and roadrunner does not are
+The 35 cases sbmlsim-core does not pass are **a strict subset of the 213 roadrunner does not**: there is no case which passes on roadrunner and fails on sbmlsim-core. The 178 cases sbmlsim-core passes and roadrunner does not are
 
 | why roadrunner refuses them | cases |
 |---|---|
-| `Unable to support algebraic rules` (the engine core simulates them with SUNDIALS IDA since sbmlsim-core 0.10.0) | 123 |
+| `Unable to support algebraic rules` (sbmlsim-core simulates them with SUNDIALS IDA since sbmlsim-core 0.10.0) | 123 |
 | `Unable to support delay differential equations` (an integrator of its own for the delays since sbmlsim-core 0.11.0) | 50 |
 | `CV_CONV_FAILURE` on a `stoichiometryMath` (see [roadrunner and the stoichiometry math](#roadrunner-and-the-stoichiometry-math)) | 5 |
 
@@ -88,7 +88,7 @@ libroadrunner runs simultaneous events of the same priority in a random order. T
 
 ### roadrunner and the stoichiometry math
 
-The cases 01435, 01437, 01439, 01441 and 01443 end as `simulation_error`. They are level 2 models with a `stoichiometryMath`, which level 3 does not have. libsbml converts it into an assignment rule of the species reference, marks the reference as non-constant and leaves its stoichiometry unset. That is a correct level 3 translation, and it logs nothing, so the conversion is not refused. libroadrunner cannot integrate such a model: CVODE stops at the start of the integration with `CV_CONV_FAILURE`. These five cases passed before `sbmlsim` converted every model to level 3. This is a limitation of libroadrunner and `sbmlsim` does not work around it; **the engine core integrates all five**, so they pass on the default engine and this section is about the reference alone.
+The cases 01435, 01437, 01439, 01441 and 01443 end as `simulation_error`. They are level 2 models with a `stoichiometryMath`, which level 3 does not have. libsbml converts it into an assignment rule of the species reference, marks the reference as non-constant and leaves its stoichiometry unset. That is a correct level 3 translation, and it logs nothing, so the conversion is not refused. libroadrunner cannot integrate such a model: CVODE stops at the start of the integration with `CV_CONV_FAILURE`. These five cases passed before `sbmlsim` converted every model to level 3. This is a limitation of libroadrunner and `sbmlsim` does not work around it; **sbmlsim-core integrates all five**, so they pass on the default engine and this section is about the reference alone.
 
 ## Part of the tests of sbmlsim
 

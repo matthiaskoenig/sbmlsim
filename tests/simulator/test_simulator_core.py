@@ -1,4 +1,4 @@
-"""`Simulator(engine="core")` runs a simulation with the engine core.
+"""`Simulator(engine="core")` runs a simulation with sbmlsim-core.
 
 Every test compares the engine with roadrunner, the reference of every engine,
 on the same simulation, see `test_simulator_engines.py` for COPASI and AMICI;
@@ -162,7 +162,7 @@ def _orders(values: dict[str, float]) -> list[dict[str, float]]:
 
 @pytest.fixture
 def model_core(probe_sbml: str) -> CoreSBMLModel:
-    """Get the probe model in the engine core."""
+    """Get the probe model in sbmlsim-core."""
     model = load_model(probe_sbml, Engine.CORE)
     assert isinstance(model, CoreSBMLModel)
     return model
@@ -177,7 +177,7 @@ def model_rr(probe_sbml: str) -> RoadrunnerSBMLModel:
 
 
 def _compare(core: TimecourseResult, roadrunner: TimecourseResult) -> None:
-    """Compare the output of the engine core with the one of roadrunner.
+    """Compare the output of sbmlsim-core with the one of roadrunner.
 
     The error of a column is relative to its largest magnitude, as the tests
     of COPASI and AMICI measure it (`_scaled_error` of

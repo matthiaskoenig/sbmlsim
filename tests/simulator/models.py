@@ -130,7 +130,7 @@ end
 #: whose size follows the parameters `V` and `f` by an initial assignment and
 #: `V` the parameter `g` by a second one, so the size of `c` follows `g` two
 #: initial assignments deep: a pre-initialization of `f` or of `g` changes the
-#: volume without naming the compartment, which the engine core converts a
+#: volume without naming the compartment, which sbmlsim-core converts a
 #: concentration with, see `tests/simulator/test_simulator_core.py`
 INDIRECT_VOLUME = """
 model indirect_volume
@@ -404,7 +404,7 @@ def roadrunner_model(model: SBMLModel) -> RoadrunnerSBMLModel:
 def roadrunner_simulator(**kwargs: Any) -> Simulator:
     """Get a simulator of roadrunner, whatever the default engine is.
 
-    The engine core is the default engine of the package (`DEFAULT_ENGINE`),
+    sbmlsim-core is the default engine of the package (`DEFAULT_ENGINE`),
     so a test of what roadrunner itself does - its instance `r`, its pool of
     workers, its tolerance vector, the regeneration of its model, the numbers
     it computes bitwise - names roadrunner through this instead of relying on
@@ -413,7 +413,7 @@ def roadrunner_simulator(**kwargs: Any) -> Simulator:
     return Simulator(engine=Engine.ROADRUNNER, **kwargs)
 
 
-#: a model with an algebraic rule, which the engine core simulates with IDA
+#: a model with an algebraic rule, which sbmlsim-core simulates with IDA
 #: since sbmlsim-core 0.10.0 and roadrunner does not load: a rate rule
 #: integrates `x` from 1 at the rate 1 and `y - x = 0` determines `y`, so
 #: `x(t) = 1 + t` and `y(t) = x(t)` is the solution to compare against

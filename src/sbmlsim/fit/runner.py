@@ -412,7 +412,7 @@ def run_optimization(
     if evaluation_workers > 1:
         # the runs run one after another and evaluate on all workers
         evolution = algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
-        # the engine core simulates the vectors of a batch at once on threads
+        # sbmlsim-core simulates the vectors of a batch at once on threads
         # of its own, so the generation of a population and the points of a
         # jacobian are one task of one worker which runs on the cores of the
         # fit, see `_EvaluationPool._evaluate_together`
@@ -726,7 +726,7 @@ def _worker_costs(
     """Evaluate the cost of every member of a generation in a worker process.
 
     The simulations of the whole generation run as one batch of the engine,
-    which the engine core fans out over threads of its own, so the generation
+    which sbmlsim-core fans out over threads of its own, so the generation
     is one task of one worker, see
     `OptimizationProblem.evaluate_cost_many` and
     `_EvaluationPool._evaluate_together`.
@@ -878,7 +878,7 @@ class FitPool:
         n_cores: the number of workers.
         threads: the threads of the engine one batch of parameter vectors
             runs on in a worker, see `_EvaluationPool._evaluate_together`:
-            more than one for the engine core, which simulates a batch on
+            more than one for sbmlsim-core, which simulates a batch on
             threads of its own, so the batch is one task of one worker.
         preload: the modules the forkserver imports, see `_preload`.
         restarts: how often the pool was started again after a crash, for the
@@ -1399,7 +1399,7 @@ class _EvaluationPool:
         """Evaluate every vector of a batch in one task of one worker.
 
         The simulations of the whole batch run as one batch of the engine,
-        which the engine core fans out over the `FitPool.threads` threads of
+        which sbmlsim-core fans out over the `FitPool.threads` threads of
         a worker: the points of a jacobian and the members of a generation
         are then simulated at once instead of one simulation per task, see
         `OptimizationProblem.evaluate_residuals_many` and `split_cores`.

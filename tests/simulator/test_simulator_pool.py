@@ -103,7 +103,7 @@ def test_the_size_of_a_chunk() -> None:
 def test_the_size_of_a_batched_chunk() -> None:
     """A chunk whose points run at once holds every one of them the cap allows.
 
-    The chunks of a run of the engine core, whose points are one batch of the
+    The chunks of a run of sbmlsim-core, whose points are one batch of the
     threads of the engine: the parallelism is inside the chunk, so four chunks
     per worker would run those threads a quarter full, see
     `sbmlsim.simulator.worker._run_chunk_core`.
@@ -469,7 +469,7 @@ def main():
     mode, blowup_path = sys.argv[1], sys.argv[2]
     model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
     model.set_selections(["time", "PX"])
-    # the pool of workers is roadrunner's, the engine core runs on threads
+    # the pool of workers is roadrunner's, sbmlsim-core runs on threads
     simulator = Simulator(engine="roadrunner", n_workers=2)
     expected = Simulator(engine="roadrunner", n_workers=1).run(model, scan(8, 10))
     simulator.run(model, scan(64, 10), progress=False)

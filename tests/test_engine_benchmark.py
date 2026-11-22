@@ -27,6 +27,7 @@ from scripts.engine_benchmark import (
     Measurement,
     ModelConfiguration,
     agreement,
+    engine_label,
     main,
     markdown,
     measure,
@@ -188,7 +189,7 @@ def test_every_table_has_a_row_per_model_and_engine(measured: BenchmarkResult) -
     and a reader follows a row down the tables, so they share their rows.
     """
     tables = _tables(markdown(measured))
-    expected = [(name, engine.value) for name, engine in measured.rows]
+    expected = [(name, engine_label(engine)) for name, engine in measured.rows]
     assert [row["model"] for row in tables["What every model was measured with"]] == [
         "repressilator"
     ]
@@ -225,7 +226,7 @@ def test_an_engine_which_is_not_installed_is_skipped() -> None:
 
 
 def test_the_agreement_with_roadrunner_is_reported() -> None:
-    """The engine core agrees with roadrunner on the model it is measured on."""
+    """sbmlsim-core agrees with roadrunner on the model it is measured on."""
     require(Engine.CORE)
     result = measure(
         ["repressilator"],
@@ -313,7 +314,7 @@ def test_a_parallel_scan_is_measured_on_the_workers_of_the_run() -> None:
 
 
 def test_the_legend_says_whether_a_parallel_scan_ran_on_processes_or_threads() -> None:
-    """A parallel scan of the engine core runs on threads, every other one on processes.
+    """A parallel scan of sbmlsim-core runs on threads, every other one on processes.
 
     It is the same for every row of a run, so it is one line of the legend
     and not a column which repeats it; the tables are narrow.
@@ -334,10 +335,10 @@ def test_a_measurement_which_was_not_made_is_an_empty_cell() -> None:
     assert rows["roadrunner"]["compile s"] == ""
     assert rows["roadrunner"]["instantiate s"] == ""
     assert rows["roadrunner"]["load s"] != ""
-    # the row of the engine core has no absolute difference, i.e. roadrunner
+    # the row of sbmlsim-core has no absolute difference, i.e. roadrunner
     # had no column which is identically zero
-    assert rows["core"]["max abs. diff."] == ""
-    assert rows["core"]["compile s"] != ""
+    assert rows["sbmlsim-core"]["max abs. diff."] == ""
+    assert rows["sbmlsim-core"]["compile s"] != ""
 
 
 def test_the_simulation_of_a_row_is_rendered_in_milliseconds() -> None:
@@ -345,10 +346,10 @@ def test_the_simulation_of_a_row_is_rendered_in_milliseconds() -> None:
     rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
     # the rows of `_handmade`, 0.00357 s and 0.00289 s
     assert rows["roadrunner"]["simulate ms"] == "3.57"
-    assert rows["core"]["simulate ms"] == "2.89"
+    assert rows["sbmlsim-core"]["simulate ms"] == "2.89"
     # the columns of seconds are seconds
     assert rows["roadrunner"]["load s"] == "0.215"
-    assert rows["core"]["instantiate s"] == "0.004"
+    assert rows["sbmlsim-core"]["instantiate s"] == "0.004"
 
 
 def test_a_model_an_engine_refuses_keeps_its_row_with_the_refusal(
@@ -668,20 +669,20 @@ def test_a_slow_round_does_not_move_the_median() -> None:
 def test_a_cell_is_rendered_as_its_median() -> None:
     """A cell is the median of its rounds with three significant digits and no deviation."""
     rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
-    assert rows["core"]["scan parallel s"] == "0.258"
-    assert rows["core"]["scan serial s"] == "1.14"
+    assert rows["sbmlsim-core"]["scan parallel s"] == "0.258"
+    assert rows["sbmlsim-core"]["scan serial s"] == "1.14"
     assert rows["roadrunner"]["load s"] == "0.215"
     assert "±" not in markdown(_handmade())
 
 
-def test_the_ratios_are_taken_against_the_engine_core() -> None:
-    """Every speed of an engine is also given as its ratio to the engine core."""
+def test_the_ratios_are_taken_against_sbmlsim_core() -> None:
+    """Every speed of an engine is also given as its ratio to sbmlsim-core."""
     rows = {
         cells["engine"]: cells
-        for cells in _table(markdown(_handmade()), "Against the engine core")
+        for cells in _table(markdown(_handmade()), "Against sbmlsim-core")
     }
-    assert rows["core"]["one simulation"] == "1"
-    # roadrunner simulates in 0.00357 s against the core's 0.00289 s
+    assert rows["sbmlsim-core"]["one simulation"] == "1"
+    # roadrunner simulates in 0.00357 s against sbmlsim-core's 0.00289 s
     assert rows["roadrunner"]["one simulation"] == "1.24"
 
 

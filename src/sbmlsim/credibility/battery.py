@@ -18,7 +18,7 @@ against what every model must fulfil (`BATTERY_CHECKS`):
   (`BatterySettings.steady_state`, off by default) and is not applicable
   otherwise.
 - `cross_simulator`: a second engine of sbmlsim (`BatterySettings.engines`,
-  AMICI, COPASI and the engine core, each one which is installed) gives the
+  AMICI, COPASI and sbmlsim-core, each one which is installed) gives the
   results of roadrunner without a change and with every case of the hook which
   it repeats (`BatteryCase.cross_simulator`), within `LIMIT`; both run through
   `sbmlsim.simulator.Simulator` on the same simulation, roadrunner compiled
@@ -325,7 +325,7 @@ class BatterySettings:
         cross_simulator: run the check `cross_simulator`.
         engines: the second engines of the check `cross_simulator`, each one
             which is installed is compared with roadrunner; AMICI and COPASI
-            come with an extra of sbmlsim, the engine core with the bindings
+            come with an extra of sbmlsim, sbmlsim-core with the bindings
             of sbmlsim-core (`_ENGINE_EXTRAS`).
         compile_timeout: the longest compilation of a variant by AMICI (s);
             a variant which takes longer is not compared with AMICI.

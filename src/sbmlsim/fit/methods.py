@@ -1178,7 +1178,7 @@ def _integrator(settings: FitSettings, engine: Engine = DEFAULT_ENGINE) -> Parag
 
 
 def _cvode_settings(settings: FitSettings, step: str = "") -> list[Part]:
-    """Write the settings of CVODE which roadrunner and the engine core share.
+    """Write the settings of CVODE which roadrunner and sbmlsim-core share.
 
     The relative tolerance and the absolute tolerance of every state, which
     both integrate with (`sbmlsim.model.tolerances`), the output of the
@@ -1218,7 +1218,7 @@ def _cvode_settings(settings: FitSettings, step: str = "") -> list[Part]:
 def _integrator_core(settings: FitSettings) -> Paragraph:
     """Write the simulator sbmlsim-core and its integrator CVODE.
 
-    The engine core integrates with the absolute tolerance of every state of
+    sbmlsim-core integrates with the absolute tolerance of every state of
     roadrunner, computed from the same kinds and overrides, see
     `sbmlsim.model.model_core.CoreSBMLModel.request_settings`, so it has no
     factor of one tolerance as COPASI and AMICI have; the output of a

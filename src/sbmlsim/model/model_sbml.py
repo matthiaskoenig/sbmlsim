@@ -874,7 +874,7 @@ class EngineSettings:
     the engine ignores and an absolute tolerance per kind which it takes as
     one number. An engine states which settings it takes and which it ignores,
     `PORTABLE_SETTINGS` and `ROADRUNNER_ONLY_SETTINGS` by default, the ones of
-    COPASI and AMICI; the engine core takes `initial_time_step` and `stiff` as
+    COPASI and AMICI; sbmlsim-core takes `initial_time_step` and `stiff` as
     well, see `sbmlsim.model.model_core`.
     """
 

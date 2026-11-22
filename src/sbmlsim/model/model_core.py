@@ -1,4 +1,4 @@
-"""The model of an SBML model in the engine core, see `sbmlsim.model.model_sbml`.
+"""The model of an SBML model in sbmlsim-core, see `sbmlsim.model.model_sbml`.
 
 `CoreSBMLModel` compiles the SBML of a model with the bindings of sbmlsim-core
 (`sbmlsim.engine.import_core`): the compiler writes it as a WebAssembly module
@@ -209,7 +209,7 @@ def compiled_model(
 
 
 class CoreSBMLModel(SBMLModel):
-    """The model of an SBML model in the engine core, see the module.
+    """The model of an SBML model in sbmlsim-core, see the module.
 
     Attributes:
         loaded: the compiled model of the engine, a `LoadedModel` of the

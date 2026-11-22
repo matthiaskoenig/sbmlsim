@@ -88,7 +88,7 @@ def test_the_chunks_are_released_when_written(
     A chunk on a grid is written when it arrives and released, the chunks of
     a ragged result are released while `finish` writes them. The four chunks
     are the ones of a run of roadrunner, which cuts the points into four
-    chunks per worker; the engine core runs the points of a chunk as one
+    chunks per worker; sbmlsim-core runs the points of a chunk as one
     batch, so a run of it has one.
     """
     chunks: list[weakref.ref[ChunkResult]] = []

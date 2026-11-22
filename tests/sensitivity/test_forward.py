@@ -1,4 +1,4 @@
-"""The local sensitivities from the forward sensitivities of the engine core."""
+"""The local sensitivities from the forward sensitivities of sbmlsim-core."""
 
 import numpy as np
 import pytest
@@ -26,13 +26,13 @@ STEPS = 5
 
 @pytest.fixture(scope="module")
 def simulator() -> Simulator:
-    """Get a simulator of the engine core at tight tolerances."""
+    """Get a simulator of sbmlsim-core at tight tolerances."""
     return Simulator(engine="core", relative_tolerance=1e-10, absolute_tolerance=1e-12)
 
 
 @pytest.fixture(scope="module")
 def model(simulator: Simulator) -> SBMLModel:
-    """Get the repressilator in the engine core."""
+    """Get the repressilator in sbmlsim-core."""
     return simulator.load(REPRESSILATOR_SBML)
 
 
@@ -167,9 +167,9 @@ def test_the_analysis_checks_its_arguments(simulator, model) -> None:
 
 def test_another_engine_has_no_forward_sensitivities(model) -> None:
     roadrunner = Simulator(engine="roadrunner")
-    with pytest.raises(NotImplementedError, match="engine core"):
+    with pytest.raises(NotImplementedError, match="sbmlsim-core"):
         forward(roadrunner, REPRESSILATOR_SBML, Simulation(end=END), ["ps_a"])
-    with pytest.raises(NotImplementedError, match="engine core"):
+    with pytest.raises(NotImplementedError, match="sbmlsim-core"):
         roadrunner.sensitivities(REPRESSILATOR_SBML, Simulation(end=END), ["ps_a"])
 
 
