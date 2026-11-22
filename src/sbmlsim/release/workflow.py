@@ -163,6 +163,39 @@ def _check_fits(project: Project) -> None:
             raise ReleaseError(str(err)) from err
 
 
+def _check_app_citation(project: Project, settings: ReleaseSettings) -> None:
+    """Check that the app of a model cites the release which is built.
+
+    An `App` cites its release in the provenance footer with an explicit year,
+    so the footer does not change on New Year, and nothing raised that year
+    with a release in a new one: the README, which `ReleaseSettings.citation`
+    stamps with the year of the build, would cite 2027 while the footer of the
+    app kept 2026 (#525). A release therefore refuses an app whose citation is
+    not the citation of this release in the year it is built in.
+
+    An app without a citation is not checked: it shows none and cites nothing
+    wrongly.
+
+    Args:
+        project: the project which is released.
+        settings: the release settings of the project.
+
+    Raises:
+        ReleaseError: if the app cites something else; the message names both.
+    """
+    app = project.app
+    if app is None or not app.citation:
+        return
+    expected = settings.citation(markdown=False)
+    if app.citation != expected:
+        raise ReleaseError(
+            f"the app of '{project.name}' cites\n  {app.citation}\n"
+            f"and the release of this year cites\n  {expected}\n"
+            f"raise the year of the citation of the app (its footer states "
+            f"the year of its release, so it is a constant of the package)."
+        )
+
+
 def _resumable(path: Path, version: str, runner: Runner) -> bool:
     """Tell whether the release of the version is committed, only publishing remains.
 
@@ -204,7 +237,8 @@ def prepare_release(
     (`source_repo`), the release repository in `out/repository` (cloned when
     missing, see `release_repo`) is on `main`, up to date and without local
     commits, the version is greater than the last release (`check_version`),
-    every adopted fit has its record, and the release repository is clean or
+    every adopted fit has its record, the app of the model cites this release
+    (`_check_app_citation`), and the release repository is clean or
     changed only by an earlier build of this version or by an unfinished
     build (`changed_by_build`), e.g. of a resumed run.
 
@@ -235,6 +269,7 @@ def prepare_release(
     _check_ahead(target, resume=False)
     check_version(version, target.last_tag)
     _check_fits(project)
+    _check_app_citation(project, settings)
     if not changed_by_build(path, version, runner):
         raise ReleaseError(
             "the release repository has changes which no release made, "

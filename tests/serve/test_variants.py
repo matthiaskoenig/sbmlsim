@@ -393,3 +393,57 @@ def test_the_panels_of_every_variant_are_read_once(
     assert sorted(path.name for path in reads) == sorted(
         path.name for path in fresh.variants.values()
     )
+
+
+def test_the_app_answers_the_scenarios_of_the_variant_it_serves(
+    declared: Project,
+) -> None:
+    """A variant declares the scenarios of its own build (#524).
+
+    The builds of a model offer different stops of a knob, so a scenario of a
+    study of one build is no state of the other and was shown on its page all
+    the same; the pages of the body carry the scenarios of the variant the app
+    answers, so a shell reads them without knowing of the variants.
+    """
+    app = declared.app
+    assert app is not None
+    page = app.pages[0]
+    own = Scenario(id="healthy", label="healthy", values={"egfr": 1.0})
+    of_other = Scenario(id="impaired", label="impaired", values={"egfr": 0.5})
+    project = declared.replace(
+        app=app.model_copy(
+            update={
+                "pages": (
+                    page.model_copy(update={"scenarios": (own,)}),
+                    *app.pages[1:],
+                ),
+                "variants": (
+                    AppVariant(id="default", label="healthy"),
+                    AppVariant(
+                        id="other",
+                        label="impaired",
+                        scenarios={page.id: (of_other,)},
+                    ),
+                ),
+            }
+        )
+    )
+    entry = ModelEntry(id="hctz", project=project, title="Hydrochlorothiazide")
+    registry = ModelRegistry({"hctz": entry})
+
+    with TestClient(create_app(registry)) as client:
+        default = client.get("/api/models/hctz/app").json()
+        other = client.get("/api/models/hctz/app?variant=other").json()
+
+    assert default["variant"] == "default"
+    assert [one["id"] for one in default["pages"][0]["scenarios"]] == ["healthy"]
+    assert other["variant"] == "other"
+    assert [one["id"] for one in other["pages"][0]["scenarios"]] == ["impaired"]
+    # and every variant carries what it declares, so a shell can show what
+    # another build offers without fetching it
+    assert other["variants"][1]["scenarios"] == {
+        other["pages"][0]["id"]: [
+            {"id": "impaired", "label": "impaired", "values": {"egfr": 0.5}}
+        ]
+    }
+    assert other["variants"][0]["scenarios"] == {}

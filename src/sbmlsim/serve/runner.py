@@ -126,6 +126,7 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelUncertainty,
+    Scenario,
     dose_times,
 )
 from sbmlsim.project import Project, load_project
@@ -577,12 +578,18 @@ class ModelEntry:
             if app is None:
                 return {}
             pages = self.pages(name)
+            # the scenarios of this variant, which may be its own (#524)
+            scenarios = app.scenarios_of(name)
             self._shared[name] = {
                 page.id: _shared_knobs(
                     f"the model '{self.id}' in its variant '{name}'",
                     page.id,
                     list(pages[page.id]),
-                    {knob for scenario in page.scenarios for knob in scenario.values},
+                    {
+                        knob
+                        for scenario in scenarios[page.id]
+                        for knob in scenario.values
+                    },
                 )
                 for page in app.pages
             }
@@ -791,8 +798,10 @@ def _check_app(entry: ModelEntry) -> None:
         # twice, so the knobs a scenario sets are of one declaration per page
         _ = entry.shared(variant)
         pages = entry.pages(variant)
+        # the scenarios of this variant, the page's own where it declares none
+        scenarios = app.scenarios_of(variant)
         for page in app.pages:
-            _check_scenarios(model, page, pages[page.id])
+            _check_scenarios(model, page, scenarios[page.id], pages[page.id])
         if app.figure is not None:
             _check_figure(entry, variant, model, app.figure, pages)
 
@@ -845,7 +854,12 @@ def _check_figure(
             curve_unit(model, curve)
 
 
-def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None:
+def _check_scenarios(
+    model: str,
+    page: AppPage,
+    scenarios: Sequence[Scenario],
+    panels: Sequence[Panel],
+) -> None:
     """Check the scenarios of a page of an app against the knobs of its panels.
 
     A scenario (`sbmlsim.panel.Scenario`) sets knobs of its page, which the
@@ -858,7 +872,10 @@ def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None
     Args:
         model: the model and the variant of the panels, which a problem
             names, e.g. `the model 'hctz' in its variant 'default'`.
-        page: the page of the app.
+        page: the page of the app, which a problem names.
+        scenarios: the scenarios of the page in this variant, which are its
+            own or the ones the variant declares, see
+            `sbmlsim.panel.App.scenarios_of` (#524).
         panels: the panels of the page, in the order it shows them.
 
     Raises:
@@ -867,7 +884,7 @@ def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None
             panel as well, for a value which is no value of the knob in that
             panel.
     """
-    for scenario in page.scenarios:
+    for scenario in scenarios:
         for knob_id, value in scenario.values.items():
             where = (
                 f"The scenario '{scenario.id}' of the page '{page.id}' of the app "

@@ -617,12 +617,19 @@ class AppVariantPayload(BaseModel):
     Attributes:
         id: the id of the variant, a variant of the model.
         label: the variant as it is shown.
+        scenarios: the scenarios this variant declares for a page of the app,
+            by the id of the page, which replace the ones of that page in it
+            (`sbmlsim.panel.AppVariant.scenarios`); a page without an entry
+            keeps its own, and the pages of the body already carry the
+            scenarios of the variant the app answers, so a shell reads these
+            only to show what another variant offers (#524).
     """
 
     model_config = _CONFIG
 
     id: str
     label: str
+    scenarios: dict[str, list[ScenarioPayload]] = Field(default_factory=dict)
 
 
 class SharedPanelPayload(BaseModel):
@@ -750,6 +757,10 @@ class AppResponse(BaseModel):
         and the heads of the panels are added to it, which the payload of the
         declaration does not carry.
 
+        The scenarios of a page are the ones of the variant the app answers
+        (`sbmlsim.panel.App.scenarios_of`), so a shell reads the scenarios of
+        the build it holds and needs to know nothing of the variants (#524).
+
         Args:
             app: the app the project of the model declares.
             shared: the knobs the panels of each page share, by the id of the
@@ -762,6 +773,18 @@ class AppResponse(BaseModel):
         Returns:
             The response.
         """
+        # the scenarios of the variant the app answers, which the pages of
+        # the body carry in place of their own (#524)
+        scenarios = app.scenarios_of(variant)
+        body = app_payload(app)
+        body["pages"] = [
+            {**page, "scenarios": [one.model_dump(mode="json") for one in declared]}
+            for page, declared in zip(
+                body["pages"],
+                (scenarios[page.id] for page in app.pages),
+                strict=True,
+            )
+        ]
         knobs = {
             page.id: [SharedKnobPayload.of(one) for one in shared.get(page.id, ())]
             for page in app.pages
@@ -774,7 +797,7 @@ class AppResponse(BaseModel):
             for page in app.pages
         }
         return cls.model_validate(
-            {**app_payload(app), "shared": knobs, "heads": heads, "variant": variant}
+            {**body, "shared": knobs, "heads": heads, "variant": variant}
         )
 
 
