@@ -497,8 +497,9 @@ def _gaps_of_the_request(problem: OptimizationProblem) -> list[Gap]:
     parameters. What is left is everything the engine says about the
     simulation of a condition, which is the authority on it and which no
     check here repeats: a formula before the initialization the engine cannot
-    fold into a number, a steady state after the end of a simulation, a
-    selection which is no entity of the model, and whatever a later release
+    fold into a number, a selection which is no entity of the model, a
+    formula at a change which reads no output of the engine, and whatever a
+    later release
     adds (the module docstring of `sbmlsim.simulator.executor_core` lists
     them). The request of the fit is built and what it raises is the gap, so
     a problem the engine would refuse is fitted in python instead of failing.
