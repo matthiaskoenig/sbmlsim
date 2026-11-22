@@ -38,7 +38,7 @@ from sbmlsim.simulator.executor_core import (
     _failed,
     request_of,
 )
-from sbmlsim.simulator.plan import Assignment, PlanEvent, compile_simulation
+from sbmlsim.simulator.plan import Assignment, Plan, PlanEvent, compile_simulation
 from sbmlsim.simulator.worker import ModelSpec, core_threads
 from tests.simulator.models import (
     ALGEBRAIC,
@@ -47,6 +47,7 @@ from tests.simulator.models import (
     TOLERANCE_PROBE,
     roadrunner_simulator,
     sbml,
+    sbml_pk,
 )
 
 #: a model whose parameter `tt` the test renames to `time`, an entity of the
@@ -1365,3 +1366,67 @@ def test_a_deadline_which_fires_names_itself(monkeypatch: pytest.MonkeyPatch) ->
     assert "1 ms" in message
     core_module.runtime.cache_clear()
     core_module.COMPILED.clear()
+
+
+def _urine_plan(formulas: dict[float, str]) -> tuple[CoreSBMLModel, Plan]:
+    """Get the PK model with urine and a plan which sets `Aurine` by formulas."""
+    model = load_model(sbml_pk(urine=True), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    simulation = Simulation(
+        end=40,
+        changes=[Change(t, {"Aurine": f}) for t, f in formulas.items()],
+        times=np.linspace(0, 40, 41).tolist(),
+    )
+    return model, compile_simulation(simulation, model.symbols, model.uinfo)
+
+
+def test_a_change_of_a_linear_formula_is_a_form_of_the_request() -> None:
+    """A formula at a change is a form, and the request simulates nothing to build it."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert request["changes"][0]["forms"] == [
+        {"target": "Aurine", "constant": 0.0, "terms": [["Aurine", 0.5]]}
+    ]
+    assert request["changes"][0]["values"] == []
+    # nothing to fold: the engine is not asked for a single segment
+    segments: list[dict[str, object]] = []
+
+    def refuse(requests: list[dict[str, object]]) -> list[object]:
+        segments.extend(requests)
+        return []
+
+    folded = executor_core.requests_of(
+        [(plan, ["time", "Aurine"])], model, refuse, forms=True
+    )
+    assert segments == []
+    assert not isinstance(folded[0], Exception)
+
+
+def test_a_form_simulates_as_the_fold_it_replaces() -> None:
+    """The result of a request of forms is the result of the folded request, bitwise."""
+    model, plan = _urine_plan({10.0: "1 + 0.5 * Aurine", 25.0: "3"})
+    columns = ["time", "Aurine", "Aelim", "[C]"]
+    folded = request_of(plan, model, columns)
+    formed = request_of(plan, model, columns, forms=True)
+    assert formed["changes"][0].get("forms")
+    assert not folded["changes"][0].get("forms")
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    assert list(a.columns) == list(b.columns)
+    assert np.array_equal(a.values, b.values)
+
+
+def test_a_plan_of_a_formula_which_is_no_form_folds_everything() -> None:
+    """A form and a fold never meet in one request."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine", 20.0: "Aurine * Aurine"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert all(not change.get("forms") for change in request["changes"])
+    assert all(change["values"] for change in request["changes"])
+
+
+def test_a_formula_of_a_concentration_is_no_form_and_folds() -> None:
+    """The parser of PEtab math reads no `[S]`, so such a formula folds."""
+    model, plan = _urine_plan({10.0: "2 * [C] + 1"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert "forms" not in request["changes"][0]
+    assert request["changes"][0]["values"]
