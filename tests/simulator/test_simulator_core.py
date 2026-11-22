@@ -1430,3 +1430,34 @@ def test_a_formula_of_a_concentration_is_no_form_and_folds() -> None:
     request = request_of(plan, model, ["time", "Aurine"], forms=True)
     assert "forms" not in request["changes"][0]
     assert request["changes"][0]["values"]
+
+
+@pytest.mark.parametrize(
+    "formula",
+    ["Aurine / 90 + Aelim * 3", "Aelim + Aurine + Aelim", "Aurine / 90"],
+    ids=["many terms with a division", "a repeated id", "a division"],
+)
+def test_a_form_of_several_terms_simulates_as_the_fold(formula: str) -> None:
+    """Forms with several terms, a repeated id and a division match the fold."""
+    model, plan = _urine_plan({10.0: formula})
+    columns = ["time", "Aurine", "Aelim"]
+    folded = request_of(plan, model, columns)
+    formed = request_of(plan, model, columns, forms=True)
+    assert formed["changes"][0].get("forms")
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    assert np.array_equal(a.values, b.values), np.max(np.abs(a.values - b.values))
+
+
+def test_a_formula_of_a_reaction_is_no_form_and_folds() -> None:
+    """A reaction is no entity the engine reads as a term, so such a formula folds."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine"})
+    event = PlanEvent(
+        10.0,
+        (Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="0.5 * absorption"),),
+    )
+    # `compile_simulation` refuses a reaction, so the plan is built by hand
+    plan = replace(plan, events=(event,))
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert "forms" not in request["changes"][0]
+    assert request["changes"][0]["values"]

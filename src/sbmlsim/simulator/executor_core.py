@@ -1287,8 +1287,14 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
             "constant": float(compiled.evaluate([])),
             "terms": [],
         }
+    known = model.symbols
+    # a term is an entity of the model: a reaction or any other selection is
+    # none the engine resolves, so such a formula folds
     entities = {
-        s: i for i, s in enumerate(symbols) if s != TIME and model.has_selection(s)
+        s: i
+        for i, s in enumerate(symbols)
+        if ModelSymbols.entity(s)
+        in known.parameters | known.compartments | known.species
     }
     try:
         found = linear_form(assignment.formula, entities)
