@@ -1919,6 +1919,12 @@ class FitReport:
             "plots": plots,
             "profile_plots": profile_plots,
             "better_optimum": result.better_optimum,
+            # the parameters the analysis gave up, so the report names them
+            # instead of leaving them out silently (#522)
+            "incomplete": [
+                {"pid": pid, "reason": reason}
+                for pid, reason in sorted(result.incomplete.items())
+            ],
         }
 
     def fit_info(self) -> dict[str, str]:

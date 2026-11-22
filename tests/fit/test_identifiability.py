@@ -2,6 +2,8 @@
 
 import re
 import shutil
+from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +11,7 @@ import pandas as pd
 import pytest
 from scipy.stats import chi2
 
-from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets
+from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets, identifiability
 from sbmlsim.fit.cli import FitDefinition, identifiability_cli
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import (
@@ -86,6 +88,10 @@ def test_profile_settings_threshold() -> None:
         {"max_cost_fraction": 0.0},
         {"max_points": 0},
         {"flatness": 1.0},
+        {"scan_timeout": 0.0},
+        {"scan_timeout": -1.0},
+        {"timeout": 0.0},
+        {"timeout": -1.0},
     ],
 )
 def test_profile_settings_invalid(kwargs: dict) -> None:
@@ -96,8 +102,19 @@ def test_profile_settings_invalid(kwargs: dict) -> None:
 
 def test_profile_settings_round_trip() -> None:
     """The settings survive the round trip through a dictionary."""
-    settings = ProfileSettings(alpha=0.9, max_points=7, reoptimize=False)
+    settings = ProfileSettings(
+        alpha=0.9, max_points=7, reoptimize=False, scan_timeout=30.0, timeout=600.0
+    )
     assert ProfileSettings.from_dict(settings.to_dict()) == settings
+
+
+def test_settings_written_before_the_limits_have_none() -> None:
+    """A record of an earlier release has no limits, which is what it ran with (#522)."""
+    stored = ProfileSettings().to_dict()
+    legacy = {k: v for k, v in stored.items() if k not in ("scan_timeout", "timeout")}
+    settings = ProfileSettings.from_dict(legacy)
+    assert settings.scan_timeout is None
+    assert settings.timeout is None
 
 
 # ---------------------------------------------------------------------------
@@ -711,3 +728,132 @@ def test_the_profile_figures_do_not_use_pyplot(tmp_path: Path, no_pyplot: None) 
     assert figure.canvas.manager is None
     assert (tmp_path / "profiles.png").exists()
     assert (tmp_path / "profile_k.png").exists()
+
+
+def test_a_timeout_gives_up_the_scans_and_keeps_the_profiles_it_has(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A serial analysis past its timeout gives the scans up instead of running on.
+
+    A scan which does not return stopped a whole analysis with no message and
+    no result (#522). With a timeout the scans which did not start are given
+    up, their parameters are named in `incomplete` and the analysis returns
+    the profiles it has.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    pids = op_hctz_pk.pids[:2]
+    # a timeout which the first scan passes, so the rest is given up
+    settings = replace(SCAN_SETTINGS, timeout=1e-6)
+    result = profile_likelihood(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_set=op_hctz_pk.parameter_set_model(),
+        profile_settings=settings,
+        pids=pids,
+        serial=True,
+        show_progress=False,
+    )
+    assert result.profiles == {}
+    assert sorted(result.incomplete) == sorted(pids)
+    for reason in result.incomplete.values():
+        assert "timeout" in reason
+    # the record keeps them, so the report can name them
+    assert IdentifiabilityResult.from_dict(result.to_dict()).incomplete == (
+        result.incomplete
+    )
+
+
+def test_an_analysis_without_a_timeout_profiles_every_parameter(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The default is no limit, so nothing is given up and `incomplete` is empty."""
+    op_hctz_pk.initialize(fit_settings)
+    result = _result_of_scan(op_hctz_pk, fit_settings)
+    assert result.incomplete == {}
+    assert result.profiles
+
+
+def test_combining_parts_keeps_the_parameters_which_have_no_profile() -> None:
+    """A part which gave a scan up is a part of the analysis like any other (#522).
+
+    `incomplete` is no part of what makes two results parts of one analysis,
+    and a parameter which one part gave up and another profiled has its
+    profile.
+    """
+    base = _linear_result()
+    first = replace(
+        base,
+        profiles={"w": base.profiles["w"]},
+        incomplete={"k": "the scan above the optimum: timed out"},
+    )
+    second = replace(base, profiles={"k": base.profiles["k"]}, incomplete={})
+    combined = IdentifiabilityResult.combine([first, second])
+    assert sorted(combined.profiles) == ["k", "w"]
+    assert combined.incomplete == {}
+
+    given_up = replace(base, profiles={}, incomplete={"k": "timed out"})
+    only_w = replace(base, profiles={"w": base.profiles["w"]}, incomplete={})
+    assert IdentifiabilityResult.combine([given_up, only_w]).incomplete == {
+        "k": "timed out"
+    }
+
+
+def test_a_stuck_scan_of_a_parallel_analysis_is_given_up(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scan the pool gives up leaves its parameter without a profile (#522).
+
+    The pool reports a `TimeoutError` for a scan which runs or waits without
+    any result for `scan_timeout` seconds. The analysis must take it as a scan
+    which was given up and go on with the others, which is what a stuck scan
+    needed: it stopped the run with no message and no result at all.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    pids = op_hctz_pk.pids[:2]
+    scans: list[int] = []
+
+    class _Pool:
+        """A pool whose first task times out and whose others run serially."""
+
+        def run(self, function, tasks, timeout=None, deadline=None):
+            assert timeout == 7.0
+            assert deadline is not None
+            for key, task in tasks.items():
+                if key == 0:
+                    yield key, TimeoutError("no result for 7.0 s")
+                    continue
+                scans.append(key)
+                yield (
+                    key,
+                    (
+                        task["index"],
+                        task["direction"],
+                        identifiability._scan_task(op_hctz_pk, task),
+                    ),
+                )
+
+    @contextmanager
+    def _worker_pool(*args: object, **kwargs: object):
+        yield _Pool()
+
+    monkeypatch.setattr(identifiability.runner, "worker_pool", _worker_pool)
+    result = profile_likelihood(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_set=op_hctz_pk.parameter_set_model(),
+        profile_settings=replace(SCAN_SETTINGS, scan_timeout=7.0, timeout=3600.0),
+        pids=pids,
+        n_cores=2,
+        show_progress=False,
+    )
+    # the other scans ran, so one task failing does not stop the analysis
+    assert scans == [1, 2, 3]
+    # the parameter of the task which was given up has no profile and is named
+    given_up = op_hctz_pk.pids[0]
+    assert given_up in result.incomplete
+    assert "no result for 7.0 s" in result.incomplete[given_up]
+    assert given_up not in result.profiles
+    # the parameter whose two scans both finished has its profile
+    assert op_hctz_pk.pids[1] in result.profiles
