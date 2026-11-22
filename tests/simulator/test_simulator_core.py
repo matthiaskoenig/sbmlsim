@@ -17,6 +17,7 @@ pytest.importorskip("sbmlsim_core")
 from sbmlsim import parallel
 from sbmlsim.engine import Engine, UnsupportedModelError, import_core
 from sbmlsim.model import RoadrunnerSBMLModel, load_model
+from sbmlsim.model import model_core as core_module
 from sbmlsim.model.model_core import CoreSBMLModel
 from sbmlsim.model.symbols import TargetKind
 from sbmlsim.resources import HCTZ_SBML
@@ -1298,3 +1299,69 @@ def test_a_formula_at_a_change_at_the_start_of_a_model_with_events() -> None:
     np.testing.assert_allclose(
         core["target"], roadrunner["target"], rtol=1e-6, atol=1e-9
     )
+
+
+# ----------------------------------------------------------------------------
+# the wall clock deadline of the runtime (#581)
+# ----------------------------------------------------------------------------
+def test_a_simulation_of_the_engine_has_no_wall_clock_deadline() -> None:
+    """The runtime of the process has no deadline, so the load never interrupts.
+
+    The result of a simulation does not depend on the load of the machine, and
+    with a deadline whether it completes does: the same model with the same
+    parameters answered on an idle machine and was interrupted next to other
+    work, which is the one property a simulator must not have (#581).
+    """
+    assert core_module.TIMEOUT_MS == 0
+    assert core_module.runtime_timeout_ms() == 0
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [("", 0), ("   ", 0), ("0", 0), ("250", 250), ("30000", 30000)],
+)
+def test_the_deadline_of_the_runtime_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, given: str, expected: int
+) -> None:
+    """A caller which wants a deadline sets it in milliseconds, 0 for none."""
+    monkeypatch.setenv(core_module.TIMEOUT_VARIABLE, given)
+
+    assert core_module.runtime_timeout_ms() == expected
+
+
+@pytest.mark.parametrize("given", ["abc", "1.5", "-5", "1e3"])
+def test_a_deadline_which_is_no_milliseconds_is_refused(
+    monkeypatch: pytest.MonkeyPatch, given: str
+) -> None:
+    """The variable names itself and what it takes, instead of being ignored."""
+    monkeypatch.setenv(core_module.TIMEOUT_VARIABLE, given)
+
+    with pytest.raises(ValueError, match=core_module.TIMEOUT_VARIABLE):
+        core_module.runtime_timeout_ms()
+
+
+def test_a_deadline_which_fires_names_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An interrupted execution says a deadline fired, how long it was and what to do.
+
+    It surfaced as `wasm trap: interrupt` of the bindings, which does not tell
+    a reader that a deadline fired (#581). The deadline of this test is one
+    millisecond, so it fires inside the first simulation which is longer than
+    that; the runtime of the process is created again for it and the models
+    compiled into it, which the fixture of the module undoes.
+    """
+    pytest.importorskip("sbmlsim_core")
+    monkeypatch.setenv(core_module.TIMEOUT_VARIABLE, "1")
+    core_module.runtime.cache_clear()
+    core_module.COMPILED.clear()
+    model = load_model(HCTZ_SBML, Engine.CORE)
+    # long enough that a deadline of one millisecond fires inside it
+    simulation = Simulation(start=0, end=240, steps=200_000)
+
+    with pytest.raises(RuntimeError, match="wall clock deadline") as caught:
+        Simulator(engine=Engine.CORE, n_workers=1).simulate(model, simulation)
+
+    message = str(caught.value)
+    assert core_module.TIMEOUT_VARIABLE in message
+    assert "1 ms" in message
+    core_module.runtime.cache_clear()
+    core_module.COMPILED.clear()

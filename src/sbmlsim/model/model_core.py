@@ -42,6 +42,7 @@ the integrator of the delays of the engine.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections.abc import Sequence
 from functools import cache
@@ -83,6 +84,23 @@ JACOBIAN: Final[str] = "auto"
 
 #: the kind of a compartment in the description of a model, `model/2`
 COMPARTMENT: Final[str] = "compartment"
+
+#: the name of the variable which gives the runtime of this process a wall
+#: clock deadline per execution of the engine, in milliseconds; empty or unset
+#: is `TIMEOUT_MS`
+TIMEOUT_VARIABLE: Final[str] = "SBMLSIM_CORE_TIMEOUT_MS"
+
+#: the wall clock deadline of an execution of the engine, in milliseconds, `0`
+#: for none, see `runtime`. A simulation of sbmlsim has none: its result does
+#: not depend on the load of the machine, and with a deadline whether it
+#: completes does, so the same model with the same parameters answered on an
+#: idle machine and was interrupted next to other work (#581). The work of an
+#: integration is bounded by `maximum_num_steps`, which ends an integration
+#: that does not converge whatever the clock does, so a deadline buys a script,
+#: a test or a page nothing. A caller which wants one, e.g. a service which
+#: simulates models it does not control, sets `TIMEOUT_VARIABLE` before the
+#: first simulation of its process.
+TIMEOUT_MS: Final[int] = 0
 
 #: the settings of roadrunner which a request of the engine has a field for,
 #: see `CoreSBMLModel.set_integrator_settings`
@@ -130,6 +148,34 @@ _LOCK: Final[threading.Lock] = threading.Lock()
 _COMPILING: dict[tuple[str, bool, str], threading.Lock] = {}
 
 
+def runtime_timeout_ms() -> int:
+    """Get the wall clock deadline of the runtime of this process, see `runtime`.
+
+    Returns:
+        `TIMEOUT_VARIABLE` as milliseconds, else `TIMEOUT_MS`.
+
+    Raises:
+        ValueError: if the variable is no number of milliseconds that is not
+            negative.
+    """
+    given = os.environ.get(TIMEOUT_VARIABLE, "").strip()
+    if not given:
+        return TIMEOUT_MS
+    try:
+        milliseconds = int(given)
+    except ValueError:
+        raise ValueError(
+            f"{TIMEOUT_VARIABLE} is '{given}', which is no number of "
+            f"milliseconds; give a deadline in milliseconds or 0 for none."
+        ) from None
+    if milliseconds < 0:
+        raise ValueError(
+            f"{TIMEOUT_VARIABLE} is '{given}', which is negative; give a "
+            f"deadline in milliseconds or 0 for none."
+        )
+    return milliseconds
+
+
 @cache
 def runtime() -> Any:
     """Get the runtime of the engine of this process, created once.
@@ -140,14 +186,23 @@ def runtime() -> Any:
     once; the bindings themselves are imported on a thread which lives as
     long as the process, see `sbmlsim.engine.import_core`.
 
+    It has no wall clock deadline, `TIMEOUT_MS`, which `TIMEOUT_VARIABLE`
+    gives one: a deadline is a property of the machine and not of the
+    simulation, see `TIMEOUT_MS`. One runtime holds the compiled models of the
+    process (`COMPILED`), so the deadline belongs to the process and is no
+    setting of a `Simulator`, which would need a runtime and a compilation of
+    every model per deadline.
+
     Returns:
         The `Runtime` of the bindings.
 
     Raises:
         ImportError: if the bindings of sbmlsim-core are not installed.
+        ValueError: if `TIMEOUT_VARIABLE` is set to something which is no
+            number of milliseconds that is not negative.
     """
     with _LOCK:
-        return import_core().Runtime()
+        return import_core().Runtime(timeout_ms=runtime_timeout_ms())
 
 
 def compiled_model(

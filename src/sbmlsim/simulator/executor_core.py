@@ -224,6 +224,10 @@ UNSUPPORTED: Final[str] = "unsupported"
 #: `InternalError` of a simulation
 INTERNAL: Final[str] = "internal"
 
+#: what the message of an internal error of the engine carries when the wall
+#: clock deadline of the runtime interrupted the execution, see `_failed`
+INTERRUPT: Final[str] = "wasm trap: interrupt"
+
 #: an integration which failed, the `kind` of a `PointError` and the
 #: `IntegrationError` of a simulation, whose `flag` is the one of CVODE
 INTEGRATION: Final[str] = "integration"
@@ -997,6 +1001,18 @@ def _error_of(
             f"The engine 'core' does not simulate {label} as roadrunner: {message}"
         )
     if kind == INTERNAL:
+        from sbmlsim.model import model_core
+
+        if INTERRUPT in message:
+            # the wall clock deadline of the runtime fired, which only a caller
+            # which set it has, see `sbmlsim.model.model_core.TIMEOUT_MS` (#581)
+            return RuntimeError(
+                f"The engine 'core' was interrupted on {label} by the wall clock "
+                f"deadline of its runtime, {model_core.runtime_timeout_ms()} ms "
+                f"of {model_core.TIMEOUT_VARIABLE}: the simulation needed longer "
+                f"than that, which depends on the load of the machine. Raise the "
+                f"deadline or unset it for none: {message}"
+            )
         return RuntimeError(
             f"The engine 'core' failed internally on {label}, see the bindings of "
             f"sbmlsim-core: {message}"
