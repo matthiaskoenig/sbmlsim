@@ -10,6 +10,7 @@ import os
 import statistics
 import time
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pytest
@@ -21,7 +22,7 @@ from sbmlsim.resources import MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
-from tests.simulator.models import roadrunner_model
+from tests.simulator.models import roadrunner_model, roadrunner_simulator
 
 pytestmark = pytest.mark.benchmark
 
@@ -124,11 +125,16 @@ def test_a_simulation(name: str) -> None:
     and a plan at most that more than its execution. The times are measured
     in the same process, the result does not depend on the speed of the
     machine.
+
+    The comparison is against `executor.execute`, the executor of roadrunner,
+    so the simulator is roadrunner's and not the default engine, which is the
+    engine core since #607 and which answers the same simulation with its own
+    executor (`roadrunner_simulator`).
     """
     source, selections, simulation = SIMULATIONS[name]
     model = RoadrunnerSBMLModel(source=source)
     model.set_selections(selections)
-    simulator = Simulator(n_workers=1)
+    simulator = roadrunner_simulator(n_workers=1)
     plan = simulator.compile(simulator.load(model), simulation)
     selected = model.selections or []
     times = _medians(
@@ -163,6 +169,10 @@ def test_the_serial_time_of_a_scan_of_1e3_points(
     `Plan.with_values`, and its execution, `execute`: a serial scan of 1e3
     points costs at most `SCAN_OVERHEAD` more than that work for every point,
     measured in turn in the same process. The time of 0.8.5 is reported.
+
+    The work of a point is `executor.execute`, so the simulator is
+    roadrunner's and not the default engine core, whose scan is one batch of
+    the engine and not a call of `execute` per point (#607).
     """
     calls: list[int] = []
     compile_simulation = simulator_module.compile_simulation
@@ -173,7 +183,7 @@ def test_the_serial_time_of_a_scan_of_1e3_points(
 
     monkeypatch.setattr(simulator_module, "compile_simulation", counting)
     model, scan = _model(), _scan(1000)
-    simulator = Simulator(n_workers=1)
+    simulator = roadrunner_simulator(n_workers=1)
     simulator.run(model, scan)
     assert len(calls) == 1
     monkeypatch.undo()
@@ -248,3 +258,93 @@ def test_the_pool_pays_from_the_threshold() -> None:
         f"{min(loaded) * 1e3:.0f} ms in the next run"
     )
     assert min(loading) <= min(serial)
+
+
+#: the least a batch of the engine core on four threads must do against one
+#: thread; the batch of the measurement of #612 reached 3.1 of 4 threads on
+#: performance cores of their own and 2.9 unpinned, and a machine of four
+#: busy cores is still well above this
+BATCH_SPEEDUP_4 = 2.0
+
+
+def _core_batch(n_points: int, n_times: int = 101) -> tuple[Any, list[Any]]:
+    """Get a model of the engine core and the requests of a batch of it.
+
+    The requests are built once and handed to the executors of the thread
+    counts under test, so what is measured is the batch of the engine and
+    none of the python of a run.
+    """
+    core = pytest.importorskip("sbmlsim_core")
+    assert core is not None
+    from sbmlsim.engine import Engine
+    from sbmlsim.model.model_sbml import load_model
+    from sbmlsim.resources import HCTZ_SBML
+    from sbmlsim.simulator import executor_core
+    from sbmlsim.simulator.plan import compile_simulation
+
+    model = load_model(HCTZ_SBML, Engine.CORE)
+    # load_model gives the model of the engine, whose requests the executor
+    # of the engine core builds; the bindings are Any, so is the model here
+    core_model: Any = model
+    end = 240.0
+    simulation = Simulation(
+        start=0, end=end, times=np.linspace(0, end, n_times).tolist()
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    columns = executor_core.output_columns(["time", "Cve_hctz", "Aurine_hctz"])
+    reference = float(model.value("BW"))
+    requests = [
+        executor_core.request_of(
+            plan.with_values({"BW": reference * (1.0 + 1e-6 * k)}),
+            core_model,
+            columns,
+        )
+        for k in range(n_points)
+    ]
+    return core_model, requests
+
+
+def test_the_batch_of_the_engine_core_scales_over_its_threads() -> None:
+    """The threads of one batch of the engine core, measured on the batch alone.
+
+    The parallel efficiency of a batch is the efficiency of every scan, fit
+    and propagation of the engine core, which run in one process on the
+    threads of the engine. The measurement is of the batch and not of a run:
+    the requests are built once, the same batch runs on one, two, four and
+    eight threads, and the rate is the best of three timed stretches, so a
+    stretch which the operating system interrupts does not count.
+
+    Measured for #612 on eight performance cores of a 12th Gen Core i7-12700,
+    pinned to a core each: 88 % of two threads, 78 % of four and 58 % of
+    eight, while eight processes of one thread each on the same cores reach
+    91 % and eight threads of python driving a batch of one thread each 68 %,
+    so the loss is in the batch and in sharing the process, not in the
+    machine (sbmlsim-core#63).
+    """
+    model, requests = _core_batch(1_000)
+    rates: dict[int, float] = {}
+    for threads in (1, 2, 4, 8):
+        executor = model.batch_executor(threads)
+        # the instance of a thread is made at its first point and kept
+        executor.simulate_many(requests[:4])
+        best = 0.0
+        for _ in range(3):
+            done, start = 0, time.perf_counter()
+            while time.perf_counter() - start < 1.0:
+                executor.simulate_many(requests)
+                done += len(requests)
+            best = max(best, done / (time.perf_counter() - start))
+        rates[threads] = best
+    one = rates[1]
+    print(
+        f"\na batch of {len(requests)} points of the HCTZ model, "
+        f"{os.process_cpu_count()} CPUs:"
+    )
+    for threads, rate in rates.items():
+        print(
+            f"  {threads:>2} thread(s): {rate:>8.0f} points/s, "
+            f"{rate / one:4.2f}x, efficiency {rate / one / threads:4.0%}"
+        )
+    if parallel.resolve_workers(None, len(requests)) < 4:
+        pytest.skip("a machine of fewer than four CPUs does not spread a batch")
+    assert rates[4] / one >= BATCH_SPEEDUP_4
