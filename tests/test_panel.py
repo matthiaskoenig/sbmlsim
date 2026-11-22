@@ -1293,3 +1293,86 @@ def test_a_figure_which_draws_nothing_is_refused(svg: str) -> None:
     with pytest.raises(ValidationError, match="svg"):
         AppFigure(svg=svg, title="T", panels={})
     AppFigure(svg="<svg/>", title="T", panels={})
+
+
+# ----------------------------------------------------------------------------
+# the scenarios of a variant (#524)
+# ----------------------------------------------------------------------------
+def _variant_app() -> App:
+    """Get an app of one page whose second variant declares its own scenarios."""
+    return App(
+        title="t",
+        pages=(
+            AppPage(
+                id="renal",
+                title="Renal",
+                panels=("renal",),
+                scenarios=(
+                    Scenario(id="normal", label="normal", values={"dose": 25.0}),
+                ),
+            ),
+            AppPage(id="dose", title="Dose", panels=("dose",)),
+        ),
+        variants=(
+            AppVariant(id="female", label="female"),
+            AppVariant(
+                id="male",
+                label="male",
+                scenarios={
+                    "renal": (
+                        Scenario(id="study", label="study", values={"dose": 12.5}),
+                    )
+                },
+            ),
+        ),
+    )
+
+
+def test_a_variant_declares_the_scenarios_of_a_page_of_its_own() -> None:
+    """A build whose knobs offer other stops offers its own scenarios (#524)."""
+    app = _variant_app()
+
+    assert [one.id for one in app.scenarios_of("male")["renal"]] == ["study"]
+    # the page keeps its own in a variant which declares none, on a page the
+    # variant does not name, and for a variant the app does not have
+    assert [one.id for one in app.scenarios_of("female")["renal"]] == ["normal"]
+    assert app.scenarios_of("male")["dose"] == ()
+    assert [one.id for one in app.scenarios_of("nope")["renal"]] == ["normal"]
+    assert [one.id for one in app.scenarios_of()["renal"]] == ["normal"]
+    # every page of the app, in its order
+    assert list(app.scenarios_of("male")) == ["renal", "dose"]
+
+
+def test_the_scenarios_of_a_variant_are_part_of_the_contract() -> None:
+    """The payload carries them, so a round trip keeps them (#524)."""
+    app = _variant_app()
+
+    payload = app_payload(app)
+
+    assert payload["variants"][1]["scenarios"] == {
+        "renal": [{"id": "study", "label": "study", "values": {"dose": 12.5}}]
+    }
+    assert payload["variants"][0]["scenarios"] == {}
+    assert app_from_payload(payload) == app
+
+
+def test_a_variant_which_names_a_page_the_app_has_not_is_refused() -> None:
+    one = Scenario(id="s", label="s", values={"dose": 1.0})
+    with pytest.raises(ValidationError, match=r"pages \['nope'\]"):
+        App(
+            title="t",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            variants=(AppVariant(id="male", label="male", scenarios={"nope": (one,)}),),
+        )
+
+
+def test_two_scenarios_of_one_id_in_a_variant_are_refused() -> None:
+    one = Scenario(id="s", label="s", values={"dose": 1.0})
+    with pytest.raises(ValidationError, match=r"scenarios \['s'\] of the page"):
+        App(
+            title="t",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            variants=(
+                AppVariant(id="male", label="male", scenarios={"renal": (one, one)}),
+            ),
+        )

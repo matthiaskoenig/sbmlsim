@@ -3943,7 +3943,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         The simulations of the vectors of a batch do not depend on each other
         and they are the work of a scan of the points of the vectors: the
-        engine core simulates them on threads of its own, one batch per
+        sbmlsim-core simulates them on threads of its own, one batch per
         model, so they run at once instead of one simulation per call, see
         `sbmlsim.simulator.engines.execute_plans`. The other engines simulate
         one plan per call, so the batch is the loop over the points for them.
@@ -4857,7 +4857,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         What `evaluate_residuals` is for one vector: the evaluations of the
         vectors of a batch do not depend on each other, so the simulations of
         the whole batch run as one batch of the engine before any vector is
-        evaluated, and the engine core fans them out over threads of its own
+        evaluated, and sbmlsim-core fans them out over threads of its own
         (`_simulate_batch`). The points of the jacobian of a step of a least
         squares run are such a batch, see
         `sbmlsim.fit.runner.JacobianPool`.

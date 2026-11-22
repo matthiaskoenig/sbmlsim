@@ -190,7 +190,7 @@ class Engine(StrEnum):
 #: the engine of a simulator, a project, an experiment runner and a fit which
 #: names none (#607).
 #:
-#: The engine core, which every install of sbmlsim brings (`sbmlsim-core`, see
+#: sbmlsim-core, which every install of sbmlsim brings (`sbmlsim-core`, see
 #: `import_core`), leads every model of `docs/benchmarks.md` in a simulation
 #: and in a scan: on the HCTZ model one simulation takes 0.877 ms against
 #: roadrunner's 1.68 ms, a serial scan of 1000 points 0.760 s against 1.50 s
@@ -305,7 +305,7 @@ def _imported(name: str, message: str) -> ModuleType:
 def _imported_lastingly(name: str, message: str) -> ModuleType:
     """Import a module on a thread which lives as long as the process.
 
-    The bindings of the engine core do not outlive the thread which imported
+    The bindings of sbmlsim-core do not outlive the thread which imported
     them: a process which imported them on a thread which then exited crashes
     when another thread compiles a model or simulates with them, while
     bindings whose thread is alive are used from any thread (measured in

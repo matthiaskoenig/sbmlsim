@@ -92,7 +92,7 @@ sudo apt install build-essential libopenblas-dev libhdf5-dev
 
 CMake and SWIG come from PyPI with the build of AMICI, and the extra installs `ninja`, with which AMICI compiles a model.
 
-The Rust engine `core` ([sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core), `Simulator(engine="core")`) needs no extra and no build of its own: `sbmlsim-core` is a runtime dependency of sbmlsim, which the factory also reads to write the web app of a model, so every install above brings its python bindings and `Simulator(engine="core")` works at once.
+The Rust engine [sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core) (`Simulator(engine="core")`) needs no extra and no build of its own: `sbmlsim-core` is a runtime dependency of sbmlsim, which the factory also reads to write the web app of a model, so every install above brings its python bindings and `Simulator(engine="core")` works at once.
 
 ## Development version
 

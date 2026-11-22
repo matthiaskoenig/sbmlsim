@@ -179,7 +179,14 @@ def test_a_sidecar_of_another_contract_is_refused(tmp_path: Path) -> None:
         panels_from_figure(SVG, other, simulation=SIMULATION, title="T")
 
 
-def test_a_group_of_more_than_sixteen_curves_is_refused(tmp_path: Path) -> None:
+def test_more_readouts_of_one_unit_than_the_limit_become_several_panels(
+    tmp_path: Path,
+) -> None:
+    """A key of more readouts than a panel draws is split and not refused (#591).
+
+    The limit stays, 16 curves in one plot being more than a reader separates
+    by colour, and every readout of the drawing stays reachable.
+    """
     readouts = [
         {"id": f"R{i}", "label": f"R{i}", "unit": "mM", "kind": "concentration"}
         for i in range(17)
@@ -195,8 +202,17 @@ def test_a_group_of_more_than_sixteen_curves_is_refused(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ContractError, match="'li'"):
-        panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
+
+    panels, figure = panels_from_figure(SVG, path, simulation=SIMULATION, title="T")
+
+    assert figure.panels["li"] == ("li_1", "li_2")
+    assert [len(panels[pid].curves) for pid in ("li_1", "li_2")] == [16, 1]
+    assert panels["li_1"].title == "Liver (1 of 2)"
+    assert panels["li_2"].title == "Liver (2 of 2)"
+    # the curves are the readouts of the sidecar in its order, each once
+    drawn = [curve.id for pid in ("li_1", "li_2") for curve in panels[pid].curves]
+    assert drawn == [entry["id"] for entry in readouts]
+    assert figure.title == "T"
 
 
 def test_two_keys_of_one_panel_id_are_refused(tmp_path: Path) -> None:
@@ -306,13 +322,39 @@ def test_a_group_which_is_no_word_text_keeps_the_panel_id_an_sid(
     assert list(panels) == ["li_plasma", "li_tissue__unbound_"]
 
 
-def test_more_curves_than_the_limit_in_one_group_is_refused(tmp_path: Path) -> None:
+def test_more_curves_than_the_limit_in_one_group_become_several_panels(
+    tmp_path: Path,
+) -> None:
+    """A group of more readouts than a panel draws is split after its id (#591)."""
     readouts = [
         _readout(f"LI__C{i}", label=f"s{i}, plasma") for i in range(MAX_CURVES + 1)
     ]
     path = _sidecar(tmp_path, {"li": {"label": "Liver", "readouts": readouts}})
-    with pytest.raises(ContractError, match="plasma"):
-        panels_from_figure(SVG, path, simulation=SIMULATION, title="T", group=_grouped)
+
+    panels, figure = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+
+    # one group, so the id of the part is the id of the key
+    assert figure.panels["li"] == ("li_1", "li_2")
+    assert [len(panels[pid].curves) for pid in ("li_1", "li_2")] == [MAX_CURVES, 1]
+    assert panels["li_1"].title.endswith("(1 of 2)")
+
+
+def test_a_group_which_fits_keeps_the_id_and_title_of_its_part(
+    tmp_path: Path,
+) -> None:
+    """A part of at most `MAX_CURVES` readouts is one panel, named as before (#591)."""
+    readouts = [_readout(f"LI__C{i}", label=f"s{i}, plasma") for i in range(MAX_CURVES)]
+    path = _sidecar(tmp_path, {"li": {"label": "Liver", "readouts": readouts}})
+
+    panels, figure = panels_from_figure(
+        SVG, path, simulation=SIMULATION, title="T", group=_grouped
+    )
+
+    assert figure.panels["li"] == ("li",)
+    assert len(panels["li"].curves) == MAX_CURVES
+    assert panels["li"].title == "Liver"
 
 
 def test_a_group_which_is_no_pair_of_texts_is_refused(tmp_path: Path) -> None:

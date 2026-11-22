@@ -4,7 +4,7 @@
 
 | suite | what it checks | run with |
 | --- | --- | --- |
-| [SBML Test Suite](testsuite.md) | how SBML models are simulated, i.e. what the engine core supports, with roadrunner as the reference | `pytest -m testsuite` |
+| [SBML Test Suite](testsuite.md) | how SBML models are simulated, i.e. what sbmlsim-core supports, with roadrunner as the reference | `pytest -m testsuite` |
 | [PEtab Test Suite](petab_testsuite.md) | the meaning of PEtab problems: initialization, conditions, observables, noise and priors | `pytest -m petab_testsuite tests/fit` |
 | [PEtab Benchmark Problems](petab_benchmark.md) | reading and simulating published PEtab problems, compared with the collection and with AMICI | `pytest -m petab_benchmark tests/fit` |
 | [PEtab SciML Test Suite](sciml_testsuite.md) | neural networks and hybrid problems of PEtab SciML | `pytest -m sciml_testsuite tests/sciml` |

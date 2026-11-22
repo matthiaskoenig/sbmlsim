@@ -682,7 +682,7 @@ def test_the_engine_of_a_definition_wins_over_the_one_of_the_project() -> None:
 
 @pytest.mark.parametrize("n_cores", [1, 2])
 def test_a_project_on_the_engine_core_fits_on_it(tmp_path: Path, n_cores: int) -> None:
-    """The fit of a project whose simulator is the engine core optimizes on it.
+    """The fit of a project whose simulator is sbmlsim-core optimizes on it.
 
     One core runs the optimization in the process, two cores in a pool whose
     workers evaluate the residuals with the engine of the problem.

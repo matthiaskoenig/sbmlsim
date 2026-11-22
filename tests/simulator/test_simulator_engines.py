@@ -46,7 +46,7 @@ class _Comparison(DataSetsComparison):
 
     Measured on `_dose_scan` at the defaults of `Simulator`, the largest
     relative difference beyond an absolute 1e-10 of AMICI is 7.9e-8, a factor
-    12 below `tol_rel`, and the one of the engine core 8.8e-9.
+    12 below `tol_rel`, and the one of sbmlsim-core 8.8e-9.
     """
 
     tol_abs = 1e-10
@@ -88,7 +88,7 @@ def _scaled_error(result: ScanResult, reference: ScanResult) -> float:
 #: how much larger than roadrunner's the error of an engine may be at the
 #: defaults of `Simulator`: COPASI and AMICI integrate with one absolute
 #: tolerance, whose factor was measured so that they are at least as accurate
-#: (`COPASI_ATOL_FACTOR`, `AMICI_ATOL_FACTOR`), while the engine core
+#: (`COPASI_ATOL_FACTOR`, `AMICI_ATOL_FACTOR`), while sbmlsim-core
 #: integrates with the absolute tolerance of every state of roadrunner and has
 #: no factor to measure, so its error is roadrunner's up to the steps its own
 #: CVODE chooses and is not bounded by it, the known difference 9 of
@@ -260,7 +260,7 @@ def test_the_spec_of_a_model_loads_it_with_the_settings(other_engine: Engine) ->
     assert other.key != spec.key
 
 
-#: what the engine core says when it refuses a formula before the
+#: what sbmlsim-core says when it refuses a formula before the
 #: initialization: a value of a request is a number and the model of the engine
 #: is stateless, so the executor folds only a symbol whose value it knows
 #: without the model, one the same pre-initialization sets to a number and one
@@ -291,7 +291,7 @@ def test_preinit_formulas_read_what_they_read_in_roadrunner(
 ) -> None:
     """A formula reads the values set and as loaded, as in roadrunner (PEtab v2).
 
-    `folded` is whether the engine core can fold the formula, i.e. whether it
+    `folded` is whether sbmlsim-core can fold the formula, i.e. whether it
     knows the value of every symbol of it without the model: one the same
     pre-initialization sets to a number, and a constant parameter of the
     model, whose value nothing the pre-initialization sets can move. It
@@ -604,7 +604,7 @@ def test_a_later_time_column_is_the_time_of_the_rows(
         )
     )
     # the last of the given times is the steady state after the end, which the
-    # engine core continues from the state the timecourse ended in
+    # sbmlsim-core continues from the state the timecourse ended in
     results = {
         engine: Simulator(engine=engine).simulate(model, simulation)
         for engine in (Engine.ROADRUNNER, other_engine)

@@ -14,7 +14,7 @@ when its own simulation or observables fail, not because of the other points of
 its chunk. Nothing in here uses pint or xarray, and a chunk and its result are
 numbers, strings, a plan and the graph of the observables, so they pickle.
 
-A chunk of a model of the engine core runs its points as one batch of the
+A chunk of a model of sbmlsim-core runs its points as one batch of the
 engine on its threads instead (`_run_chunk_core`), which is why a scan of
 that engine runs in one python process and starts no pool, see
 `sbmlsim.simulator.simulator`. The two paths share everything after the
@@ -109,7 +109,7 @@ class ScanPointError(RuntimeError):
 class ModelSpec:
     """What a worker needs to load a model as the parent loaded it.
 
-    A model of every engine has a spec, the engine core included, although a
+    A model of every engine has a spec, sbmlsim-core included, although a
     scan of that engine takes no pool and so loads no model in a worker, see
     `_run_chunk_core`: a spec is what a model of it round trips through, and
     a chunk of it would run in a worker as every other chunk does.
@@ -210,7 +210,7 @@ class ModelSpec:
 
 
 def core_threads(n_workers: int | None, n_points: int) -> int:
-    """Get the number of threads the engine core batches the chunks of a run with.
+    """Get the number of threads sbmlsim-core batches the chunks of a run with.
 
     The threads of the batches of a run are counted like the processes of a
     run of another engine, `parallel.resolve_workers`: a number is taken as
@@ -331,7 +331,7 @@ def run_chunk(
     Args:
         chunk: the points.
         model: the loaded model of the chunk, of any engine.
-        threads: the threads of the engine core a chunk of a model of that
+        threads: the threads of sbmlsim-core a chunk of a model of that
             engine is batched on, see `_run_chunk_core`; every other engine
             runs the points of a chunk one after the other in this process.
         out: where to write the values of the chunk, see `_pack`; only a run
@@ -361,7 +361,7 @@ def _run_chunk(
 ) -> ChunkResult:
     """Run the points of a chunk one after the other, see `run_chunk`.
 
-    A chunk of a model of the engine core runs as one batch of its threads
+    A chunk of a model of sbmlsim-core runs as one batch of its threads
     instead, see `_run_chunk_core`, which shares the tail of this, `_finish`.
 
     With `on_error="raise"` the first point which fails in the order of the
@@ -411,7 +411,7 @@ def _run_chunk(
 def _run_chunk_core(
     chunk: Chunk, model: CoreSBMLModel, threads: int, out: np.ndarray | None = None
 ) -> ChunkResult:
-    """Run the points of a chunk of the engine core as one batch, see the module.
+    """Run the points of a chunk of sbmlsim-core as one batch, see the module.
 
     The engine simulates a batch of requests on threads of its own and
     answers with the output of every point or with the error which failed it
@@ -477,7 +477,7 @@ def _run_chunk_core(
             with `on_error="flag"`.
         ValueError: if the engine refuses the batch, see `_batch`.
     """
-    # the module of the executor of the engine core, imported here as
+    # the module of the executor of sbmlsim-core, imported here as
     # `sbmlsim.simulator.engines` imports it, so that a run of another engine
     # does not import it; the bindings are imported by `import_core`
     from sbmlsim.simulator import executor_core
@@ -545,7 +545,7 @@ def _run_chunk_core(
 def _batch(
     model: CoreSBMLModel, requests: list[dict[str, Any]], threads: int
 ) -> list[Any]:
-    """Simulate the requests of a chunk as one batch of the engine core.
+    """Simulate the requests of a chunk as one batch of sbmlsim-core.
 
     The batch runs on the executor of the model (`CoreSBMLModel.batch_executor`,
     one per number of threads), which keeps the pool of its threads and the
@@ -840,7 +840,7 @@ def _pack_threads(nbytes: int, n_points: int) -> int:
     help a chunk which is large enough to pay for them and saturate well
     below one per CPU (`PACK_MAX_THREADS`). A worker of a pool writes with the
     calling thread: it has the cores of one worker and the other workers are
-    copying beside it, as a run of the engine core, which writes in the
+    copying beside it, as a run of sbmlsim-core, which writes in the
     calling process, has no pool at all.
 
     Args:

@@ -52,7 +52,7 @@ def _roadrunner_problem(
     """Build that problem on roadrunner, whatever the default engine is.
 
     A test which reads the values of the instance of roadrunner
-    (`RoadrunnerSBMLModel.r`), which the stateless model of the engine core
+    (`RoadrunnerSBMLModel.r`), which the stateless model of sbmlsim-core
     does not have, names roadrunner here instead of relying on the default
     engine of the package (#607).
     """

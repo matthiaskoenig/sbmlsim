@@ -1470,7 +1470,7 @@ def profile_likelihood(
                 jacobian: runner.JacobianPool | None = None
                 if parallel_jacobian:
                     # the scans run here, their re-optimizations on the
-                    # workers; the engine core simulates the points of a
+                    # workers; sbmlsim-core simulates the points of a
                     # jacobian at once on the threads of one worker, see
                     # `runner.FitPool.threads`
                     batched = problem.engine is Engine.CORE

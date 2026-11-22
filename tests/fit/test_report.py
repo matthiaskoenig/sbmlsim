@@ -30,7 +30,13 @@ from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.report import MAX_GROUP_ROWS, FitReport
+from sbmlsim.fit.report import (
+    LEGEND_WIDTH,
+    MAX_GROUP_ROWS,
+    STUDY_COLORS,
+    FitReport,
+    category_color,
+)
 from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
@@ -1765,3 +1771,66 @@ def test_a_panel_of_one_point_has_no_nan(
     for plot in ("goodness_of_fit", "bland_altman"):
         text = report._panel_text({report.reference_set.sid: points}, plot)
         assert "nan" not in text, text
+
+
+# ----------------------------------------------------------------------------
+# the legend and the colors of the summary figures with many studies (#511)
+# ----------------------------------------------------------------------------
+def _legend_figure(labels: list[str]) -> tuple[Figure, list[Any]]:
+    """Get a figure of two panels whose points carry one label each."""
+    figure = Figure(figsize=(5.5 * 2 + LEGEND_WIDTH, 5.5), layout="constrained")
+    axes = list(figure.subplots(nrows=1, ncols=2, squeeze=False)[0])
+    for ax in axes:
+        for index, label in enumerate(labels):
+            ax.plot(
+                [1.0], [1.0], "o", color=category_color(index, len(labels)), label=label
+            )
+        ax.plot([0.0, 1.0], [0.0, 1.0], "-", color="black", label="identity")
+    return figure, axes
+
+
+def test_the_colors_of_few_studies_are_the_categorical_ones() -> None:
+    """A report of at most as many studies as colors keeps the colors it had."""
+    assert [category_color(i, 5) for i in range(5)] == list(STUDY_COLORS[:5])
+    assert category_color(0, len(STUDY_COLORS)) == STUDY_COLORS[0]
+
+
+@pytest.mark.parametrize("total", [len(STUDY_COLORS) + 1, 20, 35, 64])
+def test_every_study_has_a_color_of_its_own(total: int) -> None:
+    """The colors repeated every nine studies, which told them apart no more (#511)."""
+    colors = [category_color(index, total) for index in range(total)]
+
+    assert len(set(colors)) == total
+
+
+def test_the_figure_legend_shows_every_entry(fitted_report: Any) -> None:
+    """A legend of many studies is split into columns instead of being cut (#511).
+
+    The legend of a fit of 35 studies ran off the bottom of the figure: it
+    showed 29 of them and cut the rest and the entries of the lines with them.
+    """
+    labels = [f"Study{index:02d}" for index in range(35)]
+    figure, axes = _legend_figure(labels)
+    report, _plots = fitted_report
+
+    columns = report._set_figure_legend(figure, axes)
+
+    assert columns > 1
+    legend = figure.legends[0]
+    assert [text.get_text() for text in legend.get_texts()] == [*labels, "identity"]
+    extent = legend.get_window_extent()
+    assert extent.height <= figure.bbox.height
+    assert extent.y0 >= -1.0
+    assert legend.get_window_extent().x1 <= figure.bbox.width + 1.0
+
+
+def test_a_figure_legend_which_fits_stays_one_column(fitted_report: Any) -> None:
+    """Few entries keep the legend of one column the report had."""
+    figure, axes = _legend_figure(["one", "two", "three"])
+    report, _plots = fitted_report
+
+    columns = report._set_figure_legend(figure, axes)
+
+    assert columns == 1
+    legend = figure.legends[0]
+    assert legend.get_window_extent().height <= figure.bbox.height

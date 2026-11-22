@@ -519,7 +519,7 @@ def test_a_problem_compiles_its_models_at_its_level_in_a_worker(
         base_path=op_hctz_pk.base_path,
         data_path=op_hctz_pk.data_path,
         jit_optimization="O0",
-        # the level is the JIT of roadrunner, which the engine core has not
+        # the level is the JIT of roadrunner, which sbmlsim-core has not
         engine=Engine.ROADRUNNER,
     )
     monkeypatch.setenv(JIT_OPTIMIZATION_VARIABLE, "O2")

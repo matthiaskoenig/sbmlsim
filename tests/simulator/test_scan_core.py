@@ -1,4 +1,4 @@
-"""A scan of the engine core runs its points on the threads of the engine.
+"""A scan of sbmlsim-core runs its points on the threads of the engine.
 
 The engine simulates a batch of requests on threads of its own inside one
 python process, so a scan of it starts no pool of processes: the points of a
@@ -126,7 +126,7 @@ def _point_error(kind: str, message: str, flag: int | None = None) -> Any:
 
 @pytest.fixture(scope="module")
 def model_core() -> CoreSBMLModel:
-    """Get the HCTZ model in the engine core, the reference model of the package."""
+    """Get the HCTZ model in sbmlsim-core, the reference model of the package."""
     model = load_model(HCTZ_SBML, Engine.CORE)
     assert isinstance(model, CoreSBMLModel)
     return model

@@ -90,5 +90,5 @@ PROJECT_ROADRUNNER = PROJECT.replace(
 `jit_optimization` is a setting of roadrunner alone
 (`ROADRUNNER_ONLY_SETTINGS`), so a test which follows the level of the project
 to the models it compiles needs a project of that engine; `PROJECT` itself
-takes the default engine of the package, which is the engine core (#607).
+takes the default engine of the package, which is sbmlsim-core (#607).
 """

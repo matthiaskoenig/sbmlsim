@@ -56,7 +56,7 @@ def test_a_problem_switched_to_another_engine_carries_no_cache_of_amici(
     """A problem of AMICI which `set_simulator` switched away pickles without the directory of AMICI.
 
     The simulator of the switch names no engine, so the problem takes the
-    default engine, which is the engine core (#607) where it was roadrunner.
+    default engine, which is sbmlsim-core (#607) where it was roadrunner.
     What the test is about is that the directory of the compiled models of
     AMICI does not survive a switch to another engine, whichever one.
     """

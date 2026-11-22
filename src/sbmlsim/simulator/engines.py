@@ -4,7 +4,7 @@
 `sbmlsim.simulator.executor` for roadrunner,
 `sbmlsim.simulator.executor_copasi` for COPASI,
 `sbmlsim.simulator.executor_amici` for AMICI and
-`sbmlsim.simulator.executor_core` for the engine core, which are imported when
+`sbmlsim.simulator.executor_core` for sbmlsim-core, which are imported when
 a model of their engine runs, so a run of roadrunner never imports COPASI,
 AMICI or the bindings of sbmlsim-core.
 Every simulation of the package outside the executors runs through it: the
@@ -65,7 +65,7 @@ def execute_plan(
         return executor_amici.execute(plan, _amici(model), selections)
     if model.engine is Engine.CORE:
         # imports the bindings of sbmlsim-core, which only a model of the
-        # engine core needs
+        # sbmlsim-core needs
         from sbmlsim.simulator import executor_core
 
         return executor_core.execute(plan, core_model(model), selections)
@@ -77,13 +77,13 @@ def execute_plans(
     model: SBMLModel,
     threads: int,
 ) -> list[TimecourseResult | Exception]:
-    """Run the plans of a batch on a loaded model, one batch of the engine core.
+    """Run the plans of a batch on a loaded model, one batch of sbmlsim-core.
 
-    The engine core simulates a batch of plans on threads of its own, so the
+    sbmlsim-core simulates a batch of plans on threads of its own, so the
     points of the batch run at once in this process, see
     `sbmlsim.simulator.executor_core.execute_many`. The other engines
     simulate one plan per call, so the batch is the loop over the plans for
-    them: a caller gains the threads of the batch with the engine core and
+    them: a caller gains the threads of the batch with sbmlsim-core and
     the same results with every engine, see
     `sbmlsim.fit.optimization.OptimizationProblem.evaluate_residuals_many`.
 
@@ -92,7 +92,7 @@ def execute_plans(
             output, in their order.
         model: the loaded model of every point of the batch.
         threads: the threads of the engine the batch runs on, which only the
-            engine core uses.
+            sbmlsim-core uses.
 
     Returns:
         The output of every point in the order of the points, the error which
@@ -133,7 +133,7 @@ def check_plan(plan: Plan, model: SBMLModel) -> None:
     of the model in a plan which sets values between two runs, see
     `sbmlsim.simulator.executor_copasi.check_supported`, and AMICI a change
     of a compartment it keeps out of its states, see
-    `sbmlsim.simulator.executor_amici.check_supported`. The engine core
+    `sbmlsim.simulator.executor_amici.check_supported`. sbmlsim-core
     refuses a plan which one request of its contract cannot carry, a steady
     state after the end of the simulation and a formula it cannot fold into a
     number (a formula at a change of a model with an event of its own among
@@ -210,11 +210,11 @@ def _amici(model: SBMLModel) -> AmiciSBMLModel:
 
 
 def core_model(model: SBMLModel) -> CoreSBMLModel:
-    """Get a model of the engine core as its class.
+    """Get a model of sbmlsim-core as its class.
 
     The module of the model does not import the bindings of sbmlsim-core, a
     model of the engine which is loaded has imported them. It is public,
-    unlike the three others, since the worker of a scan of the engine core
+    unlike the three others, since the worker of a scan of sbmlsim-core
     narrows its model as well, see
     `sbmlsim.simulator.worker._run_chunk_core`.
 
@@ -225,12 +225,12 @@ def core_model(model: SBMLModel) -> CoreSBMLModel:
         The model as a `CoreSBMLModel`.
 
     Raises:
-        TypeError: if the model is not a model of the engine core.
+        TypeError: if the model is not a model of sbmlsim-core.
     """
     from sbmlsim.model.model_core import CoreSBMLModel
 
     if not isinstance(model, CoreSBMLModel):
         raise TypeError(
-            f"The model '{model.label}' of the engine core is no `CoreSBMLModel`."
+            f"The model '{model.label}' of sbmlsim-core is no `CoreSBMLModel`."
         )
     return model

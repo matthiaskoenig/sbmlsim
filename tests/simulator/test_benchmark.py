@@ -128,7 +128,7 @@ def test_a_simulation(name: str) -> None:
 
     The comparison is against `executor.execute`, the executor of roadrunner,
     so the simulator is roadrunner's and not the default engine, which is the
-    engine core since #607 and which answers the same simulation with its own
+    sbmlsim-core since #607 and which answers the same simulation with its own
     executor (`roadrunner_simulator`).
     """
     source, selections, simulation = SIMULATIONS[name]
@@ -171,7 +171,7 @@ def test_the_serial_time_of_a_scan_of_1e3_points(
     measured in turn in the same process. The time of 0.8.5 is reported.
 
     The work of a point is `executor.execute`, so the simulator is
-    roadrunner's and not the default engine core, whose scan is one batch of
+    roadrunner's and not the default sbmlsim-core, whose scan is one batch of
     the engine and not a call of `execute` per point (#607).
     """
     calls: list[int] = []
@@ -260,7 +260,7 @@ def test_the_pool_pays_from_the_threshold() -> None:
     assert min(loading) <= min(serial)
 
 
-#: the least a batch of the engine core on four threads must do against one
+#: the least a batch of sbmlsim-core on four threads must do against one
 #: thread; the batch of the measurement of #612 reached 3.1 of 4 threads on
 #: performance cores of their own and 2.9 unpinned, and a machine of four
 #: busy cores is still well above this
@@ -268,7 +268,7 @@ BATCH_SPEEDUP_4 = 2.0
 
 
 def _core_batch(n_points: int, n_times: int = 101) -> tuple[Any, list[Any]]:
-    """Get a model of the engine core and the requests of a batch of it.
+    """Get a model of sbmlsim-core and the requests of a batch of it.
 
     The requests are built once and handed to the executors of the thread
     counts under test, so what is measured is the batch of the engine and
@@ -284,7 +284,7 @@ def _core_batch(n_points: int, n_times: int = 101) -> tuple[Any, list[Any]]:
 
     model = load_model(HCTZ_SBML, Engine.CORE)
     # load_model gives the model of the engine, whose requests the executor
-    # of the engine core builds; the bindings are Any, so is the model here
+    # of sbmlsim-core builds; the bindings are Any, so is the model here
     core_model: Any = model
     end = 240.0
     simulation = Simulation(
@@ -305,10 +305,10 @@ def _core_batch(n_points: int, n_times: int = 101) -> tuple[Any, list[Any]]:
 
 
 def test_the_batch_of_the_engine_core_scales_over_its_threads() -> None:
-    """The threads of one batch of the engine core, measured on the batch alone.
+    """The threads of one batch of sbmlsim-core, measured on the batch alone.
 
     The parallel efficiency of a batch is the efficiency of every scan, fit
-    and propagation of the engine core, which run in one process on the
+    and propagation of sbmlsim-core, which run in one process on the
     threads of the engine. The measurement is of the batch and not of a run:
     the requests are built once, the same batch runs on one, two, four and
     eight threads, and the rate is the best of three timed stretches, so a

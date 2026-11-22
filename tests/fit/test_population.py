@@ -139,7 +139,7 @@ def op_hctz_pk(op_hctz_pk: OptimizationProblem) -> OptimizationProblem:
 
     The module overrides the problem of the conftest, which runs on
     `sbmlsim.engine.DEFAULT_ENGINE`: a fit of a problem without a gap of
-    `sbmlsim.fit.fit_core` runs its optimizer in the engine core, on the
+    `sbmlsim.fit.fit_core` runs its optimizer in sbmlsim-core, on the
     threads of one batch, so it has no pool of workers, no member on a worker
     and no trajectory the parent records. The pool is the python path, which
     every test of this module is about, so the module names roadrunner.
@@ -495,7 +495,7 @@ def _fake_pool(*outcomes: Any, threads: int = 1) -> Any:
 def test_a_generation_on_the_threads_of_the_engine_is_one_task() -> None:
     """A generation of a pool with threads is one task, its costs the outcome.
 
-    The engine core simulates the members of the whole generation at once on
+    sbmlsim-core simulates the members of the whole generation at once on
     its threads, so the generation is one task of one worker, see
     `runner.FitPool.threads`.
     """

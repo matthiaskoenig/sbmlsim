@@ -265,7 +265,7 @@ def test_fit_with_data_at_steady_state(tmp_path: Path) -> None:
 
     The problem is one of roadrunner: the steady state after the end of a
     simulation, the output time `inf` of `Plan.steady_state_output`, is no
-    part of the contract `simulation/1` of the engine core, whose
+    part of the contract `simulation/1` of sbmlsim-core, whose
     `steady_state` is the pre-equilibration before the start, so its executor
     refuses such a plan by name instead of leaving the row out (see the
     module of `sbmlsim.simulator.executor_core`).

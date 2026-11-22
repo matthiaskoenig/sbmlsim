@@ -321,7 +321,7 @@ def test_the_start_values_are_read_from_the_model_as_loaded(tmp_path: Path) -> N
 
     The problem is one of roadrunner: the state the test is about is the one
     of an instance of roadrunner, which a simulation of it leaves
-    pre-initialized, while a model of the engine core is stateless and holds
+    pre-initialized, while a model of sbmlsim-core is stateless and holds
     nothing of the simulations which ran.
     """
     problem = OptimizationProblem(

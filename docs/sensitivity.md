@@ -61,7 +61,7 @@ A normalized index is `NaN` when the output is zero at the reference. A paramete
 
 ## Exact local sensitivities
 
-The central differences above cost `2 d + 1` simulations and are as accurate as the step `delta` you choose: a large step measures the curvature of the model, a small one the error of the integrator. The [engine core](simulation.md#engines) integrates the derivatives themselves along with the states of the model (forward sensitivities, CVODES), so one simulation of `d` parameters gives `dy/dp` at every output time, with no step to choose:
+The central differences above cost `2 d + 1` simulations and are as accurate as the step `delta` you choose: a large step measures the curvature of the model, a small one the error of the integrator. The [sbmlsim-core](simulation.md#engines) integrates the derivatives themselves along with the states of the model (forward sensitivities, CVODES), so one simulation of `d` parameters gives `dy/dp` at every output time, with no step to choose:
 
 ```python
 core = Simulator(engine="core")

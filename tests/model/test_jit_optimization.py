@@ -133,7 +133,7 @@ def test_a_runner_compiles_its_models_at_its_level(tmp_path: Path) -> None:
         data_path=tmp_path,
         on_error="raise",
         jit_optimization="O1",
-        # the level is the JIT of roadrunner, which the engine core has not
+        # the level is the JIT of roadrunner, which sbmlsim-core has not
         simulator=Simulator(n_workers=1, engine=Engine.ROADRUNNER),
     )
     assert runner.jit_optimization is JitOptimization.O1

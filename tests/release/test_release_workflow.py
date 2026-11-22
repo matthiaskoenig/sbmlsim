@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.fit.result import fit_subset
+from sbmlsim.panel import App, AppPage
 from sbmlsim.project import Project
 from sbmlsim.release import source as source_module
 from sbmlsim.release.manifest import BUILD_MARKER, MANIFEST_FILE, Manifest
@@ -23,6 +24,7 @@ from sbmlsim.release.source import ReleaseError
 from sbmlsim.release.workflow import (
     REPOSITORY_DIR,
     ReleaseBuild,
+    _check_app_citation,
     build_release,
     build_summary,
     check_build,
@@ -136,6 +138,47 @@ def test_missing_release_settings(model: Project, out: Path, clone: Path) -> Non
     with pytest.raises(ReleaseError, match="lack doi, funding"):
         build(model.replace(release=incomplete), out, clone, runner)
     assert runner.commands == []
+
+
+def _app(citation: str) -> App:
+    """Get an app of one page which cites a text, see `#525`."""
+    return App(
+        title="Toy",
+        pages=(AppPage(id="decay", title="Decay", panels=("decay",)),),
+        citation=citation,
+    )
+
+
+def test_a_release_refuses_an_app_which_cites_another_release(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """The footer of an app states the year of its release (#525).
+
+    Nothing raised that year with a release in a new one, so the README of
+    the release cited 2027 while the footer of the app kept 2026.
+    """
+    assert model.release is not None
+    runner = FakeRunner()
+    stale = _app(model.release.citation(2000, markdown=False))
+
+    with pytest.raises(ReleaseError, match="cites"):
+        build(model.replace(app=stale), out, clone, runner)
+
+    assert runner.commands == [] or all(
+        "commit" not in command for command in runner.commands
+    )
+
+
+def test_a_release_takes_an_app_which_cites_it(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """An app of the citation of this release, and one without a citation."""
+    assert model.release is not None
+    current = _app(model.release.citation(markdown=False))
+
+    _check_app_citation(model.replace(app=current), model.release)
+    _check_app_citation(model.replace(app=_app("")), model.release)
+    _check_app_citation(model, model.release)
 
 
 def test_the_build_writes_into_the_out_only(

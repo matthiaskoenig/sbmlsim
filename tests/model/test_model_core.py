@@ -1,4 +1,4 @@
-"""The model of an SBML model in the engine core."""
+"""The model of an SBML model in sbmlsim-core."""
 
 import logging
 import subprocess
@@ -85,7 +85,7 @@ def tolerance_vector(model: RoadrunnerSBMLModel) -> list[float]:
 
 @pytest.fixture
 def hctz_core() -> CoreSBMLModel:
-    """Get the HCTZ model in the engine core."""
+    """Get the HCTZ model in sbmlsim-core."""
     model = load_model(HCTZ_SBML, Engine.CORE)
     assert isinstance(model, CoreSBMLModel)
     return model
@@ -396,7 +396,7 @@ def test_a_model_is_compiled_once_however_many_threads_ask_for_it() -> None:
     """The caches of the engine are filled once under a lock (#607).
 
     The service answers the panels of a model in the threads of its server,
-    so a model of the engine core is loaded from several threads at once. The
+    so a model of sbmlsim-core is loaded from several threads at once. The
     bindings were imported through `sys.modules` without the check that the
     module is initialized, which handed a thread a module whose attributes do
     not exist yet while another thread imported it, and the process crashed in

@@ -2,7 +2,7 @@
 
 A module `test_*_engines.py` runs its tests with every engine of
 `OTHER_ENGINES` through the fixture `other_engine` of `tests.conftest`; a
-test of an engine whose extra is not installed is skipped, the engine core
+test of an engine whose extra is not installed is skipped, sbmlsim-core
 without the bindings of sbmlsim-core. The tests of one engine only are in the
 modules of its name, e.g. `test_simulator_amici.py`.
 """
@@ -20,7 +20,7 @@ from sbmlsim.model.model_sbml import SBMLModel
 OTHER_ENGINES: list[Engine] = [Engine.COPASI, Engine.AMICI, Engine.CORE]
 
 #: the module of the extra of an engine, the bindings of sbmlsim-core for the
-#: engine core, which are no extra of sbmlsim (`sbmlsim.engine.import_core`)
+#: sbmlsim-core, which are no extra of sbmlsim (`sbmlsim.engine.import_core`)
 _MODULES: dict[Engine, str] = {
     Engine.COPASI: "COPASI",
     Engine.AMICI: "amici",
@@ -54,7 +54,7 @@ def require(engine: Engine) -> None:
 
 
 def require_core_fit() -> None:
-    """Skip a test of a fit which runs in the engine core itself.
+    """Skip a test of a fit which runs in sbmlsim-core itself.
 
     The bindings fit a request of the contract `fit/1`
     (`sbmlsim_core.LoadedModel.fit`) from sbmlsim-core 0.12.0 on, where the

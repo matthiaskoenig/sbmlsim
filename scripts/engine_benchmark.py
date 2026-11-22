@@ -1,6 +1,6 @@
 """Compare the four simulation engines of sbmlsim: the load, one simulation and a scan.
 
-The engines of `sbmlsim.engine.Engine` - the engine core, roadrunner, COPASI
+The engines of `sbmlsim.engine.Engine` - sbmlsim-core, roadrunner, COPASI
 and AMICI, in the order of `ENGINES`, which the tables and the figure keep -
 simulate the same models through the same simulator, so their speed and their
 agreement are measured in one run on the four packaged models
@@ -61,8 +61,8 @@ tens of seconds in some engines.
 - `load s`: `load_model` with the engine, `repetitions` loads of a round
   in this process, i.e. with the model already compiled; `first compile s` is
   the first load of that model in this process, the one which compiles it
-  (the LLJIT of roadrunner, the WebAssembly module of the engine core). It is
-  measured once per model and engine, while the runtime of the engine core is
+  (the LLJIT of roadrunner, the WebAssembly module of sbmlsim-core). It is
+  measured once per model and engine, while the runtime of sbmlsim-core is
   created once per process (51 ms, `sbmlsim.model.model_core.runtime` is
   cached), so of a run of several models only the first model of the core
   pays the runtime in this column. AMICI compiles a model into a cache on
@@ -70,7 +70,7 @@ tens of seconds in some engines.
   warms before it times anything: its compilation from cold, minutes per
   model, is not measured and not reported, and the first load of its process
   is the import of the compiled module.
-- `compile s` and `instantiate s`: the engine core only, the compilation of
+- `compile s` and `instantiate s`: sbmlsim-core only, the compilation of
   the SBML into its module and the instantiation of that module in the
   runtime, which `load s` of the other engines does not break out. They are
   no part of `load s` of the core either, which finds the module compiled
@@ -90,10 +90,10 @@ tens of seconds in some engines.
   are therefore warm: they exclude the pool of worker processes, which
   `sbmlsim.parallel` keeps per process and number of workers, the model
   every worker loads and compiles and the first batch of the threads of the
-  engine core, so a measurement which includes that first run measures
+  sbmlsim-core, so a measurement which includes that first run measures
   something else and is not a contradiction: it is several times larger for
   an engine whose parallel scan runs in worker processes, which carries the
-  pool and one compilation of the model per worker, while the engine core,
+  pool and one compilation of the model per worker, while sbmlsim-core,
   which starts no pool, pays only its own compilation there. `--cold`
   reports that first run as `scan serial cold s` and `scan parallel cold s`,
   which is a cold figure of the first model and engine of its process only,
@@ -106,7 +106,7 @@ tens of seconds in some engines.
 
 The tables are narrow and the rows of every one of them are the same in the
 same order (`markdown`): what every model was measured with, the loads, the
-simulation and the scans, the ratio of every engine to the engine core, the
+simulation and the scans, the ratio of every engine to sbmlsim-core, the
 agreement, and the cells which were not measured. `--figure` draws the speeds of them, a panel per model and
 measure, the dot of an engine its median (`figure`).
 
@@ -114,7 +114,7 @@ measure, the dot of an engine its median (`figure`).
 the legend of the tables says what they are: python processes
 for roadrunner, COPASI and AMICI, which load the model again in every worker
 and hand the arrays of a chunk back, and threads of the engine inside one
-python process for the engine core, which starts no pool at all. The two do
+python process for sbmlsim-core, which starts no pool at all. The two do
 not scale alike, which is why the legend says so: a process runs the whole
 point, its integration and the python around it, while a thread of the core
 integrates and the rest of the run - the result of a chunk, the
@@ -129,7 +129,7 @@ starts worker processes, so a script which calls `measure` needs the
 `if __name__ == "__main__":` guard, as this one has.
 
 `--steps` scans every model on another equidistant output grid, which is
-what the parallel scan of the engine core depends on most and what the
+what the parallel scan of sbmlsim-core depends on most and what the
 section The width of the output grid of `docs/benchmarks.md` measures; the
 legend of the table names the grid of every model, so a run says which one it
 measured.
@@ -190,9 +190,28 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-#: the engines in the order the table shows them, the engine core first, as
+#: the engines in the order the table shows them, sbmlsim-core first, as
 #: the documentation names them (`docs/simulation.md`); `Engine` declares them
 #: in the order they were added, which is the order of `resolve_engine`
+#: the name of an engine in the tables, the figure and the notes of this page.
+#: The engine is named after its package, `sbmlsim-core`, as the documentation
+#: names it; every other engine is named by its value.
+ENGINE_NAMES: Final[dict[Engine, str]] = {Engine.CORE: "sbmlsim-core"}
+
+
+def engine_label(engine: Engine) -> str:
+    """Get the name of an engine in the tables and the figure.
+
+    Args:
+        engine: the engine.
+
+    Returns:
+        Its name, `sbmlsim-core` for the engine of that package and its value
+        otherwise.
+    """
+    return ENGINE_NAMES.get(engine, engine.value)
+
+
 ENGINES: Final[tuple[Engine, ...]] = (
     Engine.CORE,
     Engine.ROADRUNNER,
@@ -206,7 +225,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
 REFERENCE: Final[Engine] = Engine.ROADRUNNER
 
 #: the engine the ratios of the speeds are taken against, see `_ratio_table`:
-#: the engine core, the first engine of `ENGINES` and the one the
+#: sbmlsim-core, the first engine of `ENGINES` and the one the
 #: documentation names first
 REFERENCE_RATIO: Final[Engine] = Engine.CORE
 
@@ -247,7 +266,7 @@ POINTS: Final[int] = 1000
 #: the colour of every engine in the figure, one step per mode of the
 #: documentation, which are the slots of the categorical theme the benchmark
 #: of sbmlsim-core draws with (`scripts/bench_figure.py` of that repository):
-#: the engine core is its blue and roadrunner is the pink it has there, so one
+#: sbmlsim-core is its blue and roadrunner is the pink it has there, so one
 #: engine is one colour across both projects, and COPASI and AMICI follow in
 #: the order of the theme. The adjacent pairs are far enough apart under
 #: protanopia and tritanopia, and the engine of every row is named next to it,
@@ -568,7 +587,7 @@ class BenchmarkRow:
 
     Attributes:
         load_s: `load_model` with the model already compiled, seconds.
-        compile_s: the compilation of the SBML by the engine core, seconds.
+        compile_s: the compilation of the SBML by sbmlsim-core, seconds.
         instantiate_s: the instantiation of its module, seconds.
         first_compile_s: the first load of the process, which compiles,
             seconds.
@@ -740,7 +759,7 @@ def measure(
         warmups: the simulations before the timed ones of a round.
         points: the points of the scans.
         workers: the workers of the parallel scan, processes or, for the
-            engine core, threads of the engine; `1` measures no parallel scan.
+            sbmlsim-core, threads of the engine; `1` measures no parallel scan.
         cold: whether the first run of every scan is reported next to the
             warm median, see `_scans`.
         steps: the equidistant output grid of every model, `steps + 1` output
@@ -855,7 +874,7 @@ def markdown(result: BenchmarkResult) -> str:
 
     Every measurement of a cell in one table is thirteen columns of numbers
     which no page displays well, so the measurements are narrow tables of the
-    same rows in the same order, the engine core first: what every model was
+    same rows in the same order, sbmlsim-core first: what every model was
     measured with, the loads, the simulation and the scans, the agreement,
     and the cells which were not measured. The lines after them say with what
     the measurement was made and what every column is, see the module.
@@ -953,7 +972,7 @@ def _loading_table(result: BenchmarkResult) -> list[str]:
     rows = [
         [
             name,
-            engine.value,
+            engine_label(engine),
             _measurement(row.load_s),
             _number(row.first_compile_s),
             _measurement(row.compile_s),
@@ -998,7 +1017,7 @@ def _simulating_table(result: BenchmarkResult) -> list[str]:
     for (name, engine), row in result.rows.items():
         cells = [
             name,
-            engine.value,
+            engine_label(engine),
             _measurement(row.simulate_s, 1e3),
             _measurement(row.scan_serial_s),
             *([_number(row.scan_serial_cold_s)] if result.cold else []),
@@ -1019,11 +1038,11 @@ RATIO_MEASURES: Final[tuple[tuple[str, str], ...]] = (
 
 
 def _ratio(value: Measurement | None, reference: Measurement | None) -> str:
-    """Render the ratio of a measurement to the one of the engine core.
+    """Render the ratio of a measurement to the one of sbmlsim-core.
 
     Args:
         value: the measurement of the engine, `None` where it was not measured.
-        reference: the measurement of the engine core, `None` where the core
+        reference: the measurement of sbmlsim-core, `None` where the core
             was not measured or its median is 0.
 
     Returns:
@@ -1036,9 +1055,9 @@ def _ratio(value: Measurement | None, reference: Measurement | None) -> str:
 
 
 def _ratio_table(result: BenchmarkResult) -> list[str]:
-    """Render every measure of every engine as its ratio to the engine core.
+    """Render every measure of every engine as its ratio to sbmlsim-core.
 
-    The time of an engine divided by the time of the engine core on the same
+    The time of an engine divided by the time of sbmlsim-core on the same
     model and measure, so the core is 1, a number above it is that many times
     the time of the core and a number below it is a cell the core loses. The
     ratios are what carries over from one machine to another, which the
@@ -1048,7 +1067,7 @@ def _ratio_table(result: BenchmarkResult) -> list[str]:
         result: the measurement.
 
     Returns:
-        The lines of the table, empty where the engine core was not measured.
+        The lines of the table, empty where sbmlsim-core was not measured.
     """
     if not any(engine is REFERENCE_RATIO for _name, engine in result.rows):
         return []
@@ -1062,7 +1081,7 @@ def _ratio_table(result: BenchmarkResult) -> list[str]:
         rows.append(
             [
                 name,
-                engine.value,
+                engine_label(engine),
                 *(
                     _ratio(getattr(row, field), getattr(reference, field))
                     for field, _column in RATIO_MEASURES
@@ -1072,7 +1091,7 @@ def _ratio_table(result: BenchmarkResult) -> list[str]:
     if not rows:
         return []
     return [
-        f"### Against the engine {REFERENCE_RATIO.value}",
+        f"### Against {engine_label(REFERENCE_RATIO)}",
         "",
         *_table(header, aligned, rows),
     ]
@@ -1090,7 +1109,7 @@ def _agreement_table(result: BenchmarkResult) -> list[str]:
     rows = [
         [
             name,
-            engine.value,
+            engine_label(engine),
             _difference(row.max_relative_difference),
             _difference(row.max_absolute_difference),
         ]
@@ -1117,7 +1136,7 @@ def _notes_table(result: BenchmarkResult) -> list[str]:
         The lines of the table, empty for a measurement without a note.
     """
     rows = [
-        [name, engine.value, row.note]
+        [name, engine_label(engine), row.note]
         for (name, engine), row in result.rows.items()
         if row.note
     ]
@@ -1271,7 +1290,7 @@ def _model_figure(
                 marker="o",
                 markersize=5,
                 linestyle="none",
-                label=engine.value,
+                label=engine_label(engine),
             )
             for engine in engines
         ],
@@ -1371,7 +1390,7 @@ def _draw_panel(
     axes.set_ylim(0.4, len(engines) + 0.6)
     axes.set_yticks([positions[engine] for engine in engines])
     axes.set_yticklabels(
-        [engine.value if ticks else "" for engine in engines],
+        [engine_label(engine) if ticks else "" for engine in engines],
         fontsize=8,
         color=ink["primary"],
     )
@@ -1517,7 +1536,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=[engine.value for engine in Engine],
         default=[engine.value for engine in ENGINES],
         help="the engines in the order of the table, every one which is "
-        "installed by default (the engine core first, see ENGINES)",
+        "installed by default (sbmlsim-core first, see ENGINES)",
     )
     parser.add_argument(
         "--repetitions",
@@ -1765,7 +1784,7 @@ def _loads(
 def _core_compilation(
     cell: _Cell, repetitions: int, rounds: int
 ) -> tuple[Measurement, Measurement]:
-    """Measure the compilation and the instantiation of a model by the engine core.
+    """Measure the compilation and the instantiation of a model by sbmlsim-core.
 
     The engine compiles the SBML of a model into a WebAssembly module and the
     runtime instantiates that module, which `CoreSBMLModel` does once per
@@ -1775,7 +1794,7 @@ def _core_compilation(
     the compile options of `CoreSBMLModel`.
 
     Args:
-        cell: the cell of the engine core.
+        cell: the cell of sbmlsim-core.
         repetitions: the compilations of a round.
         rounds: the rounds the median is over.
 
@@ -1860,7 +1879,7 @@ def _scans(
 
     A scan is run once before the timed ones, which pays the pool of the
     processes of a parallel run of roadrunner, COPASI or AMICI and the models
-    its workers load, and the threads of a run of the engine core. That first
+    its workers load, and the threads of a run of sbmlsim-core. That first
     run is timed as well and returned next to the warm measurement, so the
     two measurements of a run are the same whether or not `--cold` reports
     the first one.
@@ -1965,7 +1984,7 @@ def _versions(engines: Sequence[Engine]) -> dict[str, str]:
 
     The reference engine is always one of them, also when it was not
     measured: it simulates the reference of the agreement of every table,
-    see `REFERENCE`, so a measurement of the engine core alone still names
+    see `REFERENCE`, so a measurement of sbmlsim-core alone still names
     the libroadrunner its agreement column was computed against.
 
     Args:
@@ -2034,7 +2053,7 @@ def _scan_line() -> str:
     `_scans`, and the pool of a parallel run is kept per process and number
     of workers (`sbmlsim.parallel.pool`), so the timed runs pay neither the
     pool, nor the model every worker loads and compiles, nor the first batch
-    of the threads of the engine core. A reader who compares a figure of
+    of the threads of sbmlsim-core. A reader who compares a figure of
     another measurement, which includes the first run, with a column of this
     table would otherwise read the difference as a contradiction. The line
     says this qualitatively and names no number: it is rendered into the
@@ -2048,11 +2067,11 @@ def _scan_line() -> str:
         "The scan times are warm: every scan runs once before it is "
         "timed, so they exclude the pool of worker processes, which is kept "
         "per process and number of workers, the model every worker loads and "
-        "compiles and the first batch of the threads of the engine core. A "
+        "compiles and the first batch of the threads of sbmlsim-core. A "
         "measurement which includes that first run is not the same "
         "measurement: it is several times larger for an engine whose "
         "parallel scan runs in worker processes, which carries the pool and "
-        "one compilation of the model per worker, while the engine core, "
+        "one compilation of the model per worker, while sbmlsim-core, "
         "which starts no pool, pays only its own compilation there."
     )
 
@@ -2063,7 +2082,7 @@ def _cold_line() -> str:
     The first run of a scan in a process is a cold run only for the first
     model and engine which runs one: the pool of worker processes is kept per
     process and number of workers (`sbmlsim.parallel.pool`) and the runtime
-    of the engine core is created once per process, so a later cell finds
+    of sbmlsim-core is created once per process, so a later cell finds
     them and pays only what is its own. The line says so, since a reader
     would otherwise compare the cold cells of two engines of one run.
 
@@ -2075,7 +2094,7 @@ def _cold_line() -> str:
         "timed: what the scan costs in a process which has not run one yet. "
         "They are a cold measurement of the first model and engine of the "
         "run only, since the pool of worker processes is kept per process "
-        "and number of workers and the runtime of the engine core is created "
+        "and number of workers and the runtime of sbmlsim-core is created "
         "once per process, so every later cell finds them started. A cold "
         "figure of one engine is therefore a run of its own, with that "
         "engine alone."
@@ -2086,7 +2105,7 @@ def _output_line(result: BenchmarkResult) -> str:
     """Get the legend line of the simulation and the scan of every model.
 
     What a point of the table costs depends on the horizon and the output of
-    its simulation, which the parallel scan of the engine core depends on
+    its simulation, which the parallel scan of sbmlsim-core depends on
     most: the line names them, so a row can be placed and reproduced.
 
     Args:
@@ -2113,7 +2132,7 @@ def _output_line(result: BenchmarkResult) -> str:
         "integrator are each engine's own), in the time unit of the model: "
         + "; ".join(parts)
         + ". How much output a point has matters for the parallel scan of "
-        "the engine core, see the workers of a parallel scan below."
+        "sbmlsim-core, see the workers of a parallel scan below."
     )
 
 
@@ -2159,14 +2178,14 @@ def _legend(result: BenchmarkResult) -> list[str]:
         "- `load s` is `load_model` with the model already compiled, "
         "`first compile s` the first load of that model in this process, "
         "the one which compiles it (the LLJIT of roadrunner, the module of "
-        "the engine core); the runtime of the engine core is created once "
+        "sbmlsim-core); the runtime of sbmlsim-core is created once "
         "per process, so only the first model of a run pays it in this "
         "column. AMICI is loaded from a cache which was warmed before the "
         "measurement, so its compilation from cold, minutes per model, is "
         "not measured, and COPASI, which compiles the model on every load, "
         "has the same measurement twice.",
         "- `compile s` and `instantiate s` are the compilation of the SBML "
-        "into the module of the engine core and its instantiation in the "
+        "into the module of sbmlsim-core and its instantiation in the "
         "runtime, which `load s` of the other engines does not break out. "
         "They are no part of `load s` of the core either, which finds the "
         "module compiled (the engine keeps it per SBML and process), and "
@@ -2183,7 +2202,7 @@ def _legend(result: BenchmarkResult) -> list[str]:
         "- " + _output_line(result),
         f"- The workers of a parallel scan are {result.workers} python "
         "processes for roadrunner, COPASI and AMICI, which load the model in "
-        "every worker, and for the engine core the threads of the engine "
+        "every worker, and for sbmlsim-core the threads of the engine "
         f"inside one python process: `Simulator.run` hands the points of a "
         "scan to the engine in batches which it integrates on "
         f"{result.workers} threads of its own (`worker._run_chunk_core`, at "
@@ -2209,7 +2228,9 @@ def _legend(result: BenchmarkResult) -> list[str]:
             "the engine refuses."
         )
     for engine, reason in result.skipped.items():
-        lines.append(f"- The engine `{engine.value}` was not measured: {reason}")
+        lines.append(
+            f"- The engine `{engine_label(engine)}` was not measured: {reason}"
+        )
     return lines
 
 

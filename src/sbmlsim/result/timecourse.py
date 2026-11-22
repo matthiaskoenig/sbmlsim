@@ -127,7 +127,7 @@ class TimecourseSensitivities:
     """The forward sensitivities of the columns of a timecourse.
 
     The derivatives of the values of a simulation in the values its
-    parameters had at its start, which the engine core integrates along with
+    parameters had at its start, which sbmlsim-core integrates along with
     the states of the model (`Simulator.sensitivities`): one simulation
     answers what a central difference answers with two simulations per
     parameter, and to the tolerance of the integration instead of the step of

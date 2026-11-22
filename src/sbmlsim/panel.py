@@ -1248,12 +1248,24 @@ class AppVariant(BaseModel):
             module; an SBML `SId` (`_SID`).
         label: the variant as it is shown, e.g. `"renal impairment"`; it is
             not empty.
+        scenarios: the scenarios of a page of the app in this variant, by the
+            id of the page, which replace the ones the page declares
+            (`AppPage.scenarios`) wherever a page has an entry; a page without
+            one keeps its own. The builds of a model may offer different stops
+            of a knob, e.g. the renal function of the studies of each build,
+            so a scenario of a study of one build is no state of the other and
+            was shown on its page all the same (#524). A page id must be a
+            page of the app and the scenarios of a page must have distinct
+            ids, which `App._check_app` checks, and every knob and value is
+            checked against the panels of that variant where the models of a
+            service are registered (`sbmlsim.serve.runner.ModelRegistry.of`).
     """
 
     model_config = _CONFIG
 
     id: str
     label: str
+    scenarios: dict[str, tuple[Scenario, ...]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check_variant(self) -> Self:
@@ -1349,7 +1361,50 @@ class App(BaseModel):
                         f"panels {unknown} at '{key}' which no page of the app "
                         f"lists; a figure selects panels of its pages."
                     )
+        known_pages = {page.id for page in self.pages}
+        for variant in self.variants:
+            unknown_pages = sorted(set(variant.scenarios) - known_pages)
+            if unknown_pages:
+                raise ValueError(
+                    f"The variant '{variant.id}' of the app '{self.title}' "
+                    f"declares the scenarios of the pages {unknown_pages}, "
+                    f"which the app does not have; its pages are "
+                    f"{sorted(known_pages)}."
+                )
+            for page_id, scenarios in variant.scenarios.items():
+                ids = [scenario.id for scenario in scenarios]
+                twice = sorted({one for one in ids if ids.count(one) > 1})
+                if twice:
+                    raise ValueError(
+                        f"The variant '{variant.id}' of the app '{self.title}' "
+                        f"declares the scenarios {twice} of the page "
+                        f"'{page_id}' twice; an id is the one a reader names."
+                    )
         return self
+
+    def scenarios_of(
+        self, variant: str | None = None
+    ) -> dict[str, tuple[Scenario, ...]]:
+        """Get the scenarios of every page of the app in a variant.
+
+        The one place a scenario of a variant is resolved, which the service
+        delivers (`sbmlsim.serve.payload.AppResponse.of`) and checks
+        (`sbmlsim.serve.runner.ModelRegistry.of`) through: the scenarios the
+        variant declares for a page, else the ones of the page itself, see
+        `AppVariant.scenarios` (#524).
+
+        Args:
+            variant: the id of the variant, the one a request names; `None` or
+                a variant the app does not name gives the pages their own.
+
+        Returns:
+            The scenarios by the id of the page, every page of the app once,
+            in the order of the pages.
+        """
+        overrides: Mapping[str, tuple[Scenario, ...]] = next(
+            (one.scenarios for one in self.variants if one.id == variant), {}
+        )
+        return {page.id: overrides.get(page.id, page.scenarios) for page in self.pages}
 
 
 def app_payload(app: App) -> dict[str, Any]:

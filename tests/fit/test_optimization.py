@@ -258,7 +258,7 @@ def test_the_initial_time_step_reaches_the_models(
     """The initial time step of the settings is the one of every model of a fit."""
     problem = op_hctz_pk
     # the integrator of an instance of roadrunner is what carries the setting;
-    # the engine core has no instance and takes it as a field of its request
+    # sbmlsim-core has no instance and takes it as a field of its request
     problem.engine = Engine.ROADRUNNER
     problem.initialize(replace(fit_settings, initial_time_step=1e-9))
     for model in problem.models:

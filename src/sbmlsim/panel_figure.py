@@ -162,6 +162,14 @@ def panels_from_figure(
     key apart either; the title of a panel names its group exactly where its
     id does. A key of one part keeps the id and the title of the key.
 
+    A part of more than `MAX_CURVES` readouts becomes several panels of at
+    most that many curves, in the order of the sidecar, numbered after the id
+    of the part (`li_plasma_1`, `li_plasma_2`) with the title saying which one
+    it is (`Liver, plasma (1 of 2)`). The limit stays, 16 curves in one plot
+    being more than a reader separates by colour, while every readout of the
+    drawing stays reachable: the liver of a model of seven substances reports
+    2 to 3 readouts each and used to raise instead (#591).
+
     Args:
         svg: the drawing, read as text for the inline figure.
         readouts: the sidecar beside it, `<svg stem>.readouts.json`.
@@ -194,7 +202,6 @@ def panels_from_figure(
 
     Raises:
         ContractError: for a sidecar of another contract or a malformed key,
-            a key with more than `MAX_CURVES` readouts in one unit and group,
             or two keys of one panel id; naming the key and the readout, for a
             grouping which raises or answers with no pair of texts; naming the
             drawing and the reason, for a blank drawing or title or any other
@@ -226,35 +233,45 @@ def panels_from_figure(
         if len(set(suffixes)) < len(suffixes):
             suffixes = [f"{s}_{n}" for n, s in enumerate(suffixes, 1)]
         ids: list[str] = []
-        for ((_, name), part), kind, suffix in zip(parts, kinds, suffixes, strict=True):
-            pid = base if len(parts) == 1 else f"{base}_{suffix}"
-            if pid in panels:
-                raise ContractError(
-                    f"The keys of '{readouts}' give the panel '{pid}' twice."
+        for ((_, name), part), suffix in zip(parts, suffixes, strict=True):
+            stem = base if len(parts) == 1 else f"{base}_{suffix}"
+            heading = label if len(parts) == 1 or not named else f"{label}, {name}"
+            # a part of more than `MAX_CURVES` readouts becomes several panels
+            # of at most that many curves, in the order of the sidecar: a
+            # reader separates no more curves than that in one plot, and every
+            # readout of a drawing must stay reachable (#591)
+            pieces = [
+                part[at : at + MAX_CURVES] for at in range(0, len(part), MAX_CURVES)
+            ]
+            for number, piece in enumerate(pieces, 1):
+                pid = stem if len(pieces) == 1 else f"{stem}_{number}"
+                if pid in panels:
+                    raise ContractError(
+                        f"The keys of '{readouts}' give the panel '{pid}' twice."
+                    )
+                # never `title`, which is the title of the figure
+                of_the_panel = (
+                    heading
+                    if len(pieces) == 1
+                    else f"{heading} ({number} of {len(pieces)})"
                 )
-            if len(part) > MAX_CURVES:
-                where = f"of the group '{name}'" if name else "of one unit"
-                raise ContractError(
-                    f"The key '{key}' of '{readouts}' has {len(part)} readouts "
-                    f"{where}; a panel draws at most {MAX_CURVES} curves."
-                )
-            try:
-                panels[pid] = Panel(
-                    id=pid,
-                    title=label if len(parts) == 1 or not named else f"{label}, {name}",
-                    y_label=" / ".join(kind),
-                    curves=tuple(
-                        PanelCurve(id=e["id"], label=c, unit=e.get("unit") or None)
-                        for e, c in part
-                    ),
-                    knobs=knobs,
-                    simulation=simulation,
-                )
-            except ValidationError as error:
-                raise ContractError(
-                    f"The key '{key}' of '{readouts}' is no panel: {error}"
-                ) from error
-            ids.append(pid)
+                try:
+                    panels[pid] = Panel(
+                        id=pid,
+                        title=of_the_panel,
+                        y_label=" / ".join(dict.fromkeys(e["kind"] for e, _ in piece)),
+                        curves=tuple(
+                            PanelCurve(id=e["id"], label=c, unit=e.get("unit") or None)
+                            for e, c in piece
+                        ),
+                        knobs=knobs,
+                        simulation=simulation,
+                    )
+                except ValidationError as error:
+                    raise ContractError(
+                        f"The key '{key}' of '{readouts}' is no panel: {error}"
+                    ) from error
+                ids.append(pid)
         selection[key] = tuple(ids)
     try:
         figure = AppFigure(

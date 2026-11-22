@@ -5,9 +5,8 @@ The model, the panel and the application of the tests are the fixtures of
 every test is answered by a cache of its own.
 """
 
-import gc
+import json
 import threading
-import tracemalloc
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
@@ -20,7 +19,7 @@ from fastapi.testclient import TestClient
 
 import sbmlsim
 from sbmlsim.serve.app import CACHE_CONTROL, NOT_STORED, create_app
-from sbmlsim.serve.cache import MAX_BYTES, ResponseCache, response_bytes
+from sbmlsim.serve.cache import MAX_BYTES, ResponseCache, encode_response
 from sbmlsim.serve.payload import Provenance, SimulateResponse, Status
 from sbmlsim.serve.runner import ModelRegistry, PanelRunner
 from tests.serve.conftest import SIMULATE
@@ -46,7 +45,7 @@ class Counter:
         self.calls = 0
 
 
-class Interleaved(OrderedDict[str, SimulateResponse]):
+class Interleaved(OrderedDict[str, bytes]):
     """The entries of a cache which let a hook in while a `put` stores.
 
     The hook runs once, inside `__setitem__` and after the entry was added,
@@ -58,7 +57,7 @@ class Interleaved(OrderedDict[str, SimulateResponse]):
         super().__init__()
         self._hook: Callable[[], None] | None = hook
 
-    def __setitem__(self, key: str, value: SimulateResponse) -> None:
+    def __setitem__(self, key: str, value: bytes) -> None:
         super().__setitem__(key, value)
         hook, self._hook = self._hook, None
         if hook is not None:
@@ -110,8 +109,8 @@ def _response(spec_hash: str, *, seconds: float = 1.0) -> SimulateResponse:
 
 
 def _bytes() -> int:
-    """Get the bytes of a response of `_response`, which are the same for all."""
-    return response_bytes(_response(_hash("a")))
+    """Get the bytes of a body of `_response`, which are the same for all."""
+    return len(encode_response(_response(_hash("a"))))
 
 
 def _hash(character: str) -> str:
@@ -122,9 +121,9 @@ def _hash(character: str) -> str:
 def _put(
     cache: ResponseCache, response: SimulateResponse, failed: list[BaseException]
 ) -> None:
-    """Store a response and record what the `put` raised, if anything."""
+    """Store the body of a response and record what the `put` raised, if anything."""
     try:
-        cache.put(response)
+        cache.put(response.spec_hash, encode_response(response))
     except BaseException as error:
         failed.append(error)
 
@@ -135,6 +134,26 @@ def test_the_same_request_twice_simulates_once(
     bodies = [client.post(SIMULATE, json=BODY).json() for _ in range(2)]
     assert counting_runner.calls == 1
     assert bodies[0] == bodies[1]
+
+
+def test_a_hit_is_answered_with_the_bytes_which_were_stored(
+    client: TestClient, counting_runner: Counter
+) -> None:
+    """A hit serializes nothing on the event loop of the server (#521).
+
+    The cache keeps the encoded body and the route answers it as it is, so a
+    hit is the bytes of the miss, byte for byte, and the server encodes a
+    response once however many requests ask for it.
+    """
+    first = client.post(SIMULATE, json=BODY)
+    second = client.post(SIMULATE, json=BODY)
+
+    assert counting_runner.calls == 1
+    assert second.content == first.content
+    assert second.headers["content-type"] == "application/json"
+    # and the same bytes again by the hash of the request
+    stored = client.get(f"/api/sim/{first.json()['spec_hash']}")
+    assert stored.content == first.content
 
 
 def test_a_hit_carries_the_provenance_of_the_run_which_filled_the_cache(
@@ -253,10 +272,11 @@ def test_the_cache_answers_what_it_was_given() -> None:
     assert cache.nbytes == 0
     assert cache.get(_hash("a")) is None
     response = _response(_hash("a"))
-    assert cache.put(response)
+    body = encode_response(response)
+    assert cache.put(response.spec_hash, body)
     assert len(cache) == 1
-    assert cache.nbytes == response_bytes(response)
-    assert cache.get(_hash("a")) is response
+    assert cache.nbytes == len(body)
+    assert cache.get(_hash("a")) == body
     assert cache.get(_hash("b")) is None
 
 
@@ -264,30 +284,30 @@ def test_the_cache_evicts_the_least_recently_used_entry() -> None:
     """A `get` is a use, so the order is not the one of the puts alone."""
     cache = ResponseCache(max_bytes=2 * _bytes())
     first, second, third = (_response(_hash(c)) for c in "abc")
-    cache.put(first)
-    cache.put(second)
-    assert cache.get(first.spec_hash) is first
-    cache.put(third)
+    for response in (first, second):
+        cache.put(response.spec_hash, encode_response(response))
+    assert cache.get(first.spec_hash) == encode_response(first)
+    cache.put(third.spec_hash, encode_response(third))
     assert len(cache) == 2
     # `second` was put last but used first, so it is the one which is gone
     assert cache.get(second.spec_hash) is None
-    assert cache.get(first.spec_hash) is first
-    assert cache.get(third.spec_hash) is third
+    assert cache.get(first.spec_hash) == encode_response(first)
+    assert cache.get(third.spec_hash) == encode_response(third)
 
 
 def test_a_response_which_is_stored_again_is_one_entry_and_the_newer_one() -> None:
     cache = ResponseCache(max_bytes=2 * _bytes())
     first = _response(_hash("a"), seconds=1.0)
-    cache.put(first)
-    cache.put(_response(_hash("b")))
+    cache.put(first.spec_hash, encode_response(first))
+    cache.put(_hash("b"), encode_response(_response(_hash("b"))))
     again = _response(_hash("a"), seconds=2.0)
-    cache.put(again)
+    cache.put(again.spec_hash, encode_response(again))
     assert len(cache) == 2
-    assert cache.get(_hash("a")) is again
+    assert cache.get(_hash("a")) == encode_response(again)
     # the newer entry is the most recently used one, so the other one is evicted
-    cache.put(_response(_hash("c")))
+    cache.put(_hash("c"), encode_response(_response(_hash("c"))))
     assert cache.get(_hash("b")) is None
-    assert cache.get(_hash("a")) is again
+    assert cache.get(_hash("a")) == encode_response(again)
 
 
 def test_a_cache_of_no_byte_is_refused() -> None:
@@ -330,9 +350,9 @@ def test_a_put_which_interleaves_another_one_waits_for_it() -> None:
     assert failed == []
     assert inside == [False]
     assert len(cache) == 1
-    assert cache.nbytes == response_bytes(second)
+    assert cache.nbytes == len(encode_response(second))
     # the second `put` is the later one, so it is the entry which is kept
-    assert cache.get(second.spec_hash) is second
+    assert cache.get(second.spec_hash) == encode_response(second)
     assert cache.get(first.spec_hash) is None
 
 
@@ -350,7 +370,8 @@ def test_many_threads_put_and_get_without_breaking_the_cache() -> None:
 
     def fill(start: int) -> None:
         for index in range(start, start + 64):
-            cache.put(_response(hashes[index % len(hashes)]))
+            key = hashes[index % len(hashes)]
+            cache.put(key, encode_response(_response(key)))
             cache.get(hashes[(index * 7) % len(hashes)])
 
     threads = [
@@ -362,11 +383,9 @@ def test_many_threads_put_and_get_without_breaking_the_cache() -> None:
         thread.join(timeout=TIMEOUT)
     assert not [thread for thread in threads if thread.is_alive()]
     assert len(cache) == entries
-    stored = {
-        key: response for key in hashes if (response := cache.get(key)) is not None
-    }
+    stored = {key: body for key in hashes if (body := cache.get(key)) is not None}
     assert len(stored) == entries
-    assert all(key == response.spec_hash for key, response in stored.items())
+    assert all(json.loads(body)["spec_hash"] == key for key, body in stored.items())
 
 
 def test_the_cache_evicts_until_the_entries_fit_its_bytes() -> None:
@@ -374,13 +393,15 @@ def test_the_cache_evicts_until_the_entries_fit_its_bytes() -> None:
     small = _bytes()
     cache = ResponseCache(max_bytes=4 * small)
     for character in "abcd":
-        assert cache.put(_response(_hash(character)))
+        response = _response(_hash(character))
+        assert cache.put(response.spec_hash, encode_response(response))
     assert len(cache) == 4
-    large = _large(_hash("e"), numbers=2 * small // 32)
-    assert small < response_bytes(large) < 4 * small
-    assert cache.put(large)
+    large = _large(_hash("e"), nbytes=2 * small)
+    body = encode_response(large)
+    assert small < len(body) < 4 * small
+    assert cache.put(large.spec_hash, body)
     assert cache.nbytes <= cache.max_bytes
-    assert cache.get(large.spec_hash) is large
+    assert cache.get(large.spec_hash) == body
     # the least recently used ones made the room, the newest small one stays
     assert cache.get(_hash("a")) is None
     assert cache.get(_hash("d")) is not None
@@ -390,14 +411,16 @@ def test_a_response_larger_than_the_cache_is_not_kept() -> None:
     small = _bytes()
     cache = ResponseCache(max_bytes=2 * small)
     kept = _response(_hash("a"))
-    assert cache.put(kept)
-    assert not cache.put(_large(_hash("b"), numbers=4 * small // 32))
+    assert cache.put(kept.spec_hash, encode_response(kept))
+    large = _large(_hash("b"), nbytes=3 * small)
+    assert not cache.put(large.spec_hash, encode_response(large))
     assert cache.get(_hash("b")) is None
     # nothing was evicted for it
-    assert cache.get(_hash("a")) is kept
+    assert cache.get(_hash("a")) == encode_response(kept)
     assert cache.nbytes == small
     # and a key it replaces is no longer answered with an older body
-    assert not cache.put(_large(_hash("a"), numbers=4 * small // 32))
+    replacing = _large(_hash("a"), nbytes=3 * small)
+    assert not cache.put(replacing.spec_hash, encode_response(replacing))
     assert cache.get(_hash("a")) is None
     assert cache.nbytes == 0
 
@@ -423,48 +446,54 @@ def test_an_answer_larger_than_the_cache_is_served_and_not_stored(
     ("curves", "points", "times"),
     [(1, 1, 201), (2, 1, 201), (1, 64, 2), (4, 64, 501)],
 )
-def test_the_bytes_of_a_response_are_at_least_what_it_holds(
+def test_the_bytes_of_an_entry_are_the_bytes_of_the_body_it_serves(
     curves: int, points: int, times: int
 ) -> None:
-    """The estimate of `response_bytes` against `tracemalloc`, see `cache`."""
-    estimate, held = _measured(curves, points, times)
-    assert estimate >= held
-    if curves * points * times > 10_000:
-        # within a few percent where the numbers are what a response holds
-        assert estimate <= 1.05 * held
+    """The cache measures the body it keeps, which is what the route answers.
 
-
-def _measured(curves: int, points: int, times: int) -> tuple[int, int]:
-    """Get the estimate of `response_bytes` of a response and what it holds.
-
-    `tracemalloc.get_traced_memory` counts every allocation of the process
-    which is alive, whatever holds it: the warm up of the first response a
-    process builds, the objects of the tests before this one and the threads
-    of the service among them. The memory of a response is therefore what its
-    release frees and not what the process holds while it is alive, which is
-    the same number in a process which does nothing else and about 4 kB more
-    in a worker of pytest-xdist which builds its first response here.
+    It kept the response and estimated its objects before, see `cache` (#521).
     """
-    gc.collect()
-    tracemalloc.start()
-    try:
-        response = _shaped(curves, points, times)
-        estimate = response_bytes(response)
-        gc.collect()
-        alive, _ = tracemalloc.get_traced_memory()
-        del response
-        gc.collect()
-        after, _ = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    return estimate, alive - after
+    response = _shaped(curves, points, times)
+    body = encode_response(response)
+    cache = ResponseCache()
+
+    assert cache.put(response.spec_hash, body)
+
+    assert cache.nbytes == len(body)
+    assert cache.get(response.spec_hash) == body
+    assert json.loads(body)["spec_hash"] == response.spec_hash
 
 
-def _large(spec_hash: str, numbers: int) -> SimulateResponse:
-    """Get a response of a hash of about a number of numbers."""
-    return _response(spec_hash).model_copy(
-        update={"curves": {"Cve_hctz": [[float(k) for k in range(numbers)]]}}
-    )
+def test_a_number_of_a_body_is_about_twenty_bytes() -> None:
+    """The figures the module of the cache states, measured once.
+
+    The four curves of the glimepiride page over its largest grid, 64 points
+    of 501 times, are about 2.6 MB of JSON, which is what the bound of a cache
+    of 256 MiB is read with.
+    """
+    response = _shaped(curves=4, points=64, times=501)
+    numbers = len(response.x) + 4 * 64 * 501
+
+    per_number = len(encode_response(response)) / numbers
+
+    assert 16.0 <= per_number <= 24.0
+    assert 2.0e6 <= len(encode_response(response)) <= 3.2e6
+
+
+def _large(spec_hash: str, nbytes: int) -> SimulateResponse:
+    """Get a response of a hash whose body is at least a number of bytes."""
+    numbers = max(1, nbytes // 20)
+    while True:
+        response = _response(spec_hash).model_copy(
+            update={
+                "curves": {
+                    "Cve_hctz": [[k + 0.123456789012345 for k in range(numbers)]]
+                }
+            }
+        )
+        if len(encode_response(response)) >= nbytes:
+            return response
+        numbers *= 2
 
 
 def _shaped(curves: int, points: int, times: int) -> SimulateResponse:

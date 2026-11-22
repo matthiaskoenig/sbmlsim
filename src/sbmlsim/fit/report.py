@@ -41,7 +41,9 @@ from typing import Any, ClassVar, Literal
 import matplotlib
 import numpy as np
 import pandas as pd
+from matplotlib import colormaps
 from matplotlib.axes import Axes
+from matplotlib.colors import to_hex
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from pint.errors import PintError
@@ -145,9 +147,39 @@ STUDY_COLORS: tuple[str, ...] = (
     "tab:cyan",
 )
 
+#: the colormap the colors of the categories are sampled from where there are
+#: more of them than `STUDY_COLORS` has colors, see `category_color`: `turbo`
+#: varies the hue and the lightness, so two neighbours of a large sample are
+#: told apart (#511)
+CATEGORY_COLORMAP: str = "turbo"
+
 #: markers of the parameter sets in the figures which color by study, so that
 #: the sets are told apart where the color is taken
 SET_MARKERS: tuple[str, ...] = ("o", "s", "^", "D", "v", "P")
+
+
+def category_color(index: int, total: int) -> str:
+    """Get the color of one of the categories of a figure, e.g. of a study.
+
+    The categorical colors of `STUDY_COLORS` while they are enough, so a
+    report of few studies keeps its colors, and otherwise `total` colors
+    sampled from `CATEGORY_COLORMAP`: the colors repeated every
+    `len(STUDY_COLORS)` categories, so the first, the tenth and the
+    nineteenth study of a fit of 35 studies shared a color and could not be
+    told apart in a panel (#511).
+
+    Args:
+        index: the position of the category, `0 <= index < total`.
+        total: the number of categories of the figure.
+
+    Returns:
+        The color, a name of matplotlib or a hex string.
+    """
+    if total <= len(STUDY_COLORS):
+        return STUDY_COLORS[index % len(STUDY_COLORS)]
+    position = min(max(index, 0), total - 1) / (total - 1)
+    return to_hex(colormaps[CATEGORY_COLORMAP](position))
+
 
 #: styles of the agreement band. The goodness of fit and the Bland-Altman plot
 #: draw the same band, once as lines parallel to the identity and once as
@@ -487,7 +519,8 @@ class FitReport:
 
     def study_color(self, study: str) -> str:
         """Get the color of a study, the same in every figure of the report."""
-        return STUDY_COLORS[self.studies().index(study) % len(STUDY_COLORS)]
+        studies = self.studies()
+        return category_color(studies.index(study), len(studies))
 
     def set_marker(self, pset: ParameterSet) -> str:
         """Get the marker of a parameter set in the figures colored by study."""
@@ -2183,8 +2216,8 @@ class FitReport:
             labels.extend(ax_labels)
         return dict(zip(labels, handles, strict=True))
 
-    @staticmethod
-    def _set_figure_legend(fig: Figure, axes: Sequence[Axes]) -> None:
+    @classmethod
+    def _set_figure_legend(cls, fig: Figure, axes: Sequence[Axes]) -> int:
         """Add one legend for all panels of a figure, without duplicates.
 
         A study is not in every panel, e.g. only one study has outliers, so the
@@ -2192,8 +2225,19 @@ class FitReport:
         The points of the studies come first and the lines, i.e. the band and
         the lines of twofold, last, also when a study has points only in the
         last panel, which labels the lines.
+
+        The legend is one column while that fits the height of the figure and
+        takes as many columns as it needs otherwise, and the figure grows by
+        what the legend needs beyond the width `_panels` keeps free for it, so
+        the panels keep their size. It ran off the bottom of the figure
+        before, which cut the last studies of a fit of 35 of them and the
+        entries of the band with them (#511).
+
+        Returns:
+            The columns of the legend, `0` for a figure without entries.
         """
-        entries = FitReport._legend_entries(axes)
+        entries = cls._legend_entries(axes)
+        columns = 0
 
         def is_line(handle: Any) -> bool:
             return isinstance(handle, Line2D) and handle.get_marker() in (
@@ -2204,13 +2248,34 @@ class FitReport:
             )
 
         unique = dict(sorted(entries.items(), key=lambda entry: is_line(entry[1])))
-        if unique:
-            fig.legend(
+        if not unique:
+            return columns
+        available = fig.bbox.height - cls._layout_pad(fig)
+        legend = None
+        extent = None
+        for ncols in range(1, len(unique) + 1):
+            if legend is not None:
+                legend.remove()
+            legend = fig.legend(
                 unique.values(),
                 unique.keys(),
                 loc="outside right upper",
+                ncols=ncols,
                 fontsize="small",
             )
+            extent = legend.get_window_extent()
+            columns = ncols
+            if extent.height <= available:
+                break
+        assert extent is not None
+        excess = extent.width / fig.dpi - LEGEND_WIDTH
+        if excess > 0:
+            fig.set_figwidth(fig.get_figwidth() + excess)
+        if extent.height > available:
+            # every entry of the legend is shown, whatever that costs in
+            # height: a legend which is cut hides which study a point is of
+            fig.set_figheight((extent.height + cls._layout_pad(fig)) / fig.dpi)
+        return columns
 
     def _set_mapping_legend(self, fig: Figure, axes: Sequence[Axes]) -> None:
         """Add one legend below the panels of a figure of a fit mapping.
@@ -2868,7 +2933,9 @@ class FitReport:
             )
         )
         index = values.index(str(value)) if str(value) in values else len(values)
-        return STUDY_COLORS[index % len(STUDY_COLORS)]
+        # a value which is in no data point is a category of its own, so it
+        # takes no color of a value which is
+        return category_color(index, len(values) + 1)
 
     def _draw_points(
         self,

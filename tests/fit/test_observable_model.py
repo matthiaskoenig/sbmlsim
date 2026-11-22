@@ -207,7 +207,7 @@ def test_fit_observable_scales_with_parameter(problem: OptimizationProblem) -> N
     np.testing.assert_allclose(high, 4.0 * low)
 
 
-# the observable in the fit of the engine core: it is written into the model of
+# the observable in the fit of sbmlsim-core: it is written into the model of
 # the fit as a parameter of an assignment rule, see `sbmlsim.fit.observable_sbml`
 
 

@@ -215,6 +215,35 @@ def add_observable(
     entities.observables[name] = _written(rewritten, names)
 
 
+def add_formula(
+    name: str,
+    formula: str,
+    symbols: ModelSymbols,
+    entities: Entities,
+) -> None:
+    """Add an observable of a formula of the selections to the entities of a model.
+
+    `add_observable` is the same for an `ObservableModel`, whose placeholders
+    become helper parameters; this is the plain case, a formula of the
+    selections and of parameters the model already has, which the logarithmic
+    column of a mapping of log-normal noise is
+    (`sbmlsim.fit.fit_core._log_observable`).
+
+    Args:
+        name: the id of the parameter of the observable.
+        formula: the formula, the math of PEtab over the selections.
+        symbols: the symbols of the model.
+        entities: the entities of the model, which the observable is added
+            to.
+
+    Raises:
+        ValueError: if the formula is not valid math, or if it reads the
+            concentration of a species the model does not have.
+    """
+    rewritten, names = _names_of(formula, symbols, entities, name)
+    entities.observables[name] = _written(rewritten, names)
+
+
 def _written(formula: str, names: dict[str, str]) -> str:
     """Get the MathML of a formula, checked, with the names of its symbols.
 
@@ -398,6 +427,11 @@ def observable_model(model: Any, entities: Entities) -> Any:
         parameters=given.parameters,
     )
     loaded = load_model(derived, model.engine, ureg=model.uinfo.ureg, reload=True)
+    # the model of the fit integrates as the model of the problem does: a
+    # fresh load has the settings of the engine and not the tolerances of the
+    # `FitSettings` the problem was initialized with, which made such a fit
+    # integrate at the defaults of the engine (#613)
+    loaded.set_integrator_state(model.integrator_state())
     logger.debug(
         "the model of the fit carries the observables %s and the helpers %s",
         sorted(entities.observables),

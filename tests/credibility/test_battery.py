@@ -520,7 +520,7 @@ def test_the_second_simulator(tmp_path: Path) -> None:
 
 
 def test_the_engine_core_is_a_second_simulator(tmp_path: Path) -> None:
-    """The engine core gives the results of roadrunner, as COPASI and AMICI do."""
+    """sbmlsim-core gives the results of roadrunner, as COPASI and AMICI do."""
     _skip_without_core()
     result = run_battery(
         _with_engines(_project(tmp_path), "core"), rebuild=False

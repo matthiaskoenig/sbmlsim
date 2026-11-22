@@ -1,4 +1,4 @@
-"""The request of a fit of the engine core, built from an optimization problem (#556).
+"""The request of a fit of sbmlsim-core, built from an optimization problem (#556).
 
 The engine fits a problem itself: its optimizer, the runs of its starts and
 the profiles of its identifiability run in rust on the threads of one batch,
@@ -53,7 +53,7 @@ from tests.engines import require_core_fit
 
 
 def on_core(problem: OptimizationProblem, settings: FitSettings) -> OptimizationProblem:
-    """Initialize a problem on the engine core, the engine which fits itself."""
+    """Initialize a problem on sbmlsim-core, the engine which fits itself."""
     require_core_fit()
     problem.initialize(settings)
     problem.set_simulator(Simulator(n_workers=1, engine=Engine.CORE))
@@ -135,7 +135,7 @@ def test_the_start_and_the_bounds_of_the_request_are_the_ones_of_the_parameters(
 @pytest.mark.parametrize(
     ("change", "code"),
     [
-        ({"objective": ObjectiveType.LIKELIHOOD}, "objective"),
+        ({"objective": ObjectiveType.POSTERIOR}, "objective"),
         ({"loss_function": LossFunctionType.SOFT_L1}, "loss_function"),
         ({"residual": ResidualType.ABSOLUTE_TO_BASELINE}, "residual"),
     ],
@@ -155,10 +155,38 @@ def test_an_objective_the_engine_has_not_is_a_gap_of_the_problem(
     assert gaps[0].message
 
 
+def test_a_likelihood_of_a_noise_the_fit_does_not_move_is_no_gap(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A likelihood whose noise is fixed is the weighted residuals of a request (#613).
+
+    The data of the HCTZ fit carries its errors, so the scale of the noise of
+    every mapping is a number and the residual of a measurement is the one of
+    a curve of `noise` that scale.
+    """
+    problem = on_core(
+        op_hctz_iv,
+        dataclasses.replace(fit_settings, objective=ObjectiveType.LIKELIHOOD),
+    )
+
+    assert gaps_of(problem) == []
+    # the loss function is no gap of a likelihood, which does not apply it
+    # (the problem itself refuses a residual of a baseline with a likelihood)
+    problem = on_core(
+        op_hctz_iv,
+        dataclasses.replace(
+            fit_settings,
+            objective=ObjectiveType.LIKELIHOOD,
+            loss_function=LossFunctionType.SOFT_L1,
+        ),
+    )
+    assert gaps_of(problem) == []
+
+
 def test_a_problem_of_another_engine_is_no_fit_of_the_engine(
     op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """Only a problem which simulates in the engine core fits in it."""
+    """Only a problem which simulates in sbmlsim-core fits in it."""
     # a problem of another engine than the core, so there is a gap to name
     op_hctz_iv.engine = Engine.ROADRUNNER
     op_hctz_iv.initialize(fit_settings)
@@ -296,7 +324,7 @@ def test_a_fit_which_must_run_in_the_engine_names_the_gaps_of_the_problem(
 ) -> None:
     """`engine_fit=True` refuses a fit the engine cannot run, with its gaps."""
     problem = on_core(
-        op_hctz_iv, dataclasses.replace(fit_settings, objective="likelihood")
+        op_hctz_iv, dataclasses.replace(fit_settings, objective="posterior")
     )
 
     with pytest.raises(ValueError, match="objective"):

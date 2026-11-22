@@ -4,7 +4,7 @@
 points of a `sampling.local` design: two simulations per parameter, whose
 difference is accurate to the step of the design and to the error of the
 integrations it takes the difference of. `forward` reads the derivatives the
-engine core integrated along with the states instead (CVODES, `CV_STAGGERED`,
+sbmlsim-core integrated along with the states instead (CVODES, `CV_STAGGERED`,
 `Simulator.sensitivities`): one simulation of `k` parameters answers what
 `2 k + 1` simulations of a design answer, with no step to choose and to the
 tolerance of the integration.
@@ -24,7 +24,7 @@ or a change of the model is the reference the indices are normalized by.
 What it does not do, and `local` does: the derivatives are the ones of the
 selections of the model, not of the observables of a scan, since the
 derivative of a reduction (`max`, the parameters of a PK analysis) is not one
-of the engine; and only the engine core carries them, for a simulation of one
+of the engine; and only sbmlsim-core carries them, for a simulation of one
 interval without changes, without a presimulation and of a model without
 events (the engine refuses the others). The central differences of a design
 remain the general path.
@@ -68,7 +68,7 @@ def forward(
     """Compute the local sensitivities of a simulation exactly, see the module.
 
     Args:
-        simulator: the simulator, of the engine core
+        simulator: the simulator, of sbmlsim-core
             (`Simulator(engine="core")`).
         model: the model, see `Simulator.load`.
         simulation: the simulation or a plan of it; its output times are the
@@ -88,7 +88,7 @@ def forward(
     Raises:
         ValueError: if the simulation does not fit the model, no parameter is
             given, or a parameter or a selection is not one of the model.
-        NotImplementedError: if the simulator is not of the engine core, or
+        NotImplementedError: if the simulator is not of sbmlsim-core, or
             for a simulation or a model whose sensitivities the engine does
             not carry.
         RuntimeError: if the engine fails to integrate.

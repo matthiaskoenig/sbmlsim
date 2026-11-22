@@ -12,6 +12,7 @@ regression. A case which is in the baseline and passes is a baseline which is
 out of date.
 """
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -20,7 +21,9 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.fit import fit_core
+from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import ObjectiveType
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.testsuite import (
     CASE_SETTINGS,
@@ -63,7 +66,7 @@ def _engine_ids() -> list[str]:
 
 
 def _engine_problem(suite: PetabSuite, cid: str) -> OptimizationProblem:
-    """Get the problem of a case, initialized on the engine core."""
+    """Get the problem of a case, initialized on sbmlsim-core."""
     reader = PetabReader.from_yaml(suite.case(cid, SBML).problem_file)
     problem = reader.to_optimization_problem(opid=f"case_{cid}")
     problem.engine = Engine.CORE
@@ -138,11 +141,11 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
         assert expected["reason"] != "reason missing", f"'{key}' has no reason"
 
 
-# the cases as fits of the engine core: a case which has no gap is fitted by the
+# the cases as fits of sbmlsim-core: a case which has no gap is fitted by the
 # engine itself, and its residuals are the residuals of the problem
 
 
-#: the cases of the group `sbml` which are no fit of the engine core, each with
+#: the cases of the group `sbml` which are no fit of sbmlsim-core, each with
 #: the code of its gap, see `sbmlsim.fit.fit_core.gaps_of`. 0025 has parameters
 #: which have a prior and no bounds, which is the only gap left: the values
 #: before the initialization which read a parameter the fit estimates are the
@@ -151,6 +154,17 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
 #: request and the steady state after the end of a simulation of a model with
 #: events its `steady_state_after` (both sbmlsim-core 0.18.0).
 ENGINE_GAPS: dict[str, str] = {"0025": "parameter"}
+
+#: the cases whose likelihood the engine does not fit, by the gap which keeps
+#: them out, see `_gaps_of_the_objective` (#613): a noise formula which reads
+#: the observable (0015, 0021, 0024) and the parameter of 0025, whose bounds
+#: are no bounds of an optimizer of the engine
+ENGINE_LIKELIHOOD_GAPS: dict[str, str] = {
+    "0015": "objective",
+    "0021": "objective",
+    "0024": "objective",
+    "0025": "objective",
+}
 
 
 @pytest.mark.parametrize("cid", _engine_ids(), ids=_engine_ids())
@@ -179,6 +193,61 @@ def test_the_engine_fits_the_case_as_the_problem_computes_it(
     )
     x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
     reference = np.asarray(problem.residuals(x), dtype=float)
+
+    residuals = np.asarray(core.residuals(x), dtype=float)
+
+    assert residuals.shape == reference.shape
+    np.testing.assert_array_equal(residuals, reference)
+
+
+@pytest.mark.parametrize("cid", _engine_ids(), ids=_engine_ids())
+def test_the_engine_fits_the_likelihood_of_the_case_as_the_problem_does(
+    cid: str, suite: PetabSuite
+) -> None:
+    """A case is a likelihood fit of the engine, or has the gap which keeps it out.
+
+    PEtab defines the objective of a problem as its likelihood, which is what
+    a problem read without the `sbmlsim` extension is fitted with, so this is
+    the objective of the cases as PEtab means them (#613). The residuals of
+    the engine are the residuals of the data the problem computes, point for
+    point: the problem adds the residuals of the scales of the noise, which
+    are constant for a noise the fit does not move and which the cost of a
+    run of the engine carries as `likelihood_constant`.
+    """
+    require_core_fit()
+    reader = PetabReader.from_yaml(suite.case(cid, SBML).problem_file)
+    problem = reader.to_optimization_problem(opid=f"case_{cid}")
+    problem.engine = Engine.CORE
+    problem.initialize(
+        dataclasses.replace(CASE_SETTINGS, objective=ObjectiveType.LIKELIHOOD)
+    )
+    gaps = fit_core.gaps_of(problem)
+    expected = ENGINE_LIKELIHOOD_GAPS.get(cid)
+
+    if expected is not None:
+        assert gaps, (
+            f"'{cid}' is a likelihood fit of the engine now, remove it from "
+            f"ENGINE_LIKELIHOOD_GAPS"
+        )
+        assert {gap.code for gap in gaps} == {expected}, [gap.message for gap in gaps]
+        return
+
+    assert gaps == [], [gap.message for gap in gaps]
+    core = fit_core.loaded_model(problem).fit_problem(
+        fit_core.fit_request(problem), threads=1
+    )
+    x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
+    # a likelihood gives every mapping the residuals of its data and then the
+    # ones of the scale of its noise; the engine computes the first of each
+    whole = np.asarray(problem.residuals(x), dtype=float)
+    reference_parts: list[np.ndarray] = []
+    at = 0
+    for k in problem.indices(MappingKind.TRAINING):
+        size = len(problem.y_references[k])
+        reference_parts.append(whole[at : at + size])
+        at += 2 * size
+    assert at == whole.size
+    reference = np.concatenate(reference_parts)
 
     residuals = np.asarray(core.residuals(x), dtype=float)
 

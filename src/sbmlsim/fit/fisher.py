@@ -21,7 +21,7 @@ information is the one of the data: the residuals of the priors of a fit of
 the posterior are no part of it, the Laplace approximation of the posterior,
 `sbmlsim.fit.posterior`, adds the curvature of the priors.
 
-The jacobian is the forward sensitivities of the engine core where the problem
+The jacobian is the forward sensitivities of sbmlsim-core where the problem
 is one the engine fits (`sbmlsim.fit.fit_core`, #556) and its conditions carry
 them, and the central differences of the residuals in python otherwise, see
 `_jacobian_of`; `FisherInformation.jacobian_of` says which of the two a matrix
@@ -68,7 +68,7 @@ DEFAULT_STEP = 1e-6
 
 #: where the jacobian of an information comes from: the central differences of
 #: the residuals in python, which is what every engine can do, or the forward
-#: sensitivities of the engine core, which are the derivatives themselves
+#: sensitivities of sbmlsim-core, which are the derivatives themselves
 #: (`sbmlsim.fit.fit_core.SENSITIVITIES`, #556)
 CENTRAL_DIFFERENCES = "central_differences"
 SENSITIVITIES = "sensitivities"
@@ -621,7 +621,7 @@ def evaluator(
     if cores <= 1:
         yield None
         return
-    # the engine core simulates the points of a jacobian at once on threads of
+    # sbmlsim-core simulates the points of a jacobian at once on threads of
     # its own, so they are one task of one worker, see `runner.FitPool.threads`
     batched = problem.engine is Engine.CORE
     with worker_pool(
@@ -686,7 +686,7 @@ def _jacobian_of(
 ) -> tuple[np.ndarray, str, float]:
     """Get the jacobian of the residuals of the data, and where it comes from.
 
-    The forward sensitivities of the engine core are the derivatives of the
+    The forward sensitivities of sbmlsim-core are the derivatives of the
     residuals themselves and a simulation per condition, where a difference
     quotient is two simulations per parameter and condition whose accuracy is
     the noise of the integrator over its step: at the default tolerance of
@@ -786,7 +786,7 @@ def fisher_information(
 ) -> FisherInformation:
     """Calculate the Fisher information of a parameter set on a problem.
 
-    The jacobian is the forward sensitivities of the engine core where the
+    The jacobian is the forward sensitivities of sbmlsim-core where the
     problem and its conditions carry them, and the central differences of the
     residuals in python otherwise, see `_jacobian_of`.
 
