@@ -137,14 +137,80 @@ def test_a_runner_refuses_a_request_beyond_the_bound_before_it_loads(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         pytest.fail("the refused request loaded the model")
 
-    with runner._admitted("hctz"):
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        # a second request is another thread of the server, see `admitted`
+        with runner.admitted("hctz"):
+            held.set()
+            release.wait(timeout=10.0)
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert held.wait(timeout=10.0)
+    try:
         monkeypatch.setattr(PanelRunner, "_warm_model", refuse)
         panel = registry.panel("hctz", "renal_plasma")
         with pytest.raises(ModelBusy):
             runner.run("hctz", panel, {}, {})
         with pytest.raises(ModelBusy):
             runner.units(registry.entry("hctz"), panel)
+    finally:
+        release.set()
+        thread.join(timeout=10.0)
+    assert not thread.is_alive()
     # the bound is per model and is free again once a request left
+    assert runner._in_runner == {"hctz": 0}
+
+
+def test_the_slot_of_a_request_is_held_while_its_body_is_built(
+    registry: ModelRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The admission covers the body of the answer and not the run alone (#521).
+
+    The slot was released when the scan returned, before the response was
+    built and validated, so a model could hold about twice the threads of its
+    bound at the declared limits.
+    """
+    import sbmlsim.serve.app as app_module
+
+    held: list[int] = []
+    original = app_module.SimulateResponse.of
+
+    def watched(*args: Any, **kwargs: Any) -> Any:
+        held.append(runner._in_runner.get("hctz", 0))
+        return original(*args, **kwargs)
+
+    runner = PanelRunner(registry)
+    monkeypatch.setattr(app_module, "PanelRunner", lambda _registry: runner)
+    monkeypatch.setattr(app_module.SimulateResponse, "of", staticmethod(watched))
+    with TestClient(create_app(registry)) as client:
+        assert client.post(SIMULATE, json={"values": {}, "grid": {}}).status_code == 200
+
+    assert held == [1], "the body was built outside the bound of the runner"
+    assert runner._in_runner == {"hctz": 0}
+
+
+def test_a_run_inside_an_admitted_block_takes_no_second_slot(
+    registry: ModelRegistry,
+) -> None:
+    """The admission is re-entrant per thread, see `PanelRunner.admitted` (#521).
+
+    A route holds the slot over the run and over the body it builds from the
+    result, so the run it makes inside that block must not take a slot of its
+    own and must not be refused by the bound the caller itself holds.
+    """
+    runner = PanelRunner(registry, max_waiting=1)
+    panel = registry.panel("hctz", "renal_plasma")
+
+    with runner.admitted("hctz"):
+        assert runner._in_runner == {"hctz": 1}
+        result = runner.run("hctz", panel, {}, {})
+        # still the one slot of the caller, not a second one
+        assert runner._in_runner == {"hctz": 1}
+
+    assert result.curves
     assert runner._in_runner == {"hctz": 0}
 
 

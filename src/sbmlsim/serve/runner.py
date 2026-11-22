@@ -1333,10 +1333,14 @@ class PanelRunner:
         self.registry = registry
         self._max_waiting = max_waiting
         #: the requests of every model id which are in the runner, see
-        #: `_admitted`
+        #: `admitted`
         self._in_runner: dict[str, int] = {}
         #: the lock of `_in_runner`, never held over anything slow
         self._admission = threading.Lock()
+        #: the slots this thread holds by model id, which make `admitted`
+        #: re-entrant: a caller which holds one around its own work calls
+        #: `run` inside it, and that run takes no second slot
+        self._held = threading.local()
         #: the sha256 of every SBML file by its resolved path, see `sha256`
         self._hashes: dict[Path, str] = {}
         #: the warm model of every model id and SBML file, see `_warm_model`
@@ -1379,8 +1383,16 @@ class PanelRunner:
         return sha
 
     @contextmanager
-    def _admitted(self, model_id: str) -> Generator[None]:
+    def admitted(self, model_id: str) -> Generator[None]:
         """Admit a request of a model into the runner, see the module.
+
+        A caller which does work of its own with the result, e.g. a route
+        which builds and encodes the body of its answer, holds this around
+        that work as well, so the threads a model holds are the ones the
+        bound allows: the slot was released when the scan returned and a model
+        could hold about twice the threads of its bound while the answers were
+        built (#521). It is re-entrant per thread, so a `run` inside such a
+        block takes no second slot and never waits for the caller's own.
 
         Args:
             model_id: the id of the model of the request.
@@ -1392,6 +1404,14 @@ class PanelRunner:
             ModelBusy: if the model has `max_waiting` requests in the runner,
                 at once and before anything is loaded or waited for.
         """
+        held: dict[str, int] = self._held.__dict__.setdefault("models", {})
+        if held.get(model_id, 0):
+            held[model_id] += 1
+            try:
+                yield
+            finally:
+                held[model_id] -= 1
+            return
         with self._admission:
             count = self._in_runner.get(model_id, 0)
             if count >= self._max_waiting:
@@ -1399,9 +1419,11 @@ class PanelRunner:
                     f"The model '{model_id}' has {count} requests in the runner."
                 )
             self._in_runner[model_id] = count + 1
+        held[model_id] = 1
         try:
             yield
         finally:
+            held[model_id] -= 1
             with self._admission:
                 self._in_runner[model_id] -= 1
 
@@ -1468,7 +1490,7 @@ class PanelRunner:
         check_knobs(panel, values, grid)
         check_variant(entry, variant)
         name = panel.simulation.variant if variant is None else variant
-        with self._admitted(entry.id):
+        with self.admitted(entry.id):
             return self._run_admitted(
                 entry, panel, values, grid, name, check_draws(panel, draws)
             )
@@ -1604,7 +1626,7 @@ class PanelRunner:
             ModelBusy: for a model which has as many requests in the runner
                 as it may, see the module, since a cold model is loaded here.
         """
-        with self._admitted(entry.id):
+        with self.admitted(entry.id):
             warm = self._warm_model(
                 entry, panel.simulation.variant if variant is None else variant
             )
@@ -1632,7 +1654,7 @@ class PanelRunner:
             ModelBusy: for a model which has as many requests in the runner
                 as it may, see the module, since a cold model is loaded here.
         """
-        with self._admitted(entry.id):
+        with self.admitted(entry.id):
             return self._warm_model(entry, variant).model
 
     def _warm_model(self, entry: ModelEntry, variant: str | None) -> _Warm:

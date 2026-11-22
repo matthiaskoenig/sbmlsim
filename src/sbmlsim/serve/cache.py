@@ -31,15 +31,22 @@ least recently is evicted until the entries fit, and an entry larger than the
 whole bound is not kept at all, so its request is served and simulated again
 the next time.
 
-The bytes of a response are the ones of `response_bytes`, measured with
-`tracemalloc` on the objects of a `SimulateResponse`: its numbers are a list of
-python floats each, 24 bytes of the float and 8 of its place in the list, so a
-response is about 32 bytes per number. The four curves of the glimepiride page
-of pkdb_models over its largest grid, 64 points of 501 times, are 4.1 MB, and
-an answer at the limits a declaration may state (`sbmlsim.panel.MAX_CURVES`
-curves over `MAX_GRID` points of `MAX_POINTS + 1` times) is 65.7 MB. A cache
-of `MAX_BYTES` (256 MiB) thus keeps 64 such answers of the glimepiride page or
-4 at the limits, and thousands of the answers of one point.
+A cache keeps the encoded body of a response and not the response: the body is
+what the route answers with, so a hit is a `Response` of those bytes and
+nothing is serialized on the event loop of the server, which a cache of the
+response model cost about 0.28 s of a blocked loop per hit at the declared
+limits (#521). The body of a miss is encoded in the thread of the request and
+inside the bound of the runner, so the encoding of an answer is part of the
+work the admission of a model bounds.
+
+The bytes of an entry are therefore the bytes of its body, measured and not
+estimated. A number of a body is about 20 bytes of JSON, so the four curves of
+the glimepiride page of pkdb_models over its largest grid, 64 points of 501
+times, are about 2.6 MB and an answer at the limits a declaration may state
+(`sbmlsim.panel.MAX_CURVES` curves over `MAX_GRID` points of `MAX_POINTS + 1`
+times) about 41 MB. A cache of `MAX_BYTES` (256 MiB) thus keeps about a
+hundred such answers of the glimepiride page or six at the limits, and
+thousands of the answers of one point.
 """
 
 from __future__ import annotations
@@ -55,39 +62,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MAX_BYTES", "BoundedCache", "ResponseCache", "response_bytes"]
+__all__ = ["MAX_BYTES", "BoundedCache", "ResponseCache", "encode_response"]
 
 #: the bytes of the responses a cache keeps by default, 256 MiB, see the module
 MAX_BYTES: Final = 256 * 2**20
-
-#: the bytes of a number of a response: a python float of 24 bytes and its
-#: place of 8 bytes in the list of its row, see `response_bytes`
-NUMBER_BYTES: Final = 32
-#: the bytes of a list of a response, a row of a curve or the rows of one: the
-#: 56 bytes of the object of the list and a margin of its over-allocation
-LIST_BYTES: Final = 64
-#: the bytes of the rest of a response: the hash, the units, the axes of the
-#: grid, the provenance and the status, measured as at most about 6 KB
-BASE_BYTES: Final = 8192
-
-
-def response_bytes(response: SimulateResponse) -> int:
-    """Get the bytes a response holds, the measure of `ResponseCache`.
-
-    It is an estimate from the numbers of the response which is at least what
-    `tracemalloc` measures of it and within a few percent of it for a response
-    of more than a few thousand numbers, see the module.
-
-    Args:
-        response: the response.
-
-    Returns:
-        The bytes.
-    """
-    rows = [row for curve in response.curves.values() for row in curve]
-    numbers = len(response.x) + sum(len(row) for row in rows)
-    lists = 1 + len(response.curves) + len(rows)
-    return BASE_BYTES + NUMBER_BYTES * numbers + LIST_BYTES * lists
 
 
 class BoundedCache[V]:
@@ -216,38 +194,55 @@ class BoundedCache[V]:
             self._bytes -= self._sizes.pop(key)
 
 
-class ResponseCache(BoundedCache["SimulateResponse"]):
-    """The responses of the simulations by their hash, see the module.
+def encode_response(response: SimulateResponse) -> bytes:
+    """Get the JSON body of a response, what a route answers with.
 
-    The response which was used least recently is the one which is evicted
-    when the responses are more bytes than the bound (`response_bytes`), and a
-    `get` of an entry is a use of it, so the knobs a presentation turns to
-    again and again stay in it.
+    The one encoding of an answer of the service, which the routes and the
+    cache share, so a body which was stored is the body which was answered.
+    It is called in the thread of a request and never on the event loop, see
+    the module.
+
+    Args:
+        response: the response.
+
+    Returns:
+        The body, the JSON of the response encoded as UTF-8.
+    """
+    return response.model_dump_json().encode("utf-8")
+
+
+class ResponseCache(BoundedCache[bytes]):
+    """The bodies of the answers of the simulations by their hash, see the module.
+
+    The body which was used least recently is the one which is evicted when
+    the bodies are more bytes than the bound, and a `get` of an entry is a use
+    of it, so the knobs a presentation turns to again and again stay in it.
     """
 
     def __init__(self, max_bytes: int = MAX_BYTES) -> None:
-        """Create an empty cache of at most a number of bytes of responses.
+        """Create an empty cache of at most a number of bytes of bodies.
 
         Args:
-            max_bytes: the bytes the responses of the cache hold at most, see
+            max_bytes: the bytes the bodies of the cache hold at most, see
                 the module.
 
         Raises:
             ValueError: for a cache of fewer than one byte.
         """
-        super().__init__(max_bytes, response_bytes, what="response")
+        super().__init__(max_bytes, len, what="response")
 
-    def put(self, response: SimulateResponse) -> bool:
-        """Store a response under its own hash as the most recently used one.
+    def put(self, spec_hash: str, body: bytes) -> bool:
+        """Store the body of a response as the most recently used entry.
 
-        A hash which is stored already is replaced by the given response,
-        which is the same body of the same request, and stays one entry; a
-        response of more bytes than the cache is not kept.
+        A hash which is stored already is replaced by the given body, which is
+        the same body of the same request, and stays one entry; a body of more
+        bytes than the cache is not kept.
 
         Args:
-            response: the response, stored under its `spec_hash`.
+            spec_hash: the `spec_hash` of the response, its key.
+            body: the body, see `encode_response`.
 
         Returns:
-            Whether the response is kept.
+            Whether the body is kept.
         """
-        return self.store(response.spec_hash, response)
+        return self.store(spec_hash, body)

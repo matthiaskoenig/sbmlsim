@@ -80,7 +80,7 @@ from fastapi.staticfiles import StaticFiles
 import sbmlsim
 from sbmlsim.hashing import canonical_json_sha256
 from sbmlsim.panel import CONTRACT, Panel, panel_payload
-from sbmlsim.serve.cache import ResponseCache
+from sbmlsim.serve.cache import ResponseCache, encode_response
 from sbmlsim.serve.data import panel_data
 from sbmlsim.serve.jobs import JobStore, TooManyJobs, UnknownExperiment
 from sbmlsim.serve.payload import (
@@ -519,8 +519,11 @@ def create_app(
             series_of[key] = response
         return response
 
-    @app.post("/api/models/{model}/panels/{panel}/simulate")
-    def simulate(model: str, panel: str, request: SimulateRequest) -> SimulateResponse:
+    @app.post(
+        "/api/models/{model}/panels/{panel}/simulate",
+        response_model=SimulateResponse,
+    )
+    def simulate(model: str, panel: str, request: SimulateRequest) -> Response:
         """Run a panel at the values of its knobs or over a grid of them.
 
         The route is a sync `def`, which the server runs in its thread pool,
@@ -574,32 +577,38 @@ def create_app(
             spec_hash = _spec_hash(entry, declaration, request, sha, variant)
             cached = cache.get(spec_hash)
             if cached is not None:
-                return cached
-            started = time.perf_counter()
-            result = runner.run(
-                model,
-                declaration,
-                request.values,
-                request.grid,
-                variant,
-                draws=request.draws,
-            )
-            seconds = time.perf_counter() - started
-            settings = entry.project.simulator
-            response = SimulateResponse.of(
-                result,
-                spec_hash=spec_hash,
-                provenance=Provenance(
-                    model=entry.id,
-                    panel=declaration.id,
-                    model_sha256=sha,
-                    variant=variant,
-                    engine=settings.engine.value,
-                    sbmlsim=sbmlsim.__version__,
-                    seconds=seconds,
-                    created=datetime.now(UTC).isoformat(),
-                ),
-            )
+                # the body as it was encoded, so a hit serializes nothing on
+                # the event loop of the server (#521)
+                return _body(cached)
+            # the slot of the runner is held over the run and over the body
+            # of its answer, which is the work of the request (#521)
+            with runner.admitted(entry.id):
+                started = time.perf_counter()
+                result = runner.run(
+                    model,
+                    declaration,
+                    request.values,
+                    request.grid,
+                    variant,
+                    draws=request.draws,
+                )
+                seconds = time.perf_counter() - started
+                settings = entry.project.simulator
+                response = SimulateResponse.of(
+                    result,
+                    spec_hash=spec_hash,
+                    provenance=Provenance(
+                        model=entry.id,
+                        panel=declaration.id,
+                        model_sha256=sha,
+                        variant=variant,
+                        engine=settings.engine.value,
+                        sbmlsim=sbmlsim.__version__,
+                        seconds=seconds,
+                        created=datetime.now(UTC).isoformat(),
+                    ),
+                )
+                body = encode_response(response)
         except (UnknownKnob, DrawsError) as error:
             # the ids which are no knobs of the panel, the values which are
             # no values of their knobs (`KnobValueError`) and the draws the
@@ -615,11 +624,11 @@ def create_app(
             raise HTTPException(status_code=500, detail=FAILED) from None
         # after the try, so a run which failed stores nothing and the next
         # request of it is run again
-        cache.put(response)
-        return response
+        cache.put(spec_hash, body)
+        return _body(body)
 
-    @app.get("/api/sim/{spec_hash}")
-    def stored(spec_hash: str, reply: Response) -> SimulateResponse:
+    @app.get("/api/sim/{spec_hash}", response_model=SimulateResponse)
+    def stored(spec_hash: str) -> Response:
         """Get the answer of a simulation by the hash of its request.
 
         The body of a hash is the one answer of that request, see
@@ -634,7 +643,6 @@ def create_app(
         Args:
             spec_hash: the `spec_hash` of a response, 64 lower case
                 hexadecimal digits.
-            reply: the response of the server, whose headers the answer takes.
 
         Returns:
             The response as it was stored, its provenance included: the
@@ -645,11 +653,10 @@ def create_app(
         """
         if HASH.fullmatch(spec_hash) is None:
             raise HTTPException(status_code=404, detail=NOT_STORED)
-        response = cache.get(spec_hash)
-        if response is None:
+        body = cache.get(spec_hash)
+        if body is None:
             raise HTTPException(status_code=404, detail=NOT_STORED)
-        reply.headers["cache-control"] = CACHE_CONTROL
-        return response
+        return _body(body, headers={"cache-control": CACHE_CONTROL})
 
     if store is not None:
         _add_job_routes(app, registry, store)
@@ -888,6 +895,24 @@ def _remove_jobs(root: Path) -> None:
         root: the directory of the jobs, which may not exist.
     """
     shutil.rmtree(root, ignore_errors=True)
+
+
+def _body(body: bytes, headers: dict[str, str] | None = None) -> Response:
+    """Get the answer of a route as the JSON body which was encoded already.
+
+    A route answers with the bytes and not with the model, so the body of an
+    answer is serialized once, in the thread of the request which computed it,
+    and never on the event loop of the server, see `sbmlsim.serve.cache`
+    (#521).
+
+    Args:
+        body: the body, see `sbmlsim.serve.cache.encode_response`.
+        headers: the headers of the answer next to its type.
+
+    Returns:
+        The response of the body as JSON.
+    """
+    return Response(content=body, media_type="application/json", headers=headers)
 
 
 def _spec_hash(
