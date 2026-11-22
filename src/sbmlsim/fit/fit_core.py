@@ -54,10 +54,14 @@ simulating the segment which ends at the change and reading the state there
 the request was built at. A formula which reads a constant of the simulation
 folds into the same number at every point of the search; one which reads
 anything the simulation moves, e.g. the `-0.5 * Aurine` of a collection
-which is halved, is held where the fit started while the optimizer moves the
-state it reads, which `_gaps_at_the_folds` reports as the gap
-`change_value`, so such a problem is fitted in python instead of answering
-the residuals of another problem.
+which is halved, would be held where the fit started while the optimizer
+moves the state it reads. A plan whose formulas at a change are all linear
+forms over the entities of the model gives them to the engine as forms
+(`executor_core.is_formed`, the field `forms` of a change of sbmlsim-core
+`CHANGE_FORMS_VERSION`), which it evaluates from its own state; any other
+formula which reads more than constants is the gap `change_value`
+(`_gaps_at_the_folds`), so such a problem is fitted in python instead of
+answering the residuals of another problem.
 
 The times of a curve are the output times of its condition and not the times
 of the data: `Plan.time_shift` is applied to the time of a result on the way
@@ -127,6 +131,10 @@ AFTER_CHANGE_VERSION = "0.16.0"
 #: the release of sbmlsim-core whose condition reads `derived`, the values of
 #: a condition which follow the parameters of the fit, see `reads_derived`
 DERIVED_VERSION = "0.17.0"
+
+#: the release of sbmlsim-core whose change reads `terms`, a change of a linear
+#: formula the engine evaluates from its own state, see `reads_change_forms`
+CHANGE_FORMS_VERSION = "0.20.0"
 
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
@@ -375,6 +383,26 @@ def reads_derived(loaded: Any) -> bool:
         Whether the bindings read them.
     """
     return _reads(loaded, DERIVED_VERSION)
+
+
+def reads_change_forms(loaded: Any) -> bool:
+    """Whether the bindings read a change of a linear formula as a form.
+
+    A change of `simulation/1` carries `constant + sum(factor * entity)` which
+    the engine evaluates from its own state at the change from sbmlsim-core
+    `CHANGE_FORMS_VERSION` on (`executor_core.form_of`). Unlike the request of
+    a condition, a `Change` does deny unknown fields, so an older engine would
+    refuse the request with an error and not simulate it without the forms;
+    the gap of the formula is kept for a clear message and not for safety.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            sbmlsim-core.
+
+    Returns:
+        Whether the bindings read them.
+    """
+    return _reads(loaded, CHANGE_FORMS_VERSION)
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -940,7 +968,9 @@ def _conditions_and_curves(
         of_the_group[group] = condition
         entry: dict[str, Any] = {
             "id": condition,
-            "request": request_of(plan, model, selections, settings),
+            "request": request_of(
+                plan, model, selections, settings, forms=reads_change_forms(loaded)
+            ),
         }
         if derived:
             entry["derived"] = derived
@@ -1588,9 +1618,14 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
     the change at it while the optimizer moves the simulation, so the engine
     would answer the residuals of another problem without an error.
 
-    A formula folds into the same number at every point of the search when
-    every symbol it reads is a constant of the simulation
-    (`_constant_at_the_changes`), and is no gap then. The number of the
+    There are three gates, in this order. A formula folds into the same number
+    at every point of the search when every symbol it reads is a constant of
+    the simulation (`_constant_at_the_changes`), and is no gap then. Else it
+    is no gap when the bindings read the forms of a change
+    (`reads_change_forms`) and every formula at a change of its plan is a
+    linear form (`executor_core.is_formed`, all or nothing per plan, so one
+    formula which is no form folds the forms of its plan as well): the
+    engine evaluates them from its own state. Else it is the gap. The number of the
     pre-initialization is not such a constant: it is the value before the
     initialization and the simulation moves it on the way to the change,
     which is why `_known_values`, the values the executor folds a formula
@@ -1620,6 +1655,9 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
     """
     targets = _parameter_targets(problem)
     model = fit_model(problem)
+    from sbmlsim.simulator.executor_core import is_formed
+
+    forms = reads_change_forms(_loaded_of(problem))
     x = np.asarray(problem.xmodel, dtype=float)
     # one entry per formula, in the order they were met: its first change and
     # the number of the changes which carry it
@@ -1629,6 +1667,8 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
             continue
         plan = problem.evaluated_plan(group, x, [])
         constant = _constant_at_the_changes(plan, model)
+        # the request writes the forms all or nothing per plan
+        formed = forms and is_formed(plan, model)
         for event in plan.events:
             for assignment in event.assignments:
                 if assignment.formula is None:
@@ -1640,6 +1680,11 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
                     if symbol not in constant and symbol not in targets
                 )
                 if not read:
+                    continue
+                # the engine evaluates the forms of a plan whose formulas are all
+                # forms from its own state at the change, so they follow the
+                # search where a folded number would not
+                if formed:
                     continue
                 key = (assignment.target, formula)
                 if key in found:

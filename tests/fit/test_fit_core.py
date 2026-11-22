@@ -1029,17 +1029,126 @@ class FoldedChangeStudy(UrineStudy):
         }
 
 
-def test_a_change_the_executor_folds_by_simulating_is_a_gap() -> None:
-    """A change whose formula reads the model is a number of the point it was built at.
+def test_a_change_of_a_linear_formula_is_no_gap() -> None:
+    """A formula the condition carries as a form keeps the fit in the engine."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", FoldedChangeStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
 
-    `0.5 * Aurine` reads a state, which the executor can only fold by
-    simulating up to the change, so the number of a request holds the change
-    where the fit started while the optimizer moves the state the formula
-    reads: the engine would answer the residuals of another problem without
-    an error (#613).
+    assert gaps_of(problem) == []
+
+
+def test_the_residuals_of_a_formed_change_follow_the_parameters() -> None:
+    """The criterion: the residuals are the problem's away from the build point too.
+
+    `0.5 * Aurine` is a form the engine evaluates from its own state, so the
+    residuals follow the parameter where a folded number would hold the change
+    at the point the request was built at (#617).
     """
     problem = on_core(
         shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", FoldedChangeStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    core = core_problem(problem)
+    start = np.asarray(problem.xmodel, dtype=float)
+    seen = []
+    for factor in (1.0, 1.2, 0.7):
+        x = problem.to_scale(start * factor)
+        seen.append(np.asarray(problem.residuals(x), dtype=float))
+        assert np.asarray(core.residuals(x), dtype=float) == pytest.approx(
+            seen[-1], rel=1e-9, abs=1e-12
+        )
+    # the parameter moves the residuals, so the agreement is not trivial
+    assert not np.allclose(seen[0], seen[1])
+    assert not np.allclose(seen[0], seen[2])
+
+
+class NoFormFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose change is no linear form, `Aurine * Aurine`."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_of_a_formula_which_is_no_form_keeps_the_gap() -> None:
+    """A formula which is no linear form is still fitted in python."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", NoFormFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["change_value"]
+    assert "Aurine * Aurine" in gaps[0].message
+
+
+class ConstantProductStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose change is no form but reads a constant, `ka * ka`."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "ka * ka"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_of_constants_is_no_gap_though_it_is_no_form() -> None:
+    """A formula over constants folds into one number everywhere (the first gate).
+
+    `ka * ka` is no linear form, so only `_constant_at_the_changes` keeps it
+    out of the gaps; without that gate the fit would lose the engine.
+    """
+    from sbmlsim.simulator.executor_core import form_of
+
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", ConstantProductStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    plan = problem.evaluated_plan(0, np.asarray(problem.xmodel, dtype=float), [])
+    assignment = next(a for e in plan.events for a in e.assignments if a.formula)
+    assert form_of(assignment, fit_core.fit_model(problem)) is None
+    assert gaps_of(problem) == []
+
+
+class MixedFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` with a form after a change of constants which is no form."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(12, {"Aurine": "ka * ka"}),
+                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_a_form_is_a_gap_in_a_plan_which_folds_another_formula() -> None:
+    """The request writes the forms all or nothing, so a plan of both folds both."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", MixedFoldStudy),
         FitSettings(parameter_scale=ParameterScaleType.LINEAR),
     )
 
@@ -1049,7 +1158,7 @@ def test_a_change_the_executor_folds_by_simulating_is_a_gap() -> None:
     assert "0.5 * Aurine" in gaps[0].message
 
 
-class PreinitFoldStudy(FoldedChangeStudy):
+class PreinitFoldStudy(NoFormFoldStudy):
     """`FoldedChangeStudy` whose pre-initialization sets the state the change reads.
 
     The pre-initialization sets `Aurine` to a number, which the executor
@@ -1066,7 +1175,7 @@ class PreinitFoldStudy(FoldedChangeStudy):
                 preinit_changes={"Aurine": Q(0, "mg")},
                 changes=[
                     Change(0, {"PODOSE": Q(100, "mg")}),
-                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
                 ],
             ),
         }
@@ -1151,8 +1260,8 @@ def test_a_change_which_reads_a_constant_of_the_model_is_no_gap() -> None:
     assert gaps_of(problem) == []
 
 
-class RepeatedFoldStudy(FoldedChangeStudy):
-    """`FoldedChangeStudy` which halves the collection at 12 h and at 24 h."""
+class RepeatedFoldStudy(NoFormFoldStudy):
+    """`NoFormFoldStudy` which squares the collection at 12 h and at 24 h."""
 
     def simulations(self) -> dict[str, Simulation]:
         return {
@@ -1161,8 +1270,8 @@ class RepeatedFoldStudy(FoldedChangeStudy):
                 end=48,
                 changes=[
                     Change(0, {"PODOSE": Q(100, "mg")}),
-                    Change(12, {"Aurine": "0.5 * Aurine"}),
-                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                    Change(12, {"Aurine": "Aurine * Aurine"}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
                 ],
             ),
         }

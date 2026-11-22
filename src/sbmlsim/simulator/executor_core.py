@@ -738,12 +738,7 @@ def _fold_of(
         "selections": output_columns(columns),
         "settings": settings,
     }
-    formed = forms and all(
-        form_of(a, model) is not None
-        for event in plan.events
-        for a in event.assignments
-        if a.value is None
-    )
+    formed = forms and is_formed(plan, model)
     return _Fold(plan=plan, model=model, request=request, forms=formed)
 
 
@@ -1254,6 +1249,28 @@ def _change_symbols(event: PlanEvent, forms: bool = False) -> list[str]:
         if a.value is None:
             symbols |= set(compile_formula(str(a.formula)).symbols)
     return sorted(symbols - {TIME})
+
+
+def is_formed(plan: Plan, model: CoreSBMLModel) -> bool:
+    """Whether every formula at a change of a plan is a linear form.
+
+    The request writes the formulas as forms all or nothing per plan, so a
+    plan with one formula which is no form folds every formula, the forms
+    included. The request and the gaps of a fit ask this one question.
+
+    Args:
+        plan: the plan.
+        model: the model, whose entities the forms may read.
+
+    Returns:
+        Whether the request of the plan writes its formulas as forms.
+    """
+    return all(
+        form_of(a, model) is not None
+        for event in plan.events
+        for a in event.assignments
+        if a.value is None
+    )
 
 
 def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | None:
