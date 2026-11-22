@@ -135,6 +135,17 @@ class FisherInformation:
             information which does not know them, then the pids are the targets.
         objective: what the fit minimized; a fit of the likelihood has the
             noise in its residuals, see `scaled`.
+        inverse: the pseudo-inverse of `matrix`, `None` to compute it. It is
+            stored with the information and read back, because the SVD of
+            LAPACK depends on the kernels of the CPU, so the same matrix gives
+            standard errors which differ in their last digits on another
+            machine and a model whose factory writes them into its SBML does
+            not rebuild byte for byte (#523). A record written before they
+            were stored has none and computes them as before, and a matrix
+            which is changed after the information was created drops them.
+        spectrum: the eigenvalues of `matrix`, largest first, `None` to
+            compute them; stored with the information for the same reason, so
+            the rank of a record is the rank on every machine.
     """
 
     opid: str
@@ -153,6 +164,8 @@ class FisherInformation:
     scales: list[ParameterScaleType] = field(default_factory=list)
     targets: list[str] = field(default_factory=list)
     objective: ObjectiveType = ObjectiveType.LEAST_SQUARES
+    inverse: np.ndarray | None = None
+    spectrum: np.ndarray | None = None
 
     #: the covariance is read by the errors, the correlations and the table, so
     #: the warning of a rank deficient information is logged for the first of
@@ -179,16 +192,50 @@ class FisherInformation:
             hashlib.sha256(memoryview(np.ascontiguousarray(self.matrix))).digest(),
         )
         if fingerprint != self._matrix_fingerprint:
+            # the stored decomposition belongs to the matrix it was computed
+            # from, so a matrix which is changed afterwards drops it; the
+            # first call is the one of the matrix it was created with
+            if self._matrix_fingerprint is not None:
+                self.inverse = None
+                self.spectrum = None
             self._matrix_fingerprint = fingerprint
             self._cached_eigenvalues = None
             self._cached_inverse = None
             self._warned = False
 
+    def _inverse(self) -> np.ndarray:
+        """Get the pseudo-inverse of the matrix, the stored one when there is one.
+
+        Returns:
+            The pseudo-inverse, not to be changed by the caller.
+        """
+        self._refresh_matrix_cache()
+        if self.inverse is not None:
+            return np.asarray(self.inverse, dtype=float)
+        if self._cached_inverse is None:
+            self._cached_inverse = np.linalg.pinv(self.matrix)
+        return self._cached_inverse
+
+    def _spectrum(self) -> np.ndarray:
+        """Get the eigenvalues of the matrix, largest first, the stored ones when there are.
+
+        Returns:
+            The eigenvalues, not to be changed by the caller.
+        """
+        self._refresh_matrix_cache()
+        if self.spectrum is not None:
+            return np.asarray(self.spectrum, dtype=float)
+        if self._cached_eigenvalues is None:
+            self._cached_eigenvalues = np.sort(np.linalg.eigvalsh(self.matrix))[::-1]
+        return self._cached_eigenvalues
+
     def __post_init__(self) -> None:
-        """Check the scales of the parameters.
+        """Check the scales of the parameters and the stored decomposition.
 
         Raises:
-            ValueError: if the scales are given and not one per parameter.
+            ValueError: if the scales are given and not one per parameter, or
+                if the stored decomposition does not have the shape of the
+                matrix.
         """
         if self.targets and len(self.targets) != len(self.pids):
             raise ValueError(
@@ -201,6 +248,19 @@ class FisherInformation:
                 f"'{self.opid}': the Fisher information requires one scale per "
                 f"parameter, but '{len(self.scales)}' scales are given for the "
                 f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
+        k = len(self.pids)
+        if self.inverse is not None and np.shape(self.inverse) != (k, k):
+            raise ValueError(
+                f"'{self.opid}': the stored inverse of the Fisher information "
+                f"requires the shape of its matrix, '{(k, k)}', but has the "
+                f"shape '{np.shape(self.inverse)}'."
+            )
+        if self.spectrum is not None and np.shape(self.spectrum) != (k,):
+            raise ValueError(
+                f"'{self.opid}': the stored eigenvalues of the Fisher "
+                f"information require one per parameter, '{(k,)}', but have "
+                f"the shape '{np.shape(self.spectrum)}'."
             )
 
     @property
@@ -267,10 +327,7 @@ class FisherInformation:
         are real and not negative up to rounding. A small eigenvalue is a
         direction in parameter space the data does not constrain.
         """
-        self._refresh_matrix_cache()
-        if self._cached_eigenvalues is None:
-            self._cached_eigenvalues = np.sort(np.linalg.eigvalsh(self.matrix))[::-1]
-        return self._cached_eigenvalues.copy()
+        return self._spectrum().copy()
 
     @property
     def condition_number(self) -> float:
@@ -317,9 +374,7 @@ class FisherInformation:
                 self.rank,
                 self.k,
             )
-        if self._cached_inverse is None:
-            self._cached_inverse = np.linalg.pinv(self.matrix)
-        return np.asarray(self.sigma2 * self._cached_inverse, dtype=float)
+        return np.asarray(self.sigma2 * self._inverse(), dtype=float)
 
     @property
     def standard_errors(self) -> np.ndarray:
@@ -457,6 +512,17 @@ class FisherInformation:
             targets=list(d.get("targets", [])),
             # a record before the objective was stored is of least squares
             objective=ObjectiveType(d.get("objective", "least_squares")),
+            # a record before the decomposition was stored computes it (#523)
+            inverse=(
+                None
+                if d.get("inverse") is None
+                else np.asarray(d["inverse"], dtype=float)
+            ),
+            spectrum=(
+                None
+                if d.get("spectrum") is None
+                else np.asarray(d["spectrum"], dtype=float)
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -478,6 +544,10 @@ class FisherInformation:
             "units": list(self.units),
             "targets": list(self.targets),
             "objective": self.objective.value,
+            # the decomposition of the matrix, so that a record gives the same
+            # standard errors, correlations and rank on every machine (#523)
+            "inverse": [[float(v) for v in row] for row in self._inverse()],
+            "spectrum": [float(v) for v in self._spectrum()],
         }
 
 

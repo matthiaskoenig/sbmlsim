@@ -162,6 +162,13 @@ class ProfileSpec(Spec):
             distance between the minimal cost and the threshold, on both
             sides, is flat.
         reoptimize: optimize the other parameters at every point.
+        scan_timeout: the seconds without any scan finishing after which the
+            scans which run or wait are given up, no limit without; the
+            parameters of the scans which were given up have no profile and
+            are named in the result (#522).
+        timeout: the seconds after which the whole analysis is given up, no
+            limit without, so that a long run is bounded and writes what it
+            has.
         optimizer: arguments of the least squares optimizer of the other
             parameters, `ProfileSettings.optimizer_kwargs`.
         pids: the parameters to profile, distinct parameters of the problem;
@@ -180,6 +187,8 @@ class ProfileSpec(Spec):
     max_points: int = 50
     flatness: float = 0.05
     reoptimize: bool = True
+    scan_timeout: float | None = None
+    timeout: float | None = None
     optimizer: dict[str, Any] = Field(default_factory=dict)
     pids: list[str] | None = None
 
@@ -1153,6 +1162,8 @@ def _profile_settings(spec: ProfileSpec) -> ProfileSettings:
             max_points=spec.max_points,
             flatness=spec.flatness,
             reoptimize=spec.reoptimize,
+            scan_timeout=spec.scan_timeout,
+            timeout=spec.timeout,
             optimizer_kwargs=spec.optimizer,
         )
     except ValueError as err:

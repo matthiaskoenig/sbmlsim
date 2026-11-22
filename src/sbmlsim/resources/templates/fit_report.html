@@ -386,6 +386,9 @@
   {% if identifiability.better_optimum %}
   <p class="warn">A profile found a cost below the cost of the parameter set, the fit did not converge to the optimum. The threshold is relative to the lowest cost.</p>
   {% endif %}
+  {% if identifiability.incomplete %}
+  <p class="warn">{{ identifiability.incomplete | length }} parameter(s) of the analysis have no profile, because a scan of theirs was given up: {% for item in identifiability.incomplete %}<span class="mono">{{ item.pid }}</span> ({{ item.reason }}){% if not loop.last %}, {% endif %}{% endfor %}. The table and the figures below are the parameters which were profiled.</p>
+  {% endif %}
   <div class="grid">
     <div class="card wide">
       <h3>Analysis</h3>

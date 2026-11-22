@@ -1,5 +1,6 @@
 """Tests of the Fisher information of a fit."""
 
+import json
 import logging
 from typing import Any
 from unittest.mock import patch
@@ -435,3 +436,122 @@ def test_the_points_of_a_jacobian_report_their_progress(
     assert jacobians[0].total == 2 * len(problem.pids)
     assert jacobians[0].label == "Fisher information"
     assert jacobians[-1].completed == 2 * len(problem.pids)
+
+
+def _information(matrix: np.ndarray) -> FisherInformation:
+    """Get a Fisher information of a matrix, for the tests of its decomposition."""
+    return FisherInformation(
+        opid="op",
+        sid="set",
+        pids=[f"p{k}" for k in range(matrix.shape[0])],
+        values=np.ones(matrix.shape[0]),
+        scale=ParameterScaleType.LOG10,
+        matrix=matrix,
+        cost=1.25,
+        n=40,
+    )
+
+
+def _sloppy_matrix() -> np.ndarray:
+    """Get a Fisher information of a fit whose parameters are nearly collinear."""
+    rng = np.random.default_rng(7)
+    jacobian = rng.normal(size=(40, 4))
+    jacobian[:, 2] = jacobian[:, 0] * 1.000001 + 1e-6 * rng.normal(size=40)
+    return np.asarray(jacobian.T @ jacobian)
+
+
+def test_the_decomposition_of_the_matrix_is_stored_with_the_information() -> None:
+    """A record carries the pseudo-inverse and the eigenvalues of its matrix.
+
+    The SVD and the eigenvalue decomposition of LAPACK depend on the kernels
+    of the CPU, so an information which computed them at every read gave
+    standard errors which differ in their last digits on another machine, and
+    a model whose factory writes them into its SBML did not rebuild byte for
+    byte (#523).
+    """
+    information = _information(_sloppy_matrix())
+    stored = information.to_dict()
+    assert np.shape(stored["inverse"]) == (4, 4)
+    assert np.shape(stored["spectrum"]) == (4,)
+
+    back = FisherInformation.from_dict(json.loads(json.dumps(stored)))
+    np.testing.assert_array_equal(back.standard_errors, information.standard_errors)
+    np.testing.assert_array_equal(back.eigenvalues, information.eigenvalues)
+    np.testing.assert_array_equal(
+        back.correlation.to_numpy(), information.correlation.to_numpy()
+    )
+    assert back.rank == information.rank
+
+
+def test_a_record_of_the_decomposition_does_not_decompose_again() -> None:
+    """The stored decomposition is read and not computed, which is the point of it.
+
+    A reader on another machine must answer the numbers of the record and not
+    the ones its own LAPACK computes for the same matrix.
+    """
+    stored = json.loads(json.dumps(_information(_sloppy_matrix()).to_dict()))
+    back = FisherInformation.from_dict(stored)
+    with (
+        patch("numpy.linalg.eigvalsh", wraps=np.linalg.eigvalsh) as eigenvalues,
+        patch("numpy.linalg.pinv", wraps=np.linalg.pinv) as inverse,
+    ):
+        _ = back.summary_df
+        _ = back.correlation
+        _ = back.standard_errors
+        _ = back.rank
+        assert eigenvalues.call_count == inverse.call_count == 0
+
+
+def test_a_record_written_before_the_decomposition_computes_it() -> None:
+    """A record of an earlier release has no decomposition and computes it as before."""
+    stored = _information(_sloppy_matrix()).to_dict()
+    legacy = {k: v for k, v in stored.items() if k not in ("inverse", "spectrum")}
+    back = FisherInformation.from_dict(legacy)
+    assert back.inverse is None
+    assert back.spectrum is None
+    np.testing.assert_allclose(
+        back.standard_errors, _information(_sloppy_matrix()).standard_errors
+    )
+
+
+def test_a_matrix_changed_after_the_fact_drops_the_stored_decomposition() -> None:
+    """The decomposition belongs to the matrix it was computed from."""
+    stored = json.loads(json.dumps(_information(np.diag([1.0, 4.0])).to_dict()))
+    back = FisherInformation.from_dict(stored)
+    np.testing.assert_allclose(back.covariance, back.sigma2 * np.diag([1.0, 0.25]))
+    back.matrix = np.diag([4.0, 16.0])
+    np.testing.assert_allclose(back.covariance, back.sigma2 * np.diag([0.25, 0.0625]))
+    assert back.inverse is None
+    assert back.spectrum is None
+
+
+def test_a_stored_inverse_of_another_shape_is_refused() -> None:
+    """A decomposition which is not of the matrix is an error and not a wrong number."""
+    with pytest.raises(ValueError, match="inverse"):
+        FisherInformation(
+            opid="op",
+            sid="set",
+            pids=["a", "b"],
+            values=np.ones(2),
+            scale=ParameterScaleType.LOG10,
+            matrix=np.diag([1.0, 4.0]),
+            cost=1.0,
+            n=10,
+            inverse=np.ones((3, 3)),
+        )
+
+
+def test_stored_eigenvalues_of_another_shape_are_refused() -> None:
+    """One eigenvalue per parameter, or the rank of the record is not its rank."""
+    with pytest.raises(ValueError, match="eigenvalues"):
+        FisherInformation(
+            opid="op",
+            sid="set",
+            pids=["a", "b"],
+            values=np.ones(2),
+            scale=ParameterScaleType.LOG10,
+            matrix=np.diag([1.0, 4.0]),
+            cost=1.0,
+            n=10,
+            spectrum=np.ones(3),
+        )

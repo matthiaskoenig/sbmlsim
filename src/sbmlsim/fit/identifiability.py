@@ -123,6 +123,7 @@ from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import (
     FitTimeout,
     OptimizationProblem,
+    PoolError,
     ResidualsEvaluator,
 )
 from sbmlsim.fit.options import (
@@ -214,6 +215,16 @@ class ProfileSettings:
             `FitSettings.loss_function`. The step of the finite differences
             is the one of a fit, `OptimizationProblem.optimizer_arguments`,
             unless `diff_step` is given.
+        scan_timeout: seconds without any scan finishing after which the scans
+            which run or wait are given up, `None` for no limit. It bounds a
+            scan which does not return, which stopped a parallel analysis with
+            no message and no result at all (#522); the parameters of the
+            scans which were given up have no profile and are named in
+            `incomplete`, and the analysis writes the profiles it has.
+        timeout: seconds after which the whole analysis is given up, `None`
+            for no limit, so that an overnight run is bounded and writes what
+            it has. It is the budget of the scans and, in a serial analysis,
+            is checked before every scan.
     """
 
     alpha: float = 0.95
@@ -227,6 +238,8 @@ class ProfileSettings:
     flatness: float = 0.05
     reoptimize: bool = True
     optimizer_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    scan_timeout: float | None = None
+    timeout: float | None = None
 
     def __post_init__(self) -> None:
         """Check the settings.
@@ -255,6 +268,10 @@ class ProfileSettings:
                 f"'max_cost_fraction' must be in (0, 1], got "
                 f"'{self.max_cost_fraction}'."
             )
+        for name in ("scan_timeout", "timeout"):
+            seconds = getattr(self, name)
+            if seconds is not None and seconds <= 0.0:
+                raise ValueError(f"'{name}' must be positive or None, got '{seconds}'.")
         if self.max_points < 1:
             raise ValueError(
                 f"'max_points' must be at least 1, got '{self.max_points}'."
@@ -297,11 +314,17 @@ class ProfileSettings:
             "flatness": self.flatness,
             "reoptimize": self.reoptimize,
             "optimizer_kwargs": dict(self.optimizer_kwargs),
+            "scan_timeout": self.scan_timeout,
+            "timeout": self.timeout,
         }
 
     @staticmethod
     def from_dict(d: Mapping[str, Any]) -> ProfileSettings:
-        """Create settings from a dictionary, i.e., from the stored JSON."""
+        """Create settings from a dictionary, i.e., from the stored JSON.
+
+        A record written before the limits of #522 has neither, which is no
+        limit, the behaviour it ran with.
+        """
         return ProfileSettings(**d)
 
 
@@ -562,6 +585,10 @@ class IdentifiabilityResult:
         cost: cost of the parameter set.
         profiles: profile of every analysed parameter by parameter id.
         duration: duration of the analysis in seconds.
+        incomplete: why a parameter which was analysed has no profile, by
+            parameter id, e.g. the scan which the `scan_timeout` or the
+            `timeout` of the settings gave up (#522). Empty for an analysis
+            whose every parameter has a profile.
     """
 
     opid: str
@@ -572,6 +599,7 @@ class IdentifiabilityResult:
     cost: float
     profiles: dict[str, ParameterProfile]
     duration: float = 0.0
+    incomplete: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Evaluate the profiles."""
@@ -638,15 +666,17 @@ class IdentifiabilityResult:
     def _definition(self) -> str:
         """Get what the profiles of a result are computed around, as JSON.
 
-        It is `to_dict` without the profiles and the duration, which the
-        parts of an analysis share, see `combine`; JSON compares the values
-        bitwise and a `NaN` equal to itself.
+        It is `to_dict` without the profiles, the duration and the parameters
+        which have none, which the parts of an analysis share, see `combine`;
+        JSON compares the values bitwise and a `NaN` equal to itself. A part
+        which gave a scan up is a part of the analysis like any other, so
+        `incomplete` is no part of the definition.
 
         Raises:
             TypeError: for a value which is not serializable as JSON.
         """
         d = self.to_dict()
-        del d["profiles"], d["duration"]
+        del d["profiles"], d["duration"], d["incomplete"]
         return json.dumps(d)
 
     @staticmethod
@@ -665,7 +695,8 @@ class IdentifiabilityResult:
 
         Returns:
             The result with the profiles of all parts, its duration the sum of
-            the durations of the parts. The parts are not changed.
+            the durations of the parts and the parameters without a profile of
+            all of them (`incomplete`). The parts are not changed.
 
         Raises:
             ValueError: if there is no part, if a parameter is profiled in two
@@ -678,6 +709,7 @@ class IdentifiabilityResult:
         first = parts[0]
         definition = first._definition()
         profiles: dict[str, ParameterProfile] = {}
+        incomplete: dict[str, str] = {}
         for k, part in enumerate(parts):
             if part._definition() != definition:
                 raise ValueError(
@@ -692,6 +724,11 @@ class IdentifiabilityResult:
                         f"again in the part {k}."
                     )
                 profiles[pid] = deepcopy(profile)
+            incomplete.update(part.incomplete)
+        # a parameter a part gave up and another profiled has its profile
+        incomplete = {
+            pid: reason for pid, reason in incomplete.items() if pid not in profiles
+        }
         return IdentifiabilityResult(
             opid=first.opid,
             parameter_set=deepcopy(first.parameter_set),
@@ -701,6 +738,7 @@ class IdentifiabilityResult:
             cost=first.cost,
             profiles=profiles,
             duration=float(sum(part.duration for part in parts)),
+            incomplete=incomplete,
         )
 
     def scale(self, pid: str) -> ParameterScaleType:
@@ -821,6 +859,7 @@ class IdentifiabilityResult:
                 pid: profile.to_dict() for pid, profile in self.profiles.items()
             },
             "duration": self.duration,
+            "incomplete": dict(self.incomplete),
         }
 
     @staticmethod
@@ -838,6 +877,8 @@ class IdentifiabilityResult:
                 for pid, profile in d["profiles"].items()
             },
             duration=float(d.get("duration", 0.0)),
+            # a record written before #522 has every parameter it analysed
+            incomplete=dict(d.get("incomplete", {})),
         )
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -1325,7 +1366,32 @@ def profile_likelihood(
         task["index"]: {} for task in tasks
     }
     assembled: dict[str, ParameterProfile] = {}
+    incomplete: dict[str, str] = {}
     last_finished = ts
+    deadline = (
+        None
+        if profile_settings.timeout is None
+        else time.monotonic() + profile_settings.timeout
+    )
+
+    def _give_up(task: Mapping[str, Any], err: BaseException) -> None:
+        """Record a scan which was given up, so its parameter has no profile.
+
+        A parameter needs both of its scans for a profile, so one which was
+        given up leaves it without one; the reason is kept per parameter and
+        the first one is the one reported (#522).
+        """
+        pid = problem.pids[task["index"]]
+        side = "below" if task["direction"] < 0 else "above"
+        logger.error(
+            "'%s': the scan of '%s' %s the optimum was given up (%s), so the "
+            "parameter has no profile.",
+            problem.opid,
+            pid,
+            side,
+            err,
+        )
+        incomplete.setdefault(pid, f"the scan {side} the optimum: {err}")
 
     def collect(index: int, direction: int, points: list[ProfilePoint]) -> None:
         """Keep the scan, the profile once both of its scans finished."""
@@ -1384,7 +1450,16 @@ def profile_likelihood(
                     collect(index, direction, points)
         elif parallel:
             with runner.worker_pool(problem, settings, scan_workers) as pool:
-                for _, outcome in pool.run(_worker_scan, dict(enumerate(tasks))):
+                for key, outcome in pool.run(
+                    _worker_scan,
+                    dict(enumerate(tasks)),
+                    timeout=profile_settings.scan_timeout,
+                    deadline=deadline,
+                ):
+                    if isinstance(outcome, TimeoutError | PoolError):
+                        _give_up(tasks[key], outcome)
+                        runner._advance(progress)
+                        continue
                     if isinstance(outcome, Exception):
                         raise outcome
                     index, direction, points = outcome
@@ -1411,6 +1486,17 @@ def profile_likelihood(
                     )
                     jacobian.start()
                 for task in tasks:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        _give_up(
+                            task,
+                            TimeoutError(
+                                f"the analysis reached its timeout of "
+                                f"{profile_settings.timeout} s before this scan "
+                                f"started"
+                            ),
+                        )
+                        runner._advance(progress)
+                        continue
                     points = _scan_task(problem, task, jacobian=jacobian)
                     runner._advance(progress)
                     collect(task["index"], task["direction"], points)
@@ -1422,9 +1508,21 @@ def profile_likelihood(
         settings=profile_settings,
         fit_settings=settings,
         cost=cost_optimum,
-        profiles={pid: assembled[pid] for pid in pids},
+        # a parameter whose scan was given up has no profile, see `_give_up`
+        profiles={pid: assembled[pid] for pid in pids if pid in assembled},
         duration=time.time() - ts,
+        incomplete=incomplete,
     )
+    if incomplete:
+        logger.warning(
+            "'%s': %s of the %s analysed parameters have no profile, %s; the "
+            "analysis wrote the profiles it has, see the 'scan_timeout' and "
+            "the 'timeout' of its settings.",
+            problem.opid,
+            len(incomplete),
+            len(pids),
+            sorted(incomplete),
+        )
     if result.better_optimum:
         logger.warning(
             "'%s': a profile found a cost of %.6g below the cost %.6g of '%s', "
