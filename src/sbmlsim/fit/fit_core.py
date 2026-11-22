@@ -47,6 +47,23 @@ instead (`_derived_of`, the field `derived` of sbmlsim-core
 `DERIVED_VERSION`), which the engine evaluates at the values the optimizer is
 at and sets on its target before every simulation; every other formula keeps
 its gap.
+
+A formula **at a change** is folded by the executor as well, but by
+simulating the segment which ends at the change and reading the state there
+(`executor_core._Fold`), so the number it folds into is the one of the point
+the request was built at. A formula which reads a constant of the simulation
+folds into the same number at every point of the search; one which reads
+anything the simulation moves, e.g. the `-0.5 * Aurine` of a collection
+which is halved, is held where the fit started while the optimizer moves the
+state it reads, which `_gaps_at_the_folds` reports as the gap
+`change_value`, so such a problem is fitted in python instead of answering
+the residuals of another problem.
+
+The times of a curve are the output times of its condition and not the times
+of the data: `Plan.time_shift` is applied to the time of a result on the way
+back and a request carries no shift, so a simulation whose data is on a
+shifted axis measures at the times of its plan (`_curve`,
+`OptimizationProblem._x_plan`).
 """
 
 from __future__ import annotations
@@ -448,6 +465,7 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
     gaps.extend(_gaps_of_the_targets(problem))
     gaps.extend(_gaps_of_the_bounds(problem))
     gaps.extend(_gaps_of_the_values(problem))
+    gaps.extend(_gaps_at_the_folds(problem))
     for group, mappings in enumerate(problem.mapping_groups):
         training = [
             k for k in mappings if problem.mapping_kinds[k] is MappingKind.TRAINING
@@ -957,6 +975,14 @@ def _curve(
     the weight `w` of the problem is `1/sqrt(w)` here, and the mean of the
     data of a normalized residual goes into it as well.
 
+    A curve measures at the output times of its condition, which are the ones
+    of the plan of its group: `Plan.time_shift` is applied to the time of a
+    result on the way back (`sbmlsim.simulator.executor_core.request_of`), so
+    the time of a point here is the output time of the plan it reads
+    (`OptimizationProblem._x_plan`, the merged time of `merge_times`) and not
+    the time of the data, which the engine would not find for a simulation
+    whose time is shifted (#613).
+
     A point which is compared with the state after a change carries its flag
     (`after_change_of`), and a curve no point of which is gets no field at
     all, which is the request every release of the engine reads.
@@ -976,7 +1002,12 @@ def _curve(
         The curve, a dictionary of the fields of the contract.
     """
     at = list(part.at)
-    times = np.asarray(problem.x_references[mapping], dtype=float)
+    rows = problem._x_plan[mapping]
+    times = (
+        np.asarray(problem.x_references[mapping], dtype=float)
+        if rows is None
+        else np.asarray(rows, dtype=float)
+    )
     values = np.asarray(problem.y_references[mapping], dtype=float)
     column = part.column or problem.yid_observable[mapping]
     noise = _noise_of(problem, mapping)
@@ -1621,6 +1652,127 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
                 )
             )
     return gaps
+
+
+def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
+    """Get the gaps of the changes a request carries as a folded number.
+
+    A value of a request is a number, and the executor folds a formula at a
+    change into one by simulating the segment which ends at the change and
+    reading the state there (`executor_core._Fold`). That number is the one
+    of the point the request was built at: a formula which reads a state,
+    e.g. `0.5 * Aurine` of a collection which is halved, folds into the
+    amount the model had there at the start of the fit and the engine holds
+    the change at it while the optimizer moves the simulation, so the engine
+    would answer the residuals of another problem without an error.
+
+    A formula folds into the same number at every point of the search when
+    every symbol it reads is a constant of the simulation
+    (`_constant_at_the_changes`), and is no gap then. The number of the
+    pre-initialization is not such a constant: it is the value before the
+    initialization and the simulation moves it on the way to the change,
+    which is why `_known_values`, the values the executor folds a formula
+    *before the initialization* with, is not the test here. A formula which
+    reads a parameter of the fit is the gap of `_gaps_of_the_values`, which
+    is more precise about it, so this reports only the symbols which are
+    neither.
+
+    The test is conservative: a symbol a change of the plan sets to a number
+    is held at that number by the engine as well, so a second dose
+    `PODOSE + 25` of a plan which doses by a change would fold correctly,
+    and reporting it costs a fit the engine instead of its correctness.
+
+    A formula before the initialization, of the plan or of its steady state,
+    is folded without simulating and raises in the executor for a symbol it
+    cannot resolve, which `_gaps_of_the_request` reports as `unsupported`.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The gaps, one per formula the executor folds by simulating, in the
+        order they were met, naming its first change and how many changes
+        carry it: the gaps of a problem are reported as one message, which a
+        protocol of many doses or collections would otherwise fill with one
+        entry per change.
+    """
+    targets = _parameter_targets(problem)
+    model = fit_model(problem)
+    x = np.asarray(problem.xmodel, dtype=float)
+    # one entry per formula, in the order they were met: its first change and
+    # the number of the changes which carry it
+    found: dict[tuple[str, str], tuple[int, float, list[str], int]] = {}
+    for group, mappings in enumerate(problem.mapping_groups):
+        if not any(problem.mapping_kinds[k] is MappingKind.TRAINING for k in mappings):
+            continue
+        plan = problem.evaluated_plan(group, x, [])
+        constant = _constant_at_the_changes(plan, model)
+        for event in plan.events:
+            for assignment in event.assignments:
+                if assignment.formula is None:
+                    continue
+                formula = str(assignment.formula)
+                read = sorted(
+                    symbol
+                    for symbol in compile_formula(formula).symbols
+                    if symbol not in constant and symbol not in targets
+                )
+                if not read:
+                    continue
+                key = (assignment.target, formula)
+                if key in found:
+                    first = found[key]
+                    found[key] = (first[0], first[1], first[2], first[3] + 1)
+                else:
+                    found[key] = (group, event.time, read, 1)
+    gaps: list[Gap] = []
+    for (target, formula), (group, time, read, n) in found.items():
+        where = (
+            f"at the time {time}"
+            if n == 1
+            else f"at {n} changes, the first of the group {group} at the time {time},"
+        )
+        gaps.append(
+            Gap(
+                "change_value",
+                f"the simulation of the group {group} sets '{target}' {where} to "
+                f"'{formula}', which reads "
+                f"{', '.join(repr(symbol) for symbol in read)} of its simulation: "
+                f"the executor folds such a formula into the number it has where "
+                f"the request was built, which would hold the change there",
+            )
+        )
+    return gaps
+
+
+def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
+    """Get the symbols whose value at a change of a plan is a constant.
+
+    A symbol is one when the model can only read it, i.e. it is a parameter
+    which is the variable of no rule and of no initial assignment, and
+    nothing of the plan assigns it at a time, so neither the integration nor
+    a change moves it: the number the executor folds a formula of such
+    symbols into is the same at every point of the search.
+
+    Args:
+        plan: the plan of the condition.
+        model: the model of the fit.
+
+    Returns:
+        The symbols a formula at a change may read.
+    """
+    assigned = {
+        assignment.target for event in plan.events for assignment in event.assignments
+    }
+    symbols = model.symbols
+    return {
+        parameter
+        for parameter in symbols.parameters
+        if parameter not in assigned
+        and parameter not in symbols.initial_assignments
+        and parameter not in symbols.assignment_rules
+        and parameter not in symbols.rate_rules
+    }
 
 
 def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, bool]]:
