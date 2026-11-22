@@ -72,12 +72,19 @@ the engine documents:
    the selections of roadrunner, which is what `apply_changes` of
    `sbmlsim.simulator.changes` reads of the model of roadrunner, so a formula
    of a parameter, a compartment, an amount `S` or a concentration `[S]` is
-   the value of roadrunner. Two cases are refused (`_check_change`): a symbol
-   which is no output of the engine, which only a plan built by hand reaches,
-   since `compile_simulation` refuses a symbol the model has not, and a model
-   with an event of its own, whose state the engine answers after the events
-   of a time have fired where roadrunner reads it before, so a formula of
-   such a model would disagree silently.
+   the value of roadrunner. The probe of a model with events ends one unit in
+   the last place before the time of the change (`probe_end`, `segment_stop`),
+   where the executor of roadrunner reads the state as well, and two cases are
+   refused (`_check_change`): a symbol which is no output of the engine, which
+   only a plan built by hand reaches, since `compile_simulation` refuses a
+   symbol the model has not, and a symbol an event of the model assigns or
+   which follows such a target through an assignment rule (`_event_moved`).
+   The engine fires an event of a time for an end within about 1e-9 of it, far
+   wider than the unit in the last place CVODE resolves, so the probe cannot
+   tell the state before the events of the time of the change from the state
+   after them: a formula which reads what such an event moves would disagree
+   with roadrunner silently and is refused instead. A formula which reads only
+   what no event moves is folded, whatever events the model has.
 
    The folded value is the state of a request which ends at the change, where
    the integrator stops, and not of the request of the plan, which integrates
@@ -169,7 +176,13 @@ from typing import TYPE_CHECKING, Any, Final
 from sbmlsim.engine import UnsupportedModelError, import_core
 from sbmlsim.model.symbols import EventSymbols, ModelSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult, TimecourseSensitivities
-from sbmlsim.simulator.executor import SteadyStateError, output_columns, output_time
+from sbmlsim.simulator.executor import (
+    SteadyStateError,
+    integrable,
+    output_columns,
+    output_time,
+    segment_stop,
+)
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.simulator.plan import (
     Assignment,
@@ -835,7 +848,9 @@ class _Fold:
             raise output
         event = self.plan.events[self.index]
         start = self.plan.start if self.resume is None else self.resume[0]
-        state = _state_of(output, self.columns, event.time, start)
+        state = _state_of(
+            output, self.columns, probe_end(self.plan, start, event.time), start
+        )
         values = _change_values(event, state)
         self.changes.append({"time": event.time, "values": values})
         resumed = self._resumed()
@@ -1189,6 +1204,38 @@ def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[An
     return values
 
 
+def probe_end(plan: Plan, start: float, time: float) -> float:
+    """Get the time the probe of a change integrates to.
+
+    The formulas of a change read the state of the model **before** the
+    events of its time have fired, which is what `apply_changes` of
+    `sbmlsim.simulator.changes` reads on the model of roadrunner: the
+    executor of roadrunner applies a change to the state its segment stopped
+    at, one unit in the last place before the time (`segment_stop`), and
+    fires the events after it.
+
+    The engine answers the state of a time after the events of that time have
+    fired, so the probe of a model with events ends at that same stop instead
+    of at the time of the change, which is the state roadrunner folds, to its
+    last unit in the last place. A model without events has no such state to
+    tell apart and its probe ends at the time of the change, so its request
+    is the one of before, bitwise; so is the probe of a segment too short to
+    integrate (`integrable`), whose state is the one at its start.
+
+    Args:
+        plan: the plan, whose model gives the events.
+        start: the start of the segment.
+        time: the time of the change.
+
+    Returns:
+        The end of the probe, the time of the change or the stop before it.
+    """
+    if not plan.symbols.events:
+        return time
+    stop = segment_stop(start, time)
+    return stop if integrable(start, stop) else time
+
+
 def _segment_request(
     plan: Plan,
     request: Mapping[str, Any],
@@ -1240,11 +1287,12 @@ def _segment_request(
         The request of the segment.
     """
     start = plan.start if resume is None else resume[0]
+    end = probe_end(plan, start, time)
     segment = {
         **request,
         "start": start,
-        "end": time,
-        "output": _segment_output(plan, start, time),
+        "end": end,
+        "output": _segment_output(plan, start, end),
         "selections": output_columns(selections),
     }
     if resume is None:
@@ -1376,18 +1424,80 @@ def _check_change(
                 f"executor cannot read the state of the model at the time of the "
                 f"change",
             )
-        if symbols and events:
+        moved = sorted(s for s in symbols if s in _event_moved(events, model))
+        if moved:
             raise UnsupportedModelError(
                 f"The engine 'core' does not simulate the formula '{a.formula}' of "
                 f"'{a.target}' at the time {event.time} of the model "
-                f"'{model.label}', which has the event '{events[0].eid}': the "
-                f"formula reads {sorted(symbols)}, and the state of the model at "
-                f"the time of a change is the one a request of the engine answers "
-                f"there, which is the state after the events of that time have "
-                f"fired, while the executor of roadrunner reads it before they "
-                f"fire. The two engines would disagree without an error, so the "
-                f"formula is refused, see `sbmlsim.simulator.executor_core`."
+                f"'{model.label}', which has the event '{_moving_event(events, moved)}'"
+                f": it reads {moved}, which an event of the model "
+                f"assigns or which follows such a target through an assignment "
+                f"rule, and the state of the model at the time of a change is the "
+                f"one a request of the engine answers there, which is the state "
+                f"after the events of that time have fired, while the executor of "
+                f"roadrunner reads it before they fire. An event of the model "
+                f"which fires at the time of the change would make the two engines "
+                f"disagree without an error, so the formula is refused, see "
+                f"`sbmlsim.simulator.executor_core`."
             )
+
+
+def _moving_event(events: Sequence[EventSymbols], moved: Sequence[str]) -> str:
+    """Get the id of an event which assigns one of the symbols, for the message.
+
+    Args:
+        events: the events of the model, at least one.
+        moved: the symbols the formula reads and an event could move.
+
+    Returns:
+        The id of the first event which assigns one of them, or of the first
+        event when they follow their targets through an assignment rule.
+    """
+    wanted = {name[1:-1] if name.startswith("[") else name for name in moved}
+    for event in events:
+        targets = {target for target, _ in event.assignments}
+        if targets & (wanted | set(moved)):
+            return event.eid
+    return events[0].eid
+
+
+def _event_moved(
+    events: Sequence[EventSymbols], model: CoreSBMLModel
+) -> frozenset[str]:
+    """Get the selections an event of the model could move at the time of a change.
+
+    These are the targets of the assignments of its events and, since an
+    assignment rule follows its inputs at once, every variable of an
+    assignment rule, whose value an event could move through it without
+    being its target. A model without events moves nothing.
+
+    The concentration and the amount of a species go together, so a target of
+    either names both, and so does the compartment of a species of a
+    concentration, whose size scales the amount.
+
+    Args:
+        events: the events of the model.
+        model: the model, which gives the species and their compartments.
+
+    Returns:
+        Every selection the executor must not read at the time of a change.
+    """
+    if not events:
+        return frozenset()
+    symbols = model.symbols
+    moved: set[str] = set(symbols.assignment_rules)
+    for event in events:
+        moved |= {target for target, _ in event.assignments}
+    # a target names the amount, the concentration and, for a species of a
+    # concentration, the size of its compartment, which scales them
+    for name in list(moved):
+        sid = name[1:-1] if name.startswith("[") else name
+        if sid in symbols.species:
+            moved |= {sid, f"[{sid}]"}
+    for sid, compartment in symbols.species_compartment.items():
+        if compartment in moved:
+            moved |= {sid, f"[{sid}]"}
+    return frozenset(moved)
 
 
 def _preinit_value(
