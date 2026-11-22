@@ -49,7 +49,6 @@ import yaml
 
 from sbmlsim.atomic import atomic_directory
 from sbmlsim.comparison.diff import within_tolerance
-from sbmlsim.engine import Engine
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.conversion import (
     SIMULATIONS_FILE,
@@ -453,11 +452,6 @@ class BenchmarkProblem:
         reader = PetabReader.from_yaml(yaml_file)
         reader.derived_dir = Path(tempfile.mkdtemp(prefix=f"{self.name}_"))
         problem = reader.to_optimization_problem(opid=self.name)
-        # the problems are compared with the simulations of the collection and
-        # with the log-likelihoods of AMICI, so they name roadrunner and do
-        # not follow the default engine of the package, as the cases of the
-        # PEtab and SBML test suites do
-        problem.engine = Engine.ROADRUNNER
         timings["read"] = time.perf_counter() - start
 
         start = time.perf_counter()

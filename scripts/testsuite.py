@@ -33,6 +33,7 @@ from pathlib import Path
 
 from sbmlsim import log
 from sbmlsim.console import console
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.testsuite import SemanticSuite, run_suite
 from sbmlsim.testsuite.cases import SUITE_BRANCH, SUITE_COMMIT
 from sbmlsim.testsuite.report import TestSuiteReport
@@ -63,10 +64,17 @@ def load(commit: str) -> SemanticSuite:
     return SemanticSuite.load(resolve_commit(commit))
 
 
-def run(suite: SemanticSuite, workers: int | None = None) -> list[CaseResult]:
+def run(
+    suite: SemanticSuite,
+    workers: int | None = None,
+    engine: Engine = DEFAULT_ENGINE,
+) -> list[CaseResult]:
     """Run every timecourse case of the suite and report the outcome."""
-    console.print(f"Running the SBML Test Suite '{suite.commit}' from {suite.path}")
-    results = run_suite(suite, workers=workers)
+    console.print(
+        f"Running the SBML Test Suite '{suite.commit}' from {suite.path} "
+        f"with the engine '{engine.value}'"
+    )
+    results = run_suite(suite, workers=workers, engine=engine)
     counts = Counter(r.status for r in results)
     n = len(results)
     console.print(f"[bold]{counts[CaseStatus.PASS]}/{n} cases pass[/bold]")
@@ -75,13 +83,18 @@ def run(suite: SemanticSuite, workers: int | None = None) -> list[CaseResult]:
     return results
 
 
-def write_baseline(results: list[CaseResult], suite: SemanticSuite) -> Path:
+def write_baseline(
+    results: list[CaseResult],
+    suite: SemanticSuite,
+    engine: Engine = DEFAULT_ENGINE,
+) -> Path:
     """Write the expected outcomes the tests compare a run with."""
     failures = {r.cid: r.status.value for r in results if not r.passed}
     BASELINE_PATH.write_text(
         json.dumps(
             {
                 "suite_commit": suite.commit,
+                "engine": engine.value,
                 "n_cases": len(results),
                 "n_passed": len(results) - len(failures),
                 "expected_failures": failures,
@@ -127,6 +140,17 @@ def main(argv: list[str] | None = None) -> int:
         help="directory of the report or of the submission archive",
     )
     parser.add_argument(
+        "-e",
+        "--engine",
+        type=Engine,
+        choices=list(Engine),
+        default=DEFAULT_ENGINE,
+        help=(
+            f"engine the cases are simulated with, the default engine "
+            f"'{DEFAULT_ENGINE.value}' by default; roadrunner is the reference"
+        ),
+    )
+    parser.add_argument(
         "-w",
         "--workers",
         type=int,
@@ -144,14 +168,16 @@ def main(argv: list[str] | None = None) -> int:
     if options.command == "submission":
         # the submission needs the results of every case and not their outcome,
         # so it simulates in one pass of its own
-        write_submission(suite, options.output, workers=options.workers)
+        write_submission(
+            suite, options.output, workers=options.workers, engine=options.engine
+        )
         return 0
 
-    results = run(suite, workers=options.workers)
+    results = run(suite, workers=options.workers, engine=options.engine)
     if options.command == "report":
         TestSuiteReport(results, suite_commit=suite.commit).create(options.output)
     elif options.command == "baseline":
-        write_baseline(results, suite)
+        write_baseline(results, suite, options.engine)
     return 0
 
 

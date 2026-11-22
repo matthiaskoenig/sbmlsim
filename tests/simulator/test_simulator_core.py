@@ -853,23 +853,27 @@ def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_l
     _compare(core, roadrunner)
 
 
-def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number_is_refused(
-    model_core: CoreSBMLModel,
+def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
 ) -> None:
-    """One number of the same pre-initialization makes it the mixed case.
+    """One number of the same pre-initialization does not change the fold.
 
-    The values it sets are not on the model when the formula is evaluated, so
-    the executor cannot tell the value of `k1` the formula reads any more and
-    refuses it, see `test_a_pre_initialization_formula_of_a_value_which_is_not_set_is_refused`.
+    `k1` is a constant parameter of the model, the variable of no rule and of
+    no initial assignment, so nothing the pre-initialization sets can move it
+    and the value of the model as loaded is the one roadrunner reads there
+    too, whatever else is set (`executor_core._constant_parameter`). The
+    number of `a0` is set before the formulas are evaluated and reaches none
+    of them, so `k2` is `2 * 0.8` here as it is without it.
     """
     simulation = Simulation(
         end=20,
         preinit_changes={"k2": "2 * k1", "k1": "3 * f", "a0": 2.0},
-        times=[0.0, 20.0],
+        times=np.linspace(0, 20, 21).tolist(),
     )
-    with pytest.raises(UnsupportedModelError, match="formula") as failure:
-        Simulator(engine="core").simulate(model_core, simulation)
-    assert "'k1'" in str(failure.value)
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k2"][0] == 2.0 * 0.8
+    _compare(core, roadrunner)
 
 
 @pytest.mark.parametrize(

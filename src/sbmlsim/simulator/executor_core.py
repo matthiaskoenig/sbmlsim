@@ -1410,11 +1410,18 @@ def _preinit_value(
     - every symbol of the formula is a target which the same
       pre-initialization sets to a number: the symbol is that number.
 
-    Everything else is refused, the mixed case included: a symbol which the
-    pre-initialization does not set follows the values it sets wherever an
-    assignment rule or an initial assignment of the model relates them, e.g.
-    the rule `kk := 3*f` of a pre-initialization which sets `f`, so the value
-    of the model as loaded would be the wrong one.
+    - the symbol is a constant parameter of the model, the variable of no
+      initial assignment and of no rule (`_constant_parameter`): nothing the
+      pre-initialization sets can move it, so the value of the model as
+      loaded is the one roadrunner reads there whatever else is set. The
+      parameters of a PEtab problem are such parameters, which is what a
+      condition like `[A] = initial_A1 + initial_A2` reads.
+
+    Everything else is refused: a symbol which the pre-initialization does not
+    set and which is no constant parameter follows the values it sets
+    wherever an assignment rule or an initial assignment of the model relates
+    them, e.g. the rule `kk := 3*f` of a pre-initialization which sets `f`, so
+    the value of the model as loaded would be the wrong one.
 
     A formula of any target is folded, a parameter, a compartment and the
     amount or the concentration of a species alike: the fold computes the
@@ -1480,17 +1487,45 @@ def _preinit_value(
             # is folded in both cases
             values.append(0.0)
             continue
-        if plain:
+        if plain and not _constant_parameter(model, symbol):
             raise _no_fold(
                 assignment,
                 model,
                 where,
                 f"it reads '{symbol}', which the pre-initialization does not set "
-                f"to a number, and the values it sets are not on the model when "
-                f"the formula is evaluated",
+                f"to a number and which is no constant parameter of the model, so "
+                f"the values it sets could move it and they are not on the model "
+                f"when the formula is evaluated",
             )
         values.append(loaded)
     return formula.evaluate(values)
+
+
+def _constant_parameter(model: CoreSBMLModel, symbol: str) -> bool:
+    """Whether a symbol is a constant parameter of the model.
+
+    Such a parameter is the variable of no initial assignment and of no rule,
+    so its value is the one its SBML states and nothing a pre-initialization
+    sets can move it: the value of the model as loaded is the one roadrunner
+    reads when it evaluates a formula of the pre-initialization, whatever
+    else that pre-initialization sets (`_preinit_value`). The parameters of a
+    PEtab problem are such parameters, which is why a condition like
+    `[A] = initial_A1 + initial_A2` is folded.
+
+    Args:
+        model: the model.
+        symbol: the symbol of the formula.
+
+    Returns:
+        Whether the symbol is a constant parameter.
+    """
+    symbols = model.symbols
+    return (
+        symbol in symbols.parameters
+        and symbol not in symbols.initial_assignments
+        and symbol not in symbols.assignment_rules
+        and symbol not in symbols.rate_rules
+    )
 
 
 def _no_fold(

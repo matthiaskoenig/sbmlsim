@@ -19,12 +19,14 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
+from typing import Any
 
 import numpy as np
 
 from sbmlsim import cgroup, parallel
 from sbmlsim.comparison.diff import within_tolerance
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Simulation, SteadyState
@@ -156,27 +158,17 @@ def case_simulation(
     )
 
 
-def load_case_model(case: SemanticCase, simulator: Simulator) -> RoadrunnerSBMLModel:
-    """Load the model of a case with roadrunner, which the checks of a case use.
+def load_case_model(case: SemanticCase, simulator: Simulator) -> SBMLModel:
+    """Load the model of a case in the engine of the simulator.
 
     Args:
         case: the case.
-        simulator: the simulator with the tolerances of the test suite, of
-            the engine roadrunner.
+        simulator: the simulator with the tolerances of the test suite.
 
     Returns:
         The model of the case.
-
-    Raises:
-        TypeError: if the simulator does not load the model in roadrunner.
     """
-    model = simulator.load(AbstractModel(source=case.model_path))
-    if not isinstance(model, RoadrunnerSBMLModel):
-        raise TypeError(
-            f"The cases of the test suite run with roadrunner, not with the "
-            f"engine '{model.engine}'."
-        )
-    return model
+    return simulator.load(AbstractModel(source=case.model_path))
 
 
 def simulate_case(
@@ -206,7 +198,7 @@ def simulate_case(
     return simulator.simulate(model, simulation or case_simulation(case))
 
 
-def seed_event_order(model: RoadrunnerSBMLModel, seed: int = 1) -> None:
+def seed_event_order(model: SBMLModel, seed: int = 1) -> None:
     """Seed the random generator which orders simultaneous events.
 
     libroadrunner executes simultaneous events of the same priority in a
@@ -220,11 +212,15 @@ def seed_event_order(model: RoadrunnerSBMLModel, seed: int = 1) -> None:
     order. The seed is also the one of the models roadrunner creates later in
     the process, i.e. of a regenerated model.
 
+    Another engine orders simultaneous events of equal priority itself and
+    draws nothing, so there is nothing to seed and this does nothing.
+
     Args:
         model: the loaded model.
         seed: the seed.
     """
-    model.r_loaded.setSeed(seed, False)
+    if isinstance(model, RoadrunnerSBMLModel):
+        model.r_loaded.setSeed(seed, False)
 
 
 def repeat_difference(
@@ -260,7 +256,7 @@ def repeat_difference(
 
 
 def _steady_state(
-    case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
+    case: SemanticCase, simulator: Simulator, model: SBMLModel
 ) -> TimecourseResult | str:
     """Simulate a case after a steady state, the results or why it failed."""
     seed_event_order(model)
@@ -275,7 +271,7 @@ def _steady_state(
 def repeat_check(
     case: SemanticCase,
     simulator: Simulator,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     first: TimecourseResult,
 ) -> str:
     """Simulate a case again on its loaded model and describe what differs.
@@ -388,6 +384,7 @@ def run_suite(
     suite: SemanticSuite,
     cids: Iterable[str] | None = None,
     workers: int | None = None,
+    engine: Engine = DEFAULT_ENGINE,
 ) -> list[CaseResult]:
     """Run the cases of a suite.
 
@@ -396,16 +393,19 @@ def run_suite(
         cids: identifiers to run, all timecourse cases by default.
         workers: number of processes the cases are run in, the cores available
             to this process by default; `1` runs them in this process.
+        engine: the engine to simulate the cases with, the default engine of
+            the package by default.
 
     Returns:
         The results, in the order of the case identifiers.
     """
     selected = set(cids) if cids is not None else None
     cases = [case for case in suite.cases() if selected is None or case.cid in selected]
-    return map_cases(run_case, cases, workers=workers)
+    run = run_case if engine is DEFAULT_ENGINE else partial(run_case, engine=engine)
+    return map_cases(run, cases, workers=workers)
 
 
-def run_case(case: SemanticCase) -> CaseResult:
+def run_case(case: SemanticCase, engine: Engine = DEFAULT_ENGINE) -> CaseResult:
     """Run a case of the suite and compare it with the expected results.
 
     Every failure is a result: a model which cannot be read, an integration
@@ -414,6 +414,9 @@ def run_case(case: SemanticCase) -> CaseResult:
 
     Args:
         case: the case to run.
+        engine: the engine to simulate the case with, the default engine of
+            the package by default. roadrunner is the reference the other
+            engines are measured against (`docs/testsuite.md`).
 
     Returns:
         The result of the case with its status and its comparison.
@@ -440,15 +443,15 @@ def run_case(case: SemanticCase) -> CaseResult:
     if case.conversion_error:
         return result(CaseStatus.NOT_CONVERTED, case.conversion_error[:300])
 
-    simulator = Simulator(
-        n_workers=1,
-        # the cases answer what libroadrunner supports, so they name the
-        # engine and do not follow the default engine of the package
-        engine=Engine.ROADRUNNER,
-        absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
-        relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
-        variable_step_size=False,
-    )
+    settings: dict[str, Any] = {
+        "absolute_tolerance": INTEGRATOR_ABSOLUTE_TOLERANCE,
+        "relative_tolerance": INTEGRATOR_RELATIVE_TOLERANCE,
+    }
+    if engine is Engine.ROADRUNNER:
+        # the setting of roadrunner which the other engines have no
+        # equivalent of and report once per model
+        settings["variable_step_size"] = False
+    simulator = Simulator(n_workers=1, engine=engine, **settings)
     try:
         model = load_case_model(case, simulator)
     except Exception as err:

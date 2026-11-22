@@ -13,12 +13,14 @@ from __future__ import annotations
 import json
 import logging
 import zipfile
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from sbmlsim import __version__
-from sbmlsim.engine import Engine
+from sbmlsim.engine import DEFAULT_ENGINE, Engine
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
@@ -33,7 +35,9 @@ from sbmlsim.testsuite.runner import (
 logger = logging.getLogger(__name__)
 
 
-def case_csv(case: SemanticCase) -> tuple[str | None, str]:
+def case_csv(
+    case: SemanticCase, engine: Engine = DEFAULT_ENGINE
+) -> tuple[str | None, str]:
     """Simulate a case and write its results as the submission names them.
 
     The function runs in the processes of `map_cases`, which do not share the
@@ -42,19 +46,20 @@ def case_csv(case: SemanticCase) -> tuple[str | None, str]:
 
     Args:
         case: the case to simulate.
+        engine: the engine to simulate the case with, the default engine of
+            the package by default.
 
     Returns:
         The CSV of the results and an empty message, or `None` and why the case
         could not be read or integrated.
     """
-    simulator = Simulator(
-        n_workers=1,
-        # the submission is libroadrunner's, see `run_case`
-        engine=Engine.ROADRUNNER,
-        absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
-        relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
-        variable_step_size=False,
-    )
+    settings: dict[str, Any] = {
+        "absolute_tolerance": INTEGRATOR_ABSOLUTE_TOLERANCE,
+        "relative_tolerance": INTEGRATOR_RELATIVE_TOLERANCE,
+    }
+    if engine is Engine.ROADRUNNER:
+        settings["variable_step_size"] = False
+    simulator = Simulator(n_workers=1, engine=engine, **settings)
     try:
         model = simulator.load(AbstractModel(source=case.model_path))
         observed = simulate_case(case, simulator, model)
@@ -69,7 +74,10 @@ def case_csv(case: SemanticCase) -> tuple[str | None, str]:
 
 
 def write_submission(
-    suite: SemanticSuite, output_dir: Path, workers: int | None = None
+    suite: SemanticSuite,
+    output_dir: Path,
+    workers: int | None = None,
+    engine: Engine = DEFAULT_ENGINE,
 ) -> Path:
     """Write the archive which is submitted to the SBML Test Suite Database.
 
@@ -78,12 +86,17 @@ def write_submission(
         output_dir: directory the archive is written into.
         workers: number of processes the cases are simulated in, the cores
             available to this process by default.
+        engine: the engine the cases are simulated with, the default engine
+            of the package by default; the manifest records it.
 
     Returns:
         Path of the archive.
     """
     cases = list(suite.cases())
-    results = map_cases(case_csv, cases, workers=workers)
+    simulate = (
+        case_csv if engine is DEFAULT_ENGINE else partial(case_csv, engine=engine)
+    )
+    results = map_cases(simulate, cases, workers=workers)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"sbmlsim-{__version__}-sbml-test-suite-{suite.commit[:7]}.zip"
@@ -100,6 +113,7 @@ def write_submission(
             json.dumps(
                 {
                     "simulator": "sbmlsim",
+                    "engine": engine.value,
                     "versions": versions(),
                     "suite_commit": suite.commit,
                     "n_cases": len(cases),

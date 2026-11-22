@@ -1,6 +1,6 @@
 # SBML Test Suite
 
-The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the conformance suite of SBML. Each semantic case is a small model, a settings file that says how to simulate it, and a CSV file with the results a correct simulator produces. The tags of a case say which parts of SBML it uses. Running the suite tells you which parts of SBML `sbmlsim`, and with it libroadrunner, simulates correctly.
+The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the conformance suite of SBML. Each semantic case is a small model, a settings file that says how to simulate it, and a CSV file with the results a correct simulator produces. The tags of a case say which parts of SBML it uses. Running the suite tells you which parts of SBML `sbmlsim` simulates correctly with the engine it runs them on.
 
 [The report of the current run](testsuite/report/index.html) is built with the documentation from the `develop` branch; you can filter it by outcome and by tag.
 
@@ -19,11 +19,32 @@ uv run python scripts/testsuite.py report --output site/testsuite/report
 
 The cases run in parallel, one process per core. `--workers` sets the number of processes, and `--workers 1` runs everything in one process. `--commit latest` runs the head of the branch `develop` of the suite instead of the pinned commit.
 
+`--engine` picks the engine. The cases run on the engine core, the default engine of the package, and roadrunner is the reference they are measured against:
+
+```bash
+uv run python scripts/testsuite.py run --engine roadrunner
+```
+
 The cases are cached in `~/.cache/sbmlsim/test-suite/<commit>/` (or under `XDG_CACHE_HOME` when it is set). If you keep the cases somewhere else, for example on a machine without network access, point `SBMLSIM_TEST_SUITE_PATH` at that directory.
 
 ## What is run
 
-The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and 1576 of them pass. Of the 213 that do not, 206 cannot be read, 5 fail in the integrator (see [roadrunner and the stoichiometry math](#roadrunner-and-the-stoichiometry-math)) and 2 cannot be converted to SBML level 3.
+The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and **1754 of them pass on the engine core**. The 35 that do not are the 35 cases of a fast reaction, which the compiler of the engine does not support: 33 are refused when the model is read and 2 when it is converted (see [cases which are refused or cannot be integrated](#cases-which-are-refused-or-cannot-be-integrated)). There is no case the engine reads and then simulates outside the tolerances of the suite.
+
+How the engines compare on the same 1789 cases:
+
+| engine | pass | not read | integration failed | not converted |
+|---|---|---|---|---|
+| core (the default) | **1754** | 33 | 0 | 2 |
+| roadrunner (the reference) | 1576 | 206 | 5 | 2 |
+
+The 35 cases the engine core does not pass are **a strict subset of the 213 roadrunner does not**: there is no case which passes on roadrunner and fails on the engine core. The 178 cases the engine core passes and roadrunner does not are
+
+| why roadrunner refuses them | cases |
+|---|---|
+| `Unable to support algebraic rules` (the engine core simulates them with SUNDIALS IDA since sbmlsim-core 0.10.0) | 123 |
+| `Unable to support delay differential equations` (an integrator of its own for the delays since sbmlsim-core 0.11.0) | 50 |
+| `CV_CONV_FAILURE` on a `stoichiometryMath` (see [roadrunner and the stoichiometry math](#roadrunner-and-the-stoichiometry-math)) | 5 |
 
 Only the timecourse cases run, each in SBML level 3, which is the only level `sbmlsim` simulates:
 
@@ -59,7 +80,7 @@ A case that does not pass gets one of six outcomes. The report shows them separa
 2. a simulation of half the duration, followed by the full simulation,
 3. the simulation with a steady state before it, compared with the same on a freshly loaded model.
 
-libroadrunner runs simultaneous events of the same priority in a random order. The runner seeds the random generator of the model before every simulation, so these cases are reproducible. Regenerating a model, which checks 2 and 3 can do, also draws from that generator, so for the cases tagged `RandomEventExecution`, checks 2 and 3 compare with the expected results within the tolerances of the case instead of bit for bit. All 1576 cases that pass also pass this check.
+libroadrunner runs simultaneous events of the same priority in a random order. The runner seeds the random generator of the model before every simulation, so these cases are reproducible; another engine orders them itself and draws nothing, so the seeding does nothing there. Regenerating a model, which checks 2 and 3 can do, also draws from that generator, so for the cases tagged `RandomEventExecution`, checks 2 and 3 compare with the expected results within the tolerances of the case instead of bit for bit. Every case that passes also passes this check, on either engine.
 
 ## Cases which are refused or cannot be integrated
 
@@ -67,11 +88,11 @@ libroadrunner runs simultaneous events of the same priority in a random order. T
 
 ### roadrunner and the stoichiometry math
 
-The cases 01435, 01437, 01439, 01441 and 01443 end as `simulation_error`. They are level 2 models with a `stoichiometryMath`, which level 3 does not have. libsbml converts it into an assignment rule of the species reference, marks the reference as non-constant and leaves its stoichiometry unset. That is a correct level 3 translation, and it logs nothing, so the conversion is not refused. libroadrunner cannot integrate such a model: CVODE stops at the start of the integration with `CV_CONV_FAILURE`. These five cases passed before `sbmlsim` converted every model to level 3. This is a limitation of libroadrunner, and `sbmlsim` does not work around it. The baseline lists them, and the entries go away when roadrunner integrates a species reference with a rule.
+The cases 01435, 01437, 01439, 01441 and 01443 end as `simulation_error`. They are level 2 models with a `stoichiometryMath`, which level 3 does not have. libsbml converts it into an assignment rule of the species reference, marks the reference as non-constant and leaves its stoichiometry unset. That is a correct level 3 translation, and it logs nothing, so the conversion is not refused. libroadrunner cannot integrate such a model: CVODE stops at the start of the integration with `CV_CONV_FAILURE`. These five cases passed before `sbmlsim` converted every model to level 3. This is a limitation of libroadrunner and `sbmlsim` does not work around it; **the engine core integrates all five**, so they pass on the default engine and this section is about the reference alone.
 
 ## Part of the tests of sbmlsim
 
-`tests/testsuite/test_semantic.py` has one test per case, so a failure names the case. The tests carry the marker `testsuite`, and a normal `pytest` skips them: they mostly test libroadrunner, which a change to `sbmlsim` rarely affects, and they take longer than all other tests together. Run them with
+`tests/testsuite/test_semantic.py` has one test per case, so a failure names the case. The tests carry the marker `testsuite`, and a normal `pytest` skips them: they mostly test the engine, which a change to `sbmlsim` rarely affects, and they take longer than all other tests together. Run them with
 
 ```bash
 pytest -m testsuite          # the cases must be downloaded first
@@ -102,4 +123,4 @@ The results of a run can be submitted to the SBML Test Suite Database:
 uv run python scripts/testsuite.py submission --output dist
 ```
 
-This writes a zip archive with one CSV file per case that could be simulated, named after the case, and a `manifest.json` with the versions of `sbmlsim`, libroadrunner and libsbml and the commit of the suite. A case that cannot be read or integrated has no CSV file, which is how a submission says it is not supported. The release workflow builds this archive against the pinned commit and attaches it to the GitHub release. Uploading it to the database is done by hand.
+This writes a zip archive with one CSV file per case that could be simulated, named after the case, and a `manifest.json` with the engine, the versions of `sbmlsim`, libroadrunner and libsbml and the commit of the suite. A case that cannot be read or integrated has no CSV file, which is how a submission says it is not supported. The release workflow builds this archive against the pinned commit and attaches it to the GitHub release. Uploading it to the database is done by hand.

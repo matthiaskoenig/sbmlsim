@@ -151,13 +151,9 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
 #: of a simulation (0023); 0025 has parameters which have a prior and no bounds.
 ENGINE_GAPS: dict[str, str] = {
     "0016": "unsupported",
-    "0020": "unsupported",
     "0023": "unsupported",
     "0025": "parameter",
-    "0026": "unsupported",
-    "0027": "unsupported",
     "0030": "unsupported",
-    "0032": "unsupported",
 }
 
 

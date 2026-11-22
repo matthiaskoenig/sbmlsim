@@ -12,7 +12,6 @@ import pytest
 import scipy.stats
 import yaml
 
-from sbmlsim.engine import Engine
 from sbmlsim.fit.petab_v2.likelihood import chi2, log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.testsuite import (
@@ -51,9 +50,6 @@ def _case(directory: Path, cid: str = "9001", **solution: Any) -> Path:
 
     reader = PetabReader.from_yaml(case_dir / f"_{cid}.yaml")
     problem = reader.to_optimization_problem()
-    # the solution is simulated with the engine a case runs with, see
-    # `PetabCase._compare`
-    problem.engine = Engine.ROADRUNNER
     problem.initialize(CASE_SETTINGS)
     nominal = reader.nominal_parameters(problem)
     (prediction,) = problem.predictions(nominal.x(problem.pids)).values()
