@@ -837,6 +837,38 @@ def test_a_steady_state_after_the_end_continues_from_the_end(
     )
 
 
+#: a model which relaxes to `target`, so the steady state after the end is
+#: the value of a parameter and differs from point to point in a scan
+RELAXATION: Final[str] = """
+model relaxation
+  k = 0.5; target = 7; x = 0
+  x' = k*(target - x)
+end
+"""
+
+
+def test_the_steady_state_of_a_point_of_a_scan_is_its_own() -> None:
+    """Every point of a scan continues its steady state from its own end.
+
+    The requests of the steady states of a chunk are simulated as one batch,
+    as its folds are, so the state of every point must be carried into its
+    own request: the model relaxes to `target`, which the scan sets, so a
+    point which read the state of another would answer the target of that
+    one. The values are the ones of roadrunner.
+    """
+    source = sbml(RELAXATION)
+    simulation = Simulation(start=0, end=2, times=[0.0, 1.0, 2.0, float("inf")])
+    targets = np.array([3.0, 7.0, 11.0])
+    scan = Scan(simulation, [Dimension(id="d", values={"target": targets})])
+    core = Simulator(engine="core", n_workers=1).run(source, scan)
+    roadrunner = Simulator(engine="roadrunner", n_workers=1, **TIGHT).run(source, scan)
+    # the last time of every point is the steady state, the target it relaxes to
+    np.testing.assert_allclose(np.asarray(core.ds["x"])[:, -1], targets, atol=1e-6)
+    np.testing.assert_allclose(
+        np.asarray(core.ds["x"]), np.asarray(roadrunner.ds["x"]), rtol=1e-6, atol=1e-9
+    )
+
+
 def test_a_steady_state_after_the_end_of_a_model_with_events_is_refused() -> None:
     """A model with events keeps the refusal, since a request carries no trigger state.
 
