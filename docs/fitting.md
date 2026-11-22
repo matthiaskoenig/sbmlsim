@@ -574,12 +574,12 @@ parameter      start   lower   upper   unit
 Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                2
-workers             1 (serial)
+workers             1 (threads of the engine, one fit)
 converged           2/2 runs
 best cost           1.09898
-optimizer time      0.2 s
+optimizer time      0.1 s
 2 runs read back
-versions: python, sbmlsim, libroadrunner, scipy, numpy
+versions: python, sbmlsim, libroadrunner, scipy, numpy, sbmlsim-core
 checksums of 10 files
 ```
 
