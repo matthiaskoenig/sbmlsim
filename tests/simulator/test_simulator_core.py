@@ -813,21 +813,75 @@ def test_a_pre_initialization_formula_of_a_compartment_or_a_species_is_folded(
     )
 
 
-def test_a_steady_state_after_the_end_is_refused(
+def test_a_steady_state_after_the_end_continues_from_the_end(
     model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
 ) -> None:
-    """The steady state after the end of a simulation is no part of the contract.
+    """The steady state after the end is a second request from the state of the end.
 
     The `steady_state` of a request is the pre-equilibration before the start,
-    so one request cannot continue from the state the timecourse ended in:
-    roadrunner answers the output time `inf` with the row of the steady state
-    after the end, which the engine refuses rather than leaving out.
+    so one request cannot continue from the state the timecourse ended in: the
+    executor carries that state into the pre-initialization of a second
+    request whose steady state is the criterion of the plan, and its row is
+    the one of roadrunner at the output time `inf`.
     """
     simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
-    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
-        Simulator(engine="core").simulate(model_core, simulation)
+    core = Simulator(engine="core").simulate(model_core, simulation)
     roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core.values[-1, 0] == float("inf")
     assert roadrunner.values[-1, 0] == float("inf")
+    assert core.columns == roadrunner.columns
+    # the row of the steady state, which neither integrator carries an error
+    # of the timecourse into: both equilibrate from the state of the end
+    np.testing.assert_allclose(
+        core.values[-1, 1:], roadrunner.values[-1, 1:], rtol=1e-6, atol=1e-9
+    )
+
+
+#: a model which relaxes to `target`, so the steady state after the end is
+#: the value of a parameter and differs from point to point in a scan
+RELAXATION: Final[str] = """
+model relaxation
+  k = 0.5; target = 7; x = 0
+  x' = k*(target - x)
+end
+"""
+
+
+def test_the_steady_state_of_a_point_of_a_scan_is_its_own() -> None:
+    """Every point of a scan continues its steady state from its own end.
+
+    The requests of the steady states of a chunk are simulated as one batch,
+    as its folds are, so the state of every point must be carried into its
+    own request: the model relaxes to `target`, which the scan sets, so a
+    point which read the state of another would answer the target of that
+    one. The values are the ones of roadrunner.
+    """
+    source = sbml(RELAXATION)
+    simulation = Simulation(start=0, end=2, times=[0.0, 1.0, 2.0, float("inf")])
+    targets = np.array([3.0, 7.0, 11.0])
+    scan = Scan(simulation, [Dimension(id="d", values={"target": targets})])
+    core = Simulator(engine="core", n_workers=1).run(source, scan)
+    roadrunner = Simulator(engine="roadrunner", n_workers=1, **TIGHT).run(source, scan)
+    # the last time of every point is the steady state, the target it relaxes to
+    np.testing.assert_allclose(np.asarray(core.ds["x"])[:, -1], targets, atol=1e-6)
+    np.testing.assert_allclose(
+        np.asarray(core.ds["x"]), np.asarray(roadrunner.ds["x"]), rtol=1e-6, atol=1e-9
+    )
+
+
+def test_a_steady_state_after_the_end_of_a_model_with_events_is_refused() -> None:
+    """A model with events keeps the refusal, since a request carries no trigger state.
+
+    A request initializes the model, where a trigger which the state carried
+    into it makes true fires again, while the executor of roadrunner
+    continues with the triggers as the timecourse left them: case 0023 of the
+    PEtab test suite, whose event adds 1000 to its state at the threshold its
+    steady state is past, answered 2500 against roadrunner's 1500.
+    """
+    source = sbml(EVENT_AT_FIVE)
+    simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
+    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
+        Simulator(engine="core").simulate(source, simulation)
 
 
 def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_loaded(
@@ -853,23 +907,27 @@ def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_l
     _compare(core, roadrunner)
 
 
-def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number_is_refused(
-    model_core: CoreSBMLModel,
+def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
 ) -> None:
-    """One number of the same pre-initialization makes it the mixed case.
+    """One number of the same pre-initialization does not change the fold.
 
-    The values it sets are not on the model when the formula is evaluated, so
-    the executor cannot tell the value of `k1` the formula reads any more and
-    refuses it, see `test_a_pre_initialization_formula_of_a_value_which_is_not_set_is_refused`.
+    `k1` is a constant parameter of the model, the variable of no rule and of
+    no initial assignment, so nothing the pre-initialization sets can move it
+    and the value of the model as loaded is the one roadrunner reads there
+    too, whatever else is set (`executor_core._constant_parameter`). The
+    number of `a0` is set before the formulas are evaluated and reaches none
+    of them, so `k2` is `2 * 0.8` here as it is without it.
     """
     simulation = Simulation(
         end=20,
         preinit_changes={"k2": "2 * k1", "k1": "3 * f", "a0": 2.0},
-        times=[0.0, 20.0],
+        times=np.linspace(0, 20, 21).tolist(),
     )
-    with pytest.raises(UnsupportedModelError, match="formula") as failure:
-        Simulator(engine="core").simulate(model_core, simulation)
-    assert "'k1'" in str(failure.value)
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k2"][0] == 2.0 * 0.8
+    _compare(core, roadrunner)
 
 
 @pytest.mark.parametrize(

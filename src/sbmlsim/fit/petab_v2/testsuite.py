@@ -43,7 +43,6 @@ import pandas as pd
 import yaml
 
 from sbmlsim.atomic import atomic_directory
-from sbmlsim.engine import Engine
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.conversion import convert_v1
 from sbmlsim.fit.petab_v2.likelihood import (
@@ -250,13 +249,6 @@ class PetabCase:
         solution = self.solution
         reader = PetabReader.from_yaml(self.problem_file)
         problem = reader.to_optimization_problem(opid=f"case_{self.cid}")
-        # a case answers what the PEtab layer of sbmlsim does with the
-        # semantics of PEtab and not what an engine simulates, so it names
-        # roadrunner and does not follow the default engine of the package, as
-        # the cases of the SBML Test Suite do (`sbmlsim.testsuite.runner`); the
-        # cases as fits of the engine core are in
-        # `tests/fit/test_petab_testsuite.py`
-        problem.engine = Engine.ROADRUNNER
         problem.initialize(CASE_SETTINGS)
         nominal = reader.nominal_parameters(problem)
         # the problem is simulated once, every value is calculated from it

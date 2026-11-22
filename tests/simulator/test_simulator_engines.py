@@ -262,9 +262,11 @@ def test_the_spec_of_a_model_loads_it_with_the_settings(other_engine: Engine) ->
 
 #: what the engine core says when it refuses a formula before the
 #: initialization: a value of a request is a number and the model of the engine
-#: is stateless, so the executor folds only the formula of a parameter whose
-#: symbols the same pre-initialization sets to numbers or sets none of, a known
-#: difference of `sbmlsim.simulator.executor_core` which
+#: is stateless, so the executor folds only a symbol whose value it knows
+#: without the model, one the same pre-initialization sets to a number and one
+#: which is a constant parameter of the model, the variable of no rule and of
+#: no initial assignment, which nothing the pre-initialization sets can move;
+#: a known difference of `sbmlsim.simulator.executor_core` which
 #: `tests.simulator.test_simulator_core` pins
 PREINIT_FORMULA_REFUSED: str = (
     "does not simulate the formula .* before the initialization"
@@ -286,7 +288,8 @@ STEADY_STATE_REFUSED: str = "does not simulate the steady state after the end"
     [
         pytest.param("q", True, id="a target"),
         pytest.param("p", False, id="a dependent of a target"),
-        pytest.param("u", False, id="an unrelated parameter"),
+        pytest.param("u", True, id="an unrelated parameter"),
+        pytest.param("q + u", True, id="a target and an unrelated parameter"),
         pytest.param("rq", False, id="a rule of a target"),
         pytest.param("rp", False, id="a rule of a dependent of a target"),
         pytest.param("rc + ra", False, id="rules of a species in a set compartment"),
@@ -298,9 +301,12 @@ def test_preinit_formulas_read_what_they_read_in_roadrunner(
 ) -> None:
     """A formula reads the values set and as loaded, as in roadrunner (PEtab v2).
 
-    `folded` is whether the engine core can fold the formula, i.e. whether
-    every symbol of it is a parameter which the same pre-initialization sets
-    to a number: it refuses the others, see `PREINIT_FORMULA_REFUSED`.
+    `folded` is whether the engine core can fold the formula, i.e. whether it
+    knows the value of every symbol of it without the model: one the same
+    pre-initialization sets to a number, and a constant parameter of the
+    model, whose value nothing the pre-initialization sets can move. It
+    refuses the others, see `PREINIT_FORMULA_REFUSED`. A folded formula is
+    compared with roadrunner, which is what holds the fold to its values.
     """
     simulation = Simulation(
         end=10,
@@ -615,11 +621,8 @@ def test_a_later_time_column_is_the_time_of_the_rows(
             times=times,
         )
     )
-    # the last of the given times is the steady state after the end
-    if other_engine is Engine.CORE and times is not None:
-        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
-            Simulator(engine=other_engine).simulate(model, simulation)
-        return
+    # the last of the given times is the steady state after the end, which the
+    # engine core continues from the state the timecourse ended in
     results = {
         engine: Simulator(engine=engine).simulate(model, simulation)
         for engine in (Engine.ROADRUNNER, other_engine)

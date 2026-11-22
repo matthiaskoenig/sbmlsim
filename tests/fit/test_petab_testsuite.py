@@ -147,17 +147,15 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
 #: what the engine does not simulate, for a fit as for a simulation: a value
 #: before the initialization or at a change which the executor cannot fold into
 #: a number (0020, 0026, 0027, 0032 read a parameter the fit estimates, 0016 and
-#: 0030 the state of the model at the change) and a steady state after the end
-#: of a simulation (0023); 0025 has parameters which have a prior and no bounds.
+#: 0030 the state of the model before the events of the time of the change,
+#: sbmlsim-core#19) and a steady state after the end of a simulation of a model
+#: with events, whose triggers a request carries no state of (0023,
+#: sbmlsim-core#60); 0025 has parameters which have a prior and no bounds.
 ENGINE_GAPS: dict[str, str] = {
     "0016": "unsupported",
-    "0020": "unsupported",
     "0023": "unsupported",
     "0025": "parameter",
-    "0026": "unsupported",
-    "0027": "unsupported",
     "0030": "unsupported",
-    "0032": "unsupported",
 }
 
 
