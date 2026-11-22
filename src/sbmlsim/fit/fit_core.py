@@ -97,7 +97,7 @@ from sbmlsim.fit.options import (
     ResidualType,
 )
 from sbmlsim.fit.sampling import SamplingType
-from sbmlsim.simulator.formula import compile_formula, parse_math
+from sbmlsim.simulator.formula import compile_formula, linear_form
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
@@ -1448,84 +1448,6 @@ def _parts_of(problem: OptimizationProblem, mapping: int) -> list[_Part]:
     if row is not None:
         parts.append(_Part(names[row], tuple(at)))
     return parts
-
-
-def linear_form(
-    formula: str,
-    targets: Mapping[str, int],
-    constants: Mapping[str, float] | None = None,
-) -> tuple[float, list[tuple[int, float]]] | None:
-    """Get a formula as a linear form over the parameters of a fit.
-
-    A value of a request of the engine is a number, so a condition whose
-    value is a parameter the fit estimates carries it as a derived value, a
-    linear form `constant + Σ factor * parameter` which the engine evaluates
-    at the values the optimizer is at (`_derived_of`, the contract `fit/1` of
-    sbmlsim-core `DERIVED_VERSION`). This reads such a form off the formula
-    of an assignment.
-
-    The formula is the math of PEtab over the entities of the model, and the
-    engine searches the entity of a parameter, so a coefficient of the form
-    is the coefficient of the formula and needs no factor of a unit
-    (`_factors_of`).
-
-    Args:
-        formula: the formula of the assignment.
-        targets: the position in the parameters of the fit of every entity
-            one of them writes.
-        constants: the value of every other symbol the form may read, the
-            numbers the pre-initialization sets and the constant parameters
-            of the model, which the executor folds the same way
-            (`executor_core._preinit_value`); none by default, where a
-            formula may read the parameters of the fit alone.
-
-    Returns:
-        The constant and the factor of every parameter the form reads, by its
-        position, or `None` for a formula which is no linear form over those
-        parameters alone: one which reads anything else, which is not
-        polynomial in them, which is of a higher degree, or whose
-        coefficients are not finite numbers. A formula of no parameter is
-        `None` as well: it is a number the executor folds itself.
-    """
-    import sympy
-
-    expression = parse_math(formula)
-    # the symbols of the expression itself: the parser gives them assumptions,
-    # so a `sympy.Symbol` of the same name is another symbol, which `Poly`
-    # would take for a constant of its domain and read a degree of 0 off
-    free = sorted(expression.free_symbols, key=str)
-    known = constants or {}
-    if any(str(symbol) not in targets and str(symbol) not in known for symbol in free):
-        return None
-    fixed = [
-        (symbol, sympy.Float(known[str(symbol)]))
-        for symbol in free
-        if str(symbol) in known
-    ]
-    if fixed:
-        expression = expression.subs(fixed)
-        free = sorted(expression.free_symbols, key=str)
-    if not free:
-        return None
-    try:
-        polynomial = sympy.Poly(expression, *free)
-    except sympy.PolynomialError, TypeError, ValueError:
-        return None
-    if polynomial.total_degree() > 1:
-        return None
-    try:
-        constant = float(polynomial.coeff_monomial(1))
-        terms = [
-            (targets[str(symbol)], float(polynomial.coeff_monomial(symbol)))
-            for symbol in free
-        ]
-    except TypeError, ValueError:
-        return None
-    if not math.isfinite(constant) or any(
-        not math.isfinite(factor) for _, factor in terms
-    ):
-        return None
-    return constant, terms
 
 
 def _derived_of(

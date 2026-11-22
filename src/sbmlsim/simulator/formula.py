@@ -255,6 +255,81 @@ def compile_formula(formula: str) -> CompiledFormula:
     return CompiledFormula(formula=formula, symbols=symbols, _function=function)
 
 
+def linear_form(
+    formula: str,
+    targets: Mapping[str, int],
+    constants: Mapping[str, float] | None = None,
+) -> tuple[float, list[tuple[int, float]]] | None:
+    """Get a formula as a linear form over the symbols a caller names.
+
+    A linear form is `constant + Σ factor * symbol`. The fit reads it over
+    the parameters it estimates, which the engine evaluates at the values the
+    optimizer is at (`_derived_of`, the contract `fit/1` of sbmlsim-core
+    `DERIVED_VERSION`), and the executor over the entities of a model. This
+    reads such a form off the formula of an assignment.
+
+    The formula is the math of PEtab over the entities of the model, and the
+    engine searches the entity of a parameter, so a coefficient of the form
+    is the coefficient of the formula and needs no factor of a unit
+    (`_factors_of`).
+
+    Args:
+        formula: the formula of the assignment.
+        targets: the position in the terms of every symbol the form may
+            read, e.g. the entity each parameter of a fit writes.
+        constants: the value of every other symbol the form may read, the
+            numbers the pre-initialization sets and the constant parameters
+            of the model, which the executor folds the same way
+            (`executor_core._preinit_value`); none by default, where a
+            formula may read the parameters of the fit alone.
+
+    Returns:
+        The constant and the factor of every symbol the form reads, by its
+        position, or `None` for a formula which is no linear form over those
+        symbols alone: one which reads anything else, which is not
+        polynomial in them, which is of a higher degree, or whose
+        coefficients are not finite numbers. A formula of no symbol is
+        `None` as well: it is a number the executor folds itself.
+    """
+    expression = parse_math(formula)
+    # the symbols of the expression itself: the parser gives them assumptions,
+    # so a `sp.Symbol` of the same name is another symbol, which `Poly`
+    # would take for a constant of its domain and read a degree of 0 off
+    free = sorted(expression.free_symbols, key=str)
+    known = constants or {}
+    if any(str(symbol) not in targets and str(symbol) not in known for symbol in free):
+        return None
+    fixed = [
+        (symbol, sp.Float(known[str(symbol)]))
+        for symbol in free
+        if str(symbol) in known
+    ]
+    if fixed:
+        expression = expression.subs(fixed)
+        free = sorted(expression.free_symbols, key=str)
+    if not free:
+        return None
+    try:
+        polynomial = sp.Poly(expression, *free)
+    except sp.PolynomialError, TypeError, ValueError:
+        return None
+    if polynomial.total_degree() > 1:
+        return None
+    try:
+        constant = float(polynomial.coeff_monomial(1))
+        terms = [
+            (targets[str(symbol)], float(polynomial.coeff_monomial(symbol)))
+            for symbol in free
+        ]
+    except TypeError, ValueError:
+        return None
+    if not math.isfinite(constant) or any(
+        not math.isfinite(factor) for _, factor in terms
+    ):
+        return None
+    return constant, terms
+
+
 #: the types of the numbers a compiled formula computes with as doubles of numpy
 _NUMBERS = (int, float, np.number)
 
