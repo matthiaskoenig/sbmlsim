@@ -19,7 +19,19 @@ time 0 whatever the start, the changes of PEtab v2 (the values of a change set
 at once, a compartment which keeps the concentrations of its species, the
 events a change triggers fired with it) and the output of the steps of the
 integrator or of the given times, with two rows at the time of a change after
-the start, the state before the change and the state after it.
+the start, the state before the change and the state after it. A steady state
+after the end of a simulation, the output at the time `inf` of
+`Plan.steady_state_output`, is the field `steady_state_after` of the same
+request (`_steady_state_after`, sbmlsim-core 0.18.0, sbmlsim-core#60): the
+engine continues from the state the timecourse of that request ended in, with
+the triggers of its events as the timecourse left them, so an event which
+fired during the timecourse does not fire again, and its row is the last of
+the output, at the time `inf`. Its `from`, the time the integration to it
+starts at, is the end of the timecourse for a model whose math reads the time
+or whose events have a delay (`ModelSymbols.time_dependent`), where the
+executor of roadrunner continues at the clock of its model, and 0 for every
+other one, which is what `steady_state` of `sbmlsim.simulator.executor`
+passes, so the two agree whatever the model.
 
 A simulation which fails raises the error of its cause and not one of the
 bindings (`_failed`): a simulation the engine does not support is an
@@ -35,7 +47,7 @@ changes of those points are batched over the points as well (`requests_of`),
 so an error of a fold is the error of its point and of no other.
 
 The known differences to the executor of roadrunner, the first five of which
-the engine documents:
+the engine documents, and the one refusal which is left:
 
 1. A change which sets a state exactly to the threshold of a strict
    comparison of a trigger fires its event right after the change, as the
@@ -55,24 +67,7 @@ the engine documents:
 5. The roots of a condition which chatters share that budget as well, so a
    model which roadrunner finishes after millions of steps may end with
    `CV_TOO_MUCH_WORK` here.
-6. A steady state after the end of a simulation, the output at the time
-   `inf` of `Plan.steady_state_output`, is no part of the contract: the
-   `steady_state` of a request is the pre-equilibration before the start
-   alone, so such a plan cannot be expressed as one request. The executor
-   continues from the state the timecourse ended in with a second request
-   whose pre-initialization carries that state and whose `steady_state` is
-   the criterion of the plan (`steady_state_rows`, `steady_state_request`; a
-   pre-initialization value holds over the initial assignment of its target,
-   as PEtab v2 says, and the requests of the points of a chunk are simulated
-   as one batch, as their folds are). Three models keep the refusal of
-   `check_supported`, each named by `steady_state_gap`: a model with events
-   of its own, whose triggers a request cannot be told the state of, so one
-   which the carried state makes true fires again (sbmlsim-core#60); a model
-   which reads the time, since the steady state of a request is from the time 0
-   whatever the start of its simulation, while the executor of roadrunner
-   continues at the time the timecourse ended at; and a model whose state the
-   executor cannot set (`resume_targets`).
-7. A value of a request is a number, so a value which a plan sets by a
+6. A value of a request is a number, so a value which a plan sets by a
    formula is folded before the request is sent and refused where the
    executor cannot fold it (`check_supported`).
 
@@ -84,20 +79,13 @@ the engine documents:
    the selections of roadrunner, which is what `apply_changes` of
    `sbmlsim.simulator.changes` reads of the model of roadrunner, so a formula
    of a parameter, a compartment, an amount `S` or a concentration `[S]` is
-   the value of roadrunner. The probe of a model with events ends one unit in
-   the last place before the time of the change (`probe_end`, `segment_stop`),
-   where the executor of roadrunner reads the state as well, and two cases are
-   refused (`_check_change`): a symbol which is no output of the engine, which
-   only a plan built by hand reaches, since `compile_simulation` refuses a
-   symbol the model has not, and a symbol an event of the model assigns or
-   which follows such a target through an assignment rule (`_event_moved`).
-   The engine fires an event of a time for an end within about 1e-9 of it, far
-   wider than the unit in the last place CVODE resolves, so the probe cannot
-   tell the state before the events of the time of the change from the state
-   after them: a formula which reads what such an event moves would disagree
-   with roadrunner silently and is refused instead (sbmlsim-core#19). A
-   formula which reads only what no event moves is folded, whatever events
-   the model has.
+   the value of roadrunner. The probe of a model with events carries
+   `before_events`, so the engine integrates to the time of the change and
+   does not fire the events there, which makes the last row of its output the
+   state the executor of roadrunner folds (`probe_before_events`,
+   sbmlsim-core 0.18.0, sbmlsim-core#19); only a symbol which is no output of
+   the engine is refused (`_check_change`), which only a plan built by hand
+   reaches, since `compile_simulation` refuses a symbol the model has not.
 
    The folded value is the state of a request which ends at the change, where
    the integrator stops, and not of the request of the plan, which integrates
@@ -182,22 +170,17 @@ the engine documents:
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 from math import isfinite
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from typing import TYPE_CHECKING, Any, Final
 
-import numpy as np
-
 from sbmlsim.engine import UnsupportedModelError, import_core
-from sbmlsim.model.symbols import EventSymbols, ModelSymbols, TargetKind
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult, TimecourseSensitivities
 from sbmlsim.simulator.executor import (
     SteadyStateError,
-    integrable,
     output_columns,
     output_time,
-    segment_stop,
 )
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.simulator.plan import (
@@ -278,10 +261,7 @@ def execute(
     """
     core = import_core()
     columns = output_columns(selections)
-    # the steady state after the end continues from the state the timecourse
-    # ended in, which the output of the timecourse carries (`steady_state_rows`)
-    run = steady_state_columns([plan], model, columns)
-    request = request_of(plan, model, run)
+    request = request_of(plan, model, columns)
     # the engine is stateless, the request carries every value of the
     # simulation: the model only records what the request sends and that it
     # was simulated, see `CoreSBMLModel.initialize`
@@ -296,17 +276,8 @@ def execute(
     # gives out again by every access: the output is read once here and
     # dropped with this call, and a caller which keeps several outputs, e.g.
     # of a batch of points, reads the values of each of them once as well
-    values = output_time(output.values, run, plan, model.symbols)
-    if plan.steady_state_output is not None:
-        row = steady_state_rows(
-            [(plan, request, values)], model, run, _one_by_one(model)
-        )[0]
-        if isinstance(row, Exception):
-            raise row
-        values = np.vstack([values, row])
-    return TimecourseResult(
-        columns=tuple(columns), values=steady_state_kept(values, run, columns)
-    )
+    values = output_time(output.values, columns, plan, model.symbols)
+    return TimecourseResult(columns=tuple(columns), values=values)
 
 
 def execute_sensitivities(
@@ -732,6 +703,7 @@ def _fold_of(
         "preinit": _preinit_values(plan.preinit, plain, model),
         "changes": [],
         "steady_state": _steady_state(plan.steady_state, plain, model),
+        "steady_state_after": _steady_state_after(plan),
         "selections": output_columns(columns),
         "settings": settings,
     }
@@ -876,9 +848,7 @@ class _Fold:
             raise output
         event = self.plan.events[self.index]
         start = self.plan.start if self.resume is None else self.resume[0]
-        state = _state_of(
-            output, self.columns, probe_end(self.plan, start, event.time), start
-        )
+        state = _state_of(output, self.columns, event.time, start)
         values = _change_values(event, state)
         self.changes.append({"time": event.time, "values": values})
         resumed = self._resumed()
@@ -907,9 +877,8 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
     the whole scan whatever `on_error` says, which is what a plan one request
     cannot carry deserves: it fails every point of the scan alike.
 
-    The steady state after the end of a simulation is no field of the
-    contract and a value of a request is a number, so a formula the executor
-    cannot fold is refused, see the module and `_preinit_value`. The check is
+    A value of a request is a number, so a formula the executor cannot fold
+    is refused, see the module and `_preinit_value`. The check is
     the one of the plan alone and simulates nothing: a formula at a change is
     folded with the state of the model at its time, which `request_of` reads
     with a request of the segment which ends there (`_state_at`), and only the
@@ -924,21 +893,9 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
             read.
 
     Raises:
-        UnsupportedModelError: a `NotImplementedError`, for a plan with a
-            steady state after the end of its simulation and for a formula
-            the executor cannot fold into a number.
+        UnsupportedModelError: a `NotImplementedError`, for a formula the
+            executor cannot fold into a number.
     """
-    if plan.steady_state_output is not None and (
-        reason := steady_state_gap(plan, model)
-    ):
-        raise UnsupportedModelError(
-            f"The engine 'core' does not simulate the steady state after the end "
-            f"of the simulation of the model '{model.label}', the output at the "
-            f"time 'inf': the steady state of a request is the pre-equilibration "
-            f"before the start of the simulation, so the executor continues from "
-            f"the state the timecourse ended in with a request of its own, which "
-            f"it cannot do here, since {reason}."
-        )
     # the values before the initialization the request carries, folded here
     # and discarded: a formula the executor cannot fold raises, see
     # `_preinit_values`
@@ -947,7 +904,7 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
     if plan.steady_state is not None:
         _preinit_values(plan.steady_state.preinit, plain, model)
     for event in plan.events:
-        _check_change(event, model, plan.symbols.events)
+        _check_change(event, model)
 
 
 def point_error(point: Any, model: CoreSBMLModel) -> Exception:
@@ -1079,6 +1036,43 @@ def _steady_state(
         "absolute_tolerance": steady_state.absolute_tolerance,
         "relative_tolerance": steady_state.relative_tolerance,
         "max_time": steady_state.max_time,
+    }
+
+
+def _steady_state_after(plan: Plan) -> dict[str, Any] | None:
+    """Get the steady state after the end of a request, `None` without one.
+
+    The output of a plan at the time `inf` is the state the model reaches
+    once its timecourse is over, PEtab v2's measurement at steady state,
+    which the field `steady_state_after` of `simulation/1` carries (sbmlsim-core
+    0.18.0, sbmlsim-core#60): the engine continues from the state the
+    timecourse of the same request ended in, with the triggers of its events
+    as that timecourse left them, and its row is the last of the output, at
+    the time `inf`.
+
+    `from` is the time the integration to the steady state starts at, which
+    is where the executor of roadrunner starts it: the end of the timecourse
+    for a model whose math reads the time or whose events have a delay
+    (`ModelSymbols.time_dependent`, where roadrunner continues at the clock of
+    its model) and 0 for every other one, as `steady_state` of
+    `sbmlsim.simulator.executor` passes `0.0` for a local model.
+
+    Args:
+        plan: the plan, whose `steady_state_output` is the criterion and whose
+            symbols say whether the model reads the time.
+
+    Returns:
+        The steady state after the end of the contract, `None` for a plan
+        without an output at the time `inf`.
+    """
+    steady = plan.steady_state_output
+    if steady is None:
+        return None
+    return {
+        "from": plan.end if plan.symbols.time_dependent else 0.0,
+        "absolute_tolerance": steady.absolute_tolerance,
+        "relative_tolerance": steady.relative_tolerance,
+        "max_time": steady.max_time,
     }
 
 
@@ -1235,8 +1229,8 @@ def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[An
     return values
 
 
-def probe_end(plan: Plan, start: float, time: float) -> float:
-    """Get the time the probe of a change integrates to.
+def probe_before_events(plan: Plan) -> bool:
+    """Whether the probe of a change asks for the state before the events of its time.
 
     The formulas of a change read the state of the model **before** the
     events of its time have fired, which is what `apply_changes` of
@@ -1245,26 +1239,28 @@ def probe_end(plan: Plan, start: float, time: float) -> float:
     at, one unit in the last place before the time (`segment_stop`), and
     fires the events after it.
 
-    The engine answers the state of a time after the events of that time have
-    fired, so the probe of a model with events ends at that same stop instead
-    of at the time of the change, which is the state roadrunner folds, to its
-    last unit in the last place. A model without events has no such state to
-    tell apart and its probe ends at the time of the change, so its request
-    is the one of before, bitwise; so is the probe of a segment too short to
-    integrate (`integrable`), whose state is the one at its start.
+    A request answers the end of its interval with the state after the events
+    of that time, so the probe of a model with events asks for the other one,
+    the field `before_events` of `simulation/1` (sbmlsim-core 0.18.0,
+    sbmlsim-core#19): the engine integrates to the time of the change and does
+    not fire the events there, so the last row of the output is the state
+    roadrunner folds, bitwise. A model without events has no such state to
+    tell apart and its request carries the field as false, which is the
+    request of before, bitwise.
+
+    The field replaced a probe which ended one unit in the last place before
+    the time of the change: the engine fires an event of a time for an end
+    within about 1e-9 of it, far wider than the unit in the last place CVODE
+    resolves, so such a probe could not tell the two states apart and a
+    formula which reads a target an event of the model moves was refused.
 
     Args:
         plan: the plan, whose model gives the events.
-        start: the start of the segment.
-        time: the time of the change.
 
     Returns:
-        The end of the probe, the time of the change or the stop before it.
+        Whether the probe asks for the state before the events of the time.
     """
-    if not plan.symbols.events:
-        return time
-    stop = segment_stop(start, time)
-    return stop if integrable(start, stop) else time
+    return bool(plan.symbols.events)
 
 
 def _segment_request(
@@ -1282,6 +1278,10 @@ def _segment_request(
     which ends at the change, with a request of its own. The state at the
     change is the last row of its output, see `_state_of`, and its selections
     are the executor's own and no column of the result of the caller.
+
+    A segment carries no steady state after the end: it ends at the time of
+    its change, which is where the state it reads is, and the steady state of
+    the plan is the work of the request of the plan alone.
 
     A segment resumes from the state of the segment before it where the
     executor can hand the whole state of the model to the engine
@@ -1318,13 +1318,16 @@ def _segment_request(
         The request of the segment.
     """
     start = plan.start if resume is None else resume[0]
-    end = probe_end(plan, start, time)
     segment = {
         **request,
         "start": start,
-        "end": end,
-        "output": _segment_output(plan, start, end),
+        "end": time,
+        "output": _segment_output(plan, start, time),
         "selections": output_columns(selections),
+        "before_events": probe_before_events(plan),
+        # a segment reads the state at the time of its change and ends there,
+        # so the steady state after the end of the plan is none of its work
+        "steady_state_after": None,
     }
     if resume is None:
         segment["changes"] = list(changes)
@@ -1395,267 +1398,34 @@ def _segment_output(plan: Plan, start: float, time: float) -> Any:
     return {TIMES: [*times, time]}
 
 
-def steady_state_columns(
-    plans: Sequence[Plan], model: CoreSBMLModel, columns: Sequence[str]
-) -> list[str]:
-    """Get the columns a run with a steady state after the end reads.
-
-    The caller's columns and, for a plan which has a steady state after the
-    end, the targets the executor carries the state of the timecourse into
-    the request of the steady state with (`_state_targets`), which the output
-    of the timecourse must have for `steady_state_rows` to read it.
-
-    Args:
-        plans: the plans of the run, one for a single simulation and one per
-            point for a chunk of a scan.
-        model: the model.
-        columns: the columns of the result.
-
-    Returns:
-        The columns of the run, the caller's first and in their order.
-    """
-    if all(plan.steady_state_output is None for plan in plans):
-        return list(columns)
-    targets = _state_targets(model) or ()
-    seen = set(columns)
-    return [*columns, *(t for t in targets if t not in seen)]
-
-
-def steady_state_kept(
-    values: np.ndarray, run: Sequence[str], columns: Sequence[str]
-) -> np.ndarray:
-    """Drop the columns a run added for the state of the steady state.
-
-    Args:
-        values: the values of the run, over the columns of the run.
-        run: the columns of the run, see `steady_state_columns`.
-        columns: the columns of the result, the first of the run.
-
-    Returns:
-        The values over the columns of the result, the array itself when the
-        run read nothing else.
-    """
-    if len(run) == len(columns):
-        return values
-    return values[:, : len(columns)]
-
-
-def steady_state_rows(
-    points: Sequence[tuple[Plan, dict[str, Any], np.ndarray]],
-    model: CoreSBMLModel,
-    columns: Sequence[str],
-    simulate: Callable[[list[dict[str, Any]]], Sequence[Any]],
-) -> list[np.ndarray | Exception]:
-    """Get the row of the steady state after the end of every point which has one.
-
-    The contract has no steady state after the end of a simulation, so the
-    executor continues from the state the timecourse ended in with a second
-    request per point (`steady_state_request`), and the requests of the points
-    of a chunk are simulated as one batch, as their folds are, so a chunk pays
-    one round for all of them.
-
-    Args:
-        points: the plan, the request of the timecourse and the values of its
-            output, in their order; a plan without a steady state after the
-            end is left out by the caller.
-        model: the model, which reads the state out of the output.
-        columns: the columns of the output, which carry the state.
-        simulate: what simulates the requests, the batch of the caller, as in
-            `requests_of`.
-
-    Returns:
-        The row of the steady state of every point, in its order, with the
-        time `inf`, or the exception which failed it.
-    """
-    targets = _state_targets(model)
-    assert targets is not None
-    requests: list[dict[str, Any]] = []
-    for plan, request, values in points:
-        state = _state_of(_Values(values), columns, 1.0, 0.0)
-        requests.append(
-            steady_state_request(request, plan, {t: state[t] for t in targets}, columns)
-        )
-    rows: list[np.ndarray | Exception] = []
-    for output in simulate(requests):
-        if isinstance(output, BaseException):
-            rows.append(
-                output if isinstance(output, Exception) else RuntimeError(str(output))
-            )
-            continue
-        core = import_core()
-        if isinstance(output, core.PointError):
-            rows.append(point_error(output, model))
-            continue
-        row = np.array(output.values[-1], dtype=float)
-        row[0] = np.inf
-        # the time of the row is `inf` in every `time` column, as
-        # `output_time` copies it, except in a model with an entity of that
-        # name, whose later column is the value of the entity (#445)
-        rows.append(output_time(row[np.newaxis, :], columns, _AT_INF, model.symbols)[0])
-    return rows
-
-
-#: the plan of the row of a steady state: no shift of the time, which is
-#: `inf` there, so `output_time` only copies it into a later `time` column
-_AT_INF: Final[Any] = SimpleNamespace(time_shift=0.0)
-
-
-@dataclass(frozen=True)
-class _Values:
-    """The output of a request as `_state_of` reads it, its values alone."""
-
-    values: np.ndarray
-
-
-def steady_state_gap(plan: Plan, model: CoreSBMLModel) -> str | None:
-    """Get why the executor cannot continue a steady state from the end, or `None`.
-
-    The contract has no steady state after the end of a simulation, so the
-    executor continues from the state the timecourse ended in with a second
-    request, whose pre-initialization carries that state and whose
-    `steady_state` is the criterion of the plan (`steady_state_request`). Two
-    things keep it from doing so:
-
-    - a model with events of its own, whose triggers the second request
-      cannot be told the state of: a request initializes the model, where a
-      trigger which the state carried into it makes true fires again, while
-      the executor of roadrunner continues with the triggers as the
-      timecourse left them and such an event does not fire twice (case 0023
-      of the PEtab test suite, whose event adds 1000 to its state at the
-      threshold the steady state is past);
-    - a model whose state it cannot set, the one `resume_targets` answers
-      `None` for, e.g. a species reference which is not constant: the state
-      of the second request would silently be the one of the model as loaded;
-    - a model which reads the time, since the steady state of a request is
-      integrated from the time 0 whatever the start of its simulation, while
-      the executor of roadrunner continues at the time the timecourse ended
-      at (`executor.execute`, which starts at 0 for a model which does not
-      read the time, so the two agree exactly there).
-
-    Args:
-        plan: the plan, whose model symbols give the events and say whether
-            it reads the time.
-        model: the model.
-
-    Returns:
-        The reason, a clause of the message of the refusal, or `None` when
-        the executor continues the steady state.
-    """
-    if plan.symbols.events:
-        return (
-            "the model has events of its own, whose triggers a request "
-            "cannot be told the state of, so one which the state carried "
-            "into it makes true would fire again"
-        )
-    if plan.symbols.time_dependent:
-        return (
-            "the model reads the time and the steady state of a request is "
-            "integrated from the time 0, while the executor of roadrunner "
-            "continues at the time the timecourse ended at"
-        )
-    if _state_targets(model) is None:
-        return (
-            "the model has a state the executor cannot set, so the state the "
-            "timecourse ended in cannot be carried into a request"
-        )
-    return None
-
-
-def steady_state_request(
-    request: Mapping[str, Any],
-    plan: Plan,
-    state: Mapping[str, float],
-    columns: Sequence[str],
-) -> dict[str, Any]:
-    """Get the request of the steady state after the end of a simulation.
-
-    The state the timecourse ended in is set before the initialization, where
-    it holds over the initial assignment of its target (PEtab v2, which the
-    engine applies), and the `steady_state` of the request is the criterion of
-    the plan, so the engine initializes the model in that state and
-    equilibrates it. The simulation which follows is the one output time at
-    the end of the plan, whose single row is the steady state; the caller
-    gives it the time `inf`, as `Plan.steady_state_output` has it.
-
-    The pre-initialization of the plan and its presimulation are not carried:
-    the state replaces them, and a value of theirs which is no state, e.g. a
-    parameter of a rule, is the one of the model as loaded, which the
-    initialization gives it again.
-
-    Args:
-        request: the request of the timecourse, whose fields it takes but its
-            interval, output, pre-initialization, steady state, changes and
-            selections.
-        plan: the plan, which gives the end and the criterion.
-        state: the state at the end of the timecourse, by `_state_targets`.
-        columns: the columns of the result.
-
-    Returns:
-        The request of the steady state.
-    """
-    steady = plan.steady_state_output
-    assert steady is not None
-    return {
-        **request,
-        "start": plan.end,
-        "end": plan.end,
-        "output": {TIMES: [plan.end]},
-        "preinit": [[target, value] for target, value in state.items()],
-        "changes": [],
-        "steady_state": {
-            "preinit": [],
-            "absolute_tolerance": steady.absolute_tolerance,
-            "relative_tolerance": steady.relative_tolerance,
-            "max_time": steady.max_time,
-        },
-        "selections": output_columns(columns),
-    }
-
-
-def _check_change(
-    event: PlanEvent, model: CoreSBMLModel, events: Sequence[EventSymbols]
-) -> None:
+def _check_change(event: PlanEvent, model: CoreSBMLModel) -> None:
     """Refuse a change whose formula the executor cannot fold as roadrunner does.
 
     A formula is folded with the state at the time of the change, which the
-    executor reads as the outputs of the engine (`_state_at`), and two cases
-    are refused.
+    executor reads as the outputs of the engine (`_state_at`), so a symbol
+    which is no output of the compiled model, neither a parameter nor a
+    compartment nor an amount or a concentration of a species, has no value
+    the executor could read. `compile_simulation` refuses such a formula
+    already, so only a plan built by hand carries one.
 
-    - A symbol which is no output of the compiled model, neither a parameter
-      nor a compartment nor an amount or a concentration of a species, has no
-      value the executor could read. `compile_simulation` refuses such a
-      formula already, so only a plan built by hand carries one.
-    - A model with an event of its own: the engine answers the state of a time
-      after the events of that time have fired, where the executor of
-      roadrunner reads it before they fire (it evaluates the triggers and
-      applies the change before `fire_events`, see
-      `sbmlsim.simulator.executor._simulate`), so the two engines would
-      disagree without an error. Measured on a model whose event adds 10 to a
-      state at the time 5: roadrunner folds the state 0.0067 and a request of
-      the engine which ends at 5 answers 10.0067. The refusal is on the
-      presence of an event in the model and not on an analysis of its trigger,
-      which is an arbitrary formula whose times the executor cannot tell: an
-      analysis which is wrong is the silent disagreement again. A change of
-      numbers is no formula and runs on a model with events as before.
-
-    The engine does expose the state before the events of a time, as the first
-    of the two rows which the steps of the integrator have at an event
-    (measured: the rows at 5 of that model are 0.0393 and 10.0393), but
-    nothing in the output says that two rows at the end of a segment are an
-    event and not something else, and the state roadrunner folds is the one at
-    one unit in the last place before the time (`segment_stop`) with the
-    triggers evaluated there, so reading that row would be a guess. The fix
-    belongs in the contract of the engine, which has no field for the state
-    before the events of a time.
+    A model with events of its own is no refusal: the probe of such a model
+    carries `before_events`, so the engine does not fire the events of the
+    time of the change and the last row of its output is the state before
+    them, which is the state the executor of roadrunner folds (it evaluates
+    the triggers and applies the change before `fire_events`, see
+    `sbmlsim.simulator.executor._simulate` and `probe_before_events`). The
+    field is sbmlsim-core 0.18.0 (sbmlsim-core#19); before it the probe ended
+    one unit in the last place before the time of the change and a formula
+    which read a target an event of the model moves was refused, since the
+    engine fires an event of a time for an end within about 1e-9 of it.
 
     Args:
         event: the assignments at one time.
         model: the model, whose outputs the symbols are checked against.
-        events: the events of the model, whose presence refuses a formula.
 
     Raises:
         UnsupportedModelError: for a formula which reads a symbol the engine
-            has no output of, and for a formula of a model with an event.
+            has no output of.
     """
     for a in event.assignments:
         if a.value is not None:
@@ -1672,80 +1442,6 @@ def _check_change(
                 f"executor cannot read the state of the model at the time of the "
                 f"change",
             )
-        moved = sorted(s for s in symbols if s in _event_moved(events, model))
-        if moved:
-            raise UnsupportedModelError(
-                f"The engine 'core' does not simulate the formula '{a.formula}' of "
-                f"'{a.target}' at the time {event.time} of the model "
-                f"'{model.label}', which has the event '{_moving_event(events, moved)}'"
-                f": it reads {moved}, which an event of the model "
-                f"assigns or which follows such a target through an assignment "
-                f"rule, and the state of the model at the time of a change is the "
-                f"one a request of the engine answers there, which is the state "
-                f"after the events of that time have fired, while the executor of "
-                f"roadrunner reads it before they fire. An event of the model "
-                f"which fires at the time of the change would make the two engines "
-                f"disagree without an error, so the formula is refused, see "
-                f"`sbmlsim.simulator.executor_core`."
-            )
-
-
-def _moving_event(events: Sequence[EventSymbols], moved: Sequence[str]) -> str:
-    """Get the id of an event which assigns one of the symbols, for the message.
-
-    Args:
-        events: the events of the model, at least one.
-        moved: the symbols the formula reads and an event could move.
-
-    Returns:
-        The id of the first event which assigns one of them, or of the first
-        event when they follow their targets through an assignment rule.
-    """
-    wanted = {name[1:-1] if name.startswith("[") else name for name in moved}
-    for event in events:
-        targets = {target for target, _ in event.assignments}
-        if targets & (wanted | set(moved)):
-            return event.eid
-    return events[0].eid
-
-
-def _event_moved(
-    events: Sequence[EventSymbols], model: CoreSBMLModel
-) -> frozenset[str]:
-    """Get the selections an event of the model could move at the time of a change.
-
-    These are the targets of the assignments of its events and, since an
-    assignment rule follows its inputs at once, every variable of an
-    assignment rule, whose value an event could move through it without
-    being its target. A model without events moves nothing.
-
-    The concentration and the amount of a species go together, so a target of
-    either names both, and so does the compartment of a species of a
-    concentration, whose size scales the amount.
-
-    Args:
-        events: the events of the model.
-        model: the model, which gives the species and their compartments.
-
-    Returns:
-        Every selection the executor must not read at the time of a change.
-    """
-    if not events:
-        return frozenset()
-    symbols = model.symbols
-    moved: set[str] = set(symbols.assignment_rules)
-    for event in events:
-        moved |= {target for target, _ in event.assignments}
-    # a target names the amount, the concentration and, for a species of a
-    # concentration, the size of its compartment, which scales them
-    for name in list(moved):
-        sid = name[1:-1] if name.startswith("[") else name
-        if sid in symbols.species:
-            moved |= {sid, f"[{sid}]"}
-    for sid, compartment in symbols.species_compartment.items():
-        if compartment in moved:
-            moved |= {sid, f"[{sid}]"}
-    return frozenset(moved)
 
 
 def _preinit_value(

@@ -272,16 +272,6 @@ PREINIT_FORMULA_REFUSED: str = (
     "does not simulate the formula .* before the initialization"
 )
 
-#: what the engine core says when it refuses the steady state after the end of
-#: a simulation, the output at the time `inf`: it is no field of a request,
-#: whose steady state is the pre-equilibration before the start alone, a known
-#: difference of `sbmlsim.simulator.executor_core` which
-#: `tests.simulator.test_simulator_core` pins. The comparisons below assert
-#: that refusal in the shapes they build instead of skipping the case, so the
-#: day the engine approximates such a plan rather than refusing it fails here
-#: as well
-STEADY_STATE_REFUSED: str = "does not simulate the steady state after the end"
-
 
 @pytest.mark.parametrize(
     ("formula", "folded"),
@@ -437,10 +427,6 @@ def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
     engine = _engine(engine)
     model = DOSE_EVENT.replace("RESET", reset)
     simulation = _start_simulation(case, times, {"dose": 10})
-    if engine is Engine.CORE and case == "steady state after the end":
-        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
-            _engine_run(engine, model, simulation)
-        return
     res = _engine_run(engine, model, simulation)
     first = _first_row(res)
     assert first["n"] == 1.0
@@ -536,10 +522,6 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
     """
     model = TIME_EVENT.replace("RESET", reset)
     simulation = _start_simulation(case, times)
-    if other_engine is Engine.CORE and case == "steady state after the end":
-        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
-            _engine_run(other_engine, model, simulation)
-        return
     res = _engine_run(other_engine, model, simulation)
     first = _first_row(res)
     time = res.ds["time"].values
@@ -669,7 +651,6 @@ def test_a_trigger_of_the_time_at_the_horizons_of_a_steady_state_fires_once(
         source=sbml(TIME_TRIGGER.replace("OPERATOR", operator)),
         selections=["time", "n", "X"],
     )
-    refused = other_engine is Engine.CORE and output == "steady state after the end"
     for after in (0.0, 1e-3, 0.1):
         time = HORIZON_STARTS[output] + 10.0 + after
         if output == "presimulation":
@@ -682,10 +663,6 @@ def test_a_trigger_of_the_time_at_the_horizons_of_a_steady_state_fires_once(
             )
         for engine in (Engine.ROADRUNNER, other_engine):
             simulator = Simulator(engine=engine)
-            if refused and engine is other_engine:
-                with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
-                    simulator.simulate(model, simulation)
-                continue
             result = simulator.simulate(model, simulation)
             assert result["n"][-1] == 1.0, (engine, after)
             assert result["X"][-1] == pytest.approx(0.0, abs=1e-6)

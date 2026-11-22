@@ -495,12 +495,9 @@ def _run_chunk_core(
     requests: list[dict[str, Any]] = []
     # the requests of the points of the chunk, the k-th segment of the folds
     # of all of them simulated as one batch (#550)
-    # a point with a steady state after the end reads the state the timecourse
-    # ended in, which a second request continues from (`steady_state_rows`)
-    run = executor_core.steady_state_columns(plans, model, columns)
     for k, request in enumerate(
         executor_core.requests_of(
-            [(plan, run) for plan in plans],
+            [(plan, columns) for plan in plans],
             model,
             lambda segments: _batch(model, segments, threads),
             settings,
@@ -530,85 +527,19 @@ def _run_chunk_core(
         # the time is shifted in the array the bindings own, which
         # `output.values` answers with as it is, the same array on every
         # access, so it is read once and the chunk holds it until `_pack`
-        values = output_time(output.values, run, plan, model.symbols)
+        values = output_time(output.values, columns, plan, model.symbols)
         points.append(k)
         ran.append(plan)
         solutions.append(values)
-    # the steady states after the end of the points which have one, as one
-    # round of the batch, so a chunk pays one round for all of them
-    _steady_states(model, run, threads, requests, points, solutions, ran, failures)
     # the requests of the batch are released with it, the engine has read them
     del requests
-    kept_values = [
-        executor_core.steady_state_kept(values, run, columns) for values in solutions
-    ]
     solutions = [
         values
         if observed
         else _on_grid(chunk.time, _timecourses_of(values, kept), plan)
-        for values, plan in zip(kept_values, ran, strict=True)
+        for values, plan in zip(solutions, ran, strict=True)
     ]
     return _finish(chunk, points, solutions, ran, failures, out)
-
-
-def _steady_states(
-    model: CoreSBMLModel,
-    run: Sequence[str],
-    threads: int,
-    requests: Sequence[dict[str, Any]],
-    points: list[int],
-    solutions: list[np.ndarray],
-    ran: list[Plan],
-    failures: list[tuple[int, str, BaseException]],
-) -> None:
-    """Append the steady state after the end to the points which have one.
-
-    The contract has no steady state after the end of a simulation, so the
-    executor continues from the state every such point ended in with a second
-    request (`executor_core.steady_state_rows`), and the requests of the
-    points of a chunk are simulated as one batch, as their folds are, so a
-    chunk pays one round for all of them and none when no point has one.
-
-    A point whose steady state fails is a failed point, as one whose
-    timecourse fails is: it is dropped from the chunk and its error is
-    reported, while a feature the engine does not simulate fails the chunk.
-
-    Args:
-        model: the model of the points.
-        run: the columns of the run, which carry the state.
-        threads: the threads of the engine the batch runs on.
-        requests: the requests of the points which ran, in their order.
-        points: the indices of the points which ran, a failed one removed in
-            place.
-        solutions: their values, in their order, the row of the steady state
-            appended in place.
-        ran: their plans, in their order, a failed one removed in place.
-        failures: the failures of the chunk, a failed steady state appended.
-    """
-    from sbmlsim.simulator import executor_core
-
-    at = [i for i, plan in enumerate(ran) if plan.steady_state_output is not None]
-    if not at:
-        return
-    rows = executor_core.steady_state_rows(
-        [(ran[i], requests[i], solutions[i]) for i in at],
-        model,
-        run,
-        lambda batch: _batch(model, batch, threads),
-    )
-    failed: list[int] = []
-    for i, row in zip(at, rows, strict=True):
-        if isinstance(row, Exception):
-            if isinstance(row, NotImplementedError):
-                raise row
-            failures.append((points[i], f"{type(row).__name__}: {row}", row))
-            failed.append(i)
-            continue
-        solutions[i] = np.vstack([solutions[i], row])
-    for i in reversed(failed):
-        del points[i]
-        del solutions[i]
-        del ran[i]
 
 
 def _batch(

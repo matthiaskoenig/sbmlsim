@@ -587,29 +587,31 @@ def test_a_relative_change_on_the_steps_of_the_integrator_matches_roadrunner() -
     )
 
 
-def test_a_change_which_reads_the_state_of_a_model_with_an_event_is_refused() -> None:
-    """A formula at a change is refused for a model with an event of its own.
+def test_a_change_which_reads_the_state_of_a_model_with_an_event_folds_it() -> None:
+    """A formula at a change reads the state before the events of its time.
 
-    The engine answers the state of a time after the events of that time have
-    fired and the executor of roadrunner reads it before they fire, so the two
-    would disagree without an error: the model `EVENT_AT_FIVE` adds 10 to `x`
-    at 5, where roadrunner reads 0.0067 and a request of the engine 10.0067.
+    The model `EVENT_AT_FIVE` adds 10 to `x` at the time 5, which is also the
+    time of the change: the executor of roadrunner evaluates the triggers and
+    applies the change before it fires the events of that time, so the formula
+    reads about 0.0067 and not 10.0067. The probe of the engine asks for the
+    same state with `before_events` of `simulation/1` (sbmlsim-core#19), where
+    it ended one unit in the last place before the time of the change and
+    refused such a formula before 0.18.0.
     """
     source = sbml(EVENT_AT_FIVE)
     simulation = Simulation(
         end=10, changes=[Change(5, {"p": "x"})], times=[0.0, 5.0, 10.0]
     )
-    with pytest.raises(UnsupportedModelError, match="formula") as failure:
-        Simulator(engine="core").simulate(source, simulation)
-    message = str(failure.value)
-    assert "'E1'" in message
-    assert "'p'" in message
-    assert "'x'" in message
-    assert "5.0" in message
-    assert "after the events" in message
-    # roadrunner reads the state before the event of the time fires
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
     roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
-    assert roadrunner["p"][roadrunner.values[:, 0] == 5.0][-1] < 1.0
+    folded = core["p"][core.values[:, 0] == 5.0][-1]
+    # the state before the event of the time, which the event raises by 10
+    assert folded < 1.0
+    assert folded == pytest.approx(
+        roadrunner["p"][roadrunner.values[:, 0] == 5.0][-1], rel=1e-6
+    )
+    # the event of the time fired, the change did not take its state
+    assert core["x"][-1] == pytest.approx(roadrunner["x"][-1], rel=1e-6)
 
 
 def test_a_change_of_numbers_runs_on_a_model_with_an_event() -> None:
@@ -846,6 +848,18 @@ model relaxation
 end
 """
 
+#: `RELAXATION` with an event which raises its target once on the way there,
+#: so the steady state after the end is 17 when the event fired once and 27
+#: when it fired again: a model whose steady state after the end says whether
+#: the triggers of the timecourse were carried into it
+RELAXATION_EVENT: Final[str] = """
+model relaxation_event
+  k = 0.5; target = 7; x = 0
+  x' = k*(target - x)
+  E1: at (x >= 3), t0=false: target = target + 10
+end
+"""
+
 
 def test_the_steady_state_of_a_point_of_a_scan_is_its_own() -> None:
     """Every point of a scan continues its steady state from its own end.
@@ -869,19 +883,29 @@ def test_the_steady_state_of_a_point_of_a_scan_is_its_own() -> None:
     )
 
 
-def test_a_steady_state_after_the_end_of_a_model_with_events_is_refused() -> None:
-    """A model with events keeps the refusal, since a request carries no trigger state.
+def test_a_steady_state_after_the_end_of_a_model_with_events_keeps_their_triggers() -> (
+    None
+):
+    """A model with events continues its steady state with the triggers as it left them.
 
-    A request initializes the model, where a trigger which the state carried
-    into it makes true fires again, while the executor of roadrunner
-    continues with the triggers as the timecourse left them: case 0023 of the
-    PEtab test suite, whose event adds 1000 to its state at the threshold its
-    steady state is past, answered 2500 against roadrunner's 1500.
+    `steady_state_after` of `simulation/1` continues from the state the
+    timecourse of the same request ended in, so an event which fired during
+    the timecourse does not fire again at the same threshold
+    (sbmlsim-core#60): the event of `EVENT_AT_FIVE` adds 10 to `x` at the time
+    5, once, which is what roadrunner does when it continues the model of its
+    timecourse. A second request which carried that state in would initialize
+    the model and fire it again, which answered 2500 against roadrunner's 1500
+    on case 0023 of the PEtab test suite, whose event adds 1000 to its state
+    at the threshold its steady state is past.
     """
-    source = sbml(EVENT_AT_FIVE)
-    simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
-    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
-        Simulator(engine="core").simulate(source, simulation)
+    source = sbml(RELAXATION_EVENT)
+    simulation = Simulation(end=2, times=[0.0, 2.0, float("inf")])
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
+    # the event fired once, during the timecourse, so the target is 17 and not 27
+    assert core["target"][-1] == 17.0
+    assert core["x"][-1] == pytest.approx(17.0, rel=1e-6)
+    assert core["x"][-1] == pytest.approx(roadrunner["x"][-1], rel=1e-6, abs=1e-9)
 
 
 def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_loaded(
@@ -1193,3 +1217,84 @@ def test_an_algebraic_rule_is_solved_against_its_analytic_solution() -> None:
     np.testing.assert_allclose(result["x"], 1.0 + time, rtol=1e-8)
     # the constraint holds at every output time and not only at the end
     np.testing.assert_allclose(result["y"], result["x"], rtol=1e-8)
+
+
+#: a model whose rate reads the time, so its steady state after the end
+#: depends on the time it is integrated from: `x` relaxes to `time`, which the
+#: executor of roadrunner continues at the end of the timecourse (`local` of
+#: `sbmlsim.simulator.executor`) and the engine at the `from` of
+#: `steady_state_after`
+TIME_RELAXATION: Final[str] = """
+model time_relaxation
+  k = 1; x = 0
+  x' = k*(time - x)
+end
+"""
+
+
+def test_a_steady_state_after_the_end_of_a_model_which_reads_the_time_continues_at_it() -> (
+    None
+):
+    """A model whose math reads the time continues its steady state at the end.
+
+    roadrunner integrates the steady state of such a model from the time its
+    model is at, the end of the timecourse, and the one of every other model
+    from 0; the `from` of `steady_state_after` is that time, so the two agree
+    whatever the model (sbmlsim-core#60). `x` follows `time - 1` here, so a
+    steady state from 0 instead of from the end of the timecourse is off by
+    the length of the timecourse.
+    """
+    source = sbml(TIME_RELAXATION)
+    for end in (5.0, 20.0):
+        simulation = Simulation(end=end, times=[0.0, end, float("inf")])
+        core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+        roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
+        assert core["x"][-1] == pytest.approx(roadrunner["x"][-1], rel=1e-6)
+        # the steady state is reached at the end of a horizon after the end
+        assert core["x"][-1] > end
+
+
+def test_a_steady_state_after_the_end_of_a_plan_with_a_change_formula() -> None:
+    """A plan of both a change formula and a steady state after the end is the one of roadrunner.
+
+    The fold of a change reads the state at the time of the change with a
+    request of the segment which ends there, which carries no steady state of
+    its own: the steady state after the end is the work of the request of the
+    plan alone, and a segment which carried it would run it at every change.
+    """
+    source = sbml(RELAXATION_EVENT)
+    simulation = Simulation(
+        end=2,
+        changes=[Change(1, {"target": "target + x"})],
+        times=[0.0, 1.0, 2.0, float("inf")],
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
+    assert core.values.shape == roadrunner.values.shape
+    np.testing.assert_allclose(core["x"], roadrunner["x"], rtol=1e-6, atol=1e-9)
+    np.testing.assert_allclose(
+        core["target"], roadrunner["target"], rtol=1e-6, atol=1e-9
+    )
+
+
+def test_a_formula_at_a_change_at_the_start_of_a_model_with_events() -> None:
+    """A change at the start of a model with events folds as roadrunner does.
+
+    The probe of a model with events carries `before_events` and the segment
+    of a change at the start is an empty interval, where the field leaves the
+    events of the start which have not fired yet alone: the row is the state
+    after the initialization and after the events the change itself triggers,
+    which is the state the executor of roadrunner folds.
+    """
+    source = sbml(RELAXATION_EVENT)
+    simulation = Simulation(
+        end=2, changes=[Change(0, {"target": "target + x"})], times=[0.0, 1.0, 2.0]
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = roadrunner_simulator(**TIGHT).simulate(source, simulation)
+    # `x` is 0 after the initialization, so the target keeps its 7
+    assert core["target"][0] == 7.0
+    np.testing.assert_allclose(core["x"], roadrunner["x"], rtol=1e-6, atol=1e-9)
+    np.testing.assert_allclose(
+        core["target"], roadrunner["target"], rtol=1e-6, atol=1e-9
+    )
