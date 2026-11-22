@@ -2,11 +2,11 @@
 <sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" level="3" version="1">
   <model>
     <listOfCompartments>
-      <compartment size="1" constant="true"/>
+      <compartment id="compartment" size="1" constant="true"/>
     </listOfCompartments>
     <listOfSpecies>
-      <species id="prey" initialAmount="0.44249296" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
-      <species id="predator" initialAmount="4.6280594" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+      <species id="prey" compartment="compartment" initialAmount="0.44249296" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+      <species id="predator" compartment="compartment" initialAmount="4.6280594" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
     </listOfSpecies>
     <listOfParameters>
       <parameter id="prey_param" value="0" constant="false"/>
