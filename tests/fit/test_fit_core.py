@@ -16,6 +16,7 @@ and the errors of the data).
 """
 
 import dataclasses
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -23,8 +24,17 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sbmlsim import Q
 from sbmlsim.engine import Engine
-from sbmlsim.fit import FitSettings, fit_core
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.fit import (
+    FitData,
+    FitMapping,
+    FitMappingCollection,
+    FitParameter,
+    FitSettings,
+    fit_core,
+)
 from sbmlsim.fit.fit_core import (
     CONVERGED,
     fit_request,
@@ -43,13 +53,18 @@ from sbmlsim.fit.options import (
     LossFunctionType,
     ObjectiveType,
     OptimizationAlgorithmType,
+    ParameterScaleType,
     ResidualType,
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
+from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
+from sbmlsim.task import Task
 from tests.engines import require_core_fit
+from tests.fit.test_data_at_change import MODEL_FILE, TRUE_KE, UrineStudy
+from tests.simulator.models import sbml_pk
 
 
 def on_core(problem: OptimizationProblem, settings: FitSettings) -> OptimizationProblem:
@@ -884,3 +899,254 @@ class TestLinearForm:
         # value is the one the engine sets, so a factor of a unit of the
         # parameter is already in it (`_factors_of`)
         assert linear_form("0.25 * a", {"a": 0}) == (0.0, [(0, 0.25)])
+
+
+def shifted_problem(
+    tmp_path: Path,
+    mapping: str = "fm_shifted",
+    experiment: type[SimulationExperiment] = UrineStudy,
+) -> OptimizationProblem:
+    """Get the problem of one urine mapping of `UrineStudy`.
+
+    `fm_shifted` reads the simulation whose protocol runs from the start `-24`
+    with the collection reset at `0`, shifted by `24` so that the times of its
+    data are the ones of the collection (`tests.fit.test_data_at_change`).
+    """
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    return OptimizationProblem(
+        "shifted",
+        [FitMappingCollection(experiment=experiment, mappings=[mapping])],
+        [
+            FitParameter(
+                pid="ke",
+                lower_bound=0.01,
+                upper_bound=1.0,
+                start_value=0.5,
+                unit="1/hr",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+
+
+def test_the_residuals_of_a_shifted_simulation_are_the_ones_of_the_problem(
+    tmp_path: Path,
+) -> None:
+    """A curve measures in the time of its condition, not in the time of the data.
+
+    The output times of a condition are the ones of its plan, which `time_shift`
+    is applied to only on the way back, so a curve of a simulation whose time
+    is shifted measures at the times the plan outputs (#613).
+    """
+    problem = on_core(
+        shifted_problem(tmp_path),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    assert gaps_of(problem) == []
+    core = core_problem(problem)
+
+    x = problem.to_scale(np.array([TRUE_KE]))
+    residuals = np.asarray(core.residuals(x), dtype=float)
+
+    expected = np.asarray(problem.residuals(x), dtype=float)
+    assert residuals.shape == expected.shape
+    np.testing.assert_allclose(residuals, expected, rtol=1e-9, atol=1e-12)
+
+
+@pytest.mark.parametrize("mapping", ["fm_shifted", "fm_noisy"])
+def test_a_curve_measures_at_the_output_times_of_its_condition(
+    tmp_path: Path, mapping: str
+) -> None:
+    """The time of a point is the output time of the row it reads, exactly.
+
+    The engine resolves the time of a measurement to the row of its own time
+    within the resolution of that time, so a curve whose times are the ones
+    of the data instead reads the right row only while the difference stays
+    inside that tolerance. The problem reads its rows at the output times of
+    its plan (`OptimizationProblem._x_plan`), and so does its curve: `fm_shifted`
+    simulates in a shifted time, and the data of `fm_noisy` has a time within
+    the resolution of the time of a change, whose output time is the time of
+    the change (#613).
+    """
+    problem = on_core(
+        shifted_problem(tmp_path, mapping),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    assert gaps_of(problem) == []
+
+    request = fit_request(problem)
+
+    output = {
+        condition["id"]: condition["request"]["output"]["times"]
+        for condition in request["conditions"]
+    }
+    assert request["curves"]
+    for curve in request["curves"]:
+        times = output[curve["condition"]]
+        assert times
+        for time in curve["times"]:
+            assert time in times, (
+                f"the curve '{curve['id']}' measures at t = {time}, which is no "
+                f"output time of its condition"
+            )
+
+
+class FoldedChangeStudy(UrineStudy):
+    """`UrineStudy` whose collection is halved at 24 h instead of emptied.
+
+    The executor folds a formula at a change by simulating the segment before
+    it, so the number it folds `0.5 * Aurine` into is the one of the point the
+    request was built at, see `_gaps_of_the_values`.
+    """
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                ],
+            ),
+        }
+
+    def tasks(self) -> dict[str, Task]:
+        return {
+            **super().tasks(),
+            "task_folded": Task(model="m", simulation="folded"),
+        }
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_folded": FitMapping(
+                self,
+                reference=FitData(self, dataset="urine", xid="time", yid="Aurine"),
+                observable=FitData(self, task="task_folded", xid="time", yid="Aurine"),
+            )
+        }
+
+
+def test_a_change_the_executor_folds_by_simulating_is_a_gap() -> None:
+    """A change whose formula reads the model is a number of the point it was built at.
+
+    `0.5 * Aurine` reads a state, which the executor can only fold by
+    simulating up to the change, so the number of a request holds the change
+    where the fit started while the optimizer moves the state the formula
+    reads: the engine would answer the residuals of another problem without
+    an error (#613).
+    """
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", FoldedChangeStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["change_value"]
+    assert "0.5 * Aurine" in gaps[0].message
+
+
+class PreinitFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose pre-initialization sets the state the change reads.
+
+    The pre-initialization sets `Aurine` to a number, which the executor
+    resolves a formula *before the initialization* with, but the simulation
+    moves it before the change at 24 h, so the number of the request is still
+    the one of the point it was built at.
+    """
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                preinit_changes={"Aurine": Q(0, "mg")},
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_which_reads_a_state_the_pre_initialization_sets_is_a_gap() -> None:
+    """The pre-initialization number of a state is not its value at a change."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", PreinitFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["change_value"]
+    assert "'Aurine'" in gaps[0].message
+
+
+class ConstantFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose change reads a constant parameter of the model.
+
+    `ka` is the variable of no rule and of no initial assignment and no change
+    of the plan sets it, so the number the executor folds `0.1 * ka` into is
+    the same at every point of the search.
+    """
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "0.1 * ka"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_which_reads_a_constant_of_the_model_is_no_gap() -> None:
+    """A formula the executor folds into the same number everywhere is no gap."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", ConstantFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    assert gaps_of(problem) == []
+
+
+class RepeatedFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` which halves the collection at 12 h and at 24 h."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(12, {"Aurine": "0.5 * Aurine"}),
+                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_one_formula_the_executor_cannot_fold_is_one_gap() -> None:
+    """A formula at several changes is reported once, with the number of them.
+
+    The report of the gaps of a problem is one message
+    (`sbmlsim.fit.runner.run_optimization`), so a formula of a protocol of
+    many doses or collections names its changes instead of being one gap per
+    change.
+    """
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", RepeatedFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["change_value"]
+    assert "2 changes" in gaps[0].message

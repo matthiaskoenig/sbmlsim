@@ -1204,6 +1204,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: mapping, `None` for a mapping whose x is not the time, see
         #: `_compile_plans`
         self._rows: list[np.ndarray | None] = []
+        #: the output time of every data point of such a mapping in the time
+        #: of the plan of its group, i.e. the merged time of `merge_times`
+        #: without `Plan.time_shift`, which a curve of a request of the
+        #: engine measures at (`sbmlsim.fit.fit_core`); `None` for a mapping
+        #: whose x is not the time, see `_compile_plans`
+        self._x_plan: list[np.ndarray | None] = []
         #: the change whose state before it every data point of a timecourse
         #: over the time takes, its index into `Plan.change_times` of the one
         #: point of its group, `-1` for a point which takes the state after
@@ -2521,6 +2527,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         factors: dict[tuple[str, str], float] = {}
         external = {k for k, p in enumerate(self.parameters) if p.is_external}
         self._rows = [None] * len(self.mapping_keys)
+        self._x_plan = [None] * len(self.mapping_keys)
         self._before_change = [None] * len(self.mapping_keys)
         self._x_at_data = [None] * len(self.mapping_keys)
         self._group_added = []
@@ -2636,11 +2643,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 counts = np.where(np.isin(output, changes), 2, 1)
                 after_rows = np.cumsum(counts) - 1
                 before_rows = after_rows - counts + 1
-                at_output = np.searchsorted(output, times[index])
+                # the output time of every data point in the time of the
+                # plan: the merged time of its own time, which a curve of a
+                # request of the engine measures at
+                x_plan = times[index]
+                at_output = np.searchsorted(output, x_plan)
                 position = 0
                 for k in group:
                     size = len(self.x_references[k])
                     j = at_output[position : position + size]
+                    self._x_plan[k] = x_plan[position : position + size]
                     rows = after_rows[j]
                     if before:
                         before_change = self._first_after(
