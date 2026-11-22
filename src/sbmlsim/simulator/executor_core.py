@@ -67,8 +67,8 @@ the engine documents:
    as one batch, as their folds are). Three models keep the refusal of
    `check_supported`, each named by `steady_state_gap`: a model with events
    of its own, whose triggers a request cannot be told the state of, so one
-   which the carried state makes true fires again; a model which reads the
-   time, since the steady state of a request is integrated from the time 0
+   which the carried state makes true fires again (sbmlsim-core#60); a model
+   which reads the time, since the steady state of a request is from the time 0
    whatever the start of its simulation, while the executor of roadrunner
    continues at the time the timecourse ended at; and a model whose state the
    executor cannot set (`resume_targets`).
@@ -95,8 +95,9 @@ the engine documents:
    wider than the unit in the last place CVODE resolves, so the probe cannot
    tell the state before the events of the time of the change from the state
    after them: a formula which reads what such an event moves would disagree
-   with roadrunner silently and is refused instead. A formula which reads only
-   what no event moves is folded, whatever events the model has.
+   with roadrunner silently and is refused instead (sbmlsim-core#19). A
+   formula which reads only what no event moves is folded, whatever events
+   the model has.
 
    The folded value is the state of a request which ends at the change, where
    the integrator stops, and not of the request of the plan, which integrates
