@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -349,19 +350,28 @@ def test_a_fit_of_a_likelihood_in_the_engine_reports_the_log_likelihood(
     assert best.cost == pytest.approx(-log_likelihood(problem, pset), rel=1e-9)
 
 
-def test_a_jacobian_of_a_likelihood_is_a_gap_of_the_engine(tmp_path: Path) -> None:
-    """A jacobian of the engine has the rows of the curves, the ones of the data.
-
-    The residuals of a likelihood are the ones of the data and of the scales
-    of the noise, so the rows of the jacobian of the problem are not the ones
-    of the engine, although the scales have no derivative.
-    """
+def test_a_jacobian_of_a_fixed_noise_likelihood_comes_from_the_engine(
+    tmp_path: Path,
+) -> None:
+    """The scale of a noise the fit does not move has no derivative, its rows are zero."""
     reader = _reader(tmp_path, noise_formula="0.05", distribution="normal")
     problem = reader.to_optimization_problem()
     problem.initialize(LIKELIHOOD)
     assert fit_core.gaps_of(problem) == []
 
-    gaps = fit_core.gaps_of_a_jacobian(problem)
+    assert fit_core.gaps_of_a_jacobian(problem) == []
+
+
+def test_a_jacobian_of_a_likelihood_whose_noise_the_fit_moves_is_a_gap(
+    tmp_path: Path,
+) -> None:
+    """The scale of a noise which follows the parameters has a derivative of its own."""
+    reader = _reader(tmp_path, noise_formula="0.05", distribution="normal")
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+
+    with patch.object(fit_core, "fixed_noise", return_value=None):
+        gaps = fit_core.gaps_of_a_jacobian(problem)
 
     assert [gap.code for gap in gaps] == ["objective"]
 

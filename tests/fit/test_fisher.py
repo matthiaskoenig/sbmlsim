@@ -1,5 +1,6 @@
 """Tests of the Fisher information of a fit."""
 
+import dataclasses
 import json
 import logging
 from typing import Any
@@ -23,7 +24,7 @@ from sbmlsim.fit.fisher import (
 )
 from sbmlsim.fit.metrics import aic, bic, bic_from_mse
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.options import ObjectiveType, ParameterScaleType
 
 
 def test_perfect_identifiable_fit_has_zero_errors_and_exact_intervals() -> None:
@@ -555,3 +556,22 @@ def test_stored_eigenvalues_of_another_shape_are_refused() -> None:
             n=10,
             spectrum=np.ones(3),
         )
+
+
+def test_the_fisher_information_of_a_likelihood_comes_from_the_sensitivities(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A likelihood of a fixed noise takes the forward sensitivities of the engine."""
+    settings = dataclasses.replace(fit_settings, objective=ObjectiveType.LIKELIHOOD)
+    problem = op_hctz_iv
+    problem.initialize(settings)
+    pset = problem.parameter_set_model()
+
+    information = fisher_information(problem, settings, pset)
+    differences = fisher_information(problem, settings, pset, step=1e-6)
+
+    assert information.jacobian_of == SENSITIVITIES
+    assert differences.jacobian_of == CENTRAL_DIFFERENCES
+    np.testing.assert_allclose(
+        information.standard_errors, differences.standard_errors, rtol=0.05
+    )

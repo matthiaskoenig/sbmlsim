@@ -2828,9 +2828,13 @@ def _theta_of(
 def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     """Get what keeps the jacobian of the residuals of a problem out of the engine.
 
-    The gaps of the fit of the problem (`gaps_of`), and the bindings which do
-    not resolve the problem of a request (`LoadedModel.fit_problem`, new in
-    sbmlsim-core 0.12.0). Whether the conditions of the problem carry the
+    The gaps of the fit of the problem (`gaps_of`), a likelihood whose noise
+    the fit moves, and the bindings which do not resolve the problem of a
+    request (`LoadedModel.fit_problem`, new in sbmlsim-core 0.12.0). The
+    residual of the scale of a noise the fit does not move is a constant of
+    the data, so its row of the jacobian is zero (`residual_jacobian` scatters
+    the rows of the engine between them); the rows of the priors of a
+    posterior are cut by `fisher.data_residuals` as well. Whether the conditions of the problem carry the
     forward sensitivities is no gap of the request: the engine answers that
     when it resolves the problem, see `residual_jacobian`.
 
@@ -2843,15 +2847,21 @@ def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     gaps = gaps_of(problem)
     if gaps:
         return gaps
-    if problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES:
+    if (
+        problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES
+        and any(
+            fixed_noise(problem, k) is None
+            for k in problem.indices(MappingKind.TRAINING)
+        )
+    ):
         return [
             Gap(
                 "objective",
                 f"the fit minimizes the objective "
-                f"'{problem.settings_initialized.objective.value}', whose "
-                f"residuals are the ones of the data and of the scales of its "
-                f"noise, while a jacobian of the engine has the rows of the "
-                f"curves of its request, the ones of the data",
+                f"'{problem.settings_initialized.objective.value}' and the "
+                f"scale of the noise of a mapping follows the parameters or the "
+                f"simulation, so the residual of that scale has a derivative "
+                f"the engine does not compute",
             )
         ]
     loaded = _loaded_of(problem)
@@ -2883,10 +2893,15 @@ def residual_jacobian(
     only to the noise of the integrator over its step. The whole jacobian is
     one batch of the engine, which walks the conditions on its threads.
 
-    The jacobian is the one of the data of the fit, a row per point of the
-    curves of the request, which are the training mappings of the problem; the
-    residuals of the priors of a fit of the posterior are no part of a request
-    and no part of this jacobian. Its columns are the derivatives in the space
+    The engine has a row per point of the curves of the request, the data of
+    the training mappings; the problem has two per point for a likelihood, the
+    data and the scale of its noise. The rows of the engine are scattered into
+    the rows of the problem (`_residual_rows`) and the rows of the scales,
+    constants of the data for a noise the fit does not move, are zero. The
+    residuals of the priors of a fit of the posterior are no part of this
+    jacobian: the `rows < total` mask drops a row of the request which lies
+    past the residuals of the data (the prior rows a later piece of #626
+    appends to the request). Its columns are the derivatives in the space
     the problem searches: the engine searches the entity of the model, so a
     parameter of its own unit has the factor of its target in its column, and
     the factor of a parameter which is searched as a logarithm cancels.
@@ -2897,7 +2912,8 @@ def residual_jacobian(
         threads: the threads of the batch, every CPU of the process without.
 
     Returns:
-        The jacobian, a row per data point and a column per parameter.
+        The jacobian, `_data_rows(problem)` rows (a residual per data point,
+        two for a likelihood) and a column per parameter.
 
     Raises:
         ValueError: if the problem is not initialized, if it has no model or
@@ -2915,7 +2931,63 @@ def residual_jacobian(
     )
     core = engine_problem(problem, request, threads=threads)
     jacobian = np.asarray(core.jacobian(_point_of(problem, x)), dtype=float)
-    return jacobian * _column_factors(problem)
+    rows = _residual_rows(problem)
+    total = _data_rows(problem)
+    keep = rows < total
+    scattered = np.zeros((total, jacobian.shape[1]), dtype=float)
+    scattered[rows[keep]] = jacobian[keep]
+    return scattered * _column_factors(problem)
+
+
+def _data_rows(problem: OptimizationProblem) -> int:
+    """Get the number of residuals of the data of a problem.
+
+    This is the `rows` of `fisher._jacobian_of`: a residual per measurement of
+    every training mapping for least squares, two (the data and the scale of
+    its noise) for a likelihood, the residuals of the priors not counted.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The number of residuals of the data.
+    """
+    points = sum(
+        len(problem.y_references[k]) for k in problem.indices(MappingKind.TRAINING)
+    )
+    if problem.settings_initialized.objective is ObjectiveType.LEAST_SQUARES:
+        return points
+    return 2 * points
+
+
+def _residual_rows(problem: OptimizationProblem) -> np.ndarray:
+    """Get the position in the residuals of the problem of every row of the request.
+
+    The residuals of a likelihood are, per training mapping in order, its data
+    residuals and then the residuals of the scales of its noise, so the rows
+    of the data of mapping `k` start at the end of the rows of the mappings
+    before it, which have two per point. For least squares this is the
+    identity. The scale rows of a curve which sends a `likelihood` and the
+    prior rows of a posterior join this map with the later pieces of #626.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        An integer array, one entry per row of the request, in the order of
+        the rows of the request.
+    """
+    likelihood = (
+        problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES
+    )
+    rows: list[np.ndarray] = []
+    base = 0
+    for k in problem.indices(MappingKind.TRAINING):
+        size = len(problem.y_references[k])
+        for part in _parts_of(problem, k):
+            rows.append(base + np.asarray(part.at, dtype=int))
+        base += (2 if likelihood else 1) * size
+    return np.concatenate(rows) if rows else np.zeros(0, dtype=int)
 
 
 def _point_of(
