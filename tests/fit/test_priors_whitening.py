@@ -39,6 +39,13 @@ def test_the_whitened_scores_are_an_explicit_product_over_the_inverse_factor() -
         [sum(c.inverse[i][j] * z[j] for j in range(z.size)) for i in range(z.size)]
     )
     np.testing.assert_array_equal(c.whitened(x), expected)
+    # independent oracle: the order computes the right quantity
+    np.testing.assert_allclose(
+        c.whitened(x),
+        solve_triangular(np.linalg.cholesky(MATRIX), z, lower=True),
+        rtol=1e-12,
+        atol=0.0,
+    )
 
 
 def test_a_score_which_is_not_finite_whitens_to_nan() -> None:
