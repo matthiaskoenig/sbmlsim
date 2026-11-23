@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
@@ -108,7 +109,11 @@ def _legal(formula: str) -> tuple[str, dict[str, str]]:
 
 
 def _names_of(
-    formula: str, symbols: ModelSymbols, entities: Entities, at: str
+    formula: str,
+    symbols: ModelSymbols,
+    entities: Entities,
+    at: str,
+    given: Mapping[str, str] | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Get a formula over identifiers of SBML and the names its symbols map to.
 
@@ -134,6 +139,9 @@ def _names_of(
         symbols: the symbols of the model.
         entities: the entities of the model, which helpers are added to.
         at: what a problem names, the observable the formula belongs to.
+        given: the identifier of the model of a symbol the caller names, e.g.
+            the parameter of an observable of the same simulation group which
+            the formula reads; it wins over every rule below.
 
     Returns:
         The formula whose symbols are SIds, and the identifier of the model of
@@ -145,8 +153,11 @@ def _names_of(
     """
     rewritten, concentrations = _legal(formula)
     compiled = compile_formula(rewritten)
-    names: dict[str, str] = {}
+    names: dict[str, str] = dict(given or {})
     for symbol in compiled.symbols:
+        if symbol in names:
+            # the caller knows the identifier of this symbol
+            continue
         species = concentrations.get(symbol)
         if species is not None:
             if species not in symbols.species:
@@ -220,6 +231,7 @@ def add_formula(
     formula: str,
     symbols: ModelSymbols,
     entities: Entities,
+    names: Mapping[str, str] | None = None,
 ) -> None:
     """Add an observable of a formula of the selections to the entities of a model.
 
@@ -235,13 +247,16 @@ def add_formula(
         symbols: the symbols of the model.
         entities: the entities of the model, which the observable is added
             to.
+        names: the identifier of the model of a symbol the caller names, e.g.
+            the parameter of an observable which the formula reads, see
+            `_names_of`.
 
     Raises:
         ValueError: if the formula is not valid math, or if it reads the
             concentration of a species the model does not have.
     """
-    rewritten, names = _names_of(formula, symbols, entities, name)
-    entities.observables[name] = _written(rewritten, names)
+    rewritten, resolved = _names_of(formula, symbols, entities, name, names)
+    entities.observables[name] = _written(rewritten, resolved)
 
 
 def _written(formula: str, names: dict[str, str]) -> str:
