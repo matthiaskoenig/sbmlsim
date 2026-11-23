@@ -1555,22 +1555,43 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
     gap, and so is one of a steady state or of a change, which a condition
     carries no derived value for.
 
+    The value the fit itself writes is a gap in the same places: the engine
+    sets the parameters of a request on the model before every simulation,
+    which overrides the pre-initialization of a condition, but
+    `Plan.with_values` replaces the assignment of a target *wherever* the
+    plan has one, so a parameter whose target a change or the
+    pre-initialization of a steady state sets reaches the request as the
+    number of the point it was built at (`_held_values`). A plain number is
+    enough for that, no formula is needed.
+
     Args:
         problem: the initialized problem.
 
     Returns:
         The gaps, one per value which reads a parameter of the fit and is not
-        carried as a derived value.
+        carried as a derived value, and one per parameter whose target such a
+        value holds.
     """
     carries = reads_derived(_loaded_of(problem))
     targets = _parameter_targets(problem)
     model = fit_model(problem)
     x = np.asarray(problem.xmodel, dtype=float)
     gaps: list[Gap] = []
+    # one entry per parameter whose target a value of a plan holds: the group
+    # and the place of the first of them, and how many of them there are, so
+    # a protocol of many doses of an estimated dose is one gap
+    held: dict[str, tuple[int, str, int]] = {}
     for group, mappings in enumerate(problem.mapping_groups):
         if not any(problem.mapping_kinds[k] is MappingKind.TRAINING for k in mappings):
             continue
         plan = problem.evaluated_plan(group, x, [])
+        for assignment, where in _held_values(plan):
+            if assignment.target not in targets:
+                continue
+            seen = held.get(assignment.target)
+            held[assignment.target] = (
+                (seen[0], seen[1], seen[2] + 1) if seen else (group, where, 1)
+            )
         for assignment, where, derivable in _plan_formulas(plan):
             if assignment.formula is None:
                 continue
@@ -1603,7 +1624,51 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
                     f"hold it where the fit started",
                 )
             )
+    for target, (group, where, n) in held.items():
+        place = where if n == 1 else f"at {n} values, the first of them {where},"
+        gaps.append(
+            Gap(
+                "parameter_value",
+                f"the parameter '{problem.parameters[targets[target]].pid}' writes "
+                f"'{target}', which the simulation of the group {group} sets "
+                f"{place} as well: a value of a request of the engine is a "
+                f"number, and the parameter of the condition overrides the "
+                f"pre-initialization of the request alone, so the value would "
+                f"hold the target where the fit started",
+            )
+        )
     return gaps
+
+
+def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
+    """Get every value of a plan which a parameter of the condition cannot override.
+
+    The engine sets the parameters of a request on the model before every
+    simulation of a condition, which overrides the pre-initialization of that
+    condition: a value there follows the search whatever the plan carries. It
+    does not override a value the engine applies later, neither a change nor
+    the pre-initialization of a steady state, so the number of such a value
+    is the one of the point the request was built at.
+
+    Args:
+        plan: the plan of the condition.
+
+    Returns:
+        The assignment and where it is, for every value of the plan the
+        engine would hold where the request was built.
+    """
+    found: list[tuple[Assignment, str]] = []
+    if plan.steady_state is not None:
+        found += [
+            (assignment, "before the initialization of its steady state")
+            for assignment in plan.steady_state.preinit
+        ]
+    found += [
+        (assignment, f"at the time {event.time}")
+        for event in plan.events
+        for assignment in event.assignments
+    ]
+    return found
 
 
 def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:

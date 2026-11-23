@@ -1294,3 +1294,79 @@ def test_one_formula_the_executor_cannot_fold_is_one_gap() -> None:
 
     assert [gap.code for gap in gaps] == ["change_value"]
     assert "2 changes" in gaps[0].message
+
+
+def dose_problem(
+    tmp_path: Path, experiment: type[SimulationExperiment] = UrineStudy
+) -> OptimizationProblem:
+    """Get the problem whose parameter is the dose a change of its plan sets.
+
+    The simulation `shifted` of `UrineStudy` doses by the plain numeric change
+    `Change(-24, {"PODOSE": ...})`, so `Plan.with_values` writes the fitted
+    dose into that change (`tests.fit.test_data_at_change`).
+    """
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    return OptimizationProblem(
+        "dose",
+        [FitMappingCollection(experiment=experiment, mappings=["fm_shifted"])],
+        [
+            FitParameter(
+                pid="PODOSE",
+                lower_bound=10.0,
+                upper_bound=1000.0,
+                start_value=100.0,
+                unit="mg",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+
+
+def test_a_parameter_whose_target_a_change_sets_is_a_gap(tmp_path: Path) -> None:
+    """A parameter of the fit written at a change is a number of the request.
+
+    `Plan.with_values` replaces the assignment of a target wherever the plan
+    has one, so the fitted value lands in the change itself. The parameter of
+    the condition overrides the pre-initialization of the plan but not a
+    change applied during the simulation, which the request carries as the
+    number of the point it was built at.
+    """
+    problem = on_core(
+        dose_problem(tmp_path),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["parameter_value"]
+    assert "'PODOSE'" in gaps[0].message
+
+
+def test_the_engine_would_hold_a_parameter_of_a_change_where_it_was_built(
+    tmp_path: Path,
+) -> None:
+    """Why that gap exists: the request of such a problem freezes the parameter.
+
+    The residuals of the problem follow the dose, the ones of the request do
+    not: its change carries the number of the point the request was built at.
+    Should the engine ever follow the parameter at a change, this test fails
+    and the gap can go.
+    """
+    problem = on_core(
+        dose_problem(tmp_path),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    core = core_problem(problem)
+
+    costs = []
+    for dose in (100.0, 150.0):
+        x = problem.to_scale(np.array([dose]))
+        python = np.asarray(problem.residuals(x), dtype=float)
+        engine = np.asarray(core.residuals(x), dtype=float)
+        costs.append((float(np.sum(python**2)), float(np.sum(engine**2))))
+    # the dose moves the residuals of the problem
+    assert costs[0][0] != pytest.approx(costs[1][0])
+    # and leaves the ones of the engine where the request was built
+    assert costs[0][1] == pytest.approx(costs[1][1])
