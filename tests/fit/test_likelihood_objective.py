@@ -309,8 +309,9 @@ def test_the_engine_simulates_the_data_of_a_likelihood_bitwise(
     if distribution == "log-normal":
         expected = np.log(expected)
 
-    model = fit_core.fit_model(problem)
-    conditions, curves = fit_core._conditions_and_curves(problem, model)
+    models = fit_core.fit_models(problem)
+    model = next(iter(models.values()))
+    conditions, curves = fit_core._conditions_and_curves(problem, models)
     out = model.batch_executor(1).simulate_many([conditions[0]["request"]])[0]
     columns = list(out.columns)
     values = np.asarray(out.values)

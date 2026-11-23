@@ -14,8 +14,16 @@ the search space, the simulation of every condition, the curves of the data
 with the weight of every point of them, and what the optimizer may spend.
 This module builds that request from an initialized `OptimizationProblem`,
 and `gaps_of` says what keeps a problem out of it: an objective the request
-cannot carry, an observable which is no column of a simulation, or data of
-more than one model.
+cannot carry, or an observable which is no column of a simulation.
+
+A fit reads more than one model, e.g. the two builds of a model of a drug or
+a study which measures two species: every condition of the request names the
+model of its simulation (`model_ids`, `fit_models`, `loaded_models`), and the
+parameters of the fit are the same in every model it reads, each applied to
+its target in the model of every condition it reaches. `engine_fit` and
+`engine_problem` are the fit and the objective of a request, which is
+`LoadedModel.fit`/`fit_problem` for a problem of one model and
+`sbmlsim_core.fit_models`/`fit_problem_of_models` for one of several.
 
 The residuals of the request are the ones of the problem, point for point:
 the residual of a point is `(f(x) - y) * sqrt(w)` on both sides, with the
@@ -143,6 +151,11 @@ CHANGE_FORMS_VERSION = "0.20.0"
 #: see `reads_infinite_noise`
 INFINITE_NOISE_VERSION = "0.21.0"
 
+#: the release of sbmlsim-core whose condition reads `model`, the model of the
+#: fit it simulates, so a fit reads more than one model, see
+#: `reads_several_models`
+MULTI_MODEL_VERSION = "0.22.0"
+
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
 #: dictionary, so it holds no problem alive, and `__getstate__` pickles the
@@ -150,6 +163,13 @@ INFINITE_NOISE_VERSION = "0.21.0"
 _FIT_MODELS: weakref.WeakKeyDictionary[OptimizationProblem, tuple[Entities, Any]] = (
     weakref.WeakKeyDictionary()
 )
+
+#: the models of the fit of a problem whose fit mappings read more than one
+#: model, kept per problem with the entities of every one of them, see
+#: `fit_models`; a weak dictionary as `_FIT_MODELS` is
+_FIT_MODEL_SETS: weakref.WeakKeyDictionary[
+    OptimizationProblem, tuple[tuple[Entities, ...], tuple[Any, ...]]
+] = weakref.WeakKeyDictionary()
 
 #: the scale of a parameter in a request of the engine, by the scale of the fit
 SCALES: dict[ParameterScaleType, str] = {
@@ -236,7 +256,10 @@ class Gap:
 
 
 def loaded_model(problem: OptimizationProblem) -> Any:
-    """Get the loaded model of a problem, the one the engine fits.
+    """Get the loaded model of a problem of one model, the one the engine fits.
+
+    `loaded_models` is this of a problem whose fit mappings read more than
+    one model, the loaded models by the id their conditions name them by.
 
     Args:
         problem: the initialized problem.
@@ -252,8 +275,9 @@ def loaded_model(problem: OptimizationProblem) -> Any:
     models = _models_of(problem)
     if len(models) != 1:
         raise ValueError(
-            f"'{problem.opid}': the engine fits one model, but the fit mappings "
-            f"of the problem have {len(models)} of them."
+            f"'{problem.opid}': this is the model of a fit of one model, and the "
+            f"fit mappings of the problem have {len(models)} of them; "
+            f"'fit_models' is the models of such a fit."
         )
     model = fit_model(problem)
     loaded = getattr(model, "loaded", None)
@@ -268,6 +292,9 @@ def loaded_model(problem: OptimizationProblem) -> Any:
 
 def fit_model(problem: OptimizationProblem) -> Any:
     """Get the model the engine fits, with the observables of the problem.
+
+    This is the model of a problem of one model, `fit_models` the models of
+    a problem whose fit mappings read several.
 
     A mapping which observes a formula of the selections is a column of the
     model of the fit and not of the model of the problem
@@ -292,8 +319,9 @@ def fit_model(problem: OptimizationProblem) -> Any:
     models = _models_of(problem)
     if len(models) != 1:
         raise ValueError(
-            f"'{problem.opid}': the engine fits one model, but the fit mappings "
-            f"of the problem have {len(models)} of them."
+            f"'{problem.opid}': this is the model of a fit of one model, and the "
+            f"fit mappings of the problem have {len(models)} of them; "
+            f"'fit_models' is the models of such a fit."
         )
     model = models[0]
     entities = _observable_entities(problem)
@@ -305,6 +333,161 @@ def fit_model(problem: OptimizationProblem) -> Any:
     loaded = observable_model(model, entities)
     _FIT_MODELS[problem] = (entities, loaded)
     return loaded
+
+
+def model_ids(problem: OptimizationProblem) -> list[str]:
+    """Get the id of every model of a problem, which its conditions name it by.
+
+    The id of a model is the key of the task which reads it
+    (`OptimizationProblem.model_keys`, the id of the model in its simulation
+    experiment), and the position of the model among the models of the problem
+    where two experiments of one fit read different models under one key, so
+    that the ids of a request are distinct whatever the experiments are
+    called.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The ids, one per model of `_models_of` in its order.
+    """
+    models = _models_of(problem)
+    first: dict[int, str] = {}
+    for model, key in zip(problem.models, problem.model_keys, strict=True):
+        first.setdefault(id(model), key)
+    ids: list[str] = []
+    for at, model in enumerate(models):
+        key = first.get(id(model), f"model{at}")
+        ids.append(key if key not in ids else f"{key}-{at}")
+    return ids
+
+
+def fit_models(problem: OptimizationProblem) -> dict[str, Any]:
+    """Get the models the engine fits, by the id their conditions name them by.
+
+    This is `fit_model` of a problem whose fit mappings read more than one
+    model, e.g. the two builds of a model of a drug: every model carries the
+    observables of the mappings which read it (`fit_model`), and the id of a
+    model is the one of `model_ids`.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The models, a `CoreSBMLModel` per id.
+    """
+    models = _models_of(problem)
+    if len(models) == 1:
+        return {model_ids(problem)[0]: fit_model(problem)}
+    entities = tuple(_observable_entities(problem, at) for at in range(len(models)))
+    kept = _FIT_MODEL_SETS.get(problem)
+    if kept is None or kept[0] != entities:
+        built = tuple(
+            model if not of_the_model else observable_model(model, of_the_model)
+            for model, of_the_model in zip(models, entities, strict=True)
+        )
+        kept = (entities, built)
+        _FIT_MODEL_SETS[problem] = kept
+    return dict(zip(model_ids(problem), kept[1], strict=True))
+
+
+def loaded_models(problem: OptimizationProblem) -> dict[str, Any]:
+    """Get the loaded models of a problem, the ones the engine fits.
+
+    Args:
+        problem: the initialized problem.
+
+    Returns:
+        The `LoadedModel` of the bindings of sbmlsim-core per id of
+        `model_ids`, which `sbmlsim_core.fit_models` fits a request of
+        `fit/1` against; one model for a problem of one model, which
+        `LoadedModel.fit` fits itself.
+
+    Raises:
+        ValueError: if the problem has no model or a model which is not
+            loaded in sbmlsim-core, see `gaps_of`.
+    """
+    loaded = {}
+    for name, model in fit_models(problem).items():
+        of_the_model = getattr(model, "loaded", None)
+        if of_the_model is None:
+            raise ValueError(
+                f"'{problem.opid}': the model '{model}' is not loaded in the "
+                f"engine core, so the engine cannot fit it; the problem "
+                f"simulates with '{problem.engine.value}'."
+            )
+        loaded[name] = of_the_model
+    if not loaded:
+        raise ValueError(
+            f"'{problem.opid}': the fit mappings of the problem have no model."
+        )
+    return loaded
+
+
+def engine_fit(
+    problem: OptimizationProblem,
+    request: dict[str, Any],
+    *,
+    threads: int | None = None,
+    on_run: Any = None,
+) -> dict[str, Any]:
+    """Run a request of `fit/1` in the engine, on the models of a problem.
+
+    A fit of one model is `LoadedModel.fit` of that model and a fit of
+    several `sbmlsim_core.fit_models`, which takes them by their id
+    (`model_ids`), so the conditions of a request of several models name the
+    model each of them simulates.
+
+    Args:
+        problem: the initialized problem, without gaps (`gaps_of`).
+        request: the request of the fit (`fit_request`).
+        threads: the threads of the batch of an evaluation; the CPUs of the
+            machine without.
+        on_run: what the engine calls with the index of a run of the fit and
+            the run itself as soon as it finished; nothing without.
+
+    Returns:
+        The answer of the fit, a dictionary of the fields of the contract.
+    """
+    models = loaded_models(problem)
+    reporting = {} if on_run is None else {"on_run": on_run}
+    if len(models) == 1:
+        loaded = next(iter(models.values()))
+        return loaded.fit(request, threads=threads, **reporting)
+    import sbmlsim_core
+
+    return sbmlsim_core.fit_models(models, request, threads=threads, **reporting)
+
+
+def engine_problem(
+    problem: OptimizationProblem,
+    request: dict[str, Any],
+    *,
+    threads: int | None = None,
+) -> Any:
+    """Get the objective of a request of `fit/1` in the engine.
+
+    This is the problem of the engine for an optimizer which stays in
+    python, `LoadedModel.fit_problem` of a problem of one model and
+    `sbmlsim_core.fit_problem_of_models` of one of several.
+
+    Args:
+        problem: the initialized problem, without gaps (`gaps_of`).
+        request: the request of the fit (`fit_request`).
+        threads: the threads of the batch of an evaluation; the CPUs of the
+            machine without.
+
+    Returns:
+        The `FitProblem` of the bindings, whose `residuals`, `cost` and
+        `jacobian` are the ones of the request.
+    """
+    models = loaded_models(problem)
+    if len(models) == 1:
+        loaded = next(iter(models.values()))
+        return loaded.fit_problem(request, threads=threads)
+    import sbmlsim_core
+
+    return sbmlsim_core.fit_problem_of_models(models, request, threads=threads)
 
 
 def fits_requests(loaded: Any) -> bool:
@@ -348,6 +531,24 @@ def reads_after_change(loaded: Any) -> bool:
         Whether the bindings read the field.
     """
     return _reads(loaded, AFTER_CHANGE_VERSION)
+
+
+def reads_several_models(loaded: Any) -> bool:
+    """Whether the bindings of a loaded model fit more than one model.
+
+    A condition of a request names the model it simulates from sbmlsim-core
+    `MULTI_MODEL_VERSION` on (`sbmlsim_core.fit_models`), which is what a fit
+    of mappings of two models needs; older bindings fit one model, so such a
+    problem keeps the gap `models` and is fitted in python.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            sbmlsim-core.
+
+    Returns:
+        Whether a fit of several models runs in the engine.
+    """
+    return _reads(loaded, MULTI_MODEL_VERSION)
 
 
 def _reads(loaded: Any, release: str) -> bool:
@@ -435,9 +636,14 @@ def reads_infinite_noise(loaded: Any) -> bool:
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
-    """Get the loaded model of a problem, `None` if it has not exactly one."""
+    """Get a loaded model of a problem, which the gates of the bindings read.
+
+    Every model of a problem is loaded by the same bindings, so the first
+    one answers what the engine reads; `None` for a problem without a model
+    or whose model is not loaded in sbmlsim-core.
+    """
     models = _models_of(problem)
-    if len(models) != 1:
+    if not models:
         return None
     return getattr(models[0], "loaded", None)
 
@@ -467,15 +673,21 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
         )
         return gaps
     models = _models_of(problem)
-    if len(models) != 1:
+    if not models:
+        return [Gap("models", "the mappings of the problem read no model")]
+    loaded = getattr(models[0], "loaded", None)
+    if len(models) != 1 and not reads_several_models(loaded):
+        import sbmlsim_core
+
         return [
             Gap(
                 "models",
-                f"the mappings of the problem read {len(models)} models and a "
-                f"request of '{CONTRACT}' carries one",
+                f"the mappings of the problem read {len(models)} models, and the "
+                f"bindings of sbmlsim-core {sbmlsim_core.__version__} fit one; "
+                f"{MULTI_MODEL_VERSION} is the first which fits several",
             )
         ]
-    if not fits_requests(getattr(models[0], "loaded", None)):
+    if not fits_requests(loaded):
         import sbmlsim_core
 
         return [
@@ -510,15 +722,6 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
                     f"baseline of the simulation",
                 )
             ]
-    models = _models_of(problem)
-    if len(models) != 1:
-        gaps.append(
-            Gap(
-                "models",
-                f"the fit mappings of the problem have {len(models)} models, and "
-                f"a request fits one",
-            )
-        )
     for parameter in problem.parameters:
         if parameter.is_external:
             gaps.append(
@@ -842,7 +1045,7 @@ def fit_request(
             f"'{problem.opid}': the request of a fit needs the resolved data "
             f"of the problem, which 'initialize' builds."
         )
-    conditions, curves = _conditions_and_curves(problem, fit_model(problem))
+    conditions, curves = _conditions_and_curves(problem, fit_models(problem))
     optimizer: dict[str, Any] = {
         "algorithm": _algorithm(algorithm, evolution),
         "max_iterations": int(max_iterations),
@@ -877,6 +1080,37 @@ def fit_request(
 def _models_of(problem: OptimizationProblem) -> list[Any]:
     """Get the models of the fit mappings of a problem, every one of them once."""
     return list({id(model): model for model in problem.models}.values())
+
+
+def _models_of_the_groups(problem: OptimizationProblem) -> list[CoreSBMLModel]:
+    """Get the model of the fit of every simulation group of a problem.
+
+    The checks of a problem read the plan of a group against the model which
+    simulates it, which is the model of the fit of that group
+    (`fit_models`): the model of the problem itself for a group without an
+    observable of its own.
+    """
+    models = fit_models(problem)
+    ids = model_ids(problem)
+    return [
+        models[ids[_model_of_group(problem, group)]]
+        for group in range(len(problem.mapping_groups))
+    ]
+
+
+def _model_at(problem: OptimizationProblem, mapping: int) -> int:
+    """Get the model of a fit mapping, its position in `_models_of`."""
+    models = _models_of(problem)
+    of_the_mapping = problem.models[mapping]
+    return next(at for at, model in enumerate(models) if model is of_the_mapping)
+
+
+def _model_of_group(problem: OptimizationProblem, group: int) -> int:
+    """Get the model of a simulation group, its position in `_models_of`.
+
+    The mappings of a group share their simulation, so they share its model.
+    """
+    return _model_at(problem, problem.mapping_groups[group][0])
 
 
 def _parameters(problem: OptimizationProblem) -> list[dict[str, Any]]:
@@ -956,7 +1190,7 @@ def _algorithm(
 
 
 def _conditions_and_curves(
-    problem: OptimizationProblem, model: CoreSBMLModel
+    problem: OptimizationProblem, models: Mapping[str, CoreSBMLModel]
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Get the conditions and the curves of a request.
 
@@ -964,6 +1198,10 @@ def _conditions_and_curves(
     the request of its plan with the values of the parameters at the start of
     the fit; a curve is a training fit mapping, the data of the problem with
     the weight of every point of it.
+
+    A condition of a fit of several models names the model it simulates, the
+    model of its simulation group, and a condition of a fit of one model
+    names none, which every release of the engine reads.
 
     The curves are in the order of the fit mappings of the problem, which is
     the order of the residuals it computes: the residuals of the engine are
@@ -974,7 +1212,9 @@ def _conditions_and_curves(
 
     loaded = _loaded_of(problem)
 
-    settings = model.request_settings()
+    ids = model_ids(problem)
+    of_the_models = [models[name] for name in ids]
+    settings_of = [model.request_settings() for model in of_the_models]
     x = np.asarray(problem.xmodel, dtype=float)
     parts = {k: _parts_of(problem, k) for k in problem.indices(MappingKind.TRAINING)}
     conditions: list[dict[str, Any]] = []
@@ -985,6 +1225,8 @@ def _conditions_and_curves(
         ]
         if not training:
             continue
+        at = _model_of_group(problem, group)
+        model = of_the_models[at]
         plan = problem.evaluated_plan(group, x, [])
         # a value which follows a parameter of the fit is no number of the
         # request: the engine evaluates it before every simulation
@@ -1009,9 +1251,15 @@ def _conditions_and_curves(
         entry: dict[str, Any] = {
             "id": condition,
             "request": request_of(
-                plan, model, selections, settings, forms=reads_change_forms(loaded)
+                plan,
+                model,
+                selections,
+                settings_of[at],
+                forms=reads_change_forms(loaded),
             ),
         }
+        if len(of_the_models) > 1:
+            entry["model"] = ids[at]
         if derived:
             entry["derived"] = derived
         conditions.append(entry)
@@ -1359,9 +1607,10 @@ def _gap_of_an_observable(problem: OptimizationProblem, mapping: int) -> Gap | N
     if observable is None:
         return None
     key = problem.mapping_keys[mapping]
-    model = _models_of(problem)[0] if len(_models_of(problem)) == 1 else None
-    if model is None:
+    models = _models_of(problem)
+    if not models:
         return None
+    model = models[_model_at(problem, mapping)]
     rows = _placeholder_rows(observable, problem.x_references[mapping])
     if rows is None:
         return Gap(
@@ -1426,7 +1675,7 @@ def _observable_names(
     return {row: f"{observable_id(key)}__r{n}" for n, row in enumerate(rows)}
 
 
-def _observable_entities(problem: OptimizationProblem) -> Entities:
+def _observable_entities(problem: OptimizationProblem, at: int = 0) -> Entities:
     """Get the observables of the training mappings of a problem.
 
     An observable whose placeholders have more than one row of values over
@@ -1435,6 +1684,9 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
 
     Args:
         problem: the initialized problem, without the gap `observable`.
+        at: the model of the problem the entities are of, its position in
+            `_models_of`; the observables of a fit of several models are the
+            ones of the mappings which read that model.
 
     Returns:
         The entities of the model of the fit, empty for a problem none of
@@ -1442,12 +1694,12 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
     """
     entities = Entities()
     models = _models_of(problem)
-    if len(models) != 1:
+    if at >= len(models):
         return entities
-    symbols = models[0].symbols
+    symbols = models[at].symbols
     for mapping in problem.indices(MappingKind.TRAINING):
         observable = problem.observable_models[mapping]
-        if observable is None:
+        if observable is None or _model_at(problem, mapping) != at:
             continue
         rows = _placeholder_rows(observable, problem.x_references[mapping])
         if rows is None:
@@ -1457,7 +1709,7 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
         for row, values in rows.items():
             add_observable(names[row], observable, values, symbols, entities)
     for k_group, graph in enumerate(problem._group_pointwise):
-        if graph is None:
+        if graph is None or _model_of_group(problem, k_group) != at:
             continue
         # the nodes of the graph are ordered, so a formula reads only the
         # observables before it, whose parameters `names` carries: nothing of
@@ -1478,6 +1730,8 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
             names[node.id] = target
     for mapping in problem.indices(MappingKind.TRAINING):
         if not _is_log_normal(problem, mapping):
+            continue
+        if _model_at(problem, mapping) != at:
             continue
         for part in _parts_of(problem, mapping):
             column = part.column or problem.yid_observable[mapping]
@@ -1695,7 +1949,7 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
     """
     carries = reads_derived(_loaded_of(problem))
     targets = _parameter_targets(problem)
-    model = fit_model(problem)
+    of_the_groups = _models_of_the_groups(problem)
     x = np.asarray(problem.xmodel, dtype=float)
     gaps: list[Gap] = []
     # one entry per parameter whose target a value of a plan holds: the group
@@ -1729,7 +1983,12 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
                 and linear_form(
                     str(assignment.formula),
                     targets,
-                    _known_values(str(assignment.formula), targets, plan, model),
+                    _known_values(
+                        str(assignment.formula),
+                        targets,
+                        plan,
+                        of_the_groups[group],
+                    ),
                 )
                 is not None
             ):
@@ -1843,7 +2102,7 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
     from sbmlsim.simulator.executor_core import is_formed
 
     targets = _parameter_targets(problem)
-    model = fit_model(problem)
+    of_the_groups = _models_of_the_groups(problem)
     forms = reads_change_forms(_loaded_of(problem))
     x = np.asarray(problem.xmodel, dtype=float)
     # one entry per formula, in the order they were met: its first change and
@@ -1853,6 +2112,7 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
         if not any(problem.mapping_kinds[k] is MappingKind.TRAINING for k in mappings):
             continue
         plan = problem.evaluated_plan(group, x, [])
+        model = of_the_groups[group]
         constant = _constant_at_the_changes(plan, model)
         # the request writes the forms all or nothing per plan, and this is the
         # plan the request is built from: `_conditions_and_curves` asks
@@ -2179,7 +2439,8 @@ def run(
     drawn = problem.start_values(size, algorithm, sampling, seed)
     runs = list(range(size)) if indices is None else list(indices)
     starts = [drawn[k] for k in runs]
-    loaded = loaded_model(problem)
+    models = loaded_models(problem)
+    loaded = next(iter(models.values()))
     request = fit_request(
         problem,
         starts=[start for start in starts if start is not None],
@@ -2206,8 +2467,8 @@ def run(
     streams = reports_runs(loaded)
     interrupted = False
     try:
-        answer = loaded.fit(
-            request, threads=threads, **({"on_run": report} if streams else {})
+        answer = engine_fit(
+            problem, request, threads=threads, on_run=report if streams else None
         )
     except KeyboardInterrupt:
         # the runs which were reported are the fit, as the repeats which
@@ -2527,7 +2788,7 @@ def profile_points(
             "optimizer": points,
         },
     )
-    answer = loaded_model(problem).fit(request, threads=threads)
+    answer = engine_fit(problem, request, threads=threads)
     walked: dict[str, tuple[list[tuple[np.ndarray, float, bool]], ...]] = {}
     for profile in answer["profiles"]:
         index = problem.pids.index(profile["id"])
@@ -2650,7 +2911,7 @@ def residual_jacobian(
         jacobian=SENSITIVITIES,
         threads=threads,
     )
-    core = loaded_model(problem).fit_problem(request, threads=threads)
+    core = engine_problem(problem, request, threads=threads)
     jacobian = np.asarray(core.jacobian(_point_of(problem, x)), dtype=float)
     return jacobian * _column_factors(problem)
 
