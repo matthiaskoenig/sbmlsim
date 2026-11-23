@@ -13,7 +13,12 @@ from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Formula, Simulation
 from sbmlsim.simulation.scan import Scan
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.formula import compile_formula, formula_mathml, parse_math
+from sbmlsim.simulator.formula import (
+    compile_formula,
+    formula_mathml,
+    linear_form,
+    parse_math,
+)
 
 
 def test_formula_with_concentration_and_time() -> None:
@@ -472,3 +477,62 @@ def test_the_time_of_a_formula_is_the_time_of_sbml() -> None:
 def test_the_mathml_of_a_formula_refuses_what_sbml_does_not_read(formula: str) -> None:
     with pytest.raises(ValueError, match=re.escape(f"'{formula}'")):
         formula_mathml(formula)
+
+
+class TestLinearForm:
+    """A formula read as a linear form, `constant + sum(factor * symbol)`.
+
+    Two callers read one and both ask it of this function: the executor over
+    the entities of a model, for a form of a change the engine evaluates from
+    its own state (`sbmlsim.simulator.executor_core.form_of`), and a fit over
+    the parameters it estimates, for a derived value of a condition the engine
+    evaluates at the values its optimizer is at (`sbmlsim.fit.fit_core`).
+    """
+
+    @pytest.mark.parametrize(
+        "formula, expected",
+        [
+            ("a", (0.0, [(0, 1.0)])),
+            ("a + b", (0.0, [(0, 1.0), (1, 1.0)])),
+            ("2 * a + 3", (3.0, [(0, 2.0)])),
+            ("a - b", (0.0, [(0, 1.0), (1, -1.0)])),
+            ("a / 2", (0.0, [(0, 0.5)])),
+            ("3 * b", (0.0, [(1, 3.0)])),
+        ],
+    )
+    def test_a_linear_form_is_read_off_a_formula(
+        self, formula: str, expected: tuple[float, list[tuple[int, float]]]
+    ) -> None:
+        """A formula linear in the named symbols gives its constant and factors."""
+        assert linear_form(formula, {"a": 0, "b": 1}) == expected
+
+    @pytest.mark.parametrize(
+        "formula",
+        [
+            "a * b",  # not linear
+            "a * a",  # of a higher degree
+            "exp(a)",  # no polynomial
+            "1 / a",  # no polynomial
+            "3",  # a number the caller folds itself
+            "a + c",  # reads a symbol the caller did not name
+            "c",  # the same
+        ],
+    )
+    def test_a_formula_which_is_no_linear_form_is_none(self, formula: str) -> None:
+        """A formula which is no linear form over the named symbols is refused."""
+        assert linear_form(formula, {"a": 0, "b": 1}) is None
+
+    def test_the_factor_of_a_symbol_is_the_one_of_the_formula(self) -> None:
+        """The form is over the symbols of the model, so it carries no unit."""
+        # a form of a fit reads the entity of the model a parameter writes,
+        # whose value is the one the engine sets, so a factor of the unit of
+        # that parameter is already in the coefficient of the formula
+        assert linear_form("0.25 * a", {"a": 0}) == (0.0, [(0, 0.25)])
+
+    def test_a_constant_of_the_form_is_substituted_before_it_is_read(self) -> None:
+        """A symbol of a known value is a number of the form, not a term."""
+        assert linear_form("a + 2 * c", {"a": 0}, {"c": 3.0}) == (6.0, [(0, 1.0)])
+
+    def test_a_form_of_constants_alone_is_none(self) -> None:
+        """A formula whose symbols are all known is a number the caller folds."""
+        assert linear_form("2 * c", {"a": 0}, {"c": 3.0}) is None

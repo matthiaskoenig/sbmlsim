@@ -41,7 +41,6 @@ from sbmlsim.fit.fit_core import (
     fits_requests,
     gaps_of,
     gaps_of_the_profiles,
-    linear_form,
     loaded_model,
     run,
     walk_of,
@@ -857,50 +856,6 @@ def test_a_step_of_the_information_asks_for_the_differences(
     assert information.step == 1e-3
 
 
-class TestLinearForm:
-    """The linear forms of the derived values of a condition."""
-
-    @pytest.mark.parametrize(
-        "formula, expected",
-        [
-            ("a", (0.0, [(0, 1.0)])),
-            ("a + b", (0.0, [(0, 1.0), (1, 1.0)])),
-            ("2 * a + 3", (3.0, [(0, 2.0)])),
-            ("a - b", (0.0, [(0, 1.0), (1, -1.0)])),
-            ("a / 2", (0.0, [(0, 0.5)])),
-            ("3 * b", (0.0, [(1, 3.0)])),
-        ],
-    )
-    def test_a_linear_form_is_read_off_a_formula(
-        self, formula: str, expected: tuple[float, list[tuple[int, float]]]
-    ) -> None:
-        """A formula linear in the parameters gives its constant and factors."""
-        assert linear_form(formula, {"a": 0, "b": 1}) == expected
-
-    @pytest.mark.parametrize(
-        "formula",
-        [
-            "a * b",  # not linear
-            "a * a",  # of a higher degree
-            "exp(a)",  # no polynomial
-            "1 / a",  # no polynomial
-            "3",  # a number the executor folds itself
-            "a + c",  # reads an entity which is no parameter of the fit
-            "c",  # the same
-        ],
-    )
-    def test_a_formula_which_is_no_linear_form_is_none(self, formula: str) -> None:
-        """A formula which is no linear form over the parameters is refused."""
-        assert linear_form(formula, {"a": 0, "b": 1}) is None
-
-    def test_the_factor_of_a_parameter_is_the_one_of_the_formula(self) -> None:
-        """The form is over the entities of the model, so it carries no unit."""
-        # the formula reads the entity of the model a parameter writes, whose
-        # value is the one the engine sets, so a factor of a unit of the
-        # parameter is already in it (`_factors_of`)
-        assert linear_form("0.25 * a", {"a": 0}) == (0.0, [(0, 0.25)])
-
-
 def shifted_problem(
     tmp_path: Path,
     mapping: str = "fm_shifted",
@@ -1029,17 +984,126 @@ class FoldedChangeStudy(UrineStudy):
         }
 
 
-def test_a_change_the_executor_folds_by_simulating_is_a_gap() -> None:
-    """A change whose formula reads the model is a number of the point it was built at.
+def test_a_change_of_a_linear_formula_is_no_gap() -> None:
+    """A formula the condition carries as a form keeps the fit in the engine."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", FoldedChangeStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
 
-    `0.5 * Aurine` reads a state, which the executor can only fold by
-    simulating up to the change, so the number of a request holds the change
-    where the fit started while the optimizer moves the state the formula
-    reads: the engine would answer the residuals of another problem without
-    an error (#613).
+    assert gaps_of(problem) == []
+
+
+def test_the_residuals_of_a_formed_change_follow_the_parameters() -> None:
+    """The criterion: the residuals are the problem's away from the build point too.
+
+    `0.5 * Aurine` is a form the engine evaluates from its own state, so the
+    residuals follow the parameter where a folded number would hold the change
+    at the point the request was built at (#617).
     """
     problem = on_core(
         shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", FoldedChangeStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    core = core_problem(problem)
+    start = np.asarray(problem.xmodel, dtype=float)
+    seen = []
+    for factor in (1.0, 1.2, 0.7):
+        x = problem.to_scale(start * factor)
+        seen.append(np.asarray(problem.residuals(x), dtype=float))
+        assert np.asarray(core.residuals(x), dtype=float) == pytest.approx(
+            seen[-1], rel=1e-9, abs=1e-12
+        )
+    # the parameter moves the residuals, so the agreement is not trivial
+    assert not np.allclose(seen[0], seen[1])
+    assert not np.allclose(seen[0], seen[2])
+
+
+class NoFormFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose change is no linear form, `Aurine * Aurine`."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_of_a_formula_which_is_no_form_keeps_the_gap() -> None:
+    """A formula which is no linear form is still fitted in python."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", NoFormFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["change_value"]
+    assert "Aurine * Aurine" in gaps[0].message
+
+
+class ConstantProductStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose change is no form but reads a constant, `ka * ka`."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "ka * ka"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_of_constants_is_no_gap_though_it_is_no_form() -> None:
+    """A formula over constants folds into one number everywhere (the first gate).
+
+    `ka * ka` is no linear form, so only `_constant_at_the_changes` keeps it
+    out of the gaps; without that gate the fit would lose the engine.
+    """
+    from sbmlsim.simulator.executor_core import form_of
+
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", ConstantProductStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    plan = problem.evaluated_plan(0, np.asarray(problem.xmodel, dtype=float), [])
+    assignment = next(a for e in plan.events for a in e.assignments if a.formula)
+    assert form_of(assignment, fit_core.fit_model(problem)) is None
+    assert gaps_of(problem) == []
+
+
+class MixedFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` with a form after a change of constants which is no form."""
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(12, {"Aurine": "ka * ka"}),
+                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                ],
+            ),
+        }
+
+
+def test_a_form_is_a_gap_in_a_plan_which_folds_another_formula() -> None:
+    """The request writes the forms all or nothing, so a plan of both folds both."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", MixedFoldStudy),
         FitSettings(parameter_scale=ParameterScaleType.LINEAR),
     )
 
@@ -1049,7 +1113,7 @@ def test_a_change_the_executor_folds_by_simulating_is_a_gap() -> None:
     assert "0.5 * Aurine" in gaps[0].message
 
 
-class PreinitFoldStudy(FoldedChangeStudy):
+class PreinitFoldStudy(NoFormFoldStudy):
     """`FoldedChangeStudy` whose pre-initialization sets the state the change reads.
 
     The pre-initialization sets `Aurine` to a number, which the executor
@@ -1066,7 +1130,7 @@ class PreinitFoldStudy(FoldedChangeStudy):
                 preinit_changes={"Aurine": Q(0, "mg")},
                 changes=[
                     Change(0, {"PODOSE": Q(100, "mg")}),
-                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
                 ],
             ),
         }
@@ -1083,6 +1147,41 @@ def test_a_change_which_reads_a_state_the_pre_initialization_sets_is_a_gap() -> 
 
     assert [gap.code for gap in gaps] == ["change_value"]
     assert "'Aurine'" in gaps[0].message
+
+
+class DerivedFoldStudy(FoldedChangeStudy):
+    """`FoldedChangeStudy` whose pre-initialization sets `ka` by a formula over `ke`.
+
+    A derived value of the condition moves `ka` with the search, so the number
+    the executor folds the change `ka * ka` into is the one of the point the
+    request was built at.
+    """
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            **super().simulations(),
+            "folded": Simulation(
+                end=48,
+                preinit_changes={"ka": "2 * ke"},
+                changes=[
+                    Change(0, {"PODOSE": Q(100, "mg")}),
+                    Change(24, {"Aurine": "ka * ka"}),
+                ],
+            ),
+        }
+
+
+def test_a_change_which_reads_a_parameter_a_formula_sets_is_a_gap() -> None:
+    """A parameter the pre-initialization assigns by a formula is no constant."""
+    problem = on_core(
+        shifted_problem(Path(tempfile.mkdtemp()), "fm_folded", DerivedFoldStudy),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert "change_value" in [gap.code for gap in gaps]
+    assert "'ka'" in next(g for g in gaps if g.code == "change_value").message
 
 
 class ConstantFoldStudy(FoldedChangeStudy):
@@ -1116,8 +1215,8 @@ def test_a_change_which_reads_a_constant_of_the_model_is_no_gap() -> None:
     assert gaps_of(problem) == []
 
 
-class RepeatedFoldStudy(FoldedChangeStudy):
-    """`FoldedChangeStudy` which halves the collection at 12 h and at 24 h."""
+class RepeatedFoldStudy(NoFormFoldStudy):
+    """`NoFormFoldStudy` which squares the collection at 12 h and at 24 h."""
 
     def simulations(self) -> dict[str, Simulation]:
         return {
@@ -1126,8 +1225,8 @@ class RepeatedFoldStudy(FoldedChangeStudy):
                 end=48,
                 changes=[
                     Change(0, {"PODOSE": Q(100, "mg")}),
-                    Change(12, {"Aurine": "0.5 * Aurine"}),
-                    Change(24, {"Aurine": "0.5 * Aurine"}),
+                    Change(12, {"Aurine": "Aurine * Aurine"}),
+                    Change(24, {"Aurine": "Aurine * Aurine"}),
                 ],
             ),
         }
@@ -1150,3 +1249,79 @@ def test_one_formula_the_executor_cannot_fold_is_one_gap() -> None:
 
     assert [gap.code for gap in gaps] == ["change_value"]
     assert "2 changes" in gaps[0].message
+
+
+def dose_problem(
+    tmp_path: Path, experiment: type[SimulationExperiment] = UrineStudy
+) -> OptimizationProblem:
+    """Get the problem whose parameter is the dose a change of its plan sets.
+
+    The simulation `shifted` of `UrineStudy` doses by the plain numeric change
+    `Change(-24, {"PODOSE": ...})`, so `Plan.with_values` writes the fitted
+    dose into that change (`tests.fit.test_data_at_change`).
+    """
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    return OptimizationProblem(
+        "dose",
+        [FitMappingCollection(experiment=experiment, mappings=["fm_shifted"])],
+        [
+            FitParameter(
+                pid="PODOSE",
+                lower_bound=10.0,
+                upper_bound=1000.0,
+                start_value=100.0,
+                unit="mg",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+
+
+def test_a_parameter_whose_target_a_change_sets_is_a_gap(tmp_path: Path) -> None:
+    """A parameter of the fit written at a change is a number of the request.
+
+    `Plan.with_values` replaces the assignment of a target wherever the plan
+    has one, so the fitted value lands in the change itself. The parameter of
+    the condition overrides the pre-initialization of the plan but not a
+    change applied during the simulation, which the request carries as the
+    number of the point it was built at.
+    """
+    problem = on_core(
+        dose_problem(tmp_path),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["parameter_value"]
+    assert "'PODOSE'" in gaps[0].message
+
+
+def test_the_engine_would_hold_a_parameter_of_a_change_where_it_was_built(
+    tmp_path: Path,
+) -> None:
+    """Why that gap exists: the request of such a problem freezes the parameter.
+
+    The residuals of the problem follow the dose, the ones of the request do
+    not: its change carries the number of the point the request was built at.
+    Should the engine ever follow the parameter at a change, this test fails
+    and the gap can go.
+    """
+    problem = on_core(
+        dose_problem(tmp_path),
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+    )
+    core = core_problem(problem)
+
+    costs = []
+    for dose in (100.0, 150.0):
+        x = problem.to_scale(np.array([dose]))
+        python = np.asarray(problem.residuals(x), dtype=float)
+        engine = np.asarray(core.residuals(x), dtype=float)
+        costs.append((float(np.sum(python**2)), float(np.sum(engine**2))))
+    # the dose moves the residuals of the problem
+    assert costs[0][0] != pytest.approx(costs[1][0])
+    # and leaves the ones of the engine where the request was built
+    assert costs[0][1] == pytest.approx(costs[1][1])

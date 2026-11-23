@@ -14,7 +14,7 @@ import pytest
 
 pytest.importorskip("sbmlsim_core")
 
-from sbmlsim import parallel
+from sbmlsim import Q, parallel
 from sbmlsim.engine import Engine, UnsupportedModelError, import_core
 from sbmlsim.model import RoadrunnerSBMLModel, load_model
 from sbmlsim.model import model_core as core_module
@@ -36,9 +36,10 @@ from sbmlsim.simulator.executor_core import (
     INTEGRATOR_STEPS,
     STEADY_STATE_FLAG,
     _failed,
+    form_of,
     request_of,
 )
-from sbmlsim.simulator.plan import Assignment, PlanEvent, compile_simulation
+from sbmlsim.simulator.plan import Assignment, Plan, PlanEvent, compile_simulation
 from sbmlsim.simulator.worker import ModelSpec, core_threads
 from tests.simulator.models import (
     ALGEBRAIC,
@@ -47,6 +48,7 @@ from tests.simulator.models import (
     TOLERANCE_PROBE,
     roadrunner_simulator,
     sbml,
+    sbml_pk,
 )
 
 #: a model whose parameter `tt` the test renames to `time`, an entity of the
@@ -1365,3 +1367,198 @@ def test_a_deadline_which_fires_names_itself(monkeypatch: pytest.MonkeyPatch) ->
     assert "1 ms" in message
     core_module.runtime.cache_clear()
     core_module.COMPILED.clear()
+
+
+def _urine_plan(
+    formulas: dict[float, str], dose: bool = False
+) -> tuple[CoreSBMLModel, Plan]:
+    """Get the PK model with urine and a plan which sets `Aurine` by formulas.
+
+    With `dose` an oral dose at the start fills the collection, so the symbols
+    of a formula are not zero where it is folded: a test which compares the
+    fold with the form of the same formula compares nothing otherwise.
+    """
+    model = load_model(sbml_pk(urine=True), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    changes = [Change(0.0, {"PODOSE": Q(100, "mg")})] if dose else []
+    changes += [Change(t, {"Aurine": f}) for t, f in formulas.items()]
+    simulation = Simulation(
+        end=40,
+        changes=changes,
+        times=np.linspace(0, 40, 41).tolist(),
+    )
+    return model, compile_simulation(simulation, model.symbols, model.uinfo)
+
+
+def test_a_change_of_a_linear_formula_is_a_form_of_the_request() -> None:
+    """A formula at a change is a form, and the request simulates nothing to build it."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert request["changes"][0]["forms"] == [
+        {"target": "Aurine", "constant": 0.0, "terms": [["Aurine", 0.5]]}
+    ]
+    assert request["changes"][0]["values"] == []
+    # nothing to fold: the engine is not asked for a single segment
+    segments: list[dict[str, object]] = []
+
+    def refuse(requests: list[dict[str, object]]) -> list[object]:
+        segments.extend(requests)
+        return []
+
+    folded = executor_core.requests_of(
+        [(plan, ["time", "Aurine"])], model, refuse, forms=True
+    )
+    assert segments == []
+    assert not isinstance(folded[0], Exception)
+
+
+def test_a_form_simulates_as_the_fold_it_replaces() -> None:
+    """The result of a request of forms is the result of the folded request, bitwise.
+
+    `1 + 0.5 * Aurine` is the case a real protocol hits, a single term of a
+    dyadic factor: the engine evaluates the form as `1 + 0.5 * value` and
+    `apply_changes` evaluates the formula as `1 + 0.5 * Aurine`, which is the
+    same expression tree over the same double, so the two agree bitwise. A
+    non-dyadic factor or three terms do not, see
+    `test_a_form_of_several_terms_simulates_as_the_fold`.
+    """
+    model, plan = _urine_plan({10.0: "1 + 0.5 * Aurine", 25.0: "3"}, dose=True)
+    columns = ["time", "Aurine", "Aelim", "[C]"]
+    folded = request_of(plan, model, columns)
+    formed = request_of(plan, model, columns, forms=True)
+    assert formed["changes"][1].get("forms")
+    assert not folded["changes"][1].get("forms")
+    # the fold reads the collection the dose filled, so the change is not zero
+    assert folded["changes"][1]["values"][0][1] > 1.0
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    assert list(a.columns) == list(b.columns)
+    assert np.array_equal(a.values, b.values)
+
+
+def test_a_plan_of_a_formula_which_is_no_form_folds_everything() -> None:
+    """A form and a fold never meet in one request."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine", 20.0: "Aurine * Aurine"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert all(not change.get("forms") for change in request["changes"])
+    assert all(change["values"] for change in request["changes"])
+
+
+def test_a_formula_of_a_concentration_is_no_form_and_folds() -> None:
+    """The parser of PEtab math reads no `[S]`, so such a formula folds."""
+    model, plan = _urine_plan({10.0: "2 * [C] + 1"})
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert "forms" not in request["changes"][0]
+    assert request["changes"][0]["values"]
+
+
+def test_a_form_of_no_symbol_is_the_number_of_the_formula() -> None:
+    """A formula of numbers alone is a form of no terms, which the engine takes."""
+    model, _ = _urine_plan({})
+    assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 + 3")
+
+    assert form_of(assignment, model) == {
+        "target": "Aurine",
+        "constant": 5.0,
+        "terms": [],
+    }
+
+
+def test_a_formula_of_the_time_is_no_form() -> None:
+    """`time` is the time of the change and no entity the engine reads as a term."""
+    model, _ = _urine_plan({})
+    assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 * time")
+
+    assert form_of(assignment, model) is None
+
+
+def test_a_formula_of_an_entity_named_time_is_no_form_and_folds() -> None:
+    """`time` of a formula is the clock of the change, not an entity of that name.
+
+    A model may declare an entity named `time` (case 01820), and
+    `apply_changes` of `sbmlsim.simulator.changes` reads `time` of a formula
+    as the time of the change whatever the model: the fold of `2 * time` at
+    the time 2 is 4, where a form over that entity would read its value, 10.
+    So such a formula is no form and folds, as the docstring of `form_of`,
+    `docs/fitting.md` and `CLAUDE.md` say.
+    """
+    source = sbml(ENTITY_TIME).replace('id="tt"', 'id="time"')
+    model = load_model(source, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    simulation = Simulation(
+        end=4, times=[0.0, 2.0, 4.0], changes=[Change(2, {"A": "2 * time"})]
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    assignment = plan.events[0].assignments[0]
+
+    assert form_of(assignment, model) is None
+
+    request = request_of(plan, model, ["time", "A"], forms=True)
+
+    assert "forms" not in request["changes"][0]
+    # twice the time of the change, not twice the value 10 of the entity
+    assert request["changes"][0]["values"] == [["A", 4.0]]
+
+
+@pytest.mark.parametrize(
+    "formula",
+    ["Aurine / 90 + Aelim * 3", "Aelim + Aurine + Aelim", "Aurine / 90"],
+    ids=["many terms with a division", "a repeated id", "a division"],
+)
+def test_a_form_of_several_terms_simulates_as_the_fold(formula: str) -> None:
+    """Forms with several terms, a repeated id and a division match the fold.
+
+    Not bitwise: the two evaluate different expression trees over the same
+    doubles, so a unit in the last place is expected and the agreement is
+    relative. `linear_form` reads `x / 90` as the factor `fl(1/90)`, so the
+    engine computes `fl(fl(1/90) * x)` where the fold computes `fl(x / 90)`,
+    which differ by one unit in the last place for about a quarter of the
+    doubles, and the terms of a sum of three are reassociated the same way,
+    see the known differences of `sbmlsim.simulator.executor_core`.
+    """
+    model, plan = _urine_plan({10.0: formula}, dose=True)
+    columns = ["time", "Aurine", "Aelim"]
+    folded = request_of(plan, model, columns)
+    formed = request_of(plan, model, columns, forms=True)
+    assert formed["changes"][1].get("forms")
+    # the fold reads the collection the dose filled, so the change is not zero
+    assert folded["changes"][1]["values"][0][1] > 0.1
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    np.testing.assert_allclose(b.values, a.values, rtol=1e-12, atol=1e-14)
+
+
+def test_the_form_of_a_formula_is_read_once_for_a_protocol_of_many_changes() -> None:
+    """Reading a linear form with sympy is cached by the formula and its entities.
+
+    `is_formed` and `_change_of` both ask for the form of every formula of a
+    plan and the gap of a fit asks a third time, while a protocol carries one
+    formula at every one of its doses: at 0.6 ms per call of `linear_form` a
+    protocol of 97 doses spent 0.14 s on one formula, which is the path the
+    forms exist to make fast.
+    """
+    model, plan = _urine_plan(
+        {float(t): "0.5 * Aurine" for t in range(1, 40)}, dose=True
+    )
+    executor_core._form_terms.cache_clear()
+
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+
+    assert all(change.get("forms") for change in request["changes"][1:])
+    info = executor_core._form_terms.cache_info()
+    assert info.misses == 1
+    assert info.hits > len(request["changes"])
+
+
+def test_a_formula_of_a_reaction_is_no_form_and_folds() -> None:
+    """A reaction is no entity the engine reads as a term, so such a formula folds."""
+    model, plan = _urine_plan({10.0: "0.5 * Aurine"})
+    event = PlanEvent(
+        10.0,
+        (Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="0.5 * absorption"),),
+    )
+    # `compile_simulation` refuses a reaction, so the plan is built by hand
+    plan = replace(plan, events=(event,))
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+    assert "forms" not in request["changes"][0]
+    assert request["changes"][0]["values"]

@@ -33,6 +33,15 @@ executor of roadrunner continues at the clock of its model, and 0 for every
 other one, which is what `steady_state` of `sbmlsim.simulator.executor`
 passes, so the two agree whatever the model.
 
+A formula at a change which is a linear form over the entities of the model,
+`constant + Σ factor * entity`, is no fold when the request is built with
+`forms=True` (sbmlsim-core 0.20.0, the field `forms` of a change, see
+`form_of`): the engine reads the terms from its own state before the change,
+so the request carries the formula and not the number of the point it was
+built at, which a fit moves on from. The conversion is all or nothing per
+plan, see `_fold_of`, so a form and a fold never meet in one request, and a
+plan whose formulas are all forms simulates no segment to build its request.
+
 A simulation which fails raises the error of its cause and not one of the
 bindings (`_failed`): a simulation the engine does not support is an
 `UnsupportedModelError`, which a run raises for the whole scan, a
@@ -142,6 +151,20 @@ the engine documents, and the one refusal which is left:
    formula of a compartment or of a species is folded as one of a parameter
    is (#607, which a PEtab v2 condition that estimates a concentration
    needs).
+7. A formula at a change which a request carries as a form is evaluated as
+   `constant + Σ factor * value` by the engine, where `apply_changes` of
+   `sbmlsim.simulator.changes` evaluates the formula as it is written: the
+   factor of a term is the coefficient `linear_form` reads with sympy and
+   the terms are summed in the order they are written there, which is the
+   order of their symbols and not the order of the formula. So a factor
+   which is no dyadic number and a sum of three or more terms, which the
+   form reassociates, can differ from the fold by a unit in the last place:
+   `x / 90` is the factor `fl(1/90)`, so the engine computes
+   `fl(fl(1/90) * x)` where the fold computes `fl(x / 90)`, which differ for
+   about a quarter of the doubles of [1e-3, 1e3]. That is far below the
+   tolerance of the integrator, and the factors of a real protocol, a half
+   or a dose of a collection, are dyadic and single, where the two agree
+   bitwise (`tests.simulator.test_simulator_core`).
 8. The engine integrates with the absolute tolerance of every state of
    roadrunner (`CoreSBMLModel.request_settings`), so it needs no factor of
    one tolerance as COPASI and AMICI do, but its own build of CVODE chooses
@@ -169,6 +192,7 @@ the engine documents, and the one refusal which is left:
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping, Sequence
 from math import isfinite
 from types import ModuleType
@@ -182,7 +206,7 @@ from sbmlsim.simulator.executor import (
     output_columns,
     output_time,
 )
-from sbmlsim.simulator.formula import compile_formula
+from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.plan import (
     Assignment,
     OutputMode,
@@ -235,6 +259,9 @@ INTEGRATION: Final[str] = "integration"
 #: a request the engine refuses, the `kind` of a `PointError` and the
 #: `RequestError` of a simulation
 REQUEST: Final[str] = "request"
+
+#: how many formulas the cache of the linear forms holds, see `_form_terms`
+FORM_CACHE: Final[int] = 512
 
 
 def execute(
@@ -496,6 +523,8 @@ def request_of(
     model: CoreSBMLModel,
     selections: Sequence[str],
     settings: dict[str, object] | None = None,
+    *,
+    forms: bool = False,
 ) -> dict[str, Any]:
     """Get the request of the contract `simulation/1` of a plan.
 
@@ -532,6 +561,14 @@ def request_of(
             default, which computes the absolute tolerance of every state once
             per call: a caller which builds the requests of the points of a
             scan computes them once and passes them here.
+        forms: write a formula at a change as a form of the request instead of
+            folding it, when every formula of the plan is a linear form over
+            the entities of the model (`form_of`), else fold them all. The
+            field is one of sbmlsim-core 0.20.0 and a change of the contract
+            denies unknown fields, so a caller against older bindings asks for
+            it only where `sbmlsim.fit.fit_core.reads_change_forms` holds: they
+            fail on the request, which `_failed` surfaces as a bare
+            `RuntimeError` of the serialization.
 
     Returns:
         The request, a dictionary of the fields of the contract.
@@ -544,7 +581,9 @@ def request_of(
         RuntimeError: if the engine fails to simulate such a segment, see
             `_failed`.
     """
-    request = requests_of([(plan, selections)], model, _one_by_one(model), settings)[0]
+    request = requests_of(
+        [(plan, selections)], model, _one_by_one(model), settings, forms=forms
+    )[0]
     if isinstance(request, Exception):
         raise request
     return request
@@ -555,6 +594,8 @@ def requests_of(
     model: CoreSBMLModel,
     simulate: Callable[[list[dict[str, Any]]], Sequence[Any]],
     settings: dict[str, object] | None = None,
+    *,
+    forms: bool = False,
 ) -> list[dict[str, Any] | Exception]:
     """Get the requests of the points of a chunk, their folds batched (#550).
 
@@ -590,6 +631,8 @@ def requests_of(
         settings: the settings of the requests, `model.request_settings()` by
             default, which computes the absolute tolerance of every state once
             for every point of the chunk.
+        forms: write the formulas at a change as forms where every formula of
+            a plan is a linear form, see `request_of`.
 
     Returns:
         The request of every point in the order of the points, the exception
@@ -607,7 +650,9 @@ def requests_of(
     for plan, selections in points:
         try:
             folds.append(
-                _fold_of(plan, model, output_columns(selections), request_settings)
+                _fold_of(
+                    plan, model, output_columns(selections), request_settings, forms
+                )
             )
         except NotImplementedError:
             # a feature the engine does not simulate fails every point
@@ -673,6 +718,7 @@ def _fold_of(
     model: CoreSBMLModel,
     columns: Sequence[str],
     settings: dict[str, object],
+    forms: bool = False,
 ) -> _Fold:
     """Get the fold of the changes of a plan, its request without them.
 
@@ -681,6 +727,10 @@ def _fold_of(
         model: the model.
         columns: the columns of the result of the point.
         settings: the settings of the request.
+        forms: write the formulas at a change as forms. This is the one place
+            the conversion is decided, all or nothing: it holds only when
+            every formula at a change of the plan is a linear form, so when
+            one is not, every formula folds and no form is written.
 
     Returns:
         The fold, whose request is every field of the contract but the
@@ -711,7 +761,8 @@ def _fold_of(
         "selections": output_columns(columns),
         "settings": settings,
     }
-    return _Fold(plan=plan, model=model, request=request)
+    formed = forms and is_formed(plan, model)
+    return _Fold(plan=plan, model=model, request=request, forms=formed)
 
 
 class _Fold:
@@ -740,7 +791,13 @@ class _Fold:
     every point of the chunk alike.
     """
 
-    def __init__(self, plan: Plan, model: CoreSBMLModel, request: dict[str, Any]):
+    def __init__(
+        self,
+        plan: Plan,
+        model: CoreSBMLModel,
+        request: dict[str, Any],
+        forms: bool = False,
+    ):
         """Create the fold of the changes of a plan.
 
         Args:
@@ -748,14 +805,18 @@ class _Fold:
             model: the model, which the engine reads the state of.
             request: the request which is built, whose fields the request of a
                 segment takes, its changes excluded.
+            forms: whether the formulas of the plan are written as forms,
+                which every one of them must be able to be, see `_fold_of`;
+                they read no state here and ask for no segment.
         """
         self.plan = plan
+        self.forms = forms
         self.model = model
         self.request = request
         #: the symbols of the model every change reads, by the position of
         #: its event: the state of the model is read only where a formula
         #: reads it
-        self.reads = [_change_symbols(event) for event in plan.events]
+        self.reads = [_change_symbols(event, forms) for event in plan.events]
         #: the targets a segment resumes from, `None` for a model whose state
         #: the executor cannot hand to the engine, whose segments start at
         #: `plan.start`
@@ -837,9 +898,7 @@ class _Fold:
                     event.time,
                     self.columns,
                 )
-            self.changes.append(
-                {"time": event.time, "values": _change_values(event, {})}
-            )
+            self.changes.append(_change_of(event, {}, self.model, self.forms))
             self.index += 1
         return None
 
@@ -1194,16 +1253,20 @@ def _resume_values(
     return [*kept, *(list(v) for v in values)]
 
 
-def _change_symbols(event: PlanEvent) -> list[str]:
+def _change_symbols(event: PlanEvent, forms: bool = False) -> list[str]:
     """Get the symbols of the model which the formulas of a change read, sorted.
 
     Args:
         event: the assignments at one time.
+        forms: whether the formulas are written as forms, which the engine
+            evaluates from its own state, so no symbol is read here.
 
     Returns:
         Every symbol but `time`, which is the time of the change and no value
         of the model, as `apply_changes` reads it.
     """
+    if forms:
+        return []
     symbols: set[str] = set()
     for a in event.assignments:
         if a.value is None:
@@ -1211,7 +1274,149 @@ def _change_symbols(event: PlanEvent) -> list[str]:
     return sorted(symbols - {TIME})
 
 
-def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[Any]]:
+def is_formed(plan: Plan, model: CoreSBMLModel) -> bool:
+    """Whether every formula at a change of a plan is a linear form.
+
+    The request writes the formulas as forms all or nothing per plan, so a
+    plan with one formula which is no form folds every formula, the forms
+    included. The request and the gaps of a fit ask this one question.
+
+    Args:
+        plan: the plan.
+        model: the model, whose entities the forms may read.
+
+    Returns:
+        Whether the request of the plan writes its formulas as forms.
+    """
+    return all(
+        form_of(a, model) is not None
+        for event in plan.events
+        for a in event.assignments
+        if a.value is None
+    )
+
+
+def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | None:
+    """Get the form of the contract of an assignment whose formula is a linear form.
+
+    A form is `constant + Σ factor * entity` which the engine evaluates from
+    its own state at the change (sbmlsim-core 0.20.0): every term is read
+    against the state before the change, the terms are summed in the order
+    they are written here, and the target must be settable while a term need
+    only be readable. This is the one place which tells a linear form from
+    any other formula, so the request and the gap of a fit cannot disagree.
+
+    Args:
+        assignment: the assignment.
+        model: the model, whose entities the terms may read; a symbol which is
+            none of them, `time` included, leaves the formula without a form.
+
+    Returns:
+        The `target`, `constant` and `terms`, the `[id, factor]` pairs, or
+        `None` for a value and for a formula which is no linear form over the
+        entities of the model; a formula of no symbol is a form of no terms.
+    """
+    if assignment.value is not None or assignment.formula is None:
+        return None
+    compiled = compile_formula(assignment.formula)
+    symbols = compiled.symbols
+    if not symbols:
+        # a number: a form of no terms, which the engine takes as it is
+        return {
+            "target": assignment.target,
+            "constant": float(compiled.evaluate([])),
+            "terms": [],
+        }
+    known = model.symbols
+    # a term is an entity of the model: a reaction or any other selection is
+    # none the engine resolves, so such a formula folds. `time` is the time of
+    # the change and no value of the model, which `apply_changes` of
+    # `sbmlsim.simulator.changes` reads it as whatever the model, also in a
+    # model which declares an entity of that name (case 01820 of the SBML Test
+    # Suite), whose value a form over it would read instead
+    entities = tuple(
+        s
+        for s in symbols
+        if s != TIME
+        and ModelSymbols.entity(s)
+        in known.parameters | known.compartments | known.species
+    )
+    found = _form_terms(assignment.formula, entities)
+    if found is None:
+        return None
+    constant, terms = found
+    return {
+        "target": assignment.target,
+        "constant": constant,
+        "terms": [[entity, factor] for entity, factor in terms],
+    }
+
+
+@functools.lru_cache(maxsize=FORM_CACHE)
+def _form_terms(
+    formula: str, entities: tuple[str, ...]
+) -> tuple[float, tuple[tuple[str, float], ...]] | None:
+    """Read the linear form of a formula over the entities a caller names, cached.
+
+    `linear_form` parses the formula and reads its coefficients with sympy,
+    about 0.6 ms per call, and the same formula is asked for three times:
+    `is_formed` of the request, `is_formed` of the gap of a fit
+    (`sbmlsim.fit.fit_core._gaps_at_the_folds`) and `_change_of`, while a
+    protocol carries one formula at every one of its doses. The answer depends
+    on the text of the formula and on which of its symbols are entities of the
+    model and on nothing else, so it is cached by those two: the key is text,
+    so the cache holds no model, no plan and no problem alive, and the bound
+    keeps a process which serves many models from growing without one. The
+    terms are a tuple, so a caller cannot change what the cache holds.
+
+    Args:
+        formula: the formula of the assignment, as it is written.
+        entities: the symbols of the formula which are entities of the model,
+            in the order of the symbols of the compiled formula.
+
+    Returns:
+        The constant and the `(id, factor)` pairs of the terms, or `None` for
+        a formula which is no linear form over those entities alone.
+    """
+    try:
+        found = linear_form(formula, {s: i for i, s in enumerate(entities)})
+    except ValueError:
+        # the parser of PEtab math reads no `[S]`: such a formula folds
+        return None
+    if found is None:
+        return None
+    constant, terms = found
+    return constant, tuple((entities[i], factor) for i, factor in terms)
+
+
+def _change_of(
+    event: PlanEvent, state: Mapping[str, float], model: CoreSBMLModel, forms: bool
+) -> dict[str, Any]:
+    """Get a change of the request, its formulas folded or written as forms.
+
+    Args:
+        event: the assignments at one time.
+        state: the values of the symbols the formulas read, empty for forms.
+        model: the model, which gives the forms.
+        forms: whether the formulas are written as forms.
+
+    Returns:
+        The change, with the key `forms` only where it has a form.
+    """
+    change: dict[str, Any] = {
+        "time": event.time,
+        "values": _change_values(event, state, skip_formulas=forms),
+    }
+    if forms:
+        written = [form_of(a, model) for a in event.assignments if a.value is None]
+        if written:
+            change["forms"] = written
+    return change
+
+
+def _change_values(
+    event: PlanEvent, state: Mapping[str, float], skip_formulas: bool = False
+) -> list[list[Any]]:
     """Get the values of a change as the `(id, value)` pairs of the contract.
 
     Every formula is evaluated with the state at the time of the change and
@@ -1224,6 +1429,7 @@ def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[An
         event: the assignments at one time.
         state: the values of the symbols the formulas read, see `_state_at`,
             empty for a change without a formula of the model.
+        skip_formulas: leave the formulas out, which are written as forms.
 
     Returns:
         A pair of the target and its value per assignment, in their order.
@@ -1232,6 +1438,8 @@ def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[An
     for a in event.assignments:
         if a.value is not None:
             values.append([a.target, a.value])
+            continue
+        if skip_formulas:
             continue
         formula = compile_formula(str(a.formula))
         values.append(

@@ -357,8 +357,14 @@ class SBMLModel(AbstractModel, ABC):
     def has_selection(self, selection: str) -> bool:
         """Check whether the model has a selection of a name.
 
+        A selection is not an entity: the selections of a model are the ones
+        of roadrunner, so the id of a reaction, which selects its rate, is one
+        of them as well, and so is `time`. A caller which asks for an entity
+        asks `symbols` instead.
+
         Args:
-            selection: the name, e.g. `S`, `[S]`, a parameter or `time`.
+            selection: the name, e.g. `S`, `[S]`, a parameter, a reaction or
+                `time`.
 
         Returns:
             Whether the loaded model can select it.

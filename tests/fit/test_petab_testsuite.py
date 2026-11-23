@@ -147,23 +147,43 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
 
 #: the cases of the group `sbml` which are no fit of sbmlsim-core, each with
 #: the code of its gap, see `sbmlsim.fit.fit_core.gaps_of`. 0025 has parameters
-#: which have a prior and no bounds, which is the only gap left: the values
-#: before the initialization which read a parameter the fit estimates are the
-#: `derived` of a condition (sbmlsim-core 0.17.0), the state of the model
-#: before the events of the time of a change is the `before_events` of a
-#: request and the steady state after the end of a simulation of a model with
-#: events its `steady_state_after` (both sbmlsim-core 0.18.0).
-ENGINE_GAPS: dict[str, str] = {"0025": "parameter"}
+#: which have a prior and no bounds. The other four set a concentration at a
+#: change by a formula which reads one, `C + [S]` (0016, 0031) and `[A] + 5`
+#: (0028, 0030): such a formula is no linear form over the entities of the
+#: model, since the parser of the math of PEtab does not read the brackets of
+#: a concentration, so the request can carry it neither as a form nor as a
+#: number the engine would hold where the fit started, and the fit of those
+#: cases runs in python (#617). The gaps which are gone: the values before the
+#: initialization which read a parameter the fit estimates are the `derived`
+#: of a condition (sbmlsim-core 0.17.0), the state of the model before the
+#: events of the time of a change is the `before_events` of a request and the
+#: steady state after the end of a simulation of a model with events its
+#: `steady_state_after` (both sbmlsim-core 0.18.0), and a change of a linear
+#: formula over the entities of the model is the `forms` of a change
+#: (sbmlsim-core 0.20.0).
+ENGINE_GAPS: dict[str, str] = {
+    "0016": "change_value",
+    "0025": "parameter",
+    "0028": "change_value",
+    "0030": "change_value",
+    "0031": "change_value",
+}
 
 #: the cases whose likelihood the engine does not fit, by the gap which keeps
 #: them out, see `_gaps_of_the_objective` (#613): a noise formula which reads
 #: the observable (0015, 0021, 0024) and the parameter of 0025, whose bounds
-#: are no bounds of an optimizer of the engine
+#: are no bounds of an optimizer of the engine, and the change of a formula of
+#: a concentration of the four cases of `ENGINE_GAPS`, which keeps a fit of
+#: either objective out
 ENGINE_LIKELIHOOD_GAPS: dict[str, str] = {
     "0015": "objective",
+    "0016": "change_value",
     "0021": "objective",
     "0024": "objective",
     "0025": "objective",
+    "0028": "change_value",
+    "0030": "change_value",
+    "0031": "change_value",
 }
 
 
