@@ -192,6 +192,7 @@ the engine documents, and the one refusal which is left:
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping, Sequence
 from math import isfinite
 from types import ModuleType
@@ -258,6 +259,9 @@ INTEGRATION: Final[str] = "integration"
 #: a request the engine refuses, the `kind` of a `PointError` and the
 #: `RequestError` of a simulation
 REQUEST: Final[str] = "request"
+
+#: how many formulas the cache of the linear forms holds, see `_form_terms`
+FORM_CACHE: Final[int] = 512
 
 
 def execute(
@@ -1325,26 +1329,59 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
     # `sbmlsim.simulator.changes` reads it as whatever the model, also in a
     # model which declares an entity of that name (case 01820 of the SBML Test
     # Suite), whose value a form over it would read instead
-    entities = {
-        s: i
-        for i, s in enumerate(symbols)
+    entities = tuple(
+        s
+        for s in symbols
         if s != TIME
         and ModelSymbols.entity(s)
         in known.parameters | known.compartments | known.species
-    }
-    try:
-        found = linear_form(assignment.formula, entities)
-    except ValueError:
-        # the parser of PEtab math reads no `[S]`: such a formula folds
-        return None
+    )
+    found = _form_terms(assignment.formula, entities)
     if found is None:
         return None
     constant, terms = found
     return {
         "target": assignment.target,
         "constant": constant,
-        "terms": [[symbols[i], factor] for i, factor in terms],
+        "terms": [[entity, factor] for entity, factor in terms],
     }
+
+
+@functools.lru_cache(maxsize=FORM_CACHE)
+def _form_terms(
+    formula: str, entities: tuple[str, ...]
+) -> tuple[float, tuple[tuple[str, float], ...]] | None:
+    """Read the linear form of a formula over the entities a caller names, cached.
+
+    `linear_form` parses the formula and reads its coefficients with sympy,
+    about 0.6 ms per call, and the same formula is asked for three times:
+    `is_formed` of the request, `is_formed` of the gap of a fit
+    (`sbmlsim.fit.fit_core._gaps_at_the_folds`) and `_change_of`, while a
+    protocol carries one formula at every one of its doses. The answer depends
+    on the text of the formula and on which of its symbols are entities of the
+    model and on nothing else, so it is cached by those two: the key is text,
+    so the cache holds no model, no plan and no problem alive, and the bound
+    keeps a process which serves many models from growing without one. The
+    terms are a tuple, so a caller cannot change what the cache holds.
+
+    Args:
+        formula: the formula of the assignment, as it is written.
+        entities: the symbols of the formula which are entities of the model,
+            in the order of the symbols of the compiled formula.
+
+    Returns:
+        The constant and the `(id, factor)` pairs of the terms, or `None` for
+        a formula which is no linear form over those entities alone.
+    """
+    try:
+        found = linear_form(formula, {s: i for i, s in enumerate(entities)})
+    except ValueError:
+        # the parser of PEtab math reads no `[S]`: such a formula folds
+        return None
+    if found is None:
+        return None
+    constant, terms = found
+    return constant, tuple((entities[i], factor) for i, factor in terms)
 
 
 def _change_of(

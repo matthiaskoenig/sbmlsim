@@ -1528,6 +1528,28 @@ def test_a_form_of_several_terms_simulates_as_the_fold(formula: str) -> None:
     np.testing.assert_allclose(b.values, a.values, rtol=1e-12, atol=1e-14)
 
 
+def test_the_form_of_a_formula_is_read_once_for_a_protocol_of_many_changes() -> None:
+    """Reading a linear form with sympy is cached by the formula and its entities.
+
+    `is_formed` and `_change_of` both ask for the form of every formula of a
+    plan and the gap of a fit asks a third time, while a protocol carries one
+    formula at every one of its doses: at 0.6 ms per call of `linear_form` a
+    protocol of 97 doses spent 0.14 s on one formula, which is the path the
+    forms exist to make fast.
+    """
+    model, plan = _urine_plan(
+        {float(t): "0.5 * Aurine" for t in range(1, 40)}, dose=True
+    )
+    executor_core._form_terms.cache_clear()
+
+    request = request_of(plan, model, ["time", "Aurine"], forms=True)
+
+    assert all(change.get("forms") for change in request["changes"][1:])
+    info = executor_core._form_terms.cache_info()
+    assert info.misses == 1
+    assert info.hits > len(request["changes"])
+
+
 def test_a_formula_of_a_reaction_is_no_form_and_folds() -> None:
     """A reaction is no entity the engine reads as a term, so such a formula folds."""
     model, plan = _urine_plan({10.0: "0.5 * Aurine"})
