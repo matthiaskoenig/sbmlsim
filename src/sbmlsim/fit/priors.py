@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from scipy.linalg import solve_triangular
 
 from sbmlsim.fit.objects import FitParameter, PriorDistribution
 
@@ -120,7 +121,7 @@ class _Correlated:
         log: whether a prior is log-normal, i.e. its score is of the logarithm.
         mu: the mean of the value or of its logarithm.
         sigma: the standard deviation of the value or of its logarithm.
-        factor: the lower Cholesky factor `L` of the correlation.
+        inverse: the inverse of the lower Cholesky factor `L` of the correlation, row major.
         offsets: the offset of the residual `sqrt(c + 2 ln(x))` of every
             log-normal prior, in the order of the log-normal priors.
         lower: the lower bounds.
@@ -133,7 +134,7 @@ class _Correlated:
     log: np.ndarray
     mu: np.ndarray
     sigma: np.ndarray
-    factor: np.ndarray
+    inverse: np.ndarray
     offsets: np.ndarray
     lower: np.ndarray
     upper: np.ndarray
@@ -149,13 +150,23 @@ class _Correlated:
         return (values - self.mu) / self.sigma
 
     def whitened(self, x: np.ndarray) -> np.ndarray:
-        """Get the whitened scores `L⁻¹ z`."""
-        from scipy.linalg import solve_triangular
+        """Get the whitened scores `L⁻¹ z`.
 
+        The product is written out, `i` outer and `j` inner with one addition per
+        `j` in ascending order from `0.0`, and no LAPACK call or `numpy` reduction,
+        so that the order of the floating point operations is fixed. The engine
+        evaluates the same loop and its numbers are compared with these.
+        """
         z = self.scores(x)
         if not np.all(np.isfinite(z)):
             return np.full(z.size, np.nan)
-        return np.asarray(solve_triangular(self.factor, z, lower=True), dtype=float)
+        w = np.zeros(z.size, dtype=float)
+        for i in range(z.size):
+            total = 0.0
+            for j in range(z.size):
+                total += float(self.inverse[i][j]) * float(z[j])
+            w[i] = total
+        return w
 
 
 def _correlated_term(
@@ -237,7 +248,7 @@ def _correlated_term(
         log=np.asarray(log, dtype=bool),
         mu=np.asarray(mu, dtype=float),
         sigma=sigma_array,
-        factor=factor,
+        inverse=solve_triangular(factor, np.eye(len(indices)), lower=True),
         offsets=np.asarray(offsets, dtype=float),
         lower=np.asarray(lower, dtype=float),
         upper=np.asarray(upper, dtype=float),
