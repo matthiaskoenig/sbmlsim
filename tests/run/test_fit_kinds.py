@@ -16,6 +16,7 @@ import pytest
 
 from sbmlsim import run
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import RUN_IN_PYTHON
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.run import ConfigurationError, PlanMismatch
 from sbmlsim.run.fit_kinds import FitSpec, IdentifiabilitySpec, ProfileSpec
@@ -100,6 +101,28 @@ def test_fit_writes_the_records(fit_out: Path) -> None:
     assert 0 <= summary["converged"] <= 3
     assert summary["best_cost"] == pytest.approx(_result(fit_out).df_fits.cost.min())
     assert len(_json(records / "parameters.json")["sets"]) == 1
+
+
+def test_the_records_of_a_fit_say_where_its_optimizer_ran(fit_out: Path) -> None:
+    """The fit of the fixture has `max_nfev`, a gap, so python optimizes it."""
+    records = fit_out / "IV"
+    assert _json(fit_out / "summary.json")["optimizer_of"] == RUN_IN_PYTHON
+    assert _json(records / "optimization_result.json")["optimizer_of"] == RUN_IN_PYTHON
+    assert _json(records / "runs" / "IV_run_0.json")["optimizer_of"] == RUN_IN_PYTHON
+    assert _result(fit_out).optimizer_of == RUN_IN_PYTHON
+
+
+def test_a_fit_which_must_run_in_the_engine_fails_with_its_gaps(
+    tmp_path: Path,
+) -> None:
+    """`engine_fit` requires the fit of the engine, which `max_nfev` keeps out."""
+    with pytest.raises(ValueError, match="cannot run in the engine"):
+        run.execute(
+            "fit",
+            {**FIT, "repeats": 1, "engine_fit": True},
+            tmp_path / "out",
+            workers=1,
+        )
 
 
 def test_fit_plan_draws_a_seed() -> None:
@@ -221,6 +244,22 @@ def test_identifiability_split_equals_whole(
     assert summary["n_parameters"] == 2
     for name in ("optimization_result.json", "parameters.json"):
         assert (out / name).read_bytes() == (fit_out / "IV" / name).read_bytes()
+
+
+def test_the_records_of_an_analysis_say_where_it_was_walked(
+    identifiability_out: Path,
+) -> None:
+    """The analysis of the fixture has `max_nfev`, a gap, so python walks it."""
+    assert _json(identifiability_out / "summary.json")["profiles_of"] == RUN_IN_PYTHON
+    assert _json(identifiability_out / "identifiability.json")["profiles_of"] == (
+        RUN_IN_PYTHON
+    )
+    # the Fisher information of the merge says where its jacobian comes from
+    summary = _json(identifiability_out / "summary.json")
+    assert (
+        summary["jacobian_of"]
+        == _json(identifiability_out / "fisher.json")["jacobian_of"]
+    )
 
 
 def test_identifiability_plan_profiles_every_parameter() -> None:

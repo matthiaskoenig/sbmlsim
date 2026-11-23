@@ -116,13 +116,15 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `seed` | drawn by the plan | the seed of the start values and of the runs |
 | `studies` | all | the studies of the problem to fit |
 | `timeout` | none | the seconds a single run may take |
+| `engine_fit` | the engine where it can | whether the whole fit runs in the engine, its optimizer, the runs of its starts and their evaluations: `true` requires it and fails naming the gaps which keep the fit out of it, `false` optimizes in python, which evaluates the objective through the engine, see [a fit of the engine](fitting.md#running-the-optimization) |
 | `optimizer` | `{}` | further arguments of the optimizer, e.g. `{"max_nfev": 50}`, and of the runner, e.g. the sampling of the start values `sampling` by its name (`LOGUNIFORM`, `UNIFORM`, `LOGUNIFORM_LHS`, `UNIFORM_LHS`, `START`); a setting of the spec, e.g. `seed`, is refused here |
 | `start` | none | the point least squares starts from instead of samples of the bounds: the values by parameter id (`{"k": 0.3}`), a JSON file of them, the directory of the records of a fit or the id of a fit, adopted in the project (`fits_dir`) before a directory of that name; needs `LSQ` and one repeat. The plan resolves it into the values, which the planned spec keeps, so every unit and a resume start from the same point, and keeps the given start in `start_from`, which the provenance of the fit records; a relative path of a spec file is relative to the file, a fit id stays an id |
 | `record_adopted` | `true` | record the adopted fits of the other subsets, whose values the models of the project carry, and these values in the provenance of the fit and name them in its report; nothing is fixed by it, the models carry the values |
 | `fixed_fits`, `fixed_values` | set by the plan | the adopted fits of the other subsets and the values of their parameters which the fit does not fit, read once by the plan with `record_adopted`, so every unit records the same |
 | `identifiability` | `false` | compute the profile likelihoods of the parameters of the best run after the fit, `<opid>/identifiability.json` |
-| `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}`, with `pids` the parameters to profile (every parameter which is no element of a network without) |
+| `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}`, with `pids` the parameters to profile (every parameter which is no element of a network without) and `engine_profiles` whether the engine walks them |
 | `fisher` | `true` | compute the Fisher information with the profiles, `<opid>/fisher.json` |
+| `engine_jacobian` | the sensitivities where the engine has them | whether the jacobian of that Fisher information is the forward sensitivities of the engine: `true` requires them and fails naming the gaps, `false` takes the central differences of python |
 | `posterior` | `false` | compute the [Laplace approximation of the posterior](uncertainty.md#the-posterior-of-a-fit) of the best run, `<opid>/posterior.json`, from the Fisher information of the profiles when the fit computes them |
 | `report` | `false`, with `adopt` `true` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
 | `mapping_figures` | `true` | draw the figure of every fit mapping in the report |
@@ -141,7 +143,9 @@ The plan refuses a fit whose upper bounds let a remainder of a model of the proj
 | `max_points` | 50 | the largest number of points of a scan in one direction |
 | `reoptimize` | `true` | optimize the other parameters at every point |
 | `optimizer` | `{}` | arguments of the least squares optimizer of the other parameters |
+| `engine_profiles` | the engine where it can | whether the profiles are walked in the engine: `true` requires it and fails naming the gaps, `false` scans in python, which evaluates the points through the engine |
 | `fisher` | `true` | compute the Fisher information as well |
+| `engine_jacobian` | the sensitivities where the engine has them | whether its jacobian is the forward sensitivities of the engine, as for the kind `fit` |
 
 The settings are the ones of the [profile likelihood](identifiability.md#profile-likelihood). A profile is computed on the problem of the studies the fit was restricted to and with the settings the fit ran with, both read from its records; the same holds for `fisher`, `report` and `petab`.
 
@@ -149,15 +153,16 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 
 | kind | field | default | meaning |
 | --- | --- | --- | --- |
-| `fisher` | `step` | of `fisher_information` | the relative step of the finite differences |
+| `fisher` | `step` | of `fisher_information` | the relative step of the finite differences; a given step takes the differences and not the forward sensitivities of the engine |
+| `fisher` | `engine_jacobian` | the sensitivities where the engine has them | whether the jacobian is the forward sensitivities of the engine: `true` requires them and fails naming the gaps, `false` takes the central differences of python |
 | `fisher` | `posterior` | `false` | compute the [Laplace approximation of the posterior](uncertainty.md#the-posterior-of-a-fit) from the Fisher information as well, `posterior.json` |
 | `report` | `mapping_figures` | `true` | draw the figure of every fit mapping |
 | `report` | `group_by` | the groupings of the problem | the groupings of the report, the columns of one grouping per list |
 | `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all` (no fit subset of a project may be named `all`), into `<fit id>/`, without the input `fit` |
 | `adopt` | `force` | `false` | adopt a fit which the project has adopted already, replacing its record |
+| `petab` | `required_extension` | `true` | mark the extension `sbmlsim` as required |
 
 `adopt` adopts the fit of its input `fit`, the out of a fit or a records directory: the id of its result, which has the form of the id of a fit of a subset of the project, names the subset; it needs the profiles or the Fisher information of the fit and writes its record into `fits/<fit id>` and `adopted.json` with the fit adopted for its subset, as `fit` with `adopt` does.
-| `petab` | `required_extension` | `true` | mark the extension `sbmlsim` as required |
 
 ### simulate, scan, sensitivity and uncertainty
 
@@ -212,7 +217,7 @@ Every run writes the same files describing it into its output, besides its resul
 | --- | --- |
 | `run.json` | the record of the run: the kind, the hash of the spec, the versions of the packages and of the project, python, the host, the provenance of the sources or else the git revision of the project, the variables of the task which simrun sets in a pod (`SIMRUN_TASK_DIR`, `SIMRUN_TASK_TYPE`, `SIMRUN_INPUTS`, `SIMRUN_ATTEMPT`, `SIMRUN_ROLE`, `SIMRUN_WORKER`, `SIMRUN_NODE`, `SIMRUN_PROVENANCE`, `SIMRUN_MEMORY_*`, ...; never a credential such as `SIMRUN_TOKEN`), the workers, the times and the status (`running`, `done`, or `failed` with its error) |
 | `spec.json` | the planned spec, which a resume runs as it is |
-| `summary.json` | the summary of the run, e.g. the best cost of a fit or the failed points of a scan |
+| `summary.json` | the summary of the run, e.g. the best cost of a fit or the failed points of a scan; a fit also says where its optimizer ran (`optimizer_of`), an analysis where its profiles were walked (`profiles_of`) and a Fisher information where its jacobian comes from (`jacobian_of`) |
 | `progress.jsonl` | the events of the run, see [Progress](#progress-and-provenance); the events of a unit go to `progress/unit-<index>.jsonl` |
 
 The results of the kinds:

@@ -1,5 +1,6 @@
 """Test optimization results."""
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +10,13 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit import FitParameter, FitSettings
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import OptimizationAlgorithmType, ParameterScaleType
+from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
+    RUN_MIXED,
+    OptimizationAlgorithmType,
+    ParameterScaleType,
+)
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.fit.runner import run_optimization
 
@@ -116,13 +123,66 @@ def test_combine(op_hctz_pk: OptimizationProblem, fit_settings: FitSettings) -> 
 
 
 def _single_result(
-    parameters: list[FitParameter], x: list[float]
+    parameters: list[FitParameter], x: list[float], optimizer_of: str | None = None
 ) -> OptimizationResult:
     return OptimizationResult(
         parameters=parameters,
         fits=[OptimizeResult(x=x, x0=x, cost=1.0, success=True, duration=0.1)],
         trajectories=[[1.0]],
+        optimizer_of=optimizer_of,
     )
+
+
+def _place_result(optimizer_of: str | None) -> OptimizationResult:
+    """Get a result of one run which ran in the given place."""
+    return _single_result(
+        [FitParameter("a", 1.0, 0.1, 100.0, unit="dimensionless")],
+        [1.0],
+        optimizer_of=optimizer_of,
+    )
+
+
+def test_where_the_optimizer_ran_survives_the_round_trip(tmp_path: Path) -> None:
+    """`optimizer_of` is stored with a result and with a single run."""
+    result = _place_result(RUN_IN_THE_ENGINE)
+    path = tmp_path / "result.json"
+    result.to_json(path)
+
+    assert OptimizationResult.from_json(path).optimizer_of == RUN_IN_THE_ENGINE
+
+
+def test_a_result_which_does_not_say_where_its_optimizer_ran_reads_as_none(
+    tmp_path: Path,
+) -> None:
+    """A record of sbmlsim 0.27 or earlier has no `optimizer_of`."""
+    result = _place_result(RUN_IN_PYTHON)
+    path = tmp_path / "result.json"
+    result.to_json(path)
+    d = json.loads(path.read_text(encoding="utf-8"))
+    del d["optimizer_of"]
+    path.write_text(json.dumps(d), encoding="utf-8")
+
+    assert OptimizationResult.from_json(path).optimizer_of is None
+
+
+@pytest.mark.parametrize(
+    ("places", "expected"),
+    [
+        ([RUN_IN_THE_ENGINE, RUN_IN_THE_ENGINE], RUN_IN_THE_ENGINE),
+        ([RUN_IN_PYTHON, RUN_IN_PYTHON], RUN_IN_PYTHON),
+        ([RUN_IN_THE_ENGINE, RUN_IN_PYTHON], RUN_MIXED),
+        # a piece of a fit which was run by an older sbmlsim says nothing
+        ([None, RUN_IN_THE_ENGINE], RUN_IN_THE_ENGINE),
+        ([None, None], None),
+    ],
+)
+def test_combining_runs_keeps_where_they_ran(
+    places: list[str | None], expected: str | None
+) -> None:
+    """The pieces of a fit which did not all run in one place are `RUN_MIXED`."""
+    combined = OptimizationResult.combine([_place_result(place) for place in places])
+
+    assert combined.optimizer_of == expected
 
 
 def test_combining_reordered_parameters_preserves_values(tmp_path: Path) -> None:

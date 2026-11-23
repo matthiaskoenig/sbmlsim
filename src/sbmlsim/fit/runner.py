@@ -52,7 +52,12 @@ from sbmlsim.fit.optimization import (
     RuntimeErrorOptimizeResult,
     run_indices,
 )
-from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
+from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
+    FitSettings,
+    OptimizationAlgorithmType,
+)
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
@@ -544,6 +549,7 @@ def _run_optimization_in_the_engine(
                 sid=f"{problem.opid}_run_{k}",
                 provenance=provenance,
                 run=k,
+                optimizer_of=RUN_IN_THE_ENGINE,
             )
             _advance(progress)
 
@@ -1641,6 +1647,7 @@ def _run_optimization_parallel(
                     sid=f"{problem.opid}_run_{k}",
                     provenance=provenance,
                     run=k,
+                    optimizer_of=RUN_IN_PYTHON,
                 )
                 _advance(progress)
                 collected[k] = (fit, trajectory)
@@ -1684,6 +1691,7 @@ def _run_optimization_parallel(
         units=problem.parameter_units,
         provenance=provenance,
         prior_correlation=problem.prior_correlation,
+        optimizer_of=RUN_IN_PYTHON,
     )
     result.interrupted = interrupted
     return result
@@ -1698,6 +1706,7 @@ def _store_run(
     sid: str,
     provenance: FitProvenance | None = None,
     run: int | None = None,
+    optimizer_of: str | None = None,
 ) -> None:
     """Store a finished repeat, which must never end the fit.
 
@@ -1710,6 +1719,8 @@ def _store_run(
         sid: id of the repeat, the name of its file.
         provenance: what the fit runs with.
         run: index of the repeat, reported as the event `fit.repeat`.
+        optimizer_of: where the optimizer of the repeat ran, see
+            `sbmlsim.fit.options.RUN_IN_THE_ENGINE`.
     """
     emit("fit.repeat", opid=problem.opid, run=run)
     if runs_dir is None:
@@ -1726,6 +1737,7 @@ def _store_run(
             units=problem.parameter_units,
             provenance=provenance,
             prior_correlation=problem.prior_correlation,
+            optimizer_of=optimizer_of,
         )
     except Exception as err:
         logger.error(
@@ -1782,6 +1794,7 @@ def _run_optimization_serial(
             sid=f"{problem.opid}_{run_prefix}_{k}",
             provenance=provenance,
             run=k,
+            optimizer_of=RUN_IN_PYTHON,
         )
         if on_progress is not None:
             on_progress()
@@ -1820,6 +1833,7 @@ def _run_optimization_serial(
         units=problem.parameter_units,
         provenance=provenance,
         prior_correlation=problem.prior_correlation,
+        optimizer_of=RUN_IN_PYTHON,
     )
     result.interrupted = interrupted
     return result
