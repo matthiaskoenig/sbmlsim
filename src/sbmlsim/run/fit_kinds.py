@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, override
@@ -141,6 +142,21 @@ class FitProblemSpec(Spec):
     subset: str
 
 
+class JacobianSpec(Spec):
+    """The jacobian of the Fisher information of a kind which computes one.
+
+    Attributes:
+        engine_jacobian: whether the jacobian is the forward sensitivities of
+            sbmlsim-core (`sbmlsim.fit.fisher.fisher_information`): without it
+            the sensitivities are taken where the problem has no gap of a
+            jacobian and the central differences of python otherwise, `true`
+            requires them and fails naming the gaps, `false` takes the
+            differences.
+    """
+
+    engine_jacobian: bool | None = None
+
+
 class ProfileSpec(Spec):
     """The settings of profile likelihoods, of an analysis or after a fit.
 
@@ -175,6 +191,10 @@ class ProfileSpec(Spec):
             the ones `profile_likelihood` profiles by default without, every
             parameter which is no element of a network (the plan of the kind
             `identifiability` sets them).
+        engine_profiles: whether the profiles are walked in the engine
+            (`profile_likelihood`): without it the engine walks them if it
+            can, `true` requires it and fails naming the gaps, `false` scans
+            in python.
     """
 
     alpha: float = 0.95
@@ -191,9 +211,10 @@ class ProfileSpec(Spec):
     timeout: float | None = None
     optimizer: dict[str, Any] = Field(default_factory=dict)
     pids: list[str] | None = None
+    engine_profiles: bool | None = None
 
 
-class FitSpec(FitProblemSpec, SplitSpec):
+class FitSpec(FitProblemSpec, SplitSpec, JacobianSpec):
     """The spec of a fit: the repeats of the optimization of a problem.
 
     Attributes:
@@ -207,6 +228,14 @@ class FitSpec(FitProblemSpec, SplitSpec):
         studies: the studies of the problem to fit, all without.
         timeout: the seconds a single run may take, no limit without.
         optimizer: further arguments of the optimizer, see `run_fit`.
+        engine_fit: whether the whole fit runs in the engine, i.e. its
+            optimizer, the runs of its starts and their evaluations
+            (`sbmlsim.fit.runner.run_optimization`): without it the engine
+            runs the fit if it can, `true` requires it and fails naming the
+            gaps, `false` optimizes in python, which evaluates the objective
+            through the engine. The record of the fit says where its optimizer
+            ran (`OptimizationResult.optimizer_of`), the summary of the run as
+            well.
         start: the point least squares starts from instead of samples of the
             bounds: the values by parameter id, a JSON file of them, the
             directory of the records of a fit or the id of an adopted fit of
@@ -250,6 +279,7 @@ class FitSpec(FitProblemSpec, SplitSpec):
     studies: list[str] | None = None
     timeout: float | None = None
     optimizer: dict[str, Any] = Field(default_factory=dict)
+    engine_fit: bool | None = None
     start: dict[str, float] | str | None = None
     start_from: str | None = planned()
     record_adopted: bool = True
@@ -311,10 +341,12 @@ class AdoptSpec(Spec):
     force: bool = False
 
 
-class IdentifiabilitySpec(FitProblemSpec, SplitSpec, ProfileSpec):
+class IdentifiabilitySpec(FitProblemSpec, SplitSpec, ProfileSpec, JacobianSpec):
     """The spec of the profile likelihoods of the parameters of a fit.
 
-    The settings of the profiles are the ones of `ProfileSpec`.
+    The settings of the profiles are the ones of `ProfileSpec`, where they are
+    walked among them (`engine_profiles`), and the jacobian of the Fisher
+    information is the one of `JacobianSpec`.
 
     Attributes:
         fit: the records of the fit, the input `fit`.
@@ -325,13 +357,14 @@ class IdentifiabilitySpec(FitProblemSpec, SplitSpec, ProfileSpec):
     fisher: bool = True
 
 
-class FisherSpec(FitProblemSpec):
+class FisherSpec(FitProblemSpec, JacobianSpec):
     """The spec of the Fisher information of the parameters of a fit.
 
     Attributes:
         fit: the records of the fit, the input `fit`.
         step: the relative step of the finite differences, the default of
-            `fisher_information` without.
+            `fisher_information` without; a given step takes the differences
+            and not the sensitivities of the engine.
         posterior: compute the Laplace approximation of the posterior from the
             Fisher information as well, `posterior.json`.
     """
@@ -532,9 +565,14 @@ def _write_fisher(
     write_text_atomic(
         directory / FISHER_FILE, json.dumps(fisher.to_dict(), indent=2) + "\n"
     )
+    condition = float(fisher.condition_number)
     summary: dict[str, Any] = {
         "rank": fisher.rank,
-        "condition": fisher.condition_number,
+        # the condition number of a rank deficient information is infinite,
+        # which JSON has not, so the summary says `null` as its file does
+        "condition": condition if math.isfinite(condition) else None,
+        # the forward sensitivities of the engine or the differences of python
+        "jacobian_of": fisher.jacobian_of,
     }
     if posterior:
         summary.update(
@@ -934,6 +972,7 @@ def _run_repeats(
         fixed_values=fixed,
         indices=indices,
         sources=ctx.provenance,
+        engine_fit=spec.engine_fit,
         **optimizer,
     )
     if any(fit_run.result.interrupted for fit_run in runs.values()):
@@ -982,6 +1021,8 @@ def _merge_fit(spec: FitSpec, ctx: RunContext) -> dict[str, Any]:
         "repeats": spec.repeats,
         "converged": int(df.success.astype(bool).sum()),
         "best_cost": float(df.cost.iloc[0]),
+        # where the optimizer of the repeats ran, `engine` or `python`
+        "optimizer_of": result.optimizer_of,
     }
     if spec.identifiability:
         summary.update(_fit_identifiability(spec, records, ctx))
@@ -1017,20 +1058,26 @@ def _fit_identifiability(
             profile_settings=_profile_settings(spec.profile),
             pids=spec.profile.pids,
             n_cores=ctx.workers or available_cpus(),
+            engine_profiles=spec.profile.engine_profiles,
         )
         write_text_atomic(path, str(result.to_json()) + "\n")
     summary: dict[str, Any] = {
         "n_identifiable": result.n_identifiable,
         "n_parameters": len(result.profiles),
+        # where the profiles were walked, `engine` or `python`
+        "profiles_of": result.profiles_of,
     }
     if spec.fisher and not (ctx.resume and (records / FISHER_FILE).exists()):
-        _write_fisher(
-            records,
-            problem,
-            settings,
-            parameter_set,
-            alpha=result.settings.alpha,
-            n_cores=ctx.workers or available_cpus(),
+        summary.update(
+            _write_fisher(
+                records,
+                problem,
+                settings,
+                parameter_set,
+                alpha=result.settings.alpha,
+                n_cores=ctx.workers or available_cpus(),
+                engine_jacobian=spec.engine_jacobian,
+            )
         )
     return summary
 
@@ -1247,6 +1294,7 @@ def _profile(
         pids=pids,
         n_cores=n_cores,
         on_profile=write,
+        engine_profiles=spec.engine_profiles,
     )
 
 
@@ -1279,17 +1327,25 @@ def _merge_identifiability(
     write_text_atomic(ctx.out / IDENTIFIABILITY_FILE, str(result.to_json()) + "\n")
     directory = _records_dir(spec.fit)
     _copy_records(directory, ctx)
+    summary: dict[str, Any] = {
+        "n_identifiable": result.n_identifiable,
+        "n_parameters": len(pids),
+        "profiles_of": result.profiles_of,
+    }
     if spec.fisher:
         problem, settings, parameter_set = _stored_fit(spec, directory)
-        _write_fisher(
-            ctx.out,
-            problem,
-            settings,
-            parameter_set,
-            alpha=spec.alpha,
-            n_cores=ctx.workers or available_cpus(),
+        summary.update(
+            _write_fisher(
+                ctx.out,
+                problem,
+                settings,
+                parameter_set,
+                alpha=spec.alpha,
+                n_cores=ctx.workers or available_cpus(),
+                engine_jacobian=spec.engine_jacobian,
+            )
         )
-    return {"n_identifiable": result.n_identifiable, "n_parameters": len(pids)}
+    return summary
 
 
 def _run_identifiability(spec: IdentifiabilitySpec, ctx: RunContext) -> dict[str, Any]:
@@ -1318,6 +1374,7 @@ def _run_fisher(spec: FisherSpec, ctx: RunContext) -> dict[str, Any]:
         posterior=spec.posterior,
         step=spec.step,
         n_cores=ctx.workers or available_cpus(),
+        engine_jacobian=spec.engine_jacobian,
     )
     _copy_records(directory, ctx)
     return summary

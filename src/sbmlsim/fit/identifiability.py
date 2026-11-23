@@ -127,9 +127,12 @@ from sbmlsim.fit.optimization import (
     ResidualsEvaluator,
 )
 from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
     FitSettings,
     OptimizationAlgorithmType,
     ParameterScaleType,
+    run_place,
 )
 from sbmlsim.fit.parameters import ParameterSet, dump_json, load_json
 from sbmlsim.progress import activity as progress_activity
@@ -589,6 +592,10 @@ class IdentifiabilityResult:
             parameter id, e.g. the scan which the `scan_timeout` or the
             `timeout` of the settings gave up (#522). Empty for an analysis
             whose every parameter has a profile.
+        profiles_of: where the profiles were walked, `RUN_IN_THE_ENGINE` or
+            `RUN_IN_PYTHON` (`RUN_MIXED` for a result whose parts were not all
+            walked in one place, see `combine`); `None` for a result which did
+            not record it, i.e. one of sbmlsim 0.27 or earlier.
     """
 
     opid: str
@@ -600,6 +607,7 @@ class IdentifiabilityResult:
     profiles: dict[str, ParameterProfile]
     duration: float = 0.0
     incomplete: dict[str, str] = field(default_factory=dict)
+    profiles_of: str | None = None
 
     def __post_init__(self) -> None:
         """Evaluate the profiles."""
@@ -670,13 +678,15 @@ class IdentifiabilityResult:
         which have none, which the parts of an analysis share, see `combine`;
         JSON compares the values bitwise and a `NaN` equal to itself. A part
         which gave a scan up is a part of the analysis like any other, so
-        `incomplete` is no part of the definition.
+        `incomplete` is no part of the definition, and neither is
+        `profiles_of`: the walk of the engine is the walk of python, so a part
+        of either is a part of the same analysis.
 
         Raises:
             TypeError: for a value which is not serializable as JSON.
         """
         d = self.to_dict()
-        del d["profiles"], d["duration"], d["incomplete"]
+        del d["profiles"], d["duration"], d["incomplete"], d["profiles_of"]
         return json.dumps(d)
 
     @staticmethod
@@ -695,8 +705,10 @@ class IdentifiabilityResult:
 
         Returns:
             The result with the profiles of all parts, its duration the sum of
-            the durations of the parts and the parameters without a profile of
-            all of them (`incomplete`). The parts are not changed.
+            the durations of the parts, the parameters without a profile of
+            all of them (`incomplete`) and, as `profiles_of`, the one place
+            the parts were walked in, `RUN_MIXED` if they were not all walked
+            in one place. The parts are not changed.
 
         Raises:
             ValueError: if there is no part, if a parameter is profiled in two
@@ -739,6 +751,7 @@ class IdentifiabilityResult:
             profiles=profiles,
             duration=float(sum(part.duration for part in parts)),
             incomplete=incomplete,
+            profiles_of=run_place(part.profiles_of for part in parts),
         )
 
     def scale(self, pid: str) -> ParameterScaleType:
@@ -860,6 +873,7 @@ class IdentifiabilityResult:
             },
             "duration": self.duration,
             "incomplete": dict(self.incomplete),
+            "profiles_of": self.profiles_of,
         }
 
     @staticmethod
@@ -879,6 +893,8 @@ class IdentifiabilityResult:
             duration=float(d.get("duration", 0.0)),
             # a record written before #522 has every parameter it analysed
             incomplete=dict(d.get("incomplete", {})),
+            # a record of sbmlsim 0.27 or earlier does not say where it walked
+            profiles_of=d.get("profiles_of"),
         )
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -1423,6 +1439,7 @@ def profile_likelihood(
                     cost=cost_optimum,
                     profiles={pid: deepcopy(assembled[pid])},
                     duration=now - last_finished,
+                    profiles_of=(RUN_IN_THE_ENGINE if in_the_engine else RUN_IN_PYTHON),
                 )
             )
         last_finished = now
@@ -1512,6 +1529,7 @@ def profile_likelihood(
         profiles={pid: assembled[pid] for pid in pids if pid in assembled},
         duration=time.time() - ts,
         incomplete=incomplete,
+        profiles_of=RUN_IN_THE_ENGINE if in_the_engine else RUN_IN_PYTHON,
     )
     if incomplete:
         logger.warning(

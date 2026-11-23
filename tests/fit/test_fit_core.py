@@ -55,6 +55,8 @@ from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
     LossFunctionType,
     ObjectiveType,
     OptimizationAlgorithmType,
@@ -311,6 +313,7 @@ def test_a_fit_of_a_problem_of_the_engine_runs_in_the_engine(
     )
 
     assert len(result.fits) == 2
+    assert result.optimizer_of == RUN_IN_THE_ENGINE
     for fit in result.fits:
         assert fit.optimizer_kwargs["engine"] == "core"
         assert fit.message in CONVERGED or "Max" in fit.message
@@ -328,6 +331,7 @@ def test_a_fit_which_the_engine_cannot_run_stays_in_python(
     )
 
     assert "engine" not in result.fits[0].optimizer_kwargs
+    assert result.optimizer_of == RUN_IN_PYTHON
 
 
 def test_a_fit_may_be_held_out_of_the_engine(
@@ -346,6 +350,7 @@ def test_a_fit_may_be_held_out_of_the_engine(
     )
 
     assert "engine" not in result.fits[0].optimizer_kwargs
+    assert result.optimizer_of == RUN_IN_PYTHON
 
 
 def test_a_fit_which_must_run_in_the_engine_names_the_gaps_of_the_problem(
@@ -432,6 +437,8 @@ def test_the_profiles_of_the_engine_are_the_profiles_of_python(
         for where in ("engine", "python")
     }
 
+    assert walked["engine"].profiles_of == RUN_IN_THE_ENGINE
+    assert walked["python"].profiles_of == RUN_IN_PYTHON
     assert walked["engine"].cost == pytest.approx(walked["python"].cost, rel=1e-9)
     for pid, profile in walked["engine"].profiles.items():
         expected = walked["python"].profiles[pid]

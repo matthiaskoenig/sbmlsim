@@ -82,7 +82,14 @@ from sbmlsim.fit.objects import (
     describe_array,
 )
 from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
-from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
+from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
+    RUN_MIXED,
+    FitSettings,
+    ObjectiveType,
+    ParameterScaleType,
+)
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.posterior import POSTERIOR_FILE, ParameterPosterior
@@ -107,6 +114,15 @@ logger = logging.getLogger(__name__)
 #: the rows of a figure of a grouping, more groups are drawn on more pages, see
 #: `FitReport.plot_grouping`
 MAX_GROUP_ROWS = 6
+
+#: where the optimizer of a fit ran, for the overview of its report, by the
+#: `OptimizationResult.optimizer_of` of its record; a record which does not
+#: say it has no such text (`sbmlsim.fit.options.RUN_IN_THE_ENGINE`)
+OPTIMIZER_TEXT: dict[str, str] = {
+    RUN_IN_THE_ENGINE: "the optimizer in the engine",
+    RUN_IN_PYTHON: "the optimizer in python",
+    RUN_MIXED: "the optimizer in the engine and in python",
+}
 
 
 def grouping_page(plot: str, name: str, page: int) -> str:
@@ -1988,7 +2004,11 @@ class FitReport:
         info["base path"] = paths_text(self.problem.base_path)
         info["data path"] = paths_text(self.problem.data_path)
         if self.opt_result:
-            info["optimization"] = f"{self.opt_result.size} runs"
+            # where the optimizer of the runs ran, for a record which says it
+            place = OPTIMIZER_TEXT.get(self.opt_result.optimizer_of or "")
+            info["optimization"] = f"{self.opt_result.size} runs" + (
+                f", {place}" if place else ""
+            )
         return info
 
     def html_report(

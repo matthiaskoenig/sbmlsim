@@ -26,7 +26,12 @@ from sbmlsim.fit.identifiability import (
 )
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
+    RUN_MIXED,
+    ParameterScaleType,
+)
 from sbmlsim.fit.report import FitReport
 
 #: settings of a fast analysis of the reference problem, plain scans with a
@@ -796,6 +801,46 @@ def test_combining_parts_keeps_the_parameters_which_have_no_profile() -> None:
     assert IdentifiabilityResult.combine([given_up, only_w]).incomplete == {
         "k": "timed out"
     }
+
+
+def test_combining_parts_keeps_where_they_were_walked() -> None:
+    """The parts which were not all walked in one place are `RUN_MIXED`."""
+    base = _linear_result()
+    first = replace(
+        base, profiles={"w": base.profiles["w"]}, profiles_of=RUN_IN_THE_ENGINE
+    )
+    second = replace(
+        base, profiles={"k": base.profiles["k"]}, profiles_of=RUN_IN_THE_ENGINE
+    )
+
+    assert IdentifiabilityResult.combine([first, second]).profiles_of == (
+        RUN_IN_THE_ENGINE
+    )
+    # the walk of the engine is the walk of python, so a part of either is a
+    # part of the same analysis, and the combined result says both
+    in_python = replace(second, profiles_of=RUN_IN_PYTHON)
+    assert IdentifiabilityResult.combine([first, in_python]).profiles_of == RUN_MIXED
+    # a part written by an older sbmlsim does not say where it was walked
+    older = replace(second, profiles_of=None)
+    assert IdentifiabilityResult.combine([first, older]).profiles_of == (
+        RUN_IN_THE_ENGINE
+    )
+    assert (
+        IdentifiabilityResult.combine(
+            [replace(first, profiles_of=None), older]
+        ).profiles_of
+        is None
+    )
+
+
+def test_where_an_analysis_was_walked_survives_the_round_trip() -> None:
+    """`profiles_of` is stored with a result, `None` for a record without it."""
+    result = replace(_linear_result(), profiles_of=RUN_IN_PYTHON)
+    d = result.to_dict()
+
+    assert IdentifiabilityResult.from_dict(d).profiles_of == RUN_IN_PYTHON
+    del d["profiles_of"]
+    assert IdentifiabilityResult.from_dict(d).profiles_of is None
 
 
 def test_a_stuck_scan_of_a_parallel_analysis_is_given_up(

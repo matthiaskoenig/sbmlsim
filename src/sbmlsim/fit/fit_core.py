@@ -103,6 +103,7 @@ from sbmlsim.fit.observable_sbml import (
     observable_model,
 )
 from sbmlsim.fit.options import (
+    RUN_IN_THE_ENGINE,
     ObjectiveType,
     OptimizationAlgorithmType,
     ParameterScaleType,
@@ -2503,6 +2504,7 @@ def run(
         units=problem.parameter_units,
         provenance=provenance,
         prior_correlation=problem.prior_correlation,
+        optimizer_of=RUN_IN_THE_ENGINE,
     )
     result.interrupted = interrupted
     return result

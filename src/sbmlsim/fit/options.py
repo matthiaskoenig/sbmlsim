@@ -15,6 +15,36 @@ import numpy as np
 
 from sbmlsim.model.tolerances import AbsoluteTolerance
 
+#: where the optimizer of a fit or the walk of its profiles ran: in the engine
+#: (`sbmlsim.fit.fit_core`), which minimizes the whole objective itself, or in
+#: python, whose optimizer evaluates the objective through the engine of the
+#: problem. They are the `optimizer_of` of an `OptimizationResult` and the
+#: `profiles_of` of an `IdentifiabilityResult`, as the `jacobian_of` of a
+#: `FisherInformation` says where its jacobian comes from; a record written
+#: before they were recorded has neither (`None`), and `RUN_MIXED` is a result
+#: whose parts did not all run in one place (`combine`).
+RUN_IN_THE_ENGINE = "engine"
+RUN_IN_PYTHON = "python"
+RUN_MIXED = "mixed"
+
+
+def run_place(places: Iterable[str | None]) -> str | None:
+    """Get where the parts of a result ran, see `RUN_IN_THE_ENGINE`.
+
+    Args:
+        places: where every part ran, `None` for a part which did not record it.
+
+    Returns:
+        The one place all parts which recorded it ran in, `RUN_MIXED` if they
+        ran in more than one, and `None` if no part recorded one.
+    """
+    recorded = {place for place in places if place is not None}
+    if not recorded:
+        return None
+    if len(recorded) == 1:
+        return recorded.pop()
+    return RUN_MIXED
+
 
 class OptimizationStrategy(StrEnum):
     """Strategy for fitting a set of fit experiments.

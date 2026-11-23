@@ -328,6 +328,7 @@ def run_fit(
     fixed_values: Mapping[str, float] | None = None,
     indices: Sequence[int] | None = None,
     sources: list[dict[str, Any]] | None = None,
+    engine_fit: bool | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -358,6 +359,11 @@ def run_fit(
             the whole fit, so the pieces of a fit merge to it.
         sources: the provenance of the sources of a snapshot, see
             `create_provenance`; the file `SIMRUN_PROVENANCE` names if `None`.
+        engine_fit: whether the whole fit runs in the engine, see
+            `run_optimization`: `None` runs it there if the engine can run it,
+            `True` requires it and `False` optimizes in python. It is recorded
+            in the provenance of the fit, which is what was asked;
+            `OptimizationResult.optimizer_of` is where the optimizer ran.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
@@ -365,7 +371,8 @@ def run_fit(
         The finished fits by optimization id.
 
     Raises:
-        ValueError: if the indices are invalid, see `run_indices`.
+        ValueError: if the indices are invalid, see `run_indices`, or if
+            `engine_fit` is required and the engine cannot run the fit.
     """
     # an index outside of the repeats is refused before a problem is built
     run_indices(size, indices)
@@ -406,6 +413,7 @@ def run_fit(
                 "study_ids": list(study_ids) if study_ids else None,
                 "timeout": timeout,
                 "optimizer": {k: str(v) for k, v in optimizer_kwargs.items()},
+                "engine_fit": engine_fit,
                 **dict(arguments or {}),
             },
             seed=seed,
@@ -428,6 +436,7 @@ def run_fit(
             runs_dir=(Path(output_dir) / problem.opid / "runs" if output_dir else None),
             provenance=provenance,
             indices=indices,
+            engine_fit=engine_fit,
             **optimizer_kwargs,
         )
         runs[problem.opid] = FitRun(problem=problem, result=result)
@@ -845,6 +854,40 @@ def _add_common_arguments(
     )
 
 
+def _add_engine_argument(
+    parser: argparse.ArgumentParser, name: str, dest: str, what: str
+) -> None:
+    """Add the pair of flags of a switch of the engine, `--x` and `--no-x`.
+
+    The switch is `None` unless a flag is given, i.e. the engine runs what it
+    can run and python runs the rest, see `sbmlsim.fit.fit_core`.
+
+    Args:
+        parser: the parser of the tool.
+        name: the name of the flag, `engine-fit` for `--engine-fit` and
+            `--no-engine-fit`.
+        dest: the attribute of the options both flags write, `engine_fit`.
+        what: what runs in the engine, for the help, `the whole fit`.
+    """
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        f"--{name}",
+        dest=dest,
+        action="store_true",
+        default=None,
+        help=f"require that {what} runs in the engine (sbmlsim-core), which "
+        f"fails and names the gaps if it cannot; the engine runs it by "
+        f"default where it can and python runs the rest",
+    )
+    group.add_argument(
+        f"--no-{name}",
+        dest=dest,
+        action="store_false",
+        default=None,
+        help=f"run {what} in python, which simulates through the engine of the problem",
+    )
+
+
 def _groupings(
     definition: FitDefinition, options: argparse.Namespace
 ) -> tuple[Grouping, ...]:
@@ -919,6 +962,7 @@ def fit_cli(
         default=None,
         help="seconds a single optimization may run, no limit by default",
     )
+    _add_engine_argument(parser, "engine-fit", "engine_fit", "the whole fit")
     parser.add_argument(
         "-o",
         "--output_dir",
@@ -968,6 +1012,7 @@ def fit_cli(
         study_ids=options.experiments,
         timeout=options.timeout,
         output_dir=options.output_dir,
+        engine_fit=options.engine_fit,
     )
 
     # the fit only optimizes, the report is created from its parameters
@@ -1162,6 +1207,15 @@ def identifiability_cli(
         action="store_true",
         help="skip the Fisher information, i.e., report the profiles alone",
     )
+    _add_engine_argument(
+        parser, "engine-profiles", "engine_profiles", "the walk of the profiles"
+    )
+    _add_engine_argument(
+        parser,
+        "engine-jacobian",
+        "engine_jacobian",
+        "the jacobian of the Fisher information",
+    )
     parser.add_argument(
         "-o",
         "--output_dir",
@@ -1216,6 +1270,7 @@ def identifiability_cli(
         profile_settings=profile_settings,
         pids=options.parameter,
         n_cores=options.cores,
+        engine_profiles=options.engine_profiles,
     )
 
     # the local analysis next to the profiles, one jacobian instead of a scan
@@ -1228,6 +1283,7 @@ def identifiability_cli(
             parameter_set=parameter_set,
             alpha=options.alpha,
             n_cores=options.cores,
+            engine_jacobian=options.engine_jacobian,
         )
         display.section("Fisher information", icon=display.ICON_IDENTIFIABILITY)
         display.key_values(

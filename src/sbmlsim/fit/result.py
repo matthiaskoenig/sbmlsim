@@ -16,7 +16,7 @@ from scipy.optimize import OptimizeResult
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, describe_array
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import FitSettings, ParameterScaleType, run_place
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
@@ -211,6 +211,7 @@ class OptimizationResult(ObjectJSONEncoder):
         units: Mapping[str, str | None] | None = None,
         provenance: FitProvenance | dict[str, Any] | None = None,
         prior_correlation: Covariance | Mapping[str, Any] | None = None,
+        optimizer_of: str | None = None,
     ):
         """Initialize optimization result.
 
@@ -233,6 +234,11 @@ class OptimizationResult(ObjectJSONEncoder):
                 record it.
             prior_correlation: the correlation of the priors of the problem,
                 see `sbmlsim.fit.priors`, `None` for independent priors.
+            optimizer_of: where the optimizer of the fit ran,
+                `RUN_IN_THE_ENGINE` or `RUN_IN_PYTHON` (`RUN_MIXED` for a
+                result whose runs did not all run in one place, see
+                `combine`); `None` for a result of a fit which did not record
+                it, i.e. one of sbmlsim 0.27 or earlier.
         """
         super().__init__()
         self.opid = opid
@@ -265,6 +271,11 @@ class OptimizationResult(ObjectJSONEncoder):
         #: the correlation of the priors of the problem, `None` for independent
         #: priors
         self.prior_correlation: Covariance | None = prior_correlation
+
+        #: where the optimizer of the fit ran, see `RUN_IN_THE_ENGINE`; the
+        #: runs of the engine also carry `engine` among their optimizer
+        #: arguments, which the engine reports per run
+        self.optimizer_of: str | None = optimizer_of
 
         self.fits: list[OptimizeResult] = []
         for fit in fits:
@@ -303,6 +314,7 @@ class OptimizationResult(ObjectJSONEncoder):
         units: Mapping[str, str | None] | None = None,
         provenance: FitProvenance | None = None,
         prior_correlation: Covariance | None = None,
+        optimizer_of: str | None = None,
     ) -> Path:
         """Store a single optimization run as JSON.
 
@@ -325,6 +337,8 @@ class OptimizationResult(ObjectJSONEncoder):
             units: the units of pint of the parameters, see `__init__`.
             provenance: what the fit ran with, every run carries it.
             prior_correlation: the correlation of the priors of the problem.
+            optimizer_of: where the optimizer of the run ran, see
+                `__init__`, so the merged result of the runs says it as well.
 
         Returns:
             Path of the file the run was written to.
@@ -341,6 +355,7 @@ class OptimizationResult(ObjectJSONEncoder):
             units=units,
             provenance=provenance,
             prior_correlation=prior_correlation,
+            optimizer_of=optimizer_of,
         ).to_json()
         write_text_atomic(path, str(text))
         return path
@@ -408,6 +423,7 @@ class OptimizationResult(ObjectJSONEncoder):
         d["provenance"] = self.provenance.to_dict() if self.provenance else None
         if self.prior_correlation is not None:
             d["prior_correlation"] = self.prior_correlation.to_dict()
+        d["optimizer_of"] = self.optimizer_of
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -492,6 +508,10 @@ class OptimizationResult(ObjectJSONEncoder):
     def combine(opt_results: list[OptimizationResult]) -> OptimizationResult:
         """Combine results from multiple parameter fitting experiments.
 
+        The runs of the results are the runs of the combined result, and
+        `optimizer_of` is where they ran: the one place of all results which
+        recorded one, `RUN_MIXED` if they did not all run in one place.
+
         Raises:
             ValueError: if no results are given or their parameter definitions,
                 settings or units are incompatible.
@@ -552,6 +572,9 @@ class OptimizationResult(ObjectJSONEncoder):
             units=opt_results[0].units,
             provenance=opt_results[0].provenance,
             prior_correlation=opt_results[0].prior_correlation,
+            # the repeats of a fit run in one place, but the pieces of a fit
+            # which ran apart, e.g. a unit which the engine refused, may not
+            optimizer_of=run_place(result.optimizer_of for result in opt_results),
         )
 
     @property
