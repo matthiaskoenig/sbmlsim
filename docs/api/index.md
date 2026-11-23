@@ -74,7 +74,7 @@ Execution of simulations.
 | [simulator.segments](simulator.segments.md) | `simulate_segments`, the segments of a plan between its changes, shared by the executors of COPASI and AMICI |
 | [simulator.engines](simulator.engines.md) | `execute_plan`, running a plan with the executor of the engine of a model |
 | [simulator.changes](simulator.changes.md) | the changes of a plan and the events a change fires, shared by the engines |
-| [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
+| [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation, compiled and read as linear forms |
 | [simulator.worker](simulator.worker.md) | the chunks of a scan, run on one plan and one model in a worker |
 | [simulator.shared](simulator.shared.md) | the large arrays of a chunk result in shared memory, from a worker to the parent |
 | [simulator.observables](simulator.observables.md) | the compiled observables of a scan and their evaluation on the native solutions |

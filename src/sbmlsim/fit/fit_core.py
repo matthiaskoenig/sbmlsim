@@ -132,8 +132,9 @@ AFTER_CHANGE_VERSION = "0.16.0"
 #: a condition which follow the parameters of the fit, see `reads_derived`
 DERIVED_VERSION = "0.17.0"
 
-#: the release of sbmlsim-core whose change reads `terms`, a change of a linear
-#: formula the engine evaluates from its own state, see `reads_change_forms`
+#: the release of sbmlsim-core whose change reads `forms`, the linear formulas
+#: of a change which the engine evaluates from its own state, each of them a
+#: constant and its `terms`, see `reads_change_forms`
 CHANGE_FORMS_VERSION = "0.20.0"
 
 #: the model of the fit of a problem which has observables of its own, kept
@@ -1690,14 +1691,15 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
     (`reads_change_forms`) and every formula at a change of its plan is a
     linear form (`executor_core.is_formed`, all or nothing per plan, so one
     formula which is no form folds the forms of its plan as well): the
-    engine evaluates them from its own state. Else it is the gap. The number of the
-    pre-initialization is not such a constant: it is the value before the
-    initialization and the simulation moves it on the way to the change,
-    which is why `_known_values`, the values the executor folds a formula
-    *before the initialization* with, is not the test here. A formula which
-    reads a parameter of the fit is the gap of `_gaps_of_the_values`, which
-    is more precise about it, so this reports only the symbols which are
-    neither.
+    engine evaluates them from its own state. Else it is the gap.
+
+    The number of the pre-initialization is not such a constant: it is the
+    value before the initialization and the simulation moves it on the way to
+    the change, which is why `_known_values`, the values the executor folds a
+    formula *before the initialization* with, is not the test here. A formula
+    which reads a parameter of the fit is the gap of `_gaps_of_the_values`,
+    which is more precise about it, so this reports only the symbols which
+    are neither.
 
     The test is conservative: a symbol a change of the plan sets to a number
     is held at that number by the engine as well, so a second dose
@@ -1718,10 +1720,10 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
         protocol of many doses or collections would otherwise fill with one
         entry per change.
     """
-    targets = _parameter_targets(problem)
-    model = fit_model(problem)
     from sbmlsim.simulator.executor_core import is_formed
 
+    targets = _parameter_targets(problem)
+    model = fit_model(problem)
     forms = reads_change_forms(_loaded_of(problem))
     x = np.asarray(problem.xmodel, dtype=float)
     # one entry per formula, in the order they were met: its first change and
@@ -1732,7 +1734,10 @@ def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
             continue
         plan = problem.evaluated_plan(group, x, [])
         constant = _constant_at_the_changes(plan, model)
-        # the request writes the forms all or nothing per plan
+        # the request writes the forms all or nothing per plan, and this is the
+        # plan the request is built from: `_conditions_and_curves` asks
+        # `is_formed` of the plan `_derived_of` returns, which is
+        # `replace(plan, preinit=...)` and so carries these very events
         formed = forms and is_formed(plan, model)
         for event in plan.events:
             for assignment in event.assignments:

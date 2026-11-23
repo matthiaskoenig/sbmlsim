@@ -563,7 +563,12 @@ def request_of(
             scan computes them once and passes them here.
         forms: write a formula at a change as a form of the request instead of
             folding it, when every formula of the plan is a linear form over
-            the entities of the model (`form_of`), else fold them all.
+            the entities of the model (`form_of`), else fold them all. The
+            field is one of sbmlsim-core 0.20.0 and a change of the contract
+            denies unknown fields, so a caller against older bindings asks for
+            it only where `sbmlsim.fit.fit_core.reads_change_forms` holds: they
+            fail on the request, which `_failed` surfaces as a bare
+            `RuntimeError` of the serialization.
 
     Returns:
         The request, a dictionary of the fields of the contract.
@@ -1260,9 +1265,9 @@ def _change_symbols(event: PlanEvent, forms: bool = False) -> list[str]:
         Every symbol but `time`, which is the time of the change and no value
         of the model, as `apply_changes` reads it.
     """
-    symbols: set[str] = set()
     if forms:
         return []
+    symbols: set[str] = set()
     for a in event.assignments:
         if a.value is None:
             symbols |= set(compile_formula(str(a.formula)).symbols)

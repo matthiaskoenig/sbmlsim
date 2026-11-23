@@ -23,6 +23,14 @@ simulation, so a scan of many simulations reduces every simulation on its
 own. The formulas of data share `reduce_formula` and have only `max` and
 `min`, which reduce a labelled array along its dimension of the time or of
 the rows of a dataset by name, see `sbmlsim.data.evaluate_function`.
+
+A formula which is linear in some of its symbols is also read as a form,
+`constant + Σ factor * symbol`, see `linear_form`: the engine of sbmlsim-core
+evaluates such a form itself, at a change from its own state before it
+(`sbmlsim.simulator.executor_core.form_of`) and in a condition of a fit at the
+values its optimizer is at (`sbmlsim.fit.fit_core`), so the value it carries
+follows the simulation and the parameters where a number folded into the
+request would hold it where that request was built.
 """
 
 from __future__ import annotations
@@ -262,26 +270,34 @@ def linear_form(
 ) -> tuple[float, list[tuple[int, float]]] | None:
     """Get a formula as a linear form over the symbols a caller names.
 
-    A linear form is `constant + Σ factor * symbol`. The fit reads it over
-    the parameters it estimates, which the engine evaluates at the values the
-    optimizer is at (`_derived_of`, the contract `fit/1` of sbmlsim-core
-    `DERIVED_VERSION`), and the executor over the entities of a model. This
-    reads such a form off the formula of an assignment.
+    A linear form is `constant + Σ factor * symbol`. Two callers read one off
+    the formula of an assignment, and this is the one place which tells such a
+    formula from any other: `sbmlsim.simulator.executor_core` over the
+    entities of a model, which the engine evaluates at a change from its own
+    state before it (the field `forms` of a change of the contract
+    `simulation/1`), and `sbmlsim.fit.fit_core` over the parameters a fit
+    estimates, which the engine evaluates before every simulation at the
+    values the optimizer is at (the field `derived` of a condition of
+    `fit/1`).
 
-    The formula is the math of PEtab over the entities of the model, and the
-    engine searches the entity of a parameter, so a coefficient of the form
-    is the coefficient of the formula and needs no factor of a unit
-    (`_factors_of`).
+    A formula is the math of PEtab over the symbols of the model, and a form
+    is read over the symbols themselves, for a fit over the entity each
+    parameter writes and not over the quantity of the parameter: so a
+    coefficient of the form is the coefficient of the formula and carries no
+    factor of a unit either way.
 
     Args:
         formula: the formula of the assignment.
-        targets: the position in the terms of every symbol the form may
-            read, e.g. the entity each parameter of a fit writes.
-        constants: the value of every other symbol the form may read, the
-            numbers the pre-initialization sets and the constant parameters
-            of the model, which the executor folds the same way
-            (`executor_core._preinit_value`); none by default, where a
-            formula may read the parameters of the fit alone.
+        targets: the position in the terms of every symbol the form may read,
+            an entity of the model for the executor and the entity each
+            parameter of a fit writes for a fit.
+        constants: the value of every other symbol the form may read, which
+            is substituted before the form is read: the numbers a
+            pre-initialization sets and the constant parameters of the model,
+            which `executor_core._preinit_value` folds a formula before the
+            initialization with; none by default, where the form may read the
+            symbols of `targets` alone, which is what a form at a change
+            passes.
 
     Returns:
         The constant and the factor of every symbol the form reads, by its

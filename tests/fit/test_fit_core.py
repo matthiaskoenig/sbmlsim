@@ -41,7 +41,6 @@ from sbmlsim.fit.fit_core import (
     fits_requests,
     gaps_of,
     gaps_of_the_profiles,
-    linear_form,
     loaded_model,
     run,
     walk_of,
@@ -855,50 +854,6 @@ def test_a_step_of_the_information_asks_for_the_differences(
 
     assert information.jacobian_of == CENTRAL_DIFFERENCES
     assert information.step == 1e-3
-
-
-class TestLinearForm:
-    """The linear forms of the derived values of a condition."""
-
-    @pytest.mark.parametrize(
-        "formula, expected",
-        [
-            ("a", (0.0, [(0, 1.0)])),
-            ("a + b", (0.0, [(0, 1.0), (1, 1.0)])),
-            ("2 * a + 3", (3.0, [(0, 2.0)])),
-            ("a - b", (0.0, [(0, 1.0), (1, -1.0)])),
-            ("a / 2", (0.0, [(0, 0.5)])),
-            ("3 * b", (0.0, [(1, 3.0)])),
-        ],
-    )
-    def test_a_linear_form_is_read_off_a_formula(
-        self, formula: str, expected: tuple[float, list[tuple[int, float]]]
-    ) -> None:
-        """A formula linear in the parameters gives its constant and factors."""
-        assert linear_form(formula, {"a": 0, "b": 1}) == expected
-
-    @pytest.mark.parametrize(
-        "formula",
-        [
-            "a * b",  # not linear
-            "a * a",  # of a higher degree
-            "exp(a)",  # no polynomial
-            "1 / a",  # no polynomial
-            "3",  # a number the executor folds itself
-            "a + c",  # reads an entity which is no parameter of the fit
-            "c",  # the same
-        ],
-    )
-    def test_a_formula_which_is_no_linear_form_is_none(self, formula: str) -> None:
-        """A formula which is no linear form over the parameters is refused."""
-        assert linear_form(formula, {"a": 0, "b": 1}) is None
-
-    def test_the_factor_of_a_parameter_is_the_one_of_the_formula(self) -> None:
-        """The form is over the entities of the model, so it carries no unit."""
-        # the formula reads the entity of the model a parameter writes, whose
-        # value is the one the engine sets, so a factor of a unit of the
-        # parameter is already in it (`_factors_of`)
-        assert linear_form("0.25 * a", {"a": 0}) == (0.0, [(0, 0.25)])
 
 
 def shifted_problem(
