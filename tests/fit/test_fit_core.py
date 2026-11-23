@@ -40,11 +40,14 @@ from sbmlsim.fit import (
 )
 from sbmlsim.fit.fit_core import (
     CONVERGED,
+    engine_problem,
     fit_request,
     fits_requests,
     gaps_of,
     gaps_of_the_profiles,
     loaded_model,
+    loaded_models,
+    model_ids,
     run,
     walk_of,
 )
@@ -89,7 +92,7 @@ def on_core(problem: OptimizationProblem, settings: FitSettings) -> Optimization
 
 def core_problem(problem: OptimizationProblem) -> Any:
     """Get the objective of the engine for the request of a problem."""
-    return loaded_model(problem).fit_problem(fit_request(problem), threads=1)
+    return engine_problem(problem, fit_request(problem), threads=1)
 
 
 def test_the_request_of_a_problem_is_its_simulations_and_its_training_data(
@@ -512,7 +515,7 @@ class Spy:
 def spy_on(problem: OptimizationProblem, monkeypatch: pytest.MonkeyPatch) -> Spy:
     """Let the fits of a problem run through a `Spy` on its loaded model."""
     spy = Spy(loaded_model(problem))
-    monkeypatch.setattr(fit_core, "loaded_model", lambda _: spy)
+    monkeypatch.setattr(fit_core, "loaded_models", lambda _: {"model": spy})
     return spy
 
 
@@ -538,7 +541,9 @@ def interrupt_after(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(
-        fit_core, "loaded_model", lambda _: SimpleNamespace(fit=interrupted)
+        fit_core,
+        "loaded_models",
+        lambda _: {"model": SimpleNamespace(fit=interrupted)},
     )
 
 
@@ -1538,13 +1543,8 @@ def test_a_user_weight_of_zero_is_no_gap(tmp_path: Path) -> None:
     assert core.cost(x) == pytest.approx(0.0)
 
 
-def test_two_models_of_the_mappings_are_a_gap_of_their_own(tmp_path: Path) -> None:
-    """A problem whose mappings read two models is no fit of the engine.
-
-    A request of `fit/1` carries one model, so such a problem keeps the
-    optimizer in python, and its gap says so instead of blaming the version
-    of the bindings, which a problem without exactly one loaded model did.
-    """
+def two_model_problem(tmp_path: Path) -> OptimizationProblem:
+    """Get the initialized problem of the two models of `TwoModelStudy`."""
     (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
     problem = OptimizationProblem(
         "two",
@@ -1567,11 +1567,62 @@ def test_two_models_of_the_mappings_are_a_gap_of_their_own(tmp_path: Path) -> No
         engine=Engine.CORE,
     )
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    return problem
 
-    gaps = gaps_of(problem)
 
-    assert [gap.code for gap in gaps] == ["models"]
-    assert "2 models" in gaps[0].message
+def test_a_problem_of_two_models_is_a_fit_of_the_engine(tmp_path: Path) -> None:
+    """A problem whose mappings read two models is a fit of the engine.
+
+    Every condition of the request names the model of its simulation, which
+    the engine fits from `MULTI_MODEL_VERSION` on, so the two models of a
+    study no longer keep the optimizer in python.
+    """
+    problem = two_model_problem(tmp_path)
+
+    assert gaps_of(problem) == []
+
+
+def test_the_condition_of_a_fit_of_two_models_names_its_model(tmp_path: Path) -> None:
+    """Every condition of the request names the model of its simulation."""
+    problem = two_model_problem(tmp_path)
+
+    request = fit_request(problem)
+
+    models = {condition["model"] for condition in request["conditions"]}
+    assert models == set(model_ids(problem))
+    assert len(models) == 2
+    assert sorted(loaded_models(problem)) == sorted(models)
+
+
+def test_the_models_of_a_fit_of_one_model_are_the_one_model(tmp_path: Path) -> None:
+    """A condition of a fit of one model names none, as every release reads it."""
+    problem = on_core(zero_problem(tmp_path, "fm_zero"), error_weighting())
+
+    request = fit_request(problem)
+
+    assert len(loaded_models(problem)) == 1
+    assert all("model" not in condition for condition in request["conditions"])
+
+
+def test_the_residuals_of_a_fit_of_two_models_are_the_ones_of_the_problem(
+    tmp_path: Path,
+) -> None:
+    """The engine computes the residuals of a problem of two models.
+
+    The models differ in the elimination the second one fixes, so the
+    residuals of the two conditions are different: a request which ran both
+    conditions on one model would answer the same values twice.
+    """
+    problem = two_model_problem(tmp_path)
+
+    core = core_problem(problem)
+    x = problem.to_scale(problem.xmodel)
+
+    residuals = np.asarray(core.residuals(x), dtype=float)
+
+    expected = np.asarray(problem.residuals(x), dtype=float)
+    assert residuals.shape == expected.shape
+    np.testing.assert_allclose(residuals, expected, rtol=1e-9, atol=1e-12)
 
 
 def test_an_infinite_weight_is_still_a_gap(tmp_path: Path) -> None:
