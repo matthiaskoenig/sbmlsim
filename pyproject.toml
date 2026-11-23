@@ -99,7 +99,7 @@ dependencies = [
 	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
 	# the runtime of its engine and the inline build of its JavaScript host;
 	# 0.22.0 fits several models, a condition of a request naming its model
-	"sbmlsim-core>=0.22.0",
+	"sbmlsim-core>=0.24.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
