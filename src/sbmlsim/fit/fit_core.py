@@ -102,6 +102,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
+from sbmlsim.simulator.observables import FormulaNode
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
@@ -136,6 +137,11 @@ DERIVED_VERSION = "0.17.0"
 #: of a change which the engine evaluates from its own state, each of them a
 #: constant and its `terms`, see `reads_change_forms`
 CHANGE_FORMS_VERSION = "0.20.0"
+
+#: the release of sbmlsim-core whose curve takes a positive infinity as the
+#: standard deviation of a measurement, a point which carries no information,
+#: see `reads_infinite_noise`
+INFINITE_NOISE_VERSION = "0.21.0"
 
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
@@ -404,6 +410,28 @@ def reads_change_forms(loaded: Any) -> bool:
         Whether the bindings read them.
     """
     return _reads(loaded, CHANGE_FORMS_VERSION)
+
+
+def reads_infinite_noise(loaded: Any) -> bool:
+    """Whether the bindings take an infinite standard deviation of a curve.
+
+    The `noise` of a curve of `fit/1` is the standard deviation of every
+    measurement of it, and a positive infinity is a measurement which carries
+    no information from sbmlsim-core `INFINITE_NOISE_VERSION` on: its
+    residual is the difference over infinity and its row of the jacobian is
+    zeros, so the point stays in the residual vector of the request and adds
+    nothing to the cost and nothing to the gradient. An older engine refuses
+    such a request, which `_gaps_of_the_request` reports as `unsupported`, so
+    the gate buys a clear message and not safety.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            sbmlsim-core.
+
+    Returns:
+        Whether the bindings take it.
+    """
+    return _reads(loaded, INFINITE_NOISE_VERSION)
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -960,10 +988,12 @@ def _conditions_and_curves(
         # mapping of log-normal noise reads its logarithmic column
         for k in training:
             for part in parts[k]:
-                column = part.column
+                column = part.column or _observable_column(
+                    problem, group, problem.yid_observable[k]
+                )
                 if _is_log_normal(problem, k):
-                    column = _log_observable(column or problem.yid_observable[k])
-                if column is not None and column not in selections:
+                    column = _log_observable(column)
+                if column not in selections:
                     selections.append(column)
         condition = _condition_id(problem, group, training[0])
         of_the_group[group] = condition
@@ -1040,7 +1070,9 @@ def _curve(
         else np.asarray(rows, dtype=float)
     )
     values = np.asarray(problem.y_references[mapping], dtype=float)
-    column = part.column or problem.yid_observable[mapping]
+    column = part.column or _observable_column(
+        problem, group, problem.yid_observable[mapping]
+    )
     noise = _noise_of(problem, mapping)
     if _is_log_normal(problem, mapping):
         # the residual of a log-normal noise is the difference of the
@@ -1097,7 +1129,11 @@ def _noise_of(problem: OptimizationProblem, mapping: int) -> np.ndarray:
     if problem.residual is ResidualType.NORMALIZED:
         # the mean of the whole mapping, which is what the problem divides by
         reference = float(np.mean(problem.y_references[mapping]))
-    return reference / np.sqrt(weights)
+    # a weight of exactly zero is a measurement which carries no information,
+    # whose standard deviation is a positive infinity: the engine takes it
+    # from `INFINITE_NOISE_VERSION` on, see `reads_infinite_noise`
+    with np.errstate(divide="ignore"):
+        return reference / np.sqrt(weights)
 
 
 def _gaps_of_the_targets(problem: OptimizationProblem) -> list[Gap]:
@@ -1169,15 +1205,14 @@ def _gaps_of_a_group(
                 f"are simulations of their own",
             )
         )
-    if problem._group_graphs[group] is not None or (
-        problem._group_pointwise[group] is not None
-    ):
+    if problem._group_graphs[group] is not None:
         gaps.append(
             Gap(
                 "observable",
                 f"the data of the group {group} is read from observables of its "
-                f"experiment, which are evaluated on the output of its "
-                f"simulation and are no column of it",
+                f"experiment which need the output of its simulation, a value "
+                f"per simulation, a reduction, a `PK` or a `Custom` observable, "
+                f"and are no column of it",
             )
         )
     if problem.group_derived[group]:
@@ -1213,12 +1248,35 @@ def _gaps_of_a_mapping(
         )
         return gaps
     weights = np.asarray(problem.weights[mapping], dtype=float)
-    if not np.all(np.isfinite(weights)) or np.any(weights <= 0.0):
+    # a weight of exactly zero is a measurement which carries no information,
+    # whose standard deviation `_noise_of` gives as a positive infinity: the
+    # engine takes that from `INFINITE_NOISE_VERSION` on and its residual and
+    # its row of the jacobian are zero. Every other weight which is no
+    # standard deviation stays a gap: an infinite weight is an error of
+    # exactly zero, whose noise is `0.0`, and a negative one has no square
+    # root. `FitMapping.weight` of zero is the second source of a zero
+    # weight, which zeroes every point of its mapping.
+    unusable = np.isnan(weights) | np.isinf(weights) | (weights < 0.0)
+    if np.any(unusable):
         gaps.append(
             Gap(
                 "weights",
                 f"a point of the mapping '{key}' has the weight "
-                f"'{np.min(weights)}', which is no standard deviation of a curve",
+                f"'{float(weights[int(np.argmax(unusable))])}', which is no "
+                f"standard deviation of a curve",
+            )
+        )
+    elif np.any(weights == 0.0) and not reads_infinite_noise(_loaded_of(problem)):
+        import sbmlsim_core
+
+        gaps.append(
+            Gap(
+                "weights",
+                f"a point of the mapping '{key}' has the weight '0.0', a "
+                f"measurement which carries no information, whose standard "
+                f"deviation is the infinity which the bindings of sbmlsim-core "
+                f"{sbmlsim_core.__version__} do not take, and "
+                f"{INFINITE_NOISE_VERSION} is the first which does",
             )
         )
     if problem.residual is ResidualType.NORMALIZED:
@@ -1389,6 +1447,26 @@ def _observable_entities(problem: OptimizationProblem) -> Entities:
         names = _observable_names(key, rows)
         for row, values in rows.items():
             add_observable(names[row], observable, values, symbols, entities)
+    for k_group, graph in enumerate(problem._group_pointwise):
+        if graph is None:
+            continue
+        # the nodes of the graph are ordered, so a formula reads only the
+        # observables before it, whose parameters `names` carries: nothing of
+        # a formula is substituted as text. `FormulaNode.factor` is the factor
+        # from the derived unit of a formula into its declared one, which
+        # `evaluate` applies to its values (`value *= factor`), so the
+        # parameter carries the same single multiplication and its column is
+        # the value of python.
+        names: dict[str, str] = {}
+        for node in graph.nodes:
+            if not isinstance(node, FormulaNode):  # pragma: no cover - pointwise
+                continue
+            formula = node.formula
+            if node.factor != 1.0:
+                formula = f"({formula}) * {node.factor!r}"
+            target = _group_observable(k_group, node.id)
+            add_formula(target, formula, symbols, entities, names=dict(names))
+            names[node.id] = target
     for mapping in problem.indices(MappingKind.TRAINING):
         if not _is_log_normal(problem, mapping):
             continue
@@ -1410,6 +1488,39 @@ def _is_log_normal(problem: OptimizationProblem, mapping: int) -> bool:
     from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 
     return bool(noise_model_of(problem, mapping).distribution.is_log)
+
+
+def _group_observable(group: int, observable: str) -> str:
+    """Get the id of the parameter of an observable of a simulation group.
+
+    Two experiments of one fit may define an observable of the same id with
+    different formulas, e.g. a fraction of a dose which each of them derives
+    from its own selections, so the parameter of the model of the fit carries
+    the group of the observable and not its id alone.
+
+    Args:
+        group: index of the simulation group of the observable.
+        observable: the id of the observable of the experiment.
+
+    Returns:
+        The id of its parameter in the model of the fit.
+    """
+    return f"{OBSERVABLE_PREFIX}g{group}__{to_sid(observable)}"
+
+
+def _observable_column(problem: OptimizationProblem, group: int, column: str) -> str:
+    """Get the column of the model of the fit a curve of a group reads.
+
+    A column which is an observable of the experiment of the group is the
+    parameter the model of the fit carries for it (`_group_observable`);
+    every other column is a selection of the model and is itself.
+    """
+    graph = problem._group_pointwise[group]
+    if graph is None:
+        return column
+    if column not in {node.id for node in graph.nodes}:
+        return column
+    return _group_observable(group, column)
 
 
 def _log_observable(column: str) -> str:

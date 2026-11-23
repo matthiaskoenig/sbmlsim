@@ -17,14 +17,17 @@ and the errors of the data).
 
 import dataclasses
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, override
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from sbmlsim import Q
+from sbmlsim.data import DataSet
 from sbmlsim.engine import Engine
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import (
@@ -54,15 +57,23 @@ from sbmlsim.fit.options import (
     OptimizationAlgorithmType,
     ParameterScaleType,
     ResidualType,
+    WeightingCurvesType,
+    WeightingPointsType,
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
-from sbmlsim.simulation import Change, Simulation
+from sbmlsim.simulation import Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from tests.engines import require_core_fit
-from tests.fit.test_data_at_change import MODEL_FILE, TRUE_KE, UrineStudy
+from tests.fit.test_data_at_change import (
+    MODEL_FILE,
+    TIMES,
+    TRUE_KE,
+    TRUTH,
+    UrineStudy,
+)
 from tests.simulator.models import sbml_pk
 
 
@@ -1325,3 +1336,427 @@ def test_the_engine_would_hold_a_parameter_of_a_change_where_it_was_built(
     assert costs[0][0] != pytest.approx(costs[1][0])
     # and leaves the ones of the engine where the request was built
     assert costs[0][1] == pytest.approx(costs[1][1])
+
+
+#: the standard deviation of the measurements of `ZeroBaselineStudy`, in mg
+ZERO_SD = 0.1
+
+#: the units of the urine data with its errors
+ZERO_UNITS = {"time": "hr", "Aurine": "mg", "Aurine_sd": "mg"}
+
+
+class ZeroBaselineStudy(UrineStudy):
+    """The urine of `UrineStudy` with the errors of a study on its data.
+
+    `fm_zero` measures nothing in the urine at the first time, a zero
+    baseline: `error_weighting` gives that point the weight `|y / sd| = 0.0`,
+    which `_noise_of` turns into a positive infinity, the standard deviation
+    of a measurement which carries no information. An error of exactly zero
+    is no second source of it, since the problem reads such an error as a
+    missing one and replaces it with the largest error of the mapping, so the
+    other end, an infinite weight whose noise is `0.0`, is the weight of a
+    mapping (`test_an_infinite_weight_is_still_a_gap`).
+    """
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        datasets = super().datasets()
+        amounts = list(TRUTH["urine"])
+        datasets["zero"] = DataSet.from_df(
+            pd.DataFrame(
+                {
+                    "time": TIMES,
+                    "Aurine": [0.0, *amounts[1:]],
+                    "Aurine_sd": [ZERO_SD] * len(TIMES),
+                }
+            ),
+            udict=ZERO_UNITS,
+            ureg=self.ureg,
+        )
+        return datasets
+
+    @override
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        mappings = super().fit_mappings()
+        mappings["fm_zero"] = FitMapping(
+            self,
+            reference=FitData(
+                self,
+                dataset="zero",
+                xid="time",
+                yid="Aurine",
+                yid_sd="Aurine_sd",
+            ),
+            observable=FitData(self, task="task_collected", xid="time", yid="Aurine"),
+        )
+        return mappings
+
+
+def zero_problem(
+    tmp_path: Path, mapping: str, weights: float | None = None
+) -> OptimizationProblem:
+    """Get the problem of one mapping of `ZeroBaselineStudy`."""
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    collection = FitMappingCollection(
+        experiment=ZeroBaselineStudy, mappings=[mapping], weights=weights
+    )
+    return OptimizationProblem(
+        "zero",
+        [collection],
+        [
+            FitParameter(
+                pid="ke",
+                lower_bound=0.01,
+                upper_bound=1.0,
+                start_value=0.5,
+                unit="1/hr",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+
+
+def error_weighting() -> FitSettings:
+    """Get the settings which weight a point by its coefficient of variation."""
+    return FitSettings(
+        parameter_scale=ParameterScaleType.LINEAR,
+        weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+    )
+
+
+def test_a_point_of_a_zero_measurement_is_no_gap_and_carries_an_infinite_noise(
+    tmp_path: Path,
+) -> None:
+    """A measurement which carries no information is a point of the request.
+
+    The weight of a measurement of zero under `error_weighting` is zero, its
+    standard deviation an infinity, and the point stays in the curve, so the
+    residual vector of the request keeps the length and the order of the one
+    of the problem (sbmlsim-core `INFINITE_NOISE_VERSION`).
+    """
+    problem = on_core(zero_problem(tmp_path, "fm_zero"), error_weighting())
+
+    assert gaps_of(problem) == []
+
+    curve = fit_request(problem)["curves"][0]
+    assert len(curve["noise"]) == len(curve["times"]) == len(TIMES)
+    assert curve["noise"][0] == float("inf")
+    assert all(noise > 0.0 for noise in curve["noise"][1:])
+    assert all(np.isfinite(noise) for noise in curve["noise"][1:])
+
+
+def test_the_residuals_of_a_zero_weight_point_are_the_ones_of_python(
+    tmp_path: Path,
+) -> None:
+    """The engine computes the residuals of the problem, the zero included.
+
+    Python computes `residual * sqrt(0.0)` and the engine `(sim - value) /
+    inf`; both are `+-0.0` with the sign of the residual, which comparing the
+    whole vector pins.
+    """
+    problem = on_core(zero_problem(tmp_path, "fm_zero"), error_weighting())
+    core = core_problem(problem)
+
+    for factor in (1.0, 1.3, 0.7):
+        x = problem.to_scale(problem.xmodel * factor)
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        assert residuals.shape == expected.shape
+        np.testing.assert_allclose(residuals, expected, rtol=1e-9, atol=1e-12)
+        assert np.signbit(residuals[0]) == np.signbit(expected[0])
+
+
+def mapping_weighting() -> FitSettings:
+    """Get the settings which weight a curve by the weight of its mapping."""
+    return FitSettings(
+        parameter_scale=ParameterScaleType.LINEAR,
+        weighting_curves=(WeightingCurvesType.MAPPING,),
+    )
+
+
+def test_a_user_weight_of_zero_is_no_gap(tmp_path: Path) -> None:
+    """A weight of a mapping of zero zeroes every point of that mapping.
+
+    `weight = weight_curve * weight_points`, so the weight of the curve is
+    the second source of a zero weight, and every point of the curve is then
+    a measurement which carries no information.
+    """
+    problem = on_core(
+        zero_problem(tmp_path, "fm_urine", weights=0.0), mapping_weighting()
+    )
+
+    assert gaps_of(problem) == []
+
+    curve = fit_request(problem)["curves"][0]
+    assert all(noise == float("inf") for noise in curve["noise"])
+    core = core_problem(problem)
+    x = problem.to_scale(problem.xmodel)
+    np.testing.assert_allclose(
+        np.asarray(core.residuals(x), dtype=float),
+        np.asarray(problem.residuals(x), dtype=float),
+        rtol=1e-9,
+        atol=1e-12,
+    )
+    assert core.cost(x) == pytest.approx(0.0)
+
+
+def test_an_infinite_weight_is_still_a_gap(tmp_path: Path) -> None:
+    """A weight which is an infinity is no fit of the engine.
+
+    Its standard deviation is `0.0`, which no standard deviation of a curve
+    can be, so such a point stays a gap while a weight of zero is none.
+    """
+    problem = zero_problem(tmp_path, "fm_urine", weights=float("inf"))
+    problem.initialize(mapping_weighting())
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["weights"]
+    assert "inf" in gaps[0].message
+
+
+class PointwiseStudy(UrineStudy):
+    """`UrineStudy` with observables which read each other and a declared unit.
+
+    `urine_four` reads the observable `urine_twice` before it, which the
+    model of the fit must carry as the parameter of that observable and not
+    as a symbol it has not, and `urine_grams` declares a unit the derived one
+    converts into, whose factor the column of the fit carries.
+    """
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        observables = super().observables()
+        observables["urine_four"] = Formula("urine_four", "2 * urine_twice")
+        observables["urine_grams"] = Formula("urine_grams", "2 * Aurine", unit="g")
+        return observables
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        datasets = super().datasets()
+        datasets["four"] = DataSet.from_df(
+            pd.DataFrame({"time": TIMES, "Aurine": 4.0 * np.asarray(TRUTH["urine"])}),
+            udict={"time": "hr", "Aurine": "mg"},
+            ureg=self.ureg,
+        )
+        datasets["grams"] = DataSet.from_df(
+            pd.DataFrame({"time": TIMES, "Aurine": 2e-3 * np.asarray(TRUTH["urine"])}),
+            udict={"time": "hr", "Aurine": "g"},
+            ureg=self.ureg,
+        )
+        return datasets
+
+    @override
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        mappings = super().fit_mappings()
+        for key, dataset, observable in (
+            ("fm_four", "four", "urine_four"),
+            ("fm_grams", "grams", "urine_grams"),
+        ):
+            mappings[key] = FitMapping(
+                self,
+                reference=FitData(self, dataset=dataset, xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid=observable
+                ),
+            )
+        return mappings
+
+
+class ThriceStudy(UrineStudy):
+    """`UrineStudy` whose observable `urine_twice` is three times the urine.
+
+    Two experiments of one fit may define an observable of the same id with
+    different formulas, which the parameters of the model of the fit must
+    keep apart.
+    """
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        observables = super().observables()
+        observables["urine_twice"] = Formula("urine_twice", "3 * Aurine")
+        return observables
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        datasets = super().datasets()
+        datasets["twice"] = DataSet.from_df(
+            pd.DataFrame({"time": TIMES, "Aurine": 3.0 * np.asarray(TRUTH["urine"])}),
+            udict={"time": "hr", "Aurine": "mg"},
+            ureg=self.ureg,
+        )
+        return datasets
+
+
+def observable_problem(
+    tmp_path: Path,
+    mappings: Sequence[str],
+    experiment: type[SimulationExperiment] = UrineStudy,
+    second: type[SimulationExperiment] | None = None,
+) -> OptimizationProblem:
+    """Get the problem of the mappings of one or of two urine experiments."""
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    collections = [FitMappingCollection(experiment=experiment, mappings=list(mappings))]
+    if second is not None:
+        collections.append(
+            FitMappingCollection(experiment=second, mappings=list(mappings))
+        )
+    return OptimizationProblem(
+        "observables",
+        collections,
+        [
+            FitParameter(
+                pid="ke",
+                lower_bound=0.01,
+                upper_bound=1.0,
+                start_value=0.5,
+                unit="1/hr",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+
+
+def linear_settings() -> FitSettings:
+    """Get the settings of a fit on the linear scale of its parameters."""
+    return FitSettings(parameter_scale=ParameterScaleType.LINEAR)
+
+
+def test_a_pointwise_formula_observable_is_a_column_and_no_gap(
+    tmp_path: Path,
+) -> None:
+    """An observable of the experiment is a parameter of the model of the fit.
+
+    `urine_twice` is `2 * Aurine`, a timecourse without a reduction, so its
+    value at a time of the data does not depend on the other output times
+    and the model of the fit carries it as a column.
+    """
+    problem = on_core(observable_problem(tmp_path, ["fm_twice"]), linear_settings())
+
+    assert gaps_of(problem) == []
+
+    curve = fit_request(problem)["curves"][0]
+    assert curve["column"] == fit_core._group_observable(0, "urine_twice")
+    assert fit_core.fit_model(problem) is not problem.models[0]
+
+
+def test_the_residuals_of_a_formula_observable_are_the_ones_of_python(
+    tmp_path: Path,
+) -> None:
+    """The column of the model is the value python computes for the observable."""
+    problem = on_core(observable_problem(tmp_path, ["fm_twice"]), linear_settings())
+    core = core_problem(problem)
+
+    for factor in (1.0, 1.3, 0.7):
+        x = problem.to_scale(problem.xmodel * factor)
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        assert residuals.shape == expected.shape
+        np.testing.assert_allclose(residuals, expected, rtol=1e-6, atol=1e-9)
+
+
+def test_an_observable_which_reads_another_observable_reads_its_parameter(
+    tmp_path: Path,
+) -> None:
+    """The nodes of the graph are ordered, so a formula reads the ones before it.
+
+    `urine_four` is `2 * urine_twice`, which the model of the fit must read
+    as the parameter of `urine_twice` and not as a symbol it has not.
+    """
+    problem = on_core(
+        observable_problem(tmp_path, ["fm_four"], experiment=PointwiseStudy),
+        linear_settings(),
+    )
+
+    assert gaps_of(problem) == []
+
+    curve = fit_request(problem)["curves"][0]
+    assert curve["column"] == fit_core._group_observable(0, "urine_four")
+    core = core_problem(problem)
+    x = problem.to_scale(problem.xmodel)
+    np.testing.assert_allclose(
+        np.asarray(core.residuals(x), dtype=float),
+        np.asarray(problem.residuals(x), dtype=float),
+        rtol=1e-6,
+        atol=1e-9,
+    )
+
+
+def test_two_groups_whose_observables_share_an_id_do_not_collide(
+    tmp_path: Path,
+) -> None:
+    """Each group reads the formula of its own experiment.
+
+    `ThriceStudy` defines `urine_twice` as `3 * Aurine`, so a column named
+    after the observable alone would take one formula for the other.
+    """
+    problem = on_core(
+        observable_problem(
+            tmp_path, ["fm_twice"], experiment=UrineStudy, second=ThriceStudy
+        ),
+        linear_settings(),
+    )
+
+    assert gaps_of(problem) == []
+
+    columns = [curve["column"] for curve in fit_request(problem)["curves"]]
+    assert len(set(columns)) == len(columns)
+    core = core_problem(problem)
+    x = problem.to_scale(problem.xmodel)
+    np.testing.assert_allclose(
+        np.asarray(core.residuals(x), dtype=float),
+        np.asarray(problem.residuals(x), dtype=float),
+        rtol=1e-6,
+        atol=1e-9,
+    )
+
+
+def test_the_factor_of_a_declared_unit_is_in_the_column(tmp_path: Path) -> None:
+    """A declared unit is a factor of the formula, which the column carries.
+
+    `urine_grams` is `2 * Aurine` of the model in `mg` declared in `g`, so
+    python multiplies its values by `1e-3` and the parameter of the model
+    carries the same multiplication.
+    """
+    problem = on_core(
+        observable_problem(tmp_path, ["fm_grams"], experiment=PointwiseStudy),
+        linear_settings(),
+    )
+
+    assert gaps_of(problem) == []
+
+    core = core_problem(problem)
+    for factor in (1.0, 1.3):
+        x = problem.to_scale(problem.xmodel * factor)
+        np.testing.assert_allclose(
+            np.asarray(core.residuals(x), dtype=float),
+            np.asarray(problem.residuals(x), dtype=float),
+            rtol=1e-6,
+            atol=1e-9,
+        )
+
+
+@pytest.mark.parametrize("mapping", ["fm_share", "fm_urine_max"])
+def test_a_reduction_and_a_value_per_simulation_are_still_gaps(
+    tmp_path: Path, mapping: str
+) -> None:
+    """A group which keeps the output of its simulation is a gap.
+
+    `urine_share` reads `max(Aurine)` and `fm_urine_max` is a value per
+    simulation: both need the output of the simulation and are no column of
+    it (`_group_graphs`).
+    """
+    problem = observable_problem(tmp_path, [mapping])
+    problem.initialize(linear_settings())
+
+    gaps = gaps_of(problem)
+
+    assert "observable" in [gap.code for gap in gaps]
