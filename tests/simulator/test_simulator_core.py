@@ -14,7 +14,7 @@ import pytest
 
 pytest.importorskip("sbmlsim_core")
 
-from sbmlsim import parallel
+from sbmlsim import Q, parallel
 from sbmlsim.engine import Engine, UnsupportedModelError, import_core
 from sbmlsim.model import RoadrunnerSBMLModel, load_model
 from sbmlsim.model import model_core as core_module
@@ -1369,13 +1369,22 @@ def test_a_deadline_which_fires_names_itself(monkeypatch: pytest.MonkeyPatch) ->
     core_module.COMPILED.clear()
 
 
-def _urine_plan(formulas: dict[float, str]) -> tuple[CoreSBMLModel, Plan]:
-    """Get the PK model with urine and a plan which sets `Aurine` by formulas."""
+def _urine_plan(
+    formulas: dict[float, str], dose: bool = False
+) -> tuple[CoreSBMLModel, Plan]:
+    """Get the PK model with urine and a plan which sets `Aurine` by formulas.
+
+    With `dose` an oral dose at the start fills the collection, so the symbols
+    of a formula are not zero where it is folded: a test which compares the
+    fold with the form of the same formula compares nothing otherwise.
+    """
     model = load_model(sbml_pk(urine=True), Engine.CORE)
     assert isinstance(model, CoreSBMLModel)
+    changes = [Change(0.0, {"PODOSE": Q(100, "mg")})] if dose else []
+    changes += [Change(t, {"Aurine": f}) for t, f in formulas.items()]
     simulation = Simulation(
         end=40,
-        changes=[Change(t, {"Aurine": f}) for t, f in formulas.items()],
+        changes=changes,
         times=np.linspace(0, 40, 41).tolist(),
     )
     return model, compile_simulation(simulation, model.symbols, model.uinfo)
@@ -1404,13 +1413,23 @@ def test_a_change_of_a_linear_formula_is_a_form_of_the_request() -> None:
 
 
 def test_a_form_simulates_as_the_fold_it_replaces() -> None:
-    """The result of a request of forms is the result of the folded request, bitwise."""
-    model, plan = _urine_plan({10.0: "1 + 0.5 * Aurine", 25.0: "3"})
+    """The result of a request of forms is the result of the folded request, bitwise.
+
+    `1 + 0.5 * Aurine` is the case a real protocol hits, a single term of a
+    dyadic factor: the engine evaluates the form as `1 + 0.5 * value` and
+    `apply_changes` evaluates the formula as `1 + 0.5 * Aurine`, which is the
+    same expression tree over the same double, so the two agree bitwise. A
+    non-dyadic factor or three terms do not, see
+    `test_a_form_of_several_terms_simulates_as_the_fold`.
+    """
+    model, plan = _urine_plan({10.0: "1 + 0.5 * Aurine", 25.0: "3"}, dose=True)
     columns = ["time", "Aurine", "Aelim", "[C]"]
     folded = request_of(plan, model, columns)
     formed = request_of(plan, model, columns, forms=True)
-    assert formed["changes"][0].get("forms")
-    assert not folded["changes"][0].get("forms")
+    assert formed["changes"][1].get("forms")
+    assert not folded["changes"][1].get("forms")
+    # the fold reads the collection the dose filled, so the change is not zero
+    assert folded["changes"][1]["values"][0][1] > 1.0
     a = model.instance().simulate(folded)
     b = model.instance().simulate(formed)
     assert list(a.columns) == list(b.columns)
@@ -1487,15 +1506,26 @@ def test_a_formula_of_an_entity_named_time_is_no_form_and_folds() -> None:
     ids=["many terms with a division", "a repeated id", "a division"],
 )
 def test_a_form_of_several_terms_simulates_as_the_fold(formula: str) -> None:
-    """Forms with several terms, a repeated id and a division match the fold."""
-    model, plan = _urine_plan({10.0: formula})
+    """Forms with several terms, a repeated id and a division match the fold.
+
+    Not bitwise: the two evaluate different expression trees over the same
+    doubles, so a unit in the last place is expected and the agreement is
+    relative. `linear_form` reads `x / 90` as the factor `fl(1/90)`, so the
+    engine computes `fl(fl(1/90) * x)` where the fold computes `fl(x / 90)`,
+    which differ by one unit in the last place for about a quarter of the
+    doubles, and the terms of a sum of three are reassociated the same way,
+    see the known differences of `sbmlsim.simulator.executor_core`.
+    """
+    model, plan = _urine_plan({10.0: formula}, dose=True)
     columns = ["time", "Aurine", "Aelim"]
     folded = request_of(plan, model, columns)
     formed = request_of(plan, model, columns, forms=True)
-    assert formed["changes"][0].get("forms")
+    assert formed["changes"][1].get("forms")
+    # the fold reads the collection the dose filled, so the change is not zero
+    assert folded["changes"][1]["values"][0][1] > 0.1
     a = model.instance().simulate(folded)
     b = model.instance().simulate(formed)
-    assert np.array_equal(a.values, b.values), np.max(np.abs(a.values - b.values))
+    np.testing.assert_allclose(b.values, a.values, rtol=1e-12, atol=1e-14)
 
 
 def test_a_formula_of_a_reaction_is_no_form_and_folds() -> None:

@@ -151,6 +151,20 @@ the engine documents, and the one refusal which is left:
    formula of a compartment or of a species is folded as one of a parameter
    is (#607, which a PEtab v2 condition that estimates a concentration
    needs).
+7. A formula at a change which a request carries as a form is evaluated as
+   `constant + Σ factor * value` by the engine, where `apply_changes` of
+   `sbmlsim.simulator.changes` evaluates the formula as it is written: the
+   factor of a term is the coefficient `linear_form` reads with sympy and
+   the terms are summed in the order they are written there, which is the
+   order of their symbols and not the order of the formula. So a factor
+   which is no dyadic number and a sum of three or more terms, which the
+   form reassociates, can differ from the fold by a unit in the last place:
+   `x / 90` is the factor `fl(1/90)`, so the engine computes
+   `fl(fl(1/90) * x)` where the fold computes `fl(x / 90)`, which differ for
+   about a quarter of the doubles of [1e-3, 1e3]. That is far below the
+   tolerance of the integrator, and the factors of a real protocol, a half
+   or a dose of a collection, are dyadic and single, where the two agree
+   bitwise (`tests.simulator.test_simulator_core`).
 8. The engine integrates with the absolute tolerance of every state of
    roadrunner (`CoreSBMLModel.request_settings`), so it needs no factor of
    one tolerance as COPASI and AMICI do, but its own build of CVODE chooses
