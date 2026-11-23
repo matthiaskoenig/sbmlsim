@@ -1306,11 +1306,16 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
         }
     known = model.symbols
     # a term is an entity of the model: a reaction or any other selection is
-    # none the engine resolves, so such a formula folds
+    # none the engine resolves, so such a formula folds. `time` is the time of
+    # the change and no value of the model, which `apply_changes` of
+    # `sbmlsim.simulator.changes` reads it as whatever the model, also in a
+    # model which declares an entity of that name (case 01820 of the SBML Test
+    # Suite), whose value a form over it would read instead
     entities = {
         s: i
         for i, s in enumerate(symbols)
-        if ModelSymbols.entity(s)
+        if s != TIME
+        and ModelSymbols.entity(s)
         in known.parameters | known.compartments | known.species
     }
     try:

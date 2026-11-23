@@ -36,6 +36,7 @@ from sbmlsim.simulator.executor_core import (
     INTEGRATOR_STEPS,
     STEADY_STATE_FLAG,
     _failed,
+    form_of,
     request_of,
 )
 from sbmlsim.simulator.plan import Assignment, Plan, PlanEvent, compile_simulation
@@ -1430,6 +1431,54 @@ def test_a_formula_of_a_concentration_is_no_form_and_folds() -> None:
     request = request_of(plan, model, ["time", "Aurine"], forms=True)
     assert "forms" not in request["changes"][0]
     assert request["changes"][0]["values"]
+
+
+def test_a_form_of_no_symbol_is_the_number_of_the_formula() -> None:
+    """A formula of numbers alone is a form of no terms, which the engine takes."""
+    model, _ = _urine_plan({})
+    assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 + 3")
+
+    assert form_of(assignment, model) == {
+        "target": "Aurine",
+        "constant": 5.0,
+        "terms": [],
+    }
+
+
+def test_a_formula_of_the_time_is_no_form() -> None:
+    """`time` is the time of the change and no entity the engine reads as a term."""
+    model, _ = _urine_plan({})
+    assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 * time")
+
+    assert form_of(assignment, model) is None
+
+
+def test_a_formula_of_an_entity_named_time_is_no_form_and_folds() -> None:
+    """`time` of a formula is the clock of the change, not an entity of that name.
+
+    A model may declare an entity named `time` (case 01820), and
+    `apply_changes` of `sbmlsim.simulator.changes` reads `time` of a formula
+    as the time of the change whatever the model: the fold of `2 * time` at
+    the time 2 is 4, where a form over that entity would read its value, 10.
+    So such a formula is no form and folds, as the docstring of `form_of`,
+    `docs/fitting.md` and `CLAUDE.md` say.
+    """
+    source = sbml(ENTITY_TIME).replace('id="tt"', 'id="time"')
+    model = load_model(source, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    simulation = Simulation(
+        end=4, times=[0.0, 2.0, 4.0], changes=[Change(2, {"A": "2 * time"})]
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    assignment = plan.events[0].assignments[0]
+
+    assert form_of(assignment, model) is None
+
+    request = request_of(plan, model, ["time", "A"], forms=True)
+
+    assert "forms" not in request["changes"][0]
+    # twice the time of the change, not twice the value 10 of the entity
+    assert request["changes"][0]["values"] == [["A", 4.0]]
 
 
 @pytest.mark.parametrize(
