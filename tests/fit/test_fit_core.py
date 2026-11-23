@@ -63,6 +63,7 @@ from sbmlsim.fit.options import (
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
+from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
@@ -1392,6 +1393,39 @@ class ZeroBaselineStudy(UrineStudy):
         return mappings
 
 
+class TwoModelStudy(UrineStudy):
+    """The study of the urine with a second model of its own changes.
+
+    The mappings of the study read both models, which no request of `fit/1`
+    carries: a request has one model and a condition per simulation.
+    """
+
+    @override
+    def models(self) -> dict[str, AbstractModel | Path]:
+        source = Path(self.base_path or ".") / MODEL_FILE
+        return {
+            "m": AbstractModel(source=source),
+            # another model of the same file, loaded with a change of its own
+            "m2": AbstractModel(source=source, changes={"ke": 0.4}),
+        }
+
+    @override
+    def tasks(self) -> dict[str, Task]:
+        tasks = super().tasks()
+        tasks["task_second"] = Task(model="m2", simulation="collected")
+        return tasks
+
+    @override
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        mappings = super().fit_mappings()
+        mappings["fm_second"] = FitMapping(
+            self,
+            reference=FitData(self, dataset="urine", xid="time", yid="Aurine"),
+            observable=FitData(self, task="task_second", xid="time", yid="Aurine"),
+        )
+        return mappings
+
+
 def zero_problem(
     tmp_path: Path, mapping: str, weights: float | None = None
 ) -> OptimizationProblem:
@@ -1502,6 +1536,42 @@ def test_a_user_weight_of_zero_is_no_gap(tmp_path: Path) -> None:
         atol=1e-12,
     )
     assert core.cost(x) == pytest.approx(0.0)
+
+
+def test_two_models_of_the_mappings_are_a_gap_of_their_own(tmp_path: Path) -> None:
+    """A problem whose mappings read two models is no fit of the engine.
+
+    A request of `fit/1` carries one model, so such a problem keeps the
+    optimizer in python, and its gap says so instead of blaming the version
+    of the bindings, which a problem without exactly one loaded model did.
+    """
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
+    problem = OptimizationProblem(
+        "two",
+        [
+            FitMappingCollection(
+                experiment=TwoModelStudy, mappings=["fm_urine", "fm_second"]
+            )
+        ],
+        [
+            FitParameter(
+                pid="ke",
+                lower_bound=0.01,
+                upper_bound=1.0,
+                start_value=0.5,
+                unit="1/hr",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        engine=Engine.CORE,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+
+    gaps = gaps_of(problem)
+
+    assert [gap.code for gap in gaps] == ["models"]
+    assert "2 models" in gaps[0].message
 
 
 def test_an_infinite_weight_is_still_a_gap(tmp_path: Path) -> None:

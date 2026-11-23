@@ -466,7 +466,16 @@ def gaps_of(problem: OptimizationProblem) -> list[Gap]:
             )
         )
         return gaps
-    if not fits_requests(_loaded_of(problem)):
+    models = _models_of(problem)
+    if len(models) != 1:
+        return [
+            Gap(
+                "models",
+                f"the mappings of the problem read {len(models)} models and a "
+                f"request of '{CONTRACT}' carries one",
+            )
+        ]
+    if not fits_requests(getattr(models[0], "loaded", None)):
         import sbmlsim_core
 
         return [
