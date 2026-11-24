@@ -98,7 +98,9 @@ dependencies = [
 	"jinja2>=3.1.6",
 	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
 	# the runtime of its engine and the inline build of its JavaScript host;
-	# 0.22.0 fits several models, a condition of a request naming its model
+	# 0.22.0 fits several models, a condition of a request naming its model, and
+	# 0.24.0 fits every objective: the `likelihood` of a curve, the column of the
+	# scale of a noise the fit moves and the `priors` of a posterior
 	"sbmlsim-core>=0.24.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
