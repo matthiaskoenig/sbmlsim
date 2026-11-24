@@ -514,7 +514,7 @@ copasi
 equal: True
              copasi    core
 time        0.0e+00 0.0e+00
-Aurine_hctz 4.7e-10 2.2e-11
+Aurine_hctz 4.4e-10 2.2e-11
 Ri_hctz     0.0e+00 0.0e+00
 [Cve_hctz]  7.4e-09 6.2e-11
 ```
