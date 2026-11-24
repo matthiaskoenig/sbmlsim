@@ -68,6 +68,21 @@ model observables
 end
 """
 
+#: the model with a third parameter, which `q` reads, so that a fit of three
+#: parameters can carry a prior on the second and the third and none on the
+#: first and the positions of the priors are neither all `0` nor consecutive
+#: from it (#628)
+THREE_MODEL = """
+model observables
+  compartment C = 1;
+  species A in C;
+  A = 1
+  p1 = 1.2; p2 = 2.0; p3 = 1.1
+  y := p1 + p2
+  q := p1 * p2 * p3
+end
+"""
+
 #: the same model with a unit on `p1`, so that the factor of a parameter in
 #: a scaled unit of it into the model is not `1`
 UNIT_MODEL = """
@@ -621,6 +636,27 @@ PRIORS: dict[str, Prior] = {
 #: and a point away from them
 POINTS: list[list[float]] = [[1.2, 2.0], [0.8, 3.0]]
 
+#: the parameter scales every comparison of the objective of the engine with
+#: python runs on: the search space of a fit is the scale, and `LOG10` is the
+#: default of the package, so neither of them is the only one which is tested
+SCALES: list[ParameterScaleType] = [
+    ParameterScaleType.LINEAR,
+    ParameterScaleType.LOG10,
+]
+
+#: how closely the difference quotient of the engine follows its analytic
+#: slope of a prior row, by the scale of the search and by whether the kind is
+#: log-normal, whose row is the steepest: the step of the quotient is a fixed
+#: `1e-3` of the value in the search space, so it follows the slope only as
+#: closely as the curvature of the row over that step allows. Measured at the
+#: point of the test: `1.4e-3` and `6.6e-3` on the linear scale, `3.3e-3` and
+#: `1.4e-2` on `LOG10`, where a step of `1e-3` of the logarithm moves the
+#: value of the parameter by 0.2 % and the row curves that much more over it
+QUOTIENT_RTOL: dict[ParameterScaleType, tuple[float, float]] = {
+    ParameterScaleType.LINEAR: (2e-3, 1e-2),
+    ParameterScaleType.LOG10: (4e-3, 2e-2),
+}
+
 #: how closely a prior row follows the residual of the problem where the
 #: bounds cut the prior far from its median: the normalizer is read at the
 #: midpoint of the bounds, where the log density of such a prior is about
@@ -700,9 +736,10 @@ def test_a_least_squares_fit_carries_no_prior(tmp_path: Path) -> None:
     assert "prior_correlation" not in request
 
 
+@pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("kind", sorted(PRIORS))
 def test_the_engine_computes_the_residuals_of_a_posterior_as_the_problem_does(
-    tmp_path: Path, kind: str
+    tmp_path: Path, kind: str, scale: ParameterScaleType
 ) -> None:
     """Every row of the request of a posterior is the residual of the problem.
 
@@ -714,12 +751,18 @@ def test_the_engine_computes_the_residuals_of_a_posterior_as_the_problem_does(
     A prior row is the other row the engine evaluates a logarithm of: python
     reads the density off the distribution of `petab`, an exponential followed
     by a logarithm, so the two agree to within an ulp and not bitwise.
+
+    Both scales run: the search space of a fit is the `parameter_scale`, and a
+    prior is a distribution of the value of its parameter, so on `LOG10` every
+    prior row, the cost and the columns of the jacobian pass through the
+    conversion of the scale. `LOG10` is the default of the package (#628).
     """
     require_core_fit()
     problem, _ = _problem(
         tmp_path,
         [_parameter("p1", PRIORS[kind]), _parameter("p2", NORMAL_2)],
         ["y", "q"],
+        scale=scale,
     )
 
     assert fit_core.gaps_of(problem) == []
@@ -770,6 +813,39 @@ def test_the_engine_computes_the_residuals_of_a_correlated_posterior(
     rtol = LOGARITHM_RTOL if kind == "log-normal" else 0.0
     for point in POINTS:
         _check_the_request(problem, problem.to_scale(np.asarray(point)), rtol=rtol)
+
+
+@pytest.mark.parametrize("scale", SCALES)
+def test_a_prior_sits_on_the_position_of_its_own_parameter(
+    tmp_path: Path, scale: ParameterScaleType
+) -> None:
+    """A prior of the request names the position of the parameter it belongs to.
+
+    `priors[i]["parameter"]` is that position in the vector of the search, and
+    the engine adds the row of a prior to the residuals at that position
+    alone. A fit whose first parameter has no prior and whose second and third
+    have one is what separates the position of a prior from its order among
+    the priors: with a prior on every parameter, or on the first alone, an
+    off-by-one on either side answers the same numbers (#628).
+    """
+    require_core_fit()
+    problem, _ = _problem(
+        tmp_path,
+        [_parameter("p1"), _parameter("p2", NORMAL_1), _parameter("p3", NORMAL_2)],
+        ["y", "q"],
+        scale=scale,
+        model=THREE_MODEL,
+    )
+
+    assert fit_core.gaps_of(problem) == []
+    request = fit_core.fit_request(problem)
+    assert [prior["parameter"] for prior in request["priors"]] == [1, 2]
+    assert [prior["parameters"] for prior in request["priors"]] == [
+        [1.3, 0.2],
+        [1.9, 0.3],
+    ]
+    for point in ([1.2, 2.0, 1.1], [0.8, 3.0, 0.5]):
+        _check_the_request(problem, problem.to_scale(np.asarray(point)))
 
 
 def test_the_normalizer_of_a_truncated_prior_is_the_mass_between_the_bounds(
@@ -1037,9 +1113,10 @@ def _prior_slopes(problem: OptimizationProblem, x: np.ndarray) -> np.ndarray:
     return np.stack(columns, axis=1)
 
 
+@pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("kind", sorted(PRIORS))
 def test_the_prior_rows_of_the_jacobian_of_the_engine_are_the_slope_of_the_row(
-    tmp_path: Path, kind: str
+    tmp_path: Path, kind: str, scale: ParameterScaleType
 ) -> None:
     """The jacobian of the engine carries the slope of every prior row.
 
@@ -1055,11 +1132,12 @@ def test_the_prior_rows_of_the_jacobian_of_the_engine_are_the_slope_of_the_row(
     log-normal kind, whose row is the steepest of them.
     """
     require_core_fit()
-    rtol = 1e-2 if kind == "log-normal" else 2e-3
+    rtol = QUOTIENT_RTOL[scale][kind == "log-normal"]
     problem, _ = _problem(
         tmp_path,
         [_parameter("p1", PRIORS[kind]), _parameter("p2")],
         ["y"],
+        scale=scale,
     )
     x = np.asarray(problem.to_scale(np.array([1.1, 2.3])), dtype=float)
     of_the_priors = fit_core._residual_rows(problem) >= fit_core._data_rows(problem)
