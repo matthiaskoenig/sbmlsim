@@ -39,7 +39,7 @@ dependencies = [
 	"pymetadata>=0.9.0",
 	# the differential equations of a model as markdown, written into the
 	# COMBINE archive of a release (`sbmlsim.release.archive`)
-	"sbmlode>=0.3.2",
+	"sbmlode>=0.3.3",
 	"python-libsbml>=5.21.2",
 	# simulation
 	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
