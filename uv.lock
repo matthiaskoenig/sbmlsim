@@ -2288,7 +2288,7 @@ wheels = [
 
 [[package]]
 name = "pkpdutils"
-version = "1.7.0"
+version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
@@ -2302,25 +2302,25 @@ dependencies = [
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/7a/6aaf2996ad8bf7f5b7f097bc270617e473dc93f5a5f8402f7a40c17cfd7d/pkpdutils-1.7.0.tar.gz", hash = "sha256:12be47d590878d7d7b6460720b474bdff1bd148025c009e75fa3de1a6f5dc7f4", size = 2952204, upload-time = "2026-11-18T19:27:29.492Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/ec/e032900b90a41860dca6a14240538faeb67e53b12fd71df8c375ee14df68/pkpdutils-1.7.1.tar.gz", hash = "sha256:bda64242a4f0e8a97b3cffe4fc9d4a8acc04dfec5ed0216be8ecfefd7c0ac973", size = 2996475, upload-time = "2026-11-24T09:03:47.879Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/fd/659e3e3a986dd0d6e0bc903374c0d1be388ebcb76eb25a66733faaf993fa/pkpdutils-1.7.0-py3-none-any.whl", hash = "sha256:d283b9826e1005c86b36d6b4a180d2d1483c01ce0b90e97e436c8ddb57cb727a", size = 398260, upload-time = "2026-11-18T19:27:27.749Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/01/9bccbcea854c7918562d1505b82c956ed36d988b3cd297c2ffd6739ab4f8/pkpdutils-1.7.1-py3-none-any.whl", hash = "sha256:a3db3407a6e7e87470467ffe798eacb0a49683b901a7952ee19c0a6cb9f11f24", size = 398260, upload-time = "2026-11-24T09:03:46.458Z" },
 ]
 
 [[package]]
 name = "pkpdutils-core"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/ed/023e9638cbe14c4e2b6e5ea578abf3a1412c25430b1fac409bd651f881fd/pkpdutils_core-0.6.0.tar.gz", hash = "sha256:034a8a0f02944e2375725719f0d69e9cdec7b8e608eb444dc9ee75e8055cdc28", size = 504303, upload-time = "2026-11-18T19:15:31.01Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/5a/d76d45f420ecfa0c151a4ef8fcae8d2260a46945c327d97ce60b74e5b83b/pkpdutils_core-0.7.0.tar.gz", hash = "sha256:55f4f687b5643b0ed7be0adf185a531f67cff313feb3e90f3d007a3df017a62c", size = 510120, upload-time = "2026-11-18T22:07:44.999Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/66/6ba1a29bcc6d88e226e5676d7c765bcf1066cbada6bed324d0587c6abb2a/pkpdutils_core-0.6.0-cp313-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9d6c3353f73d5c96456de109355464604fc22e17ae9beac443f046f99f7ab795", size = 614516, upload-time = "2026-11-18T19:15:23.954Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/69/86efc852048e3d4f48291d76865d880bd7bbfc3f3196f3599707041bbb47/pkpdutils_core-0.6.0-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:87e6d3593b91268377f07ebeb32f86d78cfb7e875ac29de51d80e60f9b643ac8", size = 591076, upload-time = "2026-11-18T19:15:25.389Z" },
-    { url = "https://files.pythonhosted.org/packages/76/de/1d8ed7dc9c4d27ae936d1ed3cc37c6917ea15e07534b36b283216b5e58f7/pkpdutils_core-0.6.0-cp313-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:b5de2dc29ca99492f14a54fff70a5a690574c89290b64019355c2aa511dd68f1", size = 741281, upload-time = "2026-11-18T19:15:26.95Z" },
-    { url = "https://files.pythonhosted.org/packages/fd/cd/5f3c22a0830333f5abf11b8ed09f2dc5992f314d0e9d0329651cea0ed68a/pkpdutils_core-0.6.0-cp313-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:d55ea1b72d31c1bb4867686d51a0fa623e80c7a3674740d04c141d4f33efa223", size = 715586, upload-time = "2026-11-18T19:15:28.316Z" },
-    { url = "https://files.pythonhosted.org/packages/cb/85/787ecc2ee45ababeee5400e0eca460ed14772f05ade25f237ec31b65665d/pkpdutils_core-0.6.0-cp313-abi3-win_amd64.whl", hash = "sha256:b0212d9fd32ea13e28d81a2ab9e4510ddb6306d6f726bcaf4d8e1b97ff94b4db", size = 546357, upload-time = "2026-11-18T19:15:29.752Z" },
+    { url = "https://files.pythonhosted.org/packages/82/43/251278e7fc305382c2a027f279b89a5b9257ef4de4bce67ee5d4ee339cff/pkpdutils_core-0.7.0-cp313-abi3-macosx_10_12_x86_64.whl", hash = "sha256:887ea3545713aa7c0328c7f7f734a9af4917f4c2b6ae30ae0e29a57043755ad4", size = 613532, upload-time = "2026-11-18T22:07:37.528Z" },
+    { url = "https://files.pythonhosted.org/packages/18/0e/272a8965fe4e58e3ef53ba1a9d8065f856f9a6ad5509e34bdd985af4a64f/pkpdutils_core-0.7.0-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:9707a3bf1664f709bf9dacba745e90b8998671c3b6e106923563b2bda82d4dd2", size = 590650, upload-time = "2026-11-18T22:07:39.174Z" },
+    { url = "https://files.pythonhosted.org/packages/77/fb/5e0bf89caac21a5e29428619fe8f9ccb5140b627a949e3a253ffe36abc38/pkpdutils_core-0.7.0-cp313-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ddee81790d22c579fa69f52868efbff3baff404c4a57e9bd63fd07ade2f7fbcf", size = 740906, upload-time = "2026-11-18T22:07:40.716Z" },
+    { url = "https://files.pythonhosted.org/packages/16/b5/4a33e2c0c58aa18aef6ffae9278ea725129dbbf67d7af1d64e97489c11f5/pkpdutils_core-0.7.0-cp313-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:386731946aba4aa0218d87608e7b4c13d3ac6c10ae63786059fe36d4439ba9be", size = 715222, upload-time = "2026-11-18T22:07:42.159Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/bf/893f5bd6cb868553ba7600599105a96d547e54e505cf546113ae9cb69522/pkpdutils_core-0.7.0-cp313-abi3-win_amd64.whl", hash = "sha256:57e3055fb5005a889520c50dc5a6c67031d2f3a477dedecf25f6087a0e2b77dd", size = 546361, upload-time = "2026-11-18T22:07:43.487Z" },
 ]
 
 [[package]]
@@ -2650,18 +2650,32 @@ wheels = [
 
 [[package]]
 name = "pymetadata"
-version = "0.8.3"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
     { name = "pydantic" },
+    { name = "pymetadata-core" },
     { name = "requests" },
     { name = "rich" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/52/e99df5201c1674c63e1c40a9894bc21672986bf7c40f227959690a4bfd7b/pymetadata-0.8.3.tar.gz", hash = "sha256:c9e86edb5cde49877f219891c6c2b286a11592465148b9db7d4ffcdce6884807", size = 5896477, upload-time = "2026-11-01T22:41:19.648Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/f1/c9aef526ba02d63cad61d9e9d0d2707a1551d43e090610ad9b660a05f362/pymetadata-0.9.0.tar.gz", hash = "sha256:b000a445964bb6ccf8500421cfe07c8a986e076dfe0c56f4fb5ce19cdd8c3a2b", size = 5927656, upload-time = "2026-11-24T01:24:30.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/34/60b8cd878f76500da8ab2a6ad3340b3a20ccb6a6933c62d1aec4526ac099/pymetadata-0.8.3-py3-none-any.whl", hash = "sha256:cc3eccb4896f760c775687eed9019de5570641e11404ef3a34389a1c100087b0", size = 332541, upload-time = "2026-11-01T22:41:17.534Z" },
+    { url = "https://files.pythonhosted.org/packages/22/95/8aa83a22e50ed2f10982d1f080820f0f0a2489c79a6ba2781292ee79c550/pymetadata-0.9.0-py3-none-any.whl", hash = "sha256:b2060f408c0a31929b0ddc30d7d2de1f6b643ec4bfcb2ec17e2b15d6b3ca3b44", size = 343070, upload-time = "2026-11-24T01:24:29.051Z" },
+]
+
+[[package]]
+name = "pymetadata-core"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/7c/05044c87264f91ff78b34f2b8de803e11fc8c3978b11c56529360f8d4168/pymetadata_core-0.4.0.tar.gz", hash = "sha256:942049953d420623d3104a9d6a190c9b7fba0f6bfcf3451b2a3d1ca9d4c7e40a", size = 2878479, upload-time = "2026-11-24T01:03:17.468Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/ff/d5ba77acb71eca5c414ccc771b1e9816b60751491aba058c9d9226c81b67/pymetadata_core-0.4.0-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:02ac188981cc5f594f4a77aebe6bebef8f1b16189cb21714b894d56aa39914ec", size = 393640, upload-time = "2026-11-24T01:03:10.919Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/ef/ea3ba1863431ee82ceeaa993a24e7b941b7b0dea51ae28d122013cf70751/pymetadata_core-0.4.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:e13126e2132bac925feeedc20d1d8a628c9efec534294d731dad8c2523fd02ab", size = 367111, upload-time = "2026-11-24T01:03:12.367Z" },
+    { url = "https://files.pythonhosted.org/packages/66/0d/13a5847a9ad374231079b7cf6cc89089b5ebaa93fc757a8405249f940a1e/pymetadata_core-0.4.0-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ce6678a4299106f592f203fb4f21e4d20a210267a20c92b14e8fc5af6af4164c", size = 396681, upload-time = "2026-11-24T01:03:13.541Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/9d/5bc4f739e28ebc23a934e30e4cfc30e0a36ec62ffdf4522dd022672e123c/pymetadata_core-0.4.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e8cbbb71e9fd01bea774ddf7b907345df832f090b00aba864df1d139805e6e96", size = 409333, upload-time = "2026-11-24T01:03:14.854Z" },
+    { url = "https://files.pythonhosted.org/packages/37/90/04cd2a77f7ee31bf8c777329e0b31181cffae0bc23dfff7ede732bded3a0/pymetadata_core-0.4.0-cp311-abi3-win_amd64.whl", hash = "sha256:fe65dfaa4c551d11105a9dbfedb48f9a2a788136631a7299c7b1d5578f9f46a3", size = 331705, upload-time = "2026-11-24T01:03:16.141Z" },
 ]
 
 [[package]]
@@ -3236,11 +3250,11 @@ requires-dist = [
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pint", specifier = ">=0.26.1" },
-    { name = "pkpdutils", specifier = ">=1.7.0" },
+    { name = "pkpdutils", specifier = ">=1.7.1" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.14.1" },
-    { name = "pymetadata", specifier = ">=0.8.3" },
+    { name = "pymetadata", specifier = ">=0.9.0" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.21.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },

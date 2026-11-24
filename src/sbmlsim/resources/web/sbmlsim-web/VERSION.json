@@ -1,9 +1,9 @@
 {
   "package": "sbmlsim-web",
-  "version": "0.6.0",
-  "integrity": "sha512-9NulZhCI69ZCbFunQSKwKfU/UylcSKSIxxGca0MtMrrZlyOuu3YjBILNZIdp2DpT+d3BUAVkVTZ8/hXBn9MBXA==",
+  "version": "0.7.0",
+  "integrity": "sha512-YktmG75cVLnVRwO0hT9NJekegK17EG77ft1OI0BzPI3b2v/y/j8XEUNTHNpTXcfEGur+y0xkSSJxam9RQT8TlA==",
   "files": {
-    "sbmlsim-web.iife.js": "d9d154f197fb2347f863eeb3f4f45674ba959fbd616200350fd6c8a295b8644a",
+    "sbmlsim-web.iife.js": "d2b9f16f93966e6828e2809b56594d494fa126aa8f5a073cfbb2fe74e993732f",
     "LICENSE": "f9a33e596f41cca4fe4ba32b876cd94044c9bf84a7302f41a1a5ac474f0729e8"
   }
 }
