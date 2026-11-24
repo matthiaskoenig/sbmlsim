@@ -1849,6 +1849,30 @@ def _drawn(directory: Path) -> list[str]:
     return sorted(path.name for path in directory.iterdir())
 
 
+#: the date matplotlib stamps into an SVG
+_SVG_DATE = re.compile(r"<dc:date>[^<]*</dc:date>")
+
+#: an id matplotlib builds for an element a figure reuses, salted per process
+_SVG_SALTED = re.compile(r"\b[a-z][0-9a-f]{10}\b")
+
+
+def _svg_content(path: Path) -> str:
+    """Get an SVG without what two processes write differently.
+
+    matplotlib stamps the date of the drawing and salts the ids of the
+    elements a figure reuses with a salt of its process, so the same figure
+    drawn here and in a worker differs in both. The ids are renamed by the
+    order they appear in, which keeps every reference pointing at the element
+    it pointed at: a figure of the wrong mapping, of other data or with an
+    element missing does not survive this.
+    """
+    text = _SVG_DATE.sub("<dc:date></dc:date>", path.read_text(encoding="utf-8"))
+    names: dict[str, str] = {}
+    return _SVG_SALTED.sub(
+        lambda match: names.setdefault(match.group(0), f"id{len(names)}"), text
+    )
+
+
 #: a pool needs a second CPU, which a runner of one does not have
 many_cpus = pytest.mark.skipif(
     cgroup.available_cpus() < 2, reason="a pool needs more than one CPU"
@@ -1912,4 +1936,4 @@ def test_the_figures_of_a_pool_are_the_figures_of_the_loop(
     assert started and started[0] > 1, "the figures were not drawn in a pool"
     assert _drawn(pooled) == _drawn(serial)
     for name in _drawn(pooled):
-        assert (pooled / name).stat().st_size > 0, name
+        assert _svg_content(pooled / name) == _svg_content(serial / name), name

@@ -2641,6 +2641,13 @@ class FitReport:
     ) -> None:
         """Draw and save the figure of one fit mapping, see `plot_mapping`.
 
+        It runs in a worker of the pool for a report of many mappings, so
+        anything which is to affect it has to travel with the pickled report:
+        a subclass which overrides a step of it works, because the report
+        pickles with its class and the worker imports it, while a patch of
+        `FitReport` in this process after the fact does not, because the
+        worker imports the class as it is written.
+
         Args:
             k: index of the fit mapping.
             output_dir: the folder of the figures.
