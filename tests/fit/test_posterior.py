@@ -21,6 +21,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings, ParameterSet, fit_core
 from sbmlsim.fit.cli import load_fit_records
 from sbmlsim.fit.fisher import SENSITIVITIES, FisherInformation, fisher_information
+from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.methods import ReportContext, methods_section
 from sbmlsim.fit.objects import (
     FitData,
@@ -31,7 +32,12 @@ from sbmlsim.fit.objects import (
     PriorDistribution,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import RUN_IN_PYTHON, ObjectiveType, ParameterScaleType
+from sbmlsim.fit.options import (
+    RUN_IN_PYTHON,
+    RUN_IN_THE_ENGINE,
+    ObjectiveType,
+    ParameterScaleType,
+)
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
 from sbmlsim.fit.priors import JointPrior, prior_distributions, prior_model
@@ -818,6 +824,72 @@ def test_a_fit_of_a_posterior_in_the_engine_reports_the_log_posterior(
         log_likelihood(problem, _pset(problem, list(x))) + problem.log_prior_density(x)
     )
     assert best.cost == pytest.approx(expected, rel=1e-9)
+
+
+def test_the_profiles_of_a_posterior_in_the_engine_are_the_profiles_of_python(
+    tmp_path: Path,
+) -> None:
+    """The cost of a point of the engine is on the scale of the problem.
+
+    A run and a profile point of the engine both answer the half sum of the
+    squares of the rows of their request, which `likelihood_constant` shifts
+    onto the cost the problem reports, while the threshold of the analysis is
+    `cost_least_square` at the optimum: a point which keeps the scale of the
+    engine lies `likelihood_constant` above that threshold from the first
+    step, so the crossing is interpolated between the optimum and the first
+    point and every parameter comes out `identifiable` with a hairline
+    interval.
+
+    The constant is zero for a fit of least squares, which is the objective of
+    the comparison of `tests/fit/test_fit_core.py`, so the profiles of an
+    objective which carries one are the test of the scale.
+    """
+    require_core_fit()
+    problem, settings = _problem(
+        tmp_path, [_parameter("p1", NORMAL_1), _parameter("p2")], ["y"]
+    )
+    assert fit_core.likelihood_constant(problem) != 0.0
+    profile_settings = ProfileSettings(max_points=8)
+    # the profiles are walked around the optimum, which the fit of python
+    # answers, so the comparison is the walk alone
+    fitted = run_optimization(
+        problem, settings, size=2, seed=3, show_progress=False, engine_fit=False
+    )
+    parameter_set = _pset(problem, [float(value) for value in fitted.xopt])
+    walked = {
+        where: profile_likelihood(
+            problem,
+            settings,
+            parameter_set,
+            profile_settings,
+            show_progress=False,
+            serial=True,
+            engine_profiles=where == "engine",
+        )
+        for where in ("engine", "python")
+    }
+
+    assert walked["engine"].profiles_of == RUN_IN_THE_ENGINE
+    assert walked["python"].profiles_of == RUN_IN_PYTHON
+    assert walked["engine"].cost == pytest.approx(walked["python"].cost, rel=1e-9)
+    for pid, profile in walked["engine"].profiles.items():
+        expected = walked["python"].profiles[pid]
+        np.testing.assert_allclose(profile.values, expected.values, rtol=1e-4)
+        np.testing.assert_allclose(profile.costs, expected.costs, rtol=1e-4)
+        assert profile.identifiability == expected.identifiability, pid
+        for bound, other in (
+            (profile.ci_lower, expected.ci_lower),
+            (profile.ci_upper, expected.ci_upper),
+        ):
+            assert (bound is None) == (other is None), pid
+            if bound is not None and other is not None:
+                assert bound == pytest.approx(other, rel=1e-3), pid
+        # the point next to the optimum is one step of the walk above it and
+        # not the constant of the objective, which the walk never steps over
+        costs = np.asarray(profile.costs, dtype=float)
+        k = profile.index_optimum
+        assert costs[k + 1] < walked["engine"].threshold, pid
+        assert costs[k - 1] < walked["engine"].threshold, pid
 
 
 def test_the_fisher_information_of_a_posterior_cuts_the_prior_rows(

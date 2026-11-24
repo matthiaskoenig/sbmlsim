@@ -98,6 +98,14 @@ the data, and the curvature of the priors belongs to the posterior
 of its parameter is a gap, since such a row is a penalty in python and `NaN`
 in a request (`_gaps_of_the_priors`).
 
+An objective of such rows has a cost of its own: the engine answers the half
+sum of the squares of the rows of a request, which `likelihood_constant`
+carries onto the cost `OptimizationProblem.cost_least_square` reports, and
+every value of the engine which is a cost is shifted by it where it becomes
+an object of python, the run of a fit in `_fit_of` and the point of a profile
+in `profile_points`, whose optimum and threshold the analysis computes in
+python. A jacobian is not: the constant has no derivative.
+
 The row of the scale of a noise and the row of a prior are the rows of a
 request whose logarithm the engine evaluates itself, `ln` of rust, where
 python evaluates the one of `numpy` (`likelihood_residuals`) or reads the
@@ -3301,7 +3309,9 @@ def profile_points(
         The points of the two sides of every profile by parameter id, from the
         optimum outward, as the scans of `sbmlsim.fit.identifiability` carry
         them: the parameters of a point in the space the search runs in, its
-        cost and whether the optimizer of the point converged.
+        cost on the scale of `OptimizationProblem.cost_least_square`, shifted
+        by `likelihood_constant` as the cost of a run is, and whether the
+        optimizer of the point converged.
     """
     at = np.asarray(at, dtype=float)
     points: dict[str, Any] = {"max_iterations": MAX_ITERATIONS_OF_A_POINT}
@@ -3326,6 +3336,11 @@ def profile_points(
         },
     )
     answer = engine_fit(problem, request, threads=threads)
+    # the cost of a point is the half sum of the squares of the rows of its
+    # request, as the cost of a run is, so `likelihood_constant` carries it
+    # onto the scale of `OptimizationProblem.cost_least_square` (`_fit_of`),
+    # which the optimum and the threshold of the analysis are computed in
+    constant = likelihood_constant(problem)
     walked: dict[str, tuple[list[tuple[np.ndarray, float, bool]], ...]] = {}
     for profile in answer["profiles"]:
         index = problem.pids.index(profile["id"])
@@ -3336,7 +3351,7 @@ def profile_points(
             side.append(
                 (
                     _theta_of(problem, index, point),
-                    float(point["cost"]),
+                    float(point["cost"]) + constant,
                     point["status"] in CONVERGED,
                 )
             )
