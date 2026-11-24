@@ -129,6 +129,9 @@
     {% if bound_warnings %}
     <p class="warn">{% for message in bound_warnings %}{{ message }}<br>{% endfor %}</p>
     {% endif %}
+    {% if unapplied_warnings %}
+    <p class="warn">{% for message in unapplied_warnings %}{{ message }}<br>{% endfor %}</p>
+    {% endif %}
   </div>
   {% endif %}
   {% if priors %}

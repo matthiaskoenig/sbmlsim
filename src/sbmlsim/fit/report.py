@@ -1308,12 +1308,24 @@ class FitReport:
         # warnings of the arrays under the table of the arrays
         warnings: list[str] = []
         array_warnings: list[str] = []
+        # a set which carries values this problem does not apply: they have no
+        # row of the table, which is the parameters of the problem, and they
+        # are in `parameters.json`, so the reader of the report is told (#643)
+        unapplied_warnings: list[str] = []
         for pset in psets:
             single_messages, array_messages = self._bound_warnings(pset)
             warnings.extend(f"{pset.sid}: {message}" for message in single_messages)
             array_warnings.extend(
                 f"{pset.sid}: {message}" for message in array_messages
             )
+            if pset.unapplied:
+                unapplied_warnings.append(
+                    f"{pset.sid}: the set carries {len(pset.unapplied)} value"
+                    f"{'s' if len(pset.unapplied) > 1 else ''} this fit does not "
+                    f"apply, the model keeps its own: "
+                    f"{', '.join(pset.unapplied)}. They have no row below and "
+                    f"are marked in parameters.json."
+                )
 
         # the data per experiment and kind
         experiments: list[str] = []
@@ -1466,6 +1478,7 @@ class FitReport:
             "parameter_set_ids": [pset.sid for pset in psets],
             "bound_warnings": warnings,
             "array_bound_warnings": array_warnings,
+            "unapplied_warnings": unapplied_warnings,
             "settings": {
                 key.replace("_", " "): (
                     str(AbsoluteTolerance.of(self.settings.absolute_tolerance))
