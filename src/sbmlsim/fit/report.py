@@ -310,8 +310,8 @@ def _cell(value: Any, spec: str) -> str:
     return f"{value:{spec}}"
 
 
-#: the figures below which a pool costs more than it saves: a worker
-#: initializes the problem of the report before it draws, see `_set_drawing`
+#: the figures a worker of the pool needs to earn the initialization of the
+#: problem of the report it draws them with, see `_figure_workers`
 _FIGURE_POOL_MINIMUM = 16
 
 #: the fit mappings one task of the pool draws, see `plot_mapping`
@@ -328,9 +328,18 @@ def _figure_workers(n_figures: int) -> int:
     """Get the processes the figures of the fit mappings are drawn on.
 
     A figure of a fit mapping is about 0.4 s and nine tenths of it is the
-    writing of its SVG, so the figures of a report are worth a pool; a worker
-    initializes the problem of the report once before it draws (about 3 s),
-    which a report of a few figures does not earn back.
+    writing of its SVG, so the figures of a report are worth a pool. A worker
+    initializes the problem of the report once before it draws anything
+    (about 3 s), so it has to be given figures enough to earn that: the
+    processes are one per `_FIGURE_POOL_MINIMUM` figures, and a report with
+    the work of one worker or less is drawn in the calling process.
+
+    The cap is what keeps the pool at its best, not only what keeps a small
+    report out of it. On the 160 figures of the report of the HCTZ PK fit of
+    pkdb_models, a machine of 12 physical cores and 20 logical: 8 workers
+    draw them in 23 to 25 s, 10 in 25 to 26 s, 12 in 26 to 28 s and 20 in 28
+    s. Past the optimum a worker costs more than the figures it takes away
+    from the others.
 
     Args:
         n_figures: the number of fit mappings of the report.
@@ -338,9 +347,9 @@ def _figure_workers(n_figures: int) -> int:
     Returns:
         The processes, 1 for a report which is drawn in this process.
     """
-    if n_figures < _FIGURE_POOL_MINIMUM or parallel.in_worker():
+    if parallel.in_worker():
         return 1
-    return max(1, min(n_figures, cgroup.available_cpus()))
+    return max(1, min(n_figures // _FIGURE_POOL_MINIMUM, cgroup.available_cpus()))
 
 
 def _set_drawing(
@@ -2612,9 +2621,6 @@ class FitReport:
             ]
             executor = parallel.start_pool(
                 workers,
-                # the forkserver imports matplotlib and the fit once for all
-                # workers instead of once per worker
-                preload=("sbmlsim.fit.report",),
                 initializer=_set_drawing,
                 initargs=(self, self.settings, res_data, points),
             )

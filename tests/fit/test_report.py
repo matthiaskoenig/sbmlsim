@@ -1856,15 +1856,21 @@ many_cpus = pytest.mark.skipif(
 
 
 def test_a_report_of_few_figures_draws_them_in_this_process() -> None:
-    """A pool costs more than it saves for a report of a few mappings."""
+    """A report with the work of one worker or less is drawn in this process."""
+    minimum = report_module._FIGURE_POOL_MINIMUM
     assert report_module._figure_workers(1) == 1
-    assert report_module._figure_workers(report_module._FIGURE_POOL_MINIMUM - 1) == 1
+    assert report_module._figure_workers(minimum) == 1
+    assert report_module._figure_workers(2 * minimum - 1) == 1
 
 
 @many_cpus
 def test_a_report_of_many_figures_draws_them_in_a_pool() -> None:
-    """The figures of a report of many mappings are worth a pool."""
-    assert report_module._figure_workers(report_module._FIGURE_POOL_MINIMUM) > 1
+    """The processes are one per `_FIGURE_POOL_MINIMUM` figures, the CPUs at most."""
+    minimum = report_module._FIGURE_POOL_MINIMUM
+    cpus = cgroup.available_cpus()
+    assert report_module._figure_workers(2 * minimum) == min(2, cpus)
+    assert report_module._figure_workers(10 * minimum) == min(10, cpus)
+    assert report_module._figure_workers(10_000 * minimum) == cpus
 
 
 def test_a_worker_draws_the_figures_of_a_report_in_its_own_process(
