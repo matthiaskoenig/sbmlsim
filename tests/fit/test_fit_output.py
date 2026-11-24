@@ -45,12 +45,22 @@ def test_a_fit_selects_what_its_training_data_reads(
     problem.initialize(fit_settings)
     executed: list[list[str]] = []
     execute_plan = optimization.execute_plan
+    execute_plans = optimization.execute_plans
 
     def recorded(plan: Plan, model: Any, selections: Sequence[str]) -> Any:
         executed.append(list(selections))
         return execute_plan(plan, model, selections)
 
+    # the groups of one evaluation run as one batch of the engine, see
+    # `OptimizationProblem._batched_evaluation`
+    def recorded_batch(
+        points: Sequence[tuple[Plan, Sequence[str]]], model: Any, threads: int
+    ) -> Any:
+        executed.extend(list(selections) for _, selections in points)
+        return execute_plans(points, model, threads)
+
     monkeypatch.setattr(optimization, "execute_plan", recorded)
+    monkeypatch.setattr(optimization, "execute_plans", recorded_batch)
     problem.residuals(problem.to_scale(np.asarray(problem.x0, dtype=float)))
 
     expected = []
