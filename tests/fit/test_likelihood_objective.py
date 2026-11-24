@@ -2,13 +2,14 @@
 
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import ANY, patch
+from unittest.mock import ANY
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from sbmlsim.fit import FitSettings, ParameterSet, fit_core
+from sbmlsim.fit.fisher import jacobian
 from sbmlsim.fit.objects import MappingKind, NoiseDistribution
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ObjectiveType, ParameterScaleType, ResidualType
@@ -510,16 +511,22 @@ def test_bindings_before_the_objective_version_keep_a_moved_noise_in_python(
     assert fit_core.OBJECTIVE_VERSION in gaps[0].message
 
 
-def test_a_posterior_is_a_gap_of_the_engine(tmp_path: Path) -> None:
-    """The residuals of the priors are functions of the parameters alone."""
+def test_a_posterior_is_a_fit_of_the_engine(tmp_path: Path) -> None:
+    """The priors of a problem read from PEtab are the rows of its request.
+
+    The residuals of the priors are functions of the parameters alone, which
+    the engine evaluates without a simulation: they come after every row of
+    the curves, so a problem whose data is a likelihood of the engine is a
+    posterior of the engine as well.
+    """
     reader = _reader(tmp_path, prior="normal;1.3;0.1")
     problem = reader.to_optimization_problem()
     problem.initialize(replace(SETTINGS, objective=ObjectiveType.POSTERIOR))
 
-    gaps = fit_core.gaps_of(problem)
-
-    assert [gap.code for gap in gaps] == ["objective"]
-    assert "posterior" in gaps[0].message
+    assert fit_core.gaps_of(problem) == []
+    request = fit_core.fit_request(problem)
+    assert [prior["kind"] for prior in request["priors"]] == ["normal"]
+    assert request["priors"][0]["parameters"] == [1.3, 0.1]
 
 
 @pytest.mark.parametrize("distribution", ["normal", "log-normal"])
@@ -597,18 +604,35 @@ def test_a_jacobian_of_a_fixed_noise_likelihood_comes_from_the_engine(
     assert fit_core.gaps_of_a_jacobian(problem) == []
 
 
-def test_a_jacobian_of_a_likelihood_whose_noise_the_fit_moves_is_a_gap(
+def test_a_jacobian_of_a_likelihood_whose_noise_the_fit_moves_comes_from_the_engine(
     tmp_path: Path,
 ) -> None:
-    """The scale of a noise which follows the parameters has a derivative of its own."""
-    reader = _reader(tmp_path, noise_formula="0.05", distribution="normal")
+    """The scale of a noise which follows the parameters has a derivative of its own.
+
+    The curve of such a noise names the noise column of the model of the fit,
+    whose forward sensitivities the engine carries into both rows of a
+    measurement: the row of the data is `(dcolumn - r dsigma) / sigma` and the
+    row of the scale `(dsigma / sigma) / scale`, neither of which is zero, so
+    the jacobian of the engine is the one of the problem and no row of it is
+    left behind.
+    """
+    require_core_fit()
+    reader = _reader(tmp_path, "sigma", "normal", sigma=True)
     problem = reader.to_optimization_problem()
     problem.initialize(LIKELIHOOD)
+    assert problem.pids == ["sigma"]
+    assert fit_core.fixed_noise(problem, 0) is None
+    assert fit_core.gaps_of_a_jacobian(problem) == []
+    size = len(problem.y_references[0])
+    x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
 
-    with patch.object(fit_core, "fixed_noise", return_value=None):
-        gaps = fit_core.gaps_of_a_jacobian(problem)
+    rows = fit_core.residual_jacobian(problem, x, threads=1)
 
-    assert [gap.code for gap in gaps] == ["objective"]
+    assert rows.shape == (2 * size, 1)
+    assert np.all(np.abs(rows) > 0.0)
+    np.testing.assert_allclose(
+        rows, jacobian(problem, x, step=1e-6), rtol=1e-6, atol=0.0
+    )
 
 
 def test_a_jacobian_of_a_fixed_laplace_likelihood_is_the_chain_rule_of_the_engine(

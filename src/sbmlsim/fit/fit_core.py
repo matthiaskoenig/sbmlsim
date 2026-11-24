@@ -86,14 +86,26 @@ a curve has two rows per measurement, the residual of the data and the one of
 the scale of its noise, which `_residual_rows` places among the residuals of
 the problem.
 
-The row of the scale is the one row of a request whose logarithm the engine
-evaluates itself, `ln` of rust, where python evaluates the one of `numpy`
-(`likelihood_residuals`): those rows agree with python to within an ulp of
-each other and not bitwise. The rows of the data stay bitwise, because the
-noise column of the model is the number python computes, as a column of a
-formula observable is. No published fit of sbmlsim moves a noise, so no
-stored fit changes: every fit which carries the field is one python fitted
-before.
+A fit of the posterior carries the priors of its parameters as well, which
+are functions of the parameters alone and which the engine evaluates without
+a simulation: the prior of a parameter of its own is one row and the
+correlated priors are one block of the multivariate normal of their scores
+(`_priors_of`, `sbmlsim.fit.priors`). Those rows come after every row of the
+curves, which is where `_residual_rows` places them and where
+`residual_jacobian` drops them: a `FisherInformation` is the information of
+the data, and the curvature of the priors belongs to the posterior
+(`sbmlsim.fit.posterior`).
+
+The row of the scale of a noise and the row of a prior are the rows of a
+request whose logarithm the engine evaluates itself, `ln` of rust, where
+python evaluates the one of `numpy` (`likelihood_residuals`) or reads the
+density off the distribution of `petab`, an exponential followed by a
+logarithm: those rows agree with python to within an ulp of each other and
+not bitwise. The rows of the data stay bitwise, because the noise column of
+the model is the number python computes, as a column of a formula observable
+is. No published fit of sbmlsim moves a noise or fits a posterior, so no
+stored fit changes: every fit which carries one of the fields is one python
+fitted before.
 """
 
 from __future__ import annotations
@@ -128,6 +140,7 @@ from sbmlsim.fit.options import (
     ParameterScaleType,
     ResidualType,
 )
+from sbmlsim.fit.priors import prior_median, untruncated_log_density
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
@@ -135,7 +148,7 @@ from sbmlsim.simulator.observables import FormulaNode
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
 
-    from sbmlsim.fit.objects import ObservableModel
+    from sbmlsim.fit.objects import ObservableModel, Prior
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.fit.options import FitSettings
     from sbmlsim.fit.provenance import FitProvenance
@@ -262,6 +275,14 @@ LOG_PREFIX: Final = "log__"
 #: the prefix of the observable of the model which is the scale of the noise
 #: of a mapping whose noise the fit moves, see `_noise_observable`
 NOISE_PREFIX: Final = "noise__"
+
+#: the prior kinds the engine evaluates, the ones whose log density is an
+#: expression of the contract (`PriorKind` of sbmlsim-core,
+#: `sbmlsim.fit.priors.untruncated_log_density`); the density of another kind
+#: of PEtab is no term of a request and keeps a fit in python
+ENGINE_PRIORS: frozenset[str] = frozenset(
+    {"normal", "log-normal", "uniform", "log-uniform", "laplace", "log-laplace"}
+)
 
 
 @dataclass(frozen=True)
@@ -918,6 +939,165 @@ def _likelihood_of(problem: OptimizationProblem, mapping: int) -> dict[str, Any]
     return likelihood
 
 
+def _priors_of(
+    problem: OptimizationProblem,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Get the `priors` and the `prior_correlation` of the request of a fit.
+
+    A fit of `ObjectiveType.POSTERIOR` minimizes the negative log posterior,
+    whose priors are functions of the parameters alone and which the engine
+    evaluates without a simulation: the prior of a parameter of its own is one
+    row of the request, the kind of the prior with the parameters of PEtab,
+    the offset of its row and the bounds of the parameter, which the bounds of
+    the prior have to cover; the correlated priors are one block, the
+    multivariate normal of their scores, whose rows are their whitened scores
+    and one more per log-normal prior (`sbmlsim.fit.priors`).
+
+    The rows come after every row of the curves, the ones of `priors` in their
+    order and then the ones of `prior_correlation`, which is the order of
+    `JointPrior.residuals` and the one `_residual_rows` places them in.
+
+    Args:
+        problem: the initialized problem, without the gaps of its objective.
+
+    Returns:
+        The priors of the parameters which carry one of their own, in the
+        order of the parameters of the problem, and the correlated priors,
+        `None` without a correlation; empty and `None` for a problem which is
+        not a posterior.
+
+    Raises:
+        ValueError: for a prior whose kind the engine does not evaluate
+            (`ENGINE_PRIORS`, the gap `objective` of
+            `_gaps_of_the_objective`) or whose normalization cannot be read,
+            see `_normalizer_of`.
+    """
+    if problem.settings_initialized.objective is not ObjectiveType.POSTERIOR:
+        return [], None
+    joint = problem.prior
+    priors: list[dict[str, Any]] = []
+    for term in joint.independent:
+        parameter = problem.parameters[term.index]
+        prior = parameter.prior
+        if prior is None:  # pragma: no cover - a term of a prior carries one
+            raise ValueError(f"The parameter '{parameter.pid}' has no prior.")
+        lower = float(parameter.lower_bound)
+        upper = float(parameter.upper_bound)
+        priors.append(
+            {
+                "parameter": int(term.index),
+                "kind": prior.distribution.value,
+                "parameters": [float(value) for value in prior.parameters],
+                "offset": float(term.offset),
+                "normalizer": _normalizer_of(prior, lower, upper),
+                "lower": lower,
+                "upper": upper,
+            }
+        )
+    correlated = joint.correlated
+    if correlated is None:
+        return priors, None
+    return priors, {
+        "parameters": [int(index) for index in correlated.indices],
+        "log": [bool(flag) for flag in correlated.log],
+        "location": [float(value) for value in correlated.mu],
+        "scale": [float(value) for value in correlated.sigma],
+        "inverse": [[float(value) for value in row] for row in correlated.inverse],
+        "offsets": [float(value) for value in correlated.offsets],
+        "lower": [float(value) for value in correlated.lower],
+        "upper": [float(value) for value in correlated.upper],
+    }
+
+
+def _normalizer_of(prior: Prior, lower: float, upper: float) -> float:
+    """Get the logarithm of the mass of a prior between the bounds of its parameter.
+
+    `Prior.log_density` is the density of the prior truncated at the bounds
+    and the engine evaluates the density of its kind
+    (`sbmlsim.fit.priors.untruncated_log_density`), so their difference is the
+    normalization of that truncation, which the engine subtracts and which
+    does not depend on the value: a distribution function is no term of a
+    density.
+
+    It is read at the median of the prior, where its density is largest or
+    next to it and its logarithm loses the fewest digits, and at the midpoint
+    of the bounds for a prior whose median lies outside them.
+
+    Args:
+        prior: the prior of the parameter.
+        lower: the lower bound of the parameter.
+        upper: its upper bound.
+
+    Returns:
+        The logarithm of the mass, `0` for a prior the bounds do not cut.
+
+    Raises:
+        ValueError: for a kind the engine does not evaluate, and if the
+            density is finite at neither value, so that the normalization
+            cannot be read.
+    """
+    for value in (prior_median(prior), 0.5 * (lower + upper)):
+        if not lower <= value <= upper:
+            continue
+        truncated = prior.log_density(value, lower, upper)
+        density = untruncated_log_density(prior, value)
+        if math.isfinite(truncated) and math.isfinite(density):
+            return density - truncated
+    raise ValueError(
+        f"The normalization of the prior {prior} truncated at [{lower}, {upper}] "
+        f"cannot be read: its density is finite neither at its median nor at "
+        f"the midpoint of the bounds."
+    )
+
+
+def _gaps_of_the_priors(problem: OptimizationProblem) -> list[Gap]:
+    """Get what keeps the priors of a posterior out of a request.
+
+    The engine evaluates the six kinds of `ENGINE_PRIORS` and it holds the
+    value of the entity of the model, which the factor of the unit of a
+    parameter carries its value into (`_factors_of`), while a prior is a
+    distribution of the value of the parameter itself.
+
+    A parameter without a prior is no row of the request and no row of the
+    residuals of the problem either: its uniform prior over its bounds is a
+    constant of the cost.
+
+    Args:
+        problem: the initialized problem of the objective
+            `ObjectiveType.POSTERIOR`.
+
+    Returns:
+        The gaps, empty for priors the engine evaluates.
+    """
+    gaps: list[Gap] = []
+    factors = _factors_of(problem)
+    for k, parameter in enumerate(problem.parameters):
+        prior = parameter.prior
+        if prior is None:
+            continue
+        if prior.distribution.value not in ENGINE_PRIORS:
+            gaps.append(
+                Gap(
+                    "objective",
+                    f"the prior of '{parameter.pid}' is "
+                    f"'{prior.distribution.value}', whose log density is no "
+                    f"expression of the contract '{CONTRACT}'; the engine "
+                    f"evaluates the priors {sorted(ENGINE_PRIORS)}",
+                )
+            )
+        if factors[k] != 1.0:
+            gaps.append(
+                Gap(
+                    "objective",
+                    f"the prior of '{parameter.pid}' is a distribution of the "
+                    f"value of the parameter, and the factor {factors[k]} of "
+                    f"the unit of its target '{parameter.target_id}' carries "
+                    f"that value into the model, where the engine holds it",
+                )
+            )
+    return gaps
+
+
 def _gaps_of_the_objective(problem: OptimizationProblem) -> list[Gap]:
     """Get what keeps the objective of a problem out of a request.
 
@@ -942,10 +1122,14 @@ def _gaps_of_the_objective(problem: OptimizationProblem) -> list[Gap]:
     - a measurement of a log kind which is not positive, whose logarithm is
       no value of a curve.
 
-    A posterior adds the residuals of the priors, which are functions of the
-    parameters alone and no part of a request, and bindings before
-    `OBJECTIVE_VERSION` ignore a `likelihood` and minimize another objective
-    (`reads_objective`), which is the gap `bindings` of the whole problem.
+    A posterior adds the residuals of the priors of its parameters, which are
+    functions of the parameters alone and which the engine evaluates without a
+    simulation (`_priors_of`); what keeps them out of a request is
+    `_gaps_of_the_priors`.
+
+    Bindings before `OBJECTIVE_VERSION` ignore a `likelihood` and the priors
+    of a request and minimize another objective (`reads_objective`), which is
+    the gap `bindings` of the whole problem.
 
     Args:
         problem: the initialized problem.
@@ -956,15 +1140,6 @@ def _gaps_of_the_objective(problem: OptimizationProblem) -> list[Gap]:
     objective = problem.settings_initialized.objective
     if objective is ObjectiveType.LEAST_SQUARES:
         return []
-    if objective is not ObjectiveType.LIKELIHOOD:
-        return [
-            Gap(
-                "objective",
-                f"the fit minimizes the objective '{objective.value}', whose "
-                f"priors are functions of the parameters and no residual of a "
-                f"request",
-            )
-        ]
     from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 
     gaps: list[Gap] = []
@@ -991,14 +1166,27 @@ def _gaps_of_the_objective(problem: OptimizationProblem) -> list[Gap]:
         sends = True
         if _noise_column(problem, mapping) is not None:
             gaps.extend(_gaps_of_a_noise(problem, mapping, key))
-    if sends and not reads_objective(_loaded_of(problem)):
+    carries = sends
+    if objective is ObjectiveType.POSTERIOR:
+        of_the_priors = _gaps_of_the_priors(problem)
+        if of_the_priors:
+            # the priors are read no further: `JointPrior` evaluates the
+            # density of every one of them, which a kind the engine does not
+            # know may not have in python either
+            return gaps + of_the_priors
+        carries = carries or len(problem.prior) > 0
+    if carries and not reads_objective(_loaded_of(problem)):
         import sbmlsim_core
 
+        what = (
+            "a curve of the fit carries the noise distribution of its measurements"
+            if sends
+            else "the fit carries the priors of its parameters"
+        )
         return [
             Gap(
                 "bindings",
-                f"a curve of the fit carries the noise distribution of its "
-                f"measurements, which the bindings of sbmlsim-core "
+                f"{what}, which the bindings of sbmlsim-core "
                 f"{sbmlsim_core.__version__} ignore; {OBJECTIVE_VERSION} is "
                 f"the first release which reads it",
             )
@@ -1085,6 +1273,11 @@ def likelihood_constant(problem: OptimizationProblem) -> float:
     carries none (`_sends_likelihood`) has the rows of its data alone, and the
     residuals of its scales are constants of the data which this adds.
 
+    A fit of the posterior carries the rows of its priors as well, whose
+    offsets, and the normalization of the correlated ones, are
+    `JointPrior.offset`: a constant of the problem which this takes off the
+    cost of a run too.
+
     Args:
         problem: the initialized problem, without the gaps of its objective.
 
@@ -1116,6 +1309,8 @@ def likelihood_constant(problem: OptimizationProblem) -> float:
             measurement, measurement, sigma, noise.distribution
         )
         constant += 0.5 * float(np.sum(np.square(scale)))
+    if problem.settings_initialized.objective is ObjectiveType.POSTERIOR:
+        constant -= problem.prior.offset
     return constant
 
 
@@ -1256,6 +1451,7 @@ def fit_request(
             f"of the problem, which 'initialize' builds."
         )
     conditions, curves = _conditions_and_curves(problem, fit_models(problem))
+    priors, correlation = _priors_of(problem)
     optimizer: dict[str, Any] = {
         "algorithm": _algorithm(algorithm, evolution),
         "max_iterations": int(max_iterations),
@@ -1274,8 +1470,11 @@ def fit_request(
         "parameters": _parameters(problem),
         "conditions": conditions,
         "curves": curves,
+        "priors": priors,
         "optimizer": optimizer,
     }
+    if correlation is not None:
+        request["prior_correlation"] = correlation
     if len(starts):
         request["starts"] = [_start(problem, start) for start in starts]
     if identifiability is not None:
@@ -3139,19 +3338,25 @@ def _theta_of(
 def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     """Get what keeps the jacobian of the residuals of a problem out of the engine.
 
-    The gaps of the fit of the problem (`gaps_of`), a likelihood whose noise
-    the fit moves, and the bindings which do not resolve the problem of a
-    request (`LoadedModel.fit_problem`, new in sbmlsim-core 0.12.0). The
-    residual of the scale of a noise the fit does not move is a constant of
-    the data, so its row of the jacobian is zero whichever way it comes:
+    The gaps of the fit of the problem (`gaps_of`) and the bindings which do
+    not resolve the problem of a request (`LoadedModel.fit_problem`, new in
+    sbmlsim-core 0.12.0): a problem whose objective is a request has a
+    jacobian of that request, the derivative of every row of it.
+
+    The residual of the scale of a noise the fit does not move is a constant
+    of the data, so its row of the jacobian is zero whichever way it comes:
     the curve of a fixed Laplace noise carries a `likelihood` and the engine
     answers that row itself, zero, and the curve of a fixed normal or
     log-normal noise carries none, so the engine has no such row and
-    `residual_jacobian` leaves it zero. The rows of the priors of a
-    posterior are cut by `fisher.data_residuals` as well. Whether the
-    conditions of the problem carry the forward sensitivities is no gap of
-    the request: the engine answers that when it resolves the problem, see
-    `residual_jacobian`.
+    `residual_jacobian` leaves it zero. The scale of a noise the fit moves is
+    a column of the model of the fit, whose forward sensitivities the engine
+    carries into both rows of a measurement. The rows of the priors of a
+    posterior are dropped by `residual_jacobian`, as `fisher.data_residuals`
+    drops their residuals: the information is the one of the data alone.
+
+    Whether the conditions of the problem carry the forward sensitivities is
+    no gap of the request: the engine answers that when it resolves the
+    problem, see `residual_jacobian`.
 
     Args:
         problem: the initialized problem.
@@ -3162,23 +3367,6 @@ def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     gaps = gaps_of(problem)
     if gaps:
         return gaps
-    if (
-        problem.settings_initialized.objective is not ObjectiveType.LEAST_SQUARES
-        and any(
-            fixed_noise(problem, k) is None
-            for k in problem.indices(MappingKind.TRAINING)
-        )
-    ):
-        return [
-            Gap(
-                "objective",
-                f"the fit minimizes the objective "
-                f"'{problem.settings_initialized.objective.value}' and the "
-                f"scale of the noise of a mapping follows the parameters or the "
-                f"simulation, so the residual of that scale has a derivative "
-                f"the engine does not compute",
-            )
-        ]
     loaded = _loaded_of(problem)
     if not hasattr(loaded, "fit_problem"):
         import sbmlsim_core
@@ -3219,12 +3407,15 @@ def residual_jacobian(
     it is: the scale of a noise the fit does not move is a constant of the
     data, and the engine answers zero for the one it does carry. The
     residuals of the priors of a fit of the posterior are no part of this
-    jacobian: the `rows < total` mask drops a row of the request which lies
-    past the residuals of the data (the prior rows a later piece of #626
-    appends to the request). Its columns are the derivatives in the space
-    the problem searches: the engine searches the entity of the model, so a
-    parameter of its own unit has the factor of its target in its column, and
-    the factor of a parameter which is searched as a logarithm cancels.
+    jacobian: the `rows < total` mask drops every row of the request which
+    lies past the residuals of the data, which the prior rows do, since a
+    `FisherInformation` is the information of the data and the curvature of
+    the priors belongs to the posterior.
+
+    Its columns are the derivatives in the space the problem searches: the
+    engine searches the entity of the model, so a parameter of its own unit
+    has the factor of its target in its column, and the factor of a parameter
+    which is searched as a logarithm cancels.
 
     Args:
         problem: the initialized problem, without gaps (`gaps_of_a_jacobian`).
@@ -3292,8 +3483,13 @@ def _residual_rows(problem: OptimizationProblem) -> np.ndarray:
     A curve which carries a `likelihood` has both rows of every measurement,
     the data and then, in the same order, the scale of its noise
     (`_sends_likelihood`); a curve which carries none has the rows of its data
-    alone and the engine computes no scale row for it. The prior rows of a
-    posterior join this map with the later pieces of #626.
+    alone and the engine computes no scale row for it.
+
+    The rows of the priors of a posterior come after every row of the curves
+    on both sides, in the order of `JointPrior.residuals`, which is the one
+    `_priors_of` writes them in: they are the last residuals of the problem,
+    which `residual_jacobian` drops with its `rows < total` mask, since a
+    `FisherInformation` is the information of the data alone.
 
     Args:
         problem: the initialized problem.
@@ -3316,6 +3512,9 @@ def _residual_rows(problem: OptimizationProblem) -> np.ndarray:
             if sends:
                 rows.append(base + size + at)
         base += (2 if likelihood else 1) * size
+    priors = problem.prior_residual_count
+    if priors:
+        rows.append(base + np.arange(priors, dtype=int))
     return np.concatenate(rows) if rows else np.zeros(0, dtype=int)
 
 
