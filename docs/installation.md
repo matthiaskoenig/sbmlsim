@@ -65,7 +65,7 @@ print(res)
 ```
 
 ```text title="Output"
-0.38.1
+0.38.2
 ScanResult(_point: 1082; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
 ```
 
