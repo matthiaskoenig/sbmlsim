@@ -8,6 +8,7 @@ import dataclasses
 import re
 import shutil
 import subprocess
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -1280,13 +1281,19 @@ def test_the_panel_text_of_a_kind_is_the_text_of_its_points(
 
 @pytest.fixture
 def saved_figures(monkeypatch: pytest.MonkeyPatch) -> dict[str, Figure]:
-    """The figures a report saves, by the name of their file."""
+    """The figures a report saves, by the name of their file.
+
+    The figures are kept as objects, so the report draws them in this
+    process: a report of many fit mappings draws them in a pool, whose
+    workers have figures of their own, see `FitReport.plot_mapping`.
+    """
     saved: dict[str, Figure] = {}
 
     def save(self: FitReport, fig: Figure, path: Path) -> None:
         saved[path.stem] = fig
 
     monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
+    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", sys.maxsize)
     return saved
 
 
