@@ -376,6 +376,25 @@ def test_the_engine_computes_the_residuals_of_a_moved_noise_as_the_problem_does(
     _check_rows_and_cost(problem)
 
 
+@pytest.mark.parametrize("distribution", ["normal", "log-normal"])
+def test_the_engine_computes_the_residuals_of_a_noise_of_the_simulation(
+    tmp_path: Path, distribution: str
+) -> None:
+    """Every row of a curve whose noise reads the simulation is the row of the problem.
+
+    Such a noise is an observable of the model of the fit which reads the
+    column of the observable of its mapping through a helper parameter
+    (`_noise_entities`), so the scale of every measurement is the number
+    python computes from the same simulation.
+    """
+    require_core_fit()
+    reader = _reader(tmp_path, "0.01 + 0.1 * prey_o", distribution)
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+
+    _check_rows_and_cost(problem)
+
+
 @pytest.mark.parametrize("distribution", ["laplace", "log-laplace"])
 def test_the_engine_computes_the_residuals_of_a_laplace_likelihood_as_the_problem_does(
     tmp_path: Path, distribution: str
@@ -569,7 +588,7 @@ def test_a_fit_of_a_likelihood_in_the_engine_reports_the_log_likelihood(
 def test_a_jacobian_of_a_fixed_noise_likelihood_comes_from_the_engine(
     tmp_path: Path,
 ) -> None:
-    """The scale of a noise the fit does not move has no derivative, its rows are zero."""
+    """A likelihood whose noise the fit does not move has no gap of a jacobian."""
     reader = _reader(tmp_path, noise_formula="0.05", distribution="normal")
     problem = reader.to_optimization_problem()
     problem.initialize(LIKELIHOOD)
@@ -590,6 +609,57 @@ def test_a_jacobian_of_a_likelihood_whose_noise_the_fit_moves_is_a_gap(
         gaps = fit_core.gaps_of_a_jacobian(problem)
 
     assert [gap.code for gap in gaps] == ["objective"]
+
+
+def test_a_jacobian_of_a_fixed_laplace_likelihood_is_the_chain_rule_of_the_engine(
+    tmp_path: Path,
+) -> None:
+    """The data row of a fixed Laplace noise is the chain rule of its normal one.
+
+    The curve of a fixed Laplace noise carries a `likelihood`, so the engine
+    answers both rows of every measurement and `residual_jacobian` scatters
+    them, where the curve of a fixed normal noise carries none and the row of
+    its scale stays zero. The residual of the data of a Laplace measurement is
+    `sign(u) sqrt(2 |u|)` of the normalized residual `u` of the same
+    simulation under the same scale, whose derivative is
+    `(du/dp) / sqrt(2 |u|)`: the data rows of the Laplace problem are the data
+    rows of the normal problem of the same measurements over that factor,
+    which is the analytic value of the rows and no difference quotient of the
+    cusp of the square root at `u = 0`. The row of a scale is zero either way,
+    the scale being a constant of the data.
+    """
+    require_core_fit()
+    problems: dict[str, OptimizationProblem] = {}
+    for distribution in ("normal", "laplace"):
+        directory = tmp_path / distribution
+        directory.mkdir()
+        reader = _reader(directory, noise_formula="0.05", distribution=distribution)
+        problem = reader.to_optimization_problem()
+        problem.initialize(LIKELIHOOD)
+        assert fit_core.gaps_of_a_jacobian(problem) == []
+        problems[distribution] = problem
+    normal, laplace = problems["normal"], problems["laplace"]
+    size = len(laplace.y_references[0])
+    x = np.asarray(laplace.to_scale(laplace.xmodel), dtype=float)
+
+    rows_normal = fit_core.residual_jacobian(normal, x, threads=1)
+    rows_laplace = fit_core.residual_jacobian(laplace, x, threads=1)
+
+    assert rows_laplace.shape == (2 * size, len(laplace.pids))
+    assert rows_normal.shape == rows_laplace.shape
+    # the scale of a noise the fit does not move is a constant of the data
+    np.testing.assert_array_equal(rows_laplace[size:], 0.0)
+    np.testing.assert_array_equal(rows_normal[size:], 0.0)
+    u = np.asarray(normal.residuals(x), dtype=float)[:size]
+    assert np.all(np.abs(rows_normal[:size]) > 0.0)
+    np.testing.assert_allclose(
+        rows_laplace[:size] * np.sqrt(2.0 * np.abs(u))[:, None],
+        rows_normal[:size],
+        # the same forward sensitivities of the engine through the arithmetic
+        # of the chain rule, measured at 2e-16 relative
+        rtol=1e-14,
+        atol=0.0,
+    )
 
 
 def test_the_model_of_a_fit_keeps_the_tolerances_of_the_problem(

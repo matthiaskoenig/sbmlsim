@@ -3143,11 +3143,15 @@ def gaps_of_a_jacobian(problem: OptimizationProblem) -> list[Gap]:
     the fit moves, and the bindings which do not resolve the problem of a
     request (`LoadedModel.fit_problem`, new in sbmlsim-core 0.12.0). The
     residual of the scale of a noise the fit does not move is a constant of
-    the data, so its row of the jacobian is zero (`residual_jacobian` scatters
-    the rows of the engine between them); the rows of the priors of a
-    posterior are cut by `fisher.data_residuals` as well. Whether the conditions of the problem carry the
-    forward sensitivities is no gap of the request: the engine answers that
-    when it resolves the problem, see `residual_jacobian`.
+    the data, so its row of the jacobian is zero whichever way it comes:
+    the curve of a fixed Laplace noise carries a `likelihood` and the engine
+    answers that row itself, zero, and the curve of a fixed normal or
+    log-normal noise carries none, so the engine has no such row and
+    `residual_jacobian` leaves it zero. The rows of the priors of a
+    posterior are cut by `fisher.data_residuals` as well. Whether the
+    conditions of the problem carry the forward sensitivities is no gap of
+    the request: the engine answers that when it resolves the problem, see
+    `residual_jacobian`.
 
     Args:
         problem: the initialized problem.
@@ -3204,11 +3208,16 @@ def residual_jacobian(
     only to the noise of the integrator over its step. The whole jacobian is
     one batch of the engine, which walks the conditions on its threads.
 
-    The engine has a row per point of the curves of the request, the data of
-    the training mappings; the problem has two per point for a likelihood, the
-    data and the scale of its noise. The rows of the engine are scattered into
-    the rows of the problem (`_residual_rows`) and the rows of the scales,
-    constants of the data for a noise the fit does not move, are zero. The
+    The engine has a row per row of the curves of the request: the data of
+    every training mapping and, for a curve which carries a `likelihood`
+    (`_likelihood_of`, a fixed Laplace noise here, a noise the fit moves
+    being a gap), the scale of its noise as well. The problem has two rows
+    per point for a likelihood, the data and the scale of its noise. The
+    rows of the engine are scattered into the rows of the problem
+    (`_residual_rows`, which places the scale rows of a curve which sends
+    them) and a row of a scale the request does not carry stays zero, which
+    it is: the scale of a noise the fit does not move is a constant of the
+    data, and the engine answers zero for the one it does carry. The
     residuals of the priors of a fit of the posterior are no part of this
     jacobian: the `rows < total` mask drops a row of the request which lies
     past the residuals of the data (the prior rows a later piece of #626
