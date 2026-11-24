@@ -1,6 +1,7 @@
 """Test the parameter sets which connect a fit to its report."""
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -171,6 +172,12 @@ def test_a_set_of_another_problem_is_named(
     assert bound.values["FLUID__k_na"] == pytest.approx(1.0)
     assert bound.values[pid] == pytest.approx(0.5)
     assert bound.cost == 1.0 and bound.provenance == "joint fit"
+
+    # a propagation binds a set per draw, which says it once
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.optimization"):
+        problem.bind_parameter_set(replace(pset, sid="draw_1"))
+    assert caplog.text == ""
 
 
 def test_a_noise_parameter_of_the_problem_is_no_extra(
