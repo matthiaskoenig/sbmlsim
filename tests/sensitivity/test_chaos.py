@@ -373,6 +373,42 @@ def test_one_decomposition_serves_every_candidate_degree(
     assert few.degree.max() <= 2
 
 
+def test_one_decomposition_fits_every_observable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The observables of one scan are fitted on one decomposition.
+
+    The design matrix and its QR depend on the points and the basis alone, so
+    the dozen observables of a model share them; they are the larger part of
+    the work of a fit, and were taken once per observable.
+    """
+    model = Simulator().load(sbml(ISHIGAMI))
+    res = Simulator(n_workers=1).run(
+        model,
+        Scan(
+            Simulation(end=1, steps=1),
+            [sampling.lhs(BOUNDS, 400, seed=5)],
+        ),
+        [Formula("y_max", "max(y)"), Formula("yt", "y")],
+    )
+    calls: list[tuple[int, ...]] = []
+    qr = np.linalg.qr
+
+    def counted(a: np.ndarray) -> object:
+        calls.append(a.shape)
+        return qr(a)
+
+    monkeypatch.setattr(np.linalg, "qr", counted)
+    s = pce(res, degree=4)
+    assert len(calls) == 1, calls
+    # and every observable has its indices, the scalar and the timecourse
+    assert list(s["y_max.S1"].dims) == [PARAMETER]
+    assert list(s["yt.S1"].dims) == [PARAMETER, "time"]
+    for name in ("y_max.S1", "yt.S1"):
+        values = s[name].values
+        assert np.isfinite(values).all() and (values >= -1e-9).all()
+
+
 def test_the_expansion_is_a_surrogate_of_the_model() -> None:
     # the expansion predicts points which were not simulated
     rng = np.random.default_rng(9)

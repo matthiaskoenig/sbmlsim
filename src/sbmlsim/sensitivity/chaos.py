@@ -443,6 +443,144 @@ class PolynomialChaos:
         return design_matrix(u, self.multi_indices) @ self.coefficients
 
 
+@dataclass(frozen=True)
+class _Decomposition:
+    """The design matrix of a basis on a sample, decomposed once.
+
+    The decomposition depends on the points and the basis alone, never on the
+    values, so every output of one sample is fitted with the same one: `pce`
+    builds it once and fits every observable of a scan with it, where the
+    design matrix and its QR are the largest part of the work.
+    """
+
+    names: tuple[str, ...]
+    """The names of the inputs."""
+    multi_indices: np.ndarray
+    """The multi-indices of the basis, a row per term."""
+    counts: tuple[int, ...]
+    """The terms of the basis of every candidate degree `1..degree`."""
+    q_matrix: np.ndarray
+    """The `Q` of the design matrix of the largest supported candidate."""
+    r_matrix: np.ndarray
+    """Its `R`."""
+
+    @staticmethod
+    def of(
+        u: np.ndarray,
+        *,
+        degree: int = 5,
+        q: float = 1.0,
+        max_interaction: int | None = None,
+        parameters: Sequence[str] | None = None,
+    ) -> _Decomposition:
+        """Decompose the design matrix of a basis on the points.
+
+        Args:
+            u: the points of the unit cube, a row per point and a column per
+                input.
+            degree: the largest total degree of the basis.
+            q: the exponent of the hyperbolic truncation, see `expansion`.
+            max_interaction: the largest number of inputs of a term.
+            parameters: the names of the inputs, `x0..xd-1` by default.
+
+        Returns:
+            The decomposition.
+
+        Raises:
+            ValueError: if the points or the degree are out of shape, or no
+                candidate degree is supported by the points.
+        """
+        points = np.asarray(u, dtype=float)
+        if points.ndim != 2:
+            raise ValueError("The points and the values are two-dimensional.")
+        if degree < 1:
+            raise ValueError(f"The degree of an expansion is at least 1, not {degree}.")
+        d = points.shape[1]
+        names = (
+            tuple(parameters)
+            if parameters is not None
+            else tuple(f"x{k}" for k in range(d))
+        )
+        if len(names) != d:
+            raise ValueError(
+                f"The points have {d} inputs, the parameters are {list(names)}."
+            )
+        multi_indices = expansion(d, degree, q=q, max_interaction=max_interaction)
+        totals = multi_indices.sum(axis=1)
+        n = points.shape[0]
+        counts = tuple(
+            int(np.count_nonzero(totals <= candidate))
+            for candidate in range(1, degree + 1)
+        )
+        # one decomposition for every candidate degree, of the largest basis the
+        # points support: the candidates after it are refused by the same budget
+        largest = max((terms for terms in counts if supported(n, terms)), default=0)
+        if largest == 0:
+            raise ValueError(
+                f"No degree of the basis is supported by {n} points: a basis needs "
+                f"{POINTS_PER_TERM} points per term. Add points, lower the degree, "
+                f"lower q or cap max_interaction."
+            )
+        x = design_matrix(points, multi_indices[:largest])
+        q_matrix, r_matrix = np.linalg.qr(x)
+        return _Decomposition(
+            names=names,
+            multi_indices=multi_indices,
+            counts=counts,
+            q_matrix=q_matrix,
+            r_matrix=r_matrix,
+        )
+
+    def fit(self, y: np.ndarray) -> PolynomialChaos:
+        """Fit every element of an output with this decomposition.
+
+        Args:
+            y: the values, a row per point and a column per element.
+
+        Returns:
+            The expansion.
+
+        Raises:
+            ValueError: if the values do not match the points.
+        """
+        values = np.asarray(y, dtype=float)
+        n = self.q_matrix.shape[0]
+        if values.ndim != 2:
+            raise ValueError("The points and the values are two-dimensional.")
+        if values.shape[0] != n:
+            raise ValueError(f"The points have {n} rows, the values {values.shape[0]}.")
+        elements = values.shape[1]
+        z = self.q_matrix.T @ values
+        coefficients = np.zeros((self.multi_indices.shape[0], elements))
+        loo = np.full(elements, np.inf)
+        chosen = np.zeros(elements, dtype=int)
+        for candidate, terms in enumerate(self.counts, start=1):
+            fit = _fit_least_squares(self.q_matrix, self.r_matrix, z, values, terms)
+            if fit is None:
+                break
+            found, error = fit
+            better = error < loo
+            if not better.any():
+                continue
+            coefficients[:, better] = 0.0
+            coefficients[:terms, better] = found[:, better]
+            loo[better] = error[better]
+            chosen[better] = candidate
+        if not np.isfinite(loo).any():
+            raise ValueError(
+                f"No degree of the basis is supported by {n} points: a basis needs "
+                f"{POINTS_PER_TERM} points per term. Add points, lower the degree, "
+                f"lower q or cap max_interaction."
+            )
+        return PolynomialChaos(
+            parameters=self.names,
+            multi_indices=self.multi_indices,
+            coefficients=coefficients,
+            loo=loo,
+            degree=chosen,
+        )
+
+
 def fit_chaos(
     u: np.ndarray,
     y: np.ndarray,
@@ -475,73 +613,9 @@ def fit_chaos(
             degree is supported by the points (`POINTS_PER_TERM` points per
             term of its basis).
     """
-    points = np.asarray(u, dtype=float)
-    values = np.asarray(y, dtype=float)
-    if points.ndim != 2 or values.ndim != 2:
-        raise ValueError("The points and the values are two-dimensional.")
-    if points.shape[0] != values.shape[0]:
-        raise ValueError(
-            f"The points have {points.shape[0]} rows, the values {values.shape[0]}."
-        )
-    if degree < 1:
-        raise ValueError(f"The degree of an expansion is at least 1, not {degree}.")
-    d = points.shape[1]
-    names = (
-        tuple(parameters)
-        if parameters is not None
-        else tuple(f"x{k}" for k in range(d))
-    )
-    if len(names) != d:
-        raise ValueError(
-            f"The points have {d} inputs, the parameters are {list(names)}."
-        )
-    multi_indices = expansion(d, degree, q=q, max_interaction=max_interaction)
-    totals = multi_indices.sum(axis=1)
-    elements = values.shape[1]
-    n = points.shape[0]
-    counts = [
-        int(np.count_nonzero(totals <= candidate)) for candidate in range(1, degree + 1)
-    ]
-    # one decomposition for every candidate degree, of the largest basis the
-    # points support: the candidates after it are refused by the same budget
-    largest = max((terms for terms in counts if supported(n, terms)), default=0)
-    if largest == 0:
-        raise ValueError(
-            f"No degree of the basis is supported by {n} points: a basis needs "
-            f"{POINTS_PER_TERM} points per term. Add points, lower the degree, "
-            f"lower q or cap max_interaction."
-        )
-    x = design_matrix(points, multi_indices[:largest])
-    q_matrix, r_matrix = np.linalg.qr(x)
-    z = q_matrix.T @ values
-    coefficients = np.zeros((multi_indices.shape[0], elements))
-    loo = np.full(elements, np.inf)
-    chosen = np.zeros(elements, dtype=int)
-    for candidate, terms in enumerate(counts, start=1):
-        fit = _fit_least_squares(q_matrix, r_matrix, z, values, terms)
-        if fit is None:
-            break
-        found, error = fit
-        better = error < loo
-        if not better.any():
-            continue
-        coefficients[:, better] = 0.0
-        coefficients[:terms, better] = found[:, better]
-        loo[better] = error[better]
-        chosen[better] = candidate
-    if not np.isfinite(loo).any():
-        raise ValueError(
-            f"No degree of the basis is supported by {points.shape[0]} points: a "
-            f"basis needs {POINTS_PER_TERM} points per term. Add points, lower the "
-            f"degree, lower q or cap max_interaction."
-        )
-    return PolynomialChaos(
-        parameters=names,
-        multi_indices=multi_indices,
-        coefficients=coefficients,
-        loo=loo,
-        degree=chosen,
-    )
+    return _Decomposition.of(
+        u, degree=degree, q=q, max_interaction=max_interaction, parameters=parameters
+    ).fit(y)
 
 
 def pce(
@@ -604,6 +678,9 @@ def pce(
     units: dict[str, str] = {}
     failed = 0
     order = np.argsort(np.asarray(result.ds[dim].values))
+    # the points and the basis are those of every observable, so one
+    # decomposition of the design matrix fits them all
+    basis: _Decomposition | None = None
     for name in _observables(result, observables):
         values, others = _moved(result, name, dim)
         flat = values[order].reshape(values.shape[0], -1)
@@ -626,14 +703,15 @@ def pce(
         quality["mean"][constant] = flat[0, constant]
         estimated = usable[varying]
         if estimated.size:
-            chaos = fit_chaos(
-                cube,
-                flat[:, estimated],
-                degree=degree,
-                q=q,
-                max_interaction=max_interaction,
-                parameters=parameters,
-            )
+            if basis is None:
+                basis = _Decomposition.of(
+                    cube,
+                    degree=degree,
+                    q=q,
+                    max_interaction=max_interaction,
+                    parameters=parameters,
+                )
+            chaos = basis.fit(flat[:, estimated])
             out["S1"][..., estimated] = chaos.first_order()
             out["ST"][..., estimated] = chaos.total_order()
             if pairs:
