@@ -1429,6 +1429,15 @@ class CopasiSBMLModel(SBMLModel):
         return transform
 
     @override
+    def takes_integrator_setting(self, setting: str) -> bool:
+        """Get whether the engine takes a setting of roadrunner.
+
+        See `SBMLModel.takes_integrator_setting`; the settings of this
+        engine are `PORTABLE_SETTINGS`.
+        """
+        return self._settings.takes(setting)
+
+    @override
     def set_integrator_settings(self, **settings: IntegratorSetting) -> None:
         """Set settings of the integrator, LSODA of COPASI.
 

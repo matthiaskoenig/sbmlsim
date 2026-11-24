@@ -391,6 +391,26 @@ class SBMLModel(AbstractModel, ABC):
             ValueError: if the integrator has no setting of a name.
         """
 
+    def takes_integrator_setting(self, setting: str) -> bool:
+        """Get whether the engine of the model takes a setting of roadrunner.
+
+        A model of an engine which takes some of the settings of roadrunner
+        (`EngineSettings`) answers for its engine; roadrunner itself takes
+        every one of them, which is the answer here.
+
+        A caller which depends on a setting having an effect asks before it
+        sets one: `set_integrator_settings` leaves a setting the engine has no
+        equivalent of out, with one report per model, so a run which sets it
+        is a run which integrates as it did without it.
+
+        Args:
+            setting: the name of the setting in roadrunner.
+
+        Returns:
+            Whether the engine has an equivalent of the setting.
+        """
+        return True
+
     @abstractmethod
     def integrator_state(self) -> tuple[str, tuple[tuple[str, Any], ...]]:
         """Get the name of the integrator of the model and every one of its settings.
@@ -856,6 +876,11 @@ PORTABLE_SETTINGS = frozenset(
 #: the method (both integrate stiff systems), the linear solver and the
 #: Jacobian of CVODE (COPASI solves densely and AMICI chooses its own sparse
 #: solver) and the optimization of the compilation of roadrunner
+#: the settings of roadrunner which are the order of a method and so whole
+#: numbers, `0` for the default of the solver
+ORDER_SETTINGS = frozenset({"maximum_adams_order", "maximum_bdf_order"})
+
+
 ROADRUNNER_ONLY_SETTINGS = frozenset(
     {
         "initial_time_step",
@@ -916,6 +941,19 @@ class EngineSettings:
         self._ignorable = ignored
         self._reported: set[str] = set()
         self._tolerance_reported = False
+
+    def takes(self, setting: str) -> bool:
+        """Get whether the engine takes a setting of roadrunner.
+
+        Args:
+            setting: the name of the setting in roadrunner.
+
+        Returns:
+            Whether the engine has an equivalent of it; a setting neither
+            taken nor ignorable is no setting of roadrunner and is refused by
+            `checked`.
+        """
+        return setting in self._taken
 
     def checked(
         self, settings: Mapping[str, IntegratorSetting]
@@ -978,6 +1016,17 @@ class EngineSettings:
                     raise ValueError(
                         f"The maximum number of steps is a positive integer, not "
                         f"{value}."
+                    )
+                checked[key] = int(value)
+            elif key in ORDER_SETTINGS:
+                if (
+                    isinstance(value, bool | AbsoluteTolerance)
+                    or not float(value).is_integer()
+                    or value < 0
+                ):
+                    raise ValueError(
+                        f"The setting '{key}' is the order of a method, a whole "
+                        f"number which is not negative (0 is not set), not {value}."
                     )
                 checked[key] = int(value)
             else:

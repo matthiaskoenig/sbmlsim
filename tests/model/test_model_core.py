@@ -306,6 +306,56 @@ def test_the_settings_of_a_request_are_complete_and_accepted() -> None:
     assert output.values.shape == (6, 2)
 
 
+def test_the_order_of_the_method_reaches_the_request_and_the_engine() -> None:
+    """`maximum_bdf_order` is a setting of the engine and bounds its steps."""
+    model = load_model(REPRESSILATOR_SBML, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    assert model.takes_integrator_setting("maximum_bdf_order")
+    assert model.takes_integrator_setting("maximum_adams_order")
+    assert model.takes_integrator_setting("minimum_time_step")
+    assert not model.takes_integrator_setting("variable_step_size")
+    model.set_integrator_settings(relative_tolerance=1e-10, maximum_bdf_order=2)
+    settings = model.request_settings()
+    # a whole number, which the `u8` of the request takes and `2.0` would not
+    assert settings["maximum_bdf_order"] == 2
+    assert isinstance(settings["maximum_bdf_order"], int)
+    request = {
+        "contract": "simulation/1",
+        "start": 0.0,
+        "end": 200.0,
+        "output": {"uniform": {"steps": 20}},
+        "preinit": [],
+        "changes": [],
+        "steady_state": None,
+        "selections": ["time", "PX"],
+        "seed": 1,
+        "settings": settings,
+    }
+    instance = model.loaded.instance()
+    instance.simulate(request)
+    capped = instance.stats()
+    free = dict(settings)
+    del free["maximum_bdf_order"]
+    instance.simulate({**request, "settings": free})
+    unbounded = instance.stats()
+    assert capped["last_order"] <= 2
+    assert unbounded["last_order"] > 2
+    assert capped["steps"] > unbounded["steps"]
+
+
+def test_an_order_which_is_no_whole_number_is_refused() -> None:
+    """The order of a method is a whole number which is not negative."""
+    model = load_model(REPRESSILATOR_SBML, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    with pytest.raises(ValueError, match="the order of a method"):
+        model.set_integrator_settings(maximum_bdf_order=2.5)
+    with pytest.raises(ValueError, match="the order of a method"):
+        model.set_integrator_settings(maximum_adams_order=-1)
+    # 0 is the default of the solver
+    model.set_integrator_settings(maximum_bdf_order=0)
+    assert model.request_settings()["maximum_bdf_order"] == 0
+
+
 def test_a_setting_the_request_has_no_field_for_is_reported_once(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
