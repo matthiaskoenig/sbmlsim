@@ -8,6 +8,7 @@ import dataclasses
 import re
 import shutil
 import subprocess
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,9 @@ from matplotlib.figure import Figure
 from PIL import Image
 from pypdf import PdfReader
 
+import sbmlsim.fit.report as report_module
 from examples.hctz_fitting.experiments.studies import Weir1998
-from sbmlsim import __version__
+from sbmlsim import __version__, cgroup
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping, Subset
@@ -1279,13 +1281,19 @@ def test_the_panel_text_of_a_kind_is_the_text_of_its_points(
 
 @pytest.fixture
 def saved_figures(monkeypatch: pytest.MonkeyPatch) -> dict[str, Figure]:
-    """The figures a report saves, by the name of their file."""
+    """The figures a report saves, by the name of their file.
+
+    The figures are kept as objects, so the report draws them in this
+    process: a report of many fit mappings draws them in a pool, whose
+    workers have figures of their own, see `FitReport.plot_mapping`.
+    """
     saved: dict[str, Figure] = {}
 
     def save(self: FitReport, fig: Figure, path: Path) -> None:
         saved[path.stem] = fig
 
     monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
+    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", sys.maxsize)
     return saved
 
 
@@ -1834,3 +1842,98 @@ def test_a_figure_legend_which_fits_stays_one_column(fitted_report: Any) -> None
     assert columns == 1
     legend = figure.legends[0]
     assert legend.get_window_extent().height <= figure.bbox.height
+
+
+def _drawn(directory: Path) -> list[str]:
+    """Get the names of the figures of the fit mappings in a folder."""
+    return sorted(path.name for path in directory.iterdir())
+
+
+#: the date matplotlib stamps into an SVG
+_SVG_DATE = re.compile(r"<dc:date>[^<]*</dc:date>")
+
+#: an id matplotlib builds for an element a figure reuses, salted per process
+_SVG_SALTED = re.compile(r"\b[a-z][0-9a-f]{10}\b")
+
+
+def _svg_content(path: Path) -> str:
+    """Get an SVG without what two processes write differently.
+
+    matplotlib stamps the date of the drawing and salts the ids of the
+    elements a figure reuses with a salt of its process, so the same figure
+    drawn here and in a worker differs in both. The ids are renamed by the
+    order they appear in, which keeps every reference pointing at the element
+    it pointed at: a figure of the wrong mapping, of other data or with an
+    element missing does not survive this.
+    """
+    text = _SVG_DATE.sub("<dc:date></dc:date>", path.read_text(encoding="utf-8"))
+    names: dict[str, str] = {}
+    return _SVG_SALTED.sub(
+        lambda match: names.setdefault(match.group(0), f"id{len(names)}"), text
+    )
+
+
+#: a pool needs a second CPU, which a runner of one does not have
+many_cpus = pytest.mark.skipif(
+    cgroup.available_cpus() < 2, reason="a pool needs more than one CPU"
+)
+
+
+def test_a_report_of_few_figures_draws_them_in_this_process() -> None:
+    """A report with the work of one worker or less is drawn in this process."""
+    minimum = report_module._FIGURE_POOL_MINIMUM
+    assert report_module._figure_workers(1) == 1
+    assert report_module._figure_workers(minimum) == 1
+    assert report_module._figure_workers(2 * minimum - 1) == 1
+
+
+@many_cpus
+def test_a_report_of_many_figures_draws_them_in_a_pool() -> None:
+    """The processes are one per `_FIGURE_POOL_MINIMUM` figures, the CPUs at most."""
+    minimum = report_module._FIGURE_POOL_MINIMUM
+    cpus = cgroup.available_cpus()
+    assert report_module._figure_workers(2 * minimum) == min(2, cpus)
+    assert report_module._figure_workers(10 * minimum) == min(10, cpus)
+    assert report_module._figure_workers(10_000 * minimum) == cpus
+
+
+def test_a_worker_draws_the_figures_of_a_report_in_its_own_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker starts no pool of its own, see `sbmlsim.parallel.start_pool`."""
+    monkeypatch.setattr(report_module.parallel, "in_worker", lambda: True)
+    assert report_module._figure_workers(10_000) == 1
+
+
+@many_cpus
+def test_the_figures_of_a_pool_are_the_figures_of_the_loop(
+    tmp_path: Path,
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pool draws the figures of the mappings the loop draws, see `plot_mapping`."""
+    report = _mapping_report(op_hctz_iv, fit_settings)
+    serial = tmp_path / "serial"
+    serial.mkdir()
+    report.plot_mapping(serial)
+    assert _drawn(serial)
+
+    started: list[int] = []
+    start_pool = report_module.parallel.start_pool
+
+    def recorded(n_workers: int, **kwargs: Any) -> Any:
+        started.append(n_workers)
+        return start_pool(n_workers, **kwargs)
+
+    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", 1)
+    monkeypatch.setattr(report_module, "_FIGURE_CHUNK", 1)
+    monkeypatch.setattr(report_module.parallel, "start_pool", recorded)
+    pooled = tmp_path / "pooled"
+    pooled.mkdir()
+    report.plot_mapping(pooled)
+
+    assert started and started[0] > 1, "the figures were not drawn in a pool"
+    assert _drawn(pooled) == _drawn(serial)
+    for name in _drawn(pooled):
+        assert _svg_content(pooled / name) == _svg_content(serial / name), name

@@ -48,7 +48,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from pint.errors import PintError
 
-from sbmlsim import __version__
+from sbmlsim import __version__, cgroup, parallel
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import (
@@ -308,6 +308,94 @@ def _cell(value: Any, spec: str) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return "-"
     return f"{value:{spec}}"
+
+
+#: the figures a worker of the pool needs to earn the initialization of the
+#: problem of the report it draws them with, see `_figure_workers`
+_FIGURE_POOL_MINIMUM = 16
+
+#: the fit mappings one task of the pool draws, see `plot_mapping`
+_FIGURE_CHUNK = 4
+
+#: what a worker draws the figures of the fit mappings with, see `_set_drawing`
+_DRAWING: (
+    tuple[FitReport, Mapping[str, dict[str, list[Any]]], Mapping[str, pd.DataFrame]]
+    | None
+) = None
+
+
+def _figure_workers(n_figures: int) -> int:
+    """Get the processes the figures of the fit mappings are drawn on.
+
+    A figure of a fit mapping is about 0.4 s and nine tenths of it is the
+    writing of its SVG, so the figures of a report are worth a pool. A worker
+    initializes the problem of the report once before it draws anything
+    (about 3 s), so it has to be given figures enough to earn that: the
+    processes are one per `_FIGURE_POOL_MINIMUM` figures, and a report with
+    the work of one worker or less is drawn in the calling process.
+
+    The cap is what keeps the pool at its best, not only what keeps a small
+    report out of it. On the 160 figures of the report of the HCTZ PK fit of
+    pkdb_models, a machine of 12 physical cores and 20 logical: 8 workers
+    draw them in 23 to 25 s, 10 in 25 to 26 s, 12 in 26 to 28 s and 20 in 28
+    s. Past the optimum a worker costs more than the figures it takes away
+    from the others.
+
+    Args:
+        n_figures: the number of fit mappings of the report.
+
+    Returns:
+        The processes, 1 for a report which is drawn in this process.
+    """
+    if parallel.in_worker():
+        return 1
+    return max(1, min(n_figures // _FIGURE_POOL_MINIMUM, cgroup.available_cpus()))
+
+
+def _set_drawing(
+    report: FitReport,
+    settings: FitSettings,
+    res_data: Mapping[str, dict[str, list[Any]]],
+    points: Mapping[str, pd.DataFrame],
+) -> None:
+    """Keep what a worker draws the figures of the fit mappings with.
+
+    A pickled problem is its definition, not its resolved data, see
+    `OptimizationProblem.__getstate__`: the worker initializes the problem of
+    the report it received, once, before it draws anything with it.
+
+    Args:
+        report: the report, as the parent pickled it.
+        settings: the settings the problem of the report is initialized with.
+        res_data: the residual data of every parameter set.
+        points: the data points of every parameter set.
+    """
+    global _DRAWING
+    report.problem.initialize(settings)
+    _DRAWING = (report, res_data, points)
+
+
+def _draw_mappings(task: tuple[Sequence[int], Path]) -> int:
+    """Draw the figures of some fit mappings in a worker, see `plot_mapping`.
+
+    Args:
+        task: the fit mappings of the task and the folder of the figures.
+
+    Returns:
+        The number of figures which were drawn, for the progress of the
+        parent.
+
+    Raises:
+        RuntimeError: if the worker has no report, which only happens when
+            the function is called outside a pool of `plot_mapping`.
+    """
+    mappings, output_dir = task
+    if _DRAWING is None:
+        raise RuntimeError("The worker has no report to draw the figures with")
+    report, res_data, points = _DRAWING
+    for k in mappings:
+        report.draw_mapping(k, output_dir, res_data, points)
+    return len(mappings)
 
 
 class FitReport:
@@ -2513,54 +2601,99 @@ class FitReport:
         """
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        mappings = range(len(self.problem.mapping_keys))
 
-        # a figure per fit mapping, the long part of a report of a large fit
+        # a figure per fit mapping, the long part of a report of a large fit:
+        # the figures do not depend on each other and nine tenths of one is
+        # the writing of its SVG, so they are drawn in a pool
         with progress_activity(
-            "report", "mapping figures", total=len(self.problem.mapping_keys)
+            "report", "mapping figures", total=len(mappings)
         ) as drawn:
-            for k, mapping_id in enumerate(self.problem.mapping_keys):
-                fig = Figure(figsize=(10, 10), layout="constrained")
-                (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
-                sid = self.problem.experiment_keys[k]
-                self._set_mapping_title(fig, k)
-                for ax in (ax1, ax2):
-                    self._draw_curve(ax, k, res_data)
-                self._set_log_scale(ax2, "y")
-                if ax2.get_yscale() == "log":
-                    self._set_log_y_limits(ax2, self.problem.y_references[k])
-                    self._mask_nonpositive_lines(ax2)
+            workers = _figure_workers(len(mappings))
+            if workers < 2:
+                for k in mappings:
+                    self.draw_mapping(k, output_dir, res_data, points)
+                    drawn.advance()
+                return
+            chunks = [
+                list(mappings[start : start + _FIGURE_CHUNK])
+                for start in range(0, len(mappings), _FIGURE_CHUNK)
+            ]
+            executor = parallel.start_pool(
+                workers,
+                initializer=_set_drawing,
+                initargs=(self, self.settings, res_data, points),
+            )
+            try:
+                for chunk in executor.map(
+                    _draw_mappings, [(chunk, output_dir) for chunk in chunks]
+                ):
+                    drawn.advance(chunk)
+            finally:
+                parallel.stop(executor)
 
-                of_mapping = {
-                    pset.sid: self._of_mapping(points[pset.sid], k)
-                    for pset in self.parameter_sets
-                }
-                limits = self._log_limits(
-                    *[dp.DV for dp in of_mapping.values()],
-                    *[dp.IPRED for dp in of_mapping.values()],
-                )
-                self._draw_goodness_of_fit(
-                    ax3, of_mapping, limits, label_band=True, point_labels=False
-                )
-                ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
-                self._add_metrics_box(ax3, self.mapping_text(k))
-                self._draw_bland_altman(
-                    ax4,
-                    of_mapping,
-                    label_band=True,
-                    point_labels=False,
-                    own_agreement=self.problem.mapping_kinds[k]
-                    is not MappingKind.OUTLIER,
-                )
-                ax4.set_ylabel(
-                    "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold"
-                )
-                self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
-                self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
+    def draw_mapping(
+        self,
+        k: int,
+        output_dir: Path,
+        res_data: Mapping[str, dict[str, list[Any]]],
+        points: Mapping[str, pd.DataFrame],
+    ) -> None:
+        """Draw and save the figure of one fit mapping, see `plot_mapping`.
 
-                self._save_mpl_figure(
-                    fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
-                )
-                drawn.advance()
+        It runs in a worker of the pool for a report of many mappings, so
+        anything which is to affect it has to travel with the pickled report:
+        a subclass which overrides a step of it works, because the report
+        pickles with its class and the worker imports it, while a patch of
+        `FitReport` in this process after the fact does not, because the
+        worker imports the class as it is written.
+
+        Args:
+            k: index of the fit mapping.
+            output_dir: the folder of the figures.
+            res_data: the residual data of every parameter set, see
+                `residual_data`.
+            points: the data points of every parameter set, see `points`.
+        """
+        mapping_id = self.problem.mapping_keys[k]
+        fig = Figure(figsize=(10, 10), layout="constrained")
+        (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
+        sid = self.problem.experiment_keys[k]
+        self._set_mapping_title(fig, k)
+        for ax in (ax1, ax2):
+            self._draw_curve(ax, k, res_data)
+        self._set_log_scale(ax2, "y")
+        if ax2.get_yscale() == "log":
+            self._set_log_y_limits(ax2, self.problem.y_references[k])
+            self._mask_nonpositive_lines(ax2)
+
+        of_mapping = {
+            pset.sid: self._of_mapping(points[pset.sid], k)
+            for pset in self.parameter_sets
+        }
+        limits = self._log_limits(
+            *[dp.DV for dp in of_mapping.values()],
+            *[dp.IPRED for dp in of_mapping.values()],
+        )
+        self._draw_goodness_of_fit(
+            ax3, of_mapping, limits, label_band=True, point_labels=False
+        )
+        ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
+        self._add_metrics_box(ax3, self.mapping_text(k))
+        self._draw_bland_altman(
+            ax4,
+            of_mapping,
+            label_band=True,
+            point_labels=False,
+            own_agreement=self.problem.mapping_kinds[k] is not MappingKind.OUTLIER,
+        )
+        ax4.set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
+        self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
+        self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
+
+        self._save_mpl_figure(
+            fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
+        )
 
     def _of_mapping(self, df: pd.DataFrame, k: int) -> pd.DataFrame:
         """Get the data points of mapping `k`."""
