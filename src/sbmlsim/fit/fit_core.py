@@ -1039,7 +1039,9 @@ def _normalizer_of(prior: Prior, lower: float, upper: float) -> float:
         upper: its upper bound.
 
     Returns:
-        The logarithm of the mass, `0` for a prior the bounds do not cut.
+        The logarithm of the mass, the difference of the two log densities,
+        so for a prior the bounds do not cut a number of the size of their
+        rounding and not exactly `0`.
 
     Raises:
         ValueError: for a kind the engine does not evaluate, and if the
@@ -3438,14 +3440,17 @@ def residual_jacobian(
 
     The engine has a row per row of the curves of the request: the data of
     every training mapping and, for a curve which carries a `likelihood`
-    (`_likelihood_of`, a fixed Laplace noise here, a noise the fit moves
-    being a gap), the scale of its noise as well. The problem has two rows
-    per point for a likelihood, the data and the scale of its noise. The
-    rows of the engine are scattered into the rows of the problem
-    (`_residual_rows`, which places the scale rows of a curve which sends
-    them) and a row of a scale the request does not carry stays zero, which
-    it is: the scale of a noise the fit does not move is a constant of the
-    data, and the engine answers zero for the one it does carry. The
+    (`_likelihood_of`, a fixed Laplace noise or a noise the fit moves), the
+    scale of its noise as well. The problem has two rows per point for a
+    likelihood, the data and the scale of its noise. The rows of the engine
+    are scattered into the rows of the problem (`_residual_rows`, which
+    places the scale rows of a curve which sends them) and a row of a scale
+    the request does not carry stays zero, which it is: the scale of a noise
+    the fit does not move is a constant of the data. The scale row of a
+    noise the fit moves is carried and non-zero, since the engine carries the
+    sensitivities of the parameter of the noise into it (`gaps_of_a_jacobian`
+    has no gap for such a noise), while the fixed Laplace noise of a curve
+    which sends a `likelihood` is answered as zero by the engine. The
     residuals of the priors of a fit of the posterior are no part of this
     jacobian: the `rows < total` mask drops every row of the request which
     lies past the residuals of the data, which the prior rows do, since a
@@ -3483,6 +3488,10 @@ def residual_jacobian(
     core = engine_problem(problem, request, threads=threads)
     jacobian = np.asarray(core.jacobian(_point_of(problem, x)), dtype=float)
     rows = _residual_rows(problem)
+    # a row count of `_residual_rows` which drifts from what the engine answers
+    # makes `jacobian[keep]` raise an IndexError, which `fisher._jacobian_of`
+    # does not catch (it catches ValueError): loud, on purpose, since a layout
+    # mismatch must never fall back silently to finite differences
     total = _data_rows(problem)
     keep = rows < total
     scattered = np.zeros((total, jacobian.shape[1]), dtype=float)
