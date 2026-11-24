@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -96,6 +97,20 @@ POINTS_PER_TERM: float = 2.0
 #: the relative tolerance of the rank of a design matrix, below which a
 #: candidate degree is not fitted
 RANK_TOLERANCE: float = 1e-10
+
+#: the truncations `choose_truncation` tries, in order: the exponent of the
+#: hyperbolic truncation and the cap on the number of inputs of a term. The
+#: exponent falls before the cap, so a basis keeps the interactions of a low
+#: degree as long as the points support them; the last entry is the additive
+#: basis, which `d * degree` terms large and which carries no interaction at
+#: all, so the total indices it gives are its first order ones
+TRUNCATIONS: tuple[tuple[float, int | None], ...] = (
+    (1.0, None),
+    (0.75, None),
+    (0.5, None),
+    (0.5, 2),
+    (1.0, 1),
+)
 
 
 def expansion(
@@ -149,6 +164,56 @@ def expansion(
                     f"max_interaction."
                 )
     return np.asarray(rows, dtype=int)
+
+
+def choose_truncation(d: int, n: int, degree: int) -> tuple[float, int | None]:
+    """Choose a truncation of the basis of a degree which `n` points support.
+
+    The full basis of a degree over many inputs is larger than any sample: the
+    one of the degree 5 over 22 inputs has 80730 terms, more than `MAX_TERMS`,
+    and even the `n (d + 2)` points of a Saltelli design of the same inputs
+    would not support it. The truncations of `TRUNCATIONS` are tried in order
+    and the first whose basis has at most `n / POINTS_PER_TERM` terms is
+    taken, so a sample which supports the interactions keeps them and one
+    which does not falls back to the additive basis rather than failing.
+
+    Args:
+        d: the number of inputs, at least 1.
+        n: the number of points of the sample, at least 1.
+        degree: the largest total degree of the basis, not negative.
+
+    Returns:
+        The exponent of the hyperbolic truncation and the cap on the
+        interaction, for `expansion`, `fit_chaos` or `pce`.
+
+    Raises:
+        ValueError: if the arguments are out of range, or no truncation is
+            supported, i.e. the additive basis of the degree over the inputs
+            needs more points than the sample has.
+    """
+    if d < 1:
+        raise ValueError(f"The basis needs at least one input, not {d}.")
+    if n < 1:
+        raise ValueError(f"The sample needs at least one point, not {n}.")
+    if degree < 0:
+        raise ValueError(f"The degree must not be negative, not {degree}.")
+    budget = int(n // POINTS_PER_TERM)
+    for q, max_interaction in TRUNCATIONS:
+        try:
+            terms = len(expansion(d, degree, q=q, max_interaction=max_interaction))
+        except ValueError:
+            # the arguments are checked above, so the basis is larger than
+            # `MAX_TERMS`: it is larger than every budget as well
+            continue
+        if terms <= budget:
+            return q, max_interaction
+    smallest = len(expansion(d, degree, q=TRUNCATIONS[-1][0], max_interaction=1))
+    raise ValueError(
+        f"No truncation of the basis of the degree {degree} over {d} inputs is "
+        f"supported by {n} points: the smallest, the additive basis, has "
+        f"{smallest} terms and needs {math.ceil(smallest * POINTS_PER_TERM)} "
+        f"points. Lower the degree or sample more points."
+    )
 
 
 def legendre_values(u: np.ndarray, max_degree: int) -> np.ndarray:

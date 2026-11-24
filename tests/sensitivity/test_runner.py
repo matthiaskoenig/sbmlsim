@@ -34,6 +34,7 @@ from sbmlsim.sensitivity.parameters import (
     set_relative_bounds,
 )
 from sbmlsim.sensitivity.runner import (
+    ChaosAnalysis,
     CommandLine,
     FastAnalysis,
     LocalAnalysis,
@@ -98,6 +99,10 @@ def test_the_defaults_of_the_analyses() -> None:
     assert SamplingAnalysis(groups=[CONTROL]).n == 1000
     assert FastAnalysis(groups=[CONTROL]).n == 1000
     assert SobolAnalysis(groups=[CONTROL]).n == 4096
+    chaos = ChaosAnalysis(groups=[CONTROL])
+    assert (chaos.n, chaos.degree) == (512, 5)
+    # the truncation of the basis is chosen from the parameters and the points
+    assert (chaos.q, chaos.max_interaction, chaos.second_order) == (None, None, False)
     # the groups are kept as a tuple
     assert LocalAnalysis(groups=[CONTROL, LARGE]).groups == (CONTROL, LARGE)
     # the statistics of the sampling are those of sbmlsim 0.8.5, no quantiles
@@ -177,6 +182,65 @@ def test_a_global_analysis_writes_the_tables_of_s1_and_st(
     st = pd.read_csv(group_path / "A_thalf.ST.tsv", sep="\t", index_col=0)
     assert "A_thalf.ST" in st.columns
     assert not (path / name / "large").exists()
+
+
+def test_chaos_writes_the_indices_and_the_quality_of_its_fit(tmp_path: Path) -> None:
+    """The expansion gives the same tables and the quality of every output."""
+    analyses = {"chaos": ChaosAnalysis(groups=[CONTROL], n=64)}
+    path = runner(tmp_path, analyses=analyses, default=["chaos"]).run(
+        ["chaos"], workers=1
+    )
+    group_path = path / "chaos" / "control"
+    expected = ["quality.tsv"]
+    for uid in ["A_auc", "A_thalf", "[A]_min"]:
+        expected += [f"{uid}.S1.tsv", f"{uid}.ST.tsv"]
+    assert sorted(p.name for p in group_path.iterdir()) == sorted(expected)
+    st = pd.read_csv(group_path / "A_thalf.ST.tsv", sep="\t", index_col=0)
+    assert "A_thalf.ST" in st.columns
+    # the indices of a decay are those of its rate, whatever the estimator
+    assert st["A_thalf.ST"].idxmax() == "k"
+    quality = pd.read_csv(group_path / "quality.tsv", sep="\t")
+    assert list(quality["uid"]) == ["A_auc", "A_thalf", "[A]_min"]
+    assert set(quality.columns) >= {
+        "uid",
+        "name",
+        "loo",
+        "degree",
+        "mean",
+        "sd",
+        "unit",
+    }
+    # the expansion of a model of a few parameters describes it
+    assert (quality["loo"] < 0.1).all()
+    assert (quality["degree"] >= 1).all()
+    assert (path / "chaos" / "chaos_N64_sensitivity_00_control_ST.png").is_file()
+
+
+def test_chaos_writes_the_pairs_of_second_order(tmp_path: Path) -> None:
+    analyses = {"chaos": ChaosAnalysis(groups=[CONTROL], n=64, second_order=True)}
+    path = runner(tmp_path, analyses=analyses, default=["chaos"]).run(
+        ["chaos"], workers=1
+    )
+    group_path = path / "chaos" / "control"
+    assert (group_path / "A_auc.S2.tsv").is_file()
+
+
+def test_chaos_takes_the_truncation_it_is_given(tmp_path: Path) -> None:
+    """A given q is used as it is, and a max_interaction without one is refused."""
+    analyses = {
+        "chaos": ChaosAnalysis(groups=[CONTROL], n=64, q=1.0, max_interaction=1)
+    }
+    path = runner(tmp_path, analyses=analyses, default=["chaos"]).run(
+        ["chaos"], workers=1
+    )
+    # the additive basis has no interaction, so the total indices are the first
+    # order ones
+    group_path = path / "chaos" / "control"
+    s1 = pd.read_csv(group_path / "A_auc.S1.tsv", sep="\t", index_col=0)
+    st = pd.read_csv(group_path / "A_auc.ST.tsv", sep="\t", index_col=0)
+    assert np.allclose(s1["A_auc.S1"], st["A_auc.ST"])
+    with pytest.raises(ValueError, match="max_interaction of ChaosAnalysis"):
+        ChaosAnalysis(groups=[CONTROL], max_interaction=2)
 
 
 def test_the_sample_size_of_a_smoke_run(

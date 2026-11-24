@@ -7,7 +7,10 @@ from sbmlsim import sensitivity
 from sbmlsim.result import ScanResult
 from sbmlsim.sensitivity.chaos import (
     MAX_TERMS,
+    POINTS_PER_TERM,
+    TRUNCATIONS,
     PolynomialChaos,
+    choose_truncation,
     design_matrix,
     expansion,
     fit_chaos,
@@ -329,3 +332,55 @@ def test_the_expansion_is_a_surrogate_of_the_model() -> None:
     predicted = chaos.predict(other).ravel()
     exact = _ishigami(other)
     assert np.max(np.abs(predicted - exact)) < 0.05 * np.ptp(exact)
+
+
+def test_a_chosen_truncation_is_the_richest_basis_the_points_support() -> None:
+    """The exponent falls until the basis fits, the interactions are kept."""
+    # the 22 parameters of the HCTZ model of pkdb_models on 2048 points: the
+    # full basis of the degree 4 has 14950 terms, the hyperbolic one 782
+    q, max_interaction = choose_truncation(22, 2048, 4)
+    assert (q, max_interaction) == (0.75, None)
+    terms = len(expansion(22, 4, q=q, max_interaction=max_interaction))
+    assert terms == 782
+    assert terms <= 2048 // POINTS_PER_TERM
+    assert len(expansion(22, 4)) > 2048 // POINTS_PER_TERM
+
+
+def test_a_chosen_truncation_falls_back_to_the_additive_basis() -> None:
+    """A sample which supports no interaction gets the terms of one input each."""
+    q, max_interaction = choose_truncation(22, 512, 5)
+    assert (q, max_interaction) == TRUNCATIONS[-1] == (1.0, 1)
+    assert len(expansion(22, 5, q=q, max_interaction=max_interaction)) == 22 * 5 + 1
+
+
+def test_a_chosen_truncation_is_fitted_and_gives_the_indices() -> None:
+    """The chosen basis of the Ishigami function finds its inputs."""
+    rng = np.random.default_rng(3)
+    u = rng.random((600, 3))
+    q, max_interaction = choose_truncation(3, 600, 5)
+    chaos = fit_chaos(
+        u, _ishigami(u)[:, None], degree=5, q=q, max_interaction=max_interaction
+    )
+    total = chaos.total_order().ravel()
+    # x3 enters the Ishigami function only through its interaction with x1
+    assert total[0] > total[1] > total[2] > 0.0
+
+
+def test_a_sample_which_supports_no_basis_is_refused() -> None:
+    with pytest.raises(ValueError, match="the additive basis, has 7 terms"):
+        choose_truncation(2, 4, 3)
+
+
+@pytest.mark.parametrize(
+    ("d", "n", "degree", "message"),
+    [
+        (0, 10, 2, "at least one input"),
+        (2, 0, 2, "at least one point"),
+        (2, 10, -1, "must not be negative"),
+    ],
+)
+def test_a_chosen_truncation_checks_its_arguments(
+    d: int, n: int, degree: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        choose_truncation(d, n, degree)

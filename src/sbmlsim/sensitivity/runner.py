@@ -1,7 +1,7 @@
 """The sensitivity analyses of a project over the groups of its simulations.
 
 A `SensitivityRunner` runs the analyses of a model (`LocalAnalysis`,
-`SamplingAnalysis`, `FastAnalysis`, `SobolAnalysis`) over the simulations of
+`SamplingAnalysis`, `FastAnalysis`, `SobolAnalysis`, `ChaosAnalysis`) over the simulations of
 their groups (`SensitivityGroup`, each on a variant of the model of the
 project, `sbmlsim.project.Project.variants`) and writes the table of the
 parameters (`sbmlsim.sensitivity.parameters`) and the tables and figures of
@@ -40,7 +40,8 @@ The layout of the results below the folder of a run:
 | every run | `parameters.tsv`, `parameters.tex` |
 | local | `local/local_d<delta>_nvar<n_var>_<k>_<group>.tsv` and `.png` |
 | sampling | `sampling/<group>/samples.tsv`, `sampling/sampling_N<n>.tsv`, `_compact.tsv`, `.tex`, `_sensitivity_samples.png`, `_sensitivity_outputs.png` |
-| fast, sobol | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, `<analysis>/<prefix>_sensitivity_<k>_<group>_S1.png`, `_ST.png` and `_<ko>_<output>.png` |
+| fast, sobol, chaos | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, `<analysis>/<prefix>_sensitivity_<k>_<group>_S1.png`, `_ST.png` and `_<ko>_<output>.png` |
+| chaos | and `<analysis>/<group>/quality.tsv`, with `<output>.S2.tsv` for `second_order` |
 | subfolders | `<subfolder>/<analysis>/...`, the table once in the folder |
 """
 
@@ -68,6 +69,7 @@ from sbmlsim import display
 from sbmlsim.console import console
 from sbmlsim.domains import Domain
 from sbmlsim.sensitivity import indices, plots
+from sbmlsim.sensitivity.chaos import choose_truncation, pce
 from sbmlsim.sensitivity.classification import (
     sensitivity_classification,
     sensitivity_classification_symbol,
@@ -99,6 +101,7 @@ __all__ = [
     "SAMPLE_SIZE",
     "SEED",
     "Analysis",
+    "ChaosAnalysis",
     "CommandLine",
     "FastAnalysis",
     "LocalAnalysis",
@@ -1131,8 +1134,25 @@ class _GlobalAnalysis(_SampledAnalysis):
         """Get the design over the parameters the analysis varies."""
 
     @abstractmethod
-    def _indices(self, result: ScanResult) -> SensitivityResult:
-        """Get the indices of the result of the design."""
+    def _indices(
+        self, result: ScanResult, varied: Sequence[SensitivityParameter]
+    ) -> SensitivityResult:
+        """Get the indices of the result of the design.
+
+        Args:
+            result: the result of the design.
+            varied: the parameters the design varies, which an analysis whose
+                estimator depends on their number reads (`ChaosAnalysis`).
+        """
+
+    def _written(self) -> list[str]:
+        """Get the indices which are written as a table, `S1` and `ST`."""
+        return ["S1", "ST"]
+
+    def _write_extra(
+        self, context: _Context, result: SensitivityResult, group_path: Path
+    ) -> None:
+        """Write what the analysis has besides its indices: nothing by default."""
 
     @override
     def _run(
@@ -1145,9 +1165,10 @@ class _GlobalAnalysis(_SampledAnalysis):
         for kg, group in enumerate(self.groups):
             group_path = self._group_path(path, group)
             result = self._indices(
-                context.scan(group, context.design(group, design, varied))
+                context.scan(group, context.design(group, design, varied)), varied
             )
-            context.write_indices(result, ["S1", "ST"], group_path)
+            context.write_indices(result, self._written(), group_path)
+            self._write_extra(context, result, group_path)
             figures = f"{prefix}_sensitivity_{kg:>02}_{group.uid}"
             for ko, output in enumerate(context.outputs):
                 plots.plot_indices(
@@ -1209,8 +1230,10 @@ class FastAnalysis(_GlobalAnalysis):
         return sampling.fast(distributions(parameters), n=n, seed=seed)
 
     @override
-    def _indices(self, result: ScanResult) -> SensitivityResult:
-        """Get the indices, see `sensitivity.fast`."""
+    def _indices(
+        self, result: ScanResult, varied: Sequence[SensitivityParameter]
+    ) -> SensitivityResult:
+        """Get the indices, see `sensitivity.fast`; the parameters are not read."""
         return indices.fast(result)
 
 
@@ -1254,9 +1277,162 @@ class SobolAnalysis(_GlobalAnalysis):
         return sampling.sobol(distributions(parameters), n=n, seed=seed)
 
     @override
-    def _indices(self, result: ScanResult) -> SensitivityResult:
-        """Get the indices, see `sensitivity.sobol`."""
+    def _indices(
+        self, result: ScanResult, varied: Sequence[SensitivityParameter]
+    ) -> SensitivityResult:
+        """Get the indices, see `sensitivity.sobol`; the parameters are not read."""
         return indices.sobol(result)
+
+
+#: the variables of a chaos expansion which are no index: the corrected
+#: leave-one-out error of the fit of an element, the total degree of the basis
+#: it kept, and the mean and standard deviation of the expansion
+QUALITY = ("loo", "degree", "mean", "sd")
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChaosAnalysis(_GlobalAnalysis):
+    """The indices of a polynomial chaos expansion, `sampling.lhs` and `sensitivity.pce`.
+
+    The expansion is fitted on a Latin hypercube of the distributions of the
+    parameters and the indices are the shares of the variance of its
+    coefficients, so the first order and total indices come from a few hundred
+    or a few thousand points instead of the `n (d + 2)` simulations of the
+    Saltelli design of `SobolAnalysis`: on the HCTZ model of pkdb_models
+    (22 parameters) 2048 points give the total indices of a design of 98304
+    to three decimals.
+
+    Next to the tables of the indices the analysis writes `quality.tsv` of
+    every group, a row per output with the corrected leave-one-out error
+    `loo` of its fit, the total `degree` of the basis it kept and the `mean`
+    and `sd` of its expansion: an output the points do not support has a
+    large `loo` and is visible rather than silent.
+
+    The files of sbmlsim 0.8.5 have the prefix `chaos_N<n>`.
+
+    Attributes:
+        n: the number of points of the hypercube, see `sample_size`.
+        degree: the largest total degree of the basis; every element keeps the
+            degree of the smallest leave-one-out error, see `fit_chaos`.
+        q: the exponent of the hyperbolic truncation of the basis, with
+            `max_interaction` chosen from the parameters and the points by
+            `choose_truncation` if it is `None` (the default); the full basis
+            of a degree over the parameters of a model is larger than any
+            sample.
+        max_interaction: the largest number of parameters of a term, every
+            number with `None`; given only with `q`.
+        second_order: whether the interaction of every pair is computed and
+            written as well, `S2`.
+    """
+
+    n: int = 512
+    degree: int = 5
+    q: float | None = None
+    max_interaction: int | None = None
+    second_order: bool = False
+
+    @override
+    def __post_init__(self) -> None:
+        """Check the groups, the number of points and the truncation.
+
+        Raises:
+            ValueError: see `_SampledAnalysis`, and for a `max_interaction`
+                without a `q`, which does not say whether the truncation is
+                the given one or a chosen one.
+        """
+        super().__post_init__()
+        if self.q is None and self.max_interaction is not None:
+            raise ValueError(
+                "The max_interaction of ChaosAnalysis is given with its q: "
+                "without a q the truncation of the basis is chosen from the "
+                "parameters and the points (`choose_truncation`)."
+            )
+
+    @override
+    def _settings(self) -> dict[str, Any]:
+        """Get the settings of a run: the points and the basis."""
+        return {
+            **super()._settings(),
+            "degree": self.degree,
+            "q": self.q,
+            "max_interaction": self.max_interaction,
+            "second_order": self.second_order,
+        }
+
+    @override
+    def _prefix(self, n: int) -> str:
+        """Get the prefix of the files of sbmlsim 0.8.5, `chaos_N<n>`."""
+        return f"chaos_N{n}"
+
+    @override
+    def _design(
+        self, parameters: Sequence[SensitivityParameter], n: int, seed: int
+    ) -> Dimension:
+        """Get the design over the parameters, see `sampling.lhs`."""
+        return sampling.lhs(distributions(parameters), n=n, seed=seed)
+
+    @override
+    def _indices(
+        self, result: ScanResult, varied: Sequence[SensitivityParameter]
+    ) -> SensitivityResult:
+        """Get the indices of the expansion, see `sensitivity.pce`.
+
+        The truncation of the basis is the given one, or the one
+        `choose_truncation` takes for the number of parameters and points.
+        """
+        q, max_interaction = self.q, self.max_interaction
+        if q is None:
+            n = self._samples()
+            q, max_interaction = choose_truncation(len(varied), n, self.degree)
+            logger.info(
+                "ChaosAnalysis fits the basis of the degree %s truncated with "
+                "q=%s and max_interaction=%s, which %s points over %s "
+                "parameters support.",
+                self.degree,
+                q,
+                max_interaction,
+                n,
+                len(varied),
+            )
+        return pce(
+            result,
+            degree=self.degree,
+            q=q,
+            max_interaction=max_interaction,
+            second_order=self.second_order,
+        )
+
+    @override
+    def _written(self) -> list[str]:
+        """Get the indices which are written, with `S2` for `second_order`."""
+        return [*super()._written(), *(["S2"] if self.second_order else [])]
+
+    @override
+    def _write_extra(
+        self, context: _Context, result: SensitivityResult, group_path: Path
+    ) -> None:
+        """Write the quality of the fit of every output, `quality.tsv`."""
+        rows = []
+        for output in context.outputs:
+            data = {key: result.ds[f"{output.observable}.{key}"] for key in QUALITY}
+            shape = data["loo"].shape
+            for index in np.ndindex(*shape):
+                row: dict[str, Any] = {"uid": output.uid, "name": output.name}
+                row.update(
+                    {
+                        str(dim): data["loo"].coords[dim].values[position]
+                        for dim, position in zip(data["loo"].dims, index, strict=True)
+                    }
+                )
+                row.update(
+                    {
+                        key: float(np.asarray(array.values)[index])
+                        for key, array in data.items()
+                    }
+                )
+                row["unit"] = result.units.get(f"{output.observable}.mean", "")
+                rows.append(row)
+        pd.DataFrame(rows).to_csv(group_path / "quality.tsv", sep="\t", index=False)
 
 
 class CommandLine(NamedTuple):
