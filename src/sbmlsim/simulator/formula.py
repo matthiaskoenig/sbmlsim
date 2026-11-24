@@ -192,6 +192,53 @@ def _parser() -> Callable[[str], sp.Basic]:
     return module.sympify_petab
 
 
+def _escaped(formula: str) -> tuple[str, dict[str, str]]:
+    """Get a formula the parser of PEtab reads, with its selections escaped.
+
+    The math of PEtab has identifiers, and two selections of roadrunner are
+    none: the concentration of a species, `[S]`, whose brackets the parser
+    does not read at all, and the dotted name of an observable, `pk.cmax`,
+    which it reads as something else. Both become an identifier of a prefix
+    nothing else uses, so the parser sees valid math and every reader of the
+    parsed expression maps a symbol back with `_selection`. `compile_formula`
+    and `linear_form` share this, so a formula either of them reads is the
+    same formula (#630).
+
+    Args:
+        formula: the formula as it is written.
+
+    Returns:
+        The escaped formula and the name of every dotted selection by the
+        identifier which stands for it; a concentration is read back from its
+        prefix and is no entry of the map.
+    """
+    dotted: dict[str, str] = {}
+
+    def escape(match: re.Match[str]) -> str:
+        return dotted.setdefault(match.group(1), f"{_DOT}{len(dotted)}")
+
+    escaped = _DOTTED.sub(escape, formula)
+    escaped = _BRACKETS.sub(lambda m: f"{_PREFIX}{m.group(1)}", escaped)
+    return escaped, {identifier: name for name, identifier in dotted.items()}
+
+
+def _selection(name: str, names: Mapping[str, str]) -> str:
+    """Get the selection of roadrunner an escaped identifier stands for.
+
+    Args:
+        name: the identifier of the escaped formula.
+        names: the dotted selections by their identifier, see `_escaped`.
+
+    Returns:
+        The selection, the identifier itself where it was not escaped.
+    """
+    if name in names:
+        return names[name]
+    if name.startswith(_PREFIX):
+        return f"[{name.removeprefix(_PREFIX)}]"
+    return name
+
+
 @functools.cache
 def compile_formula(formula: str) -> CompiledFormula:
     """Compile a formula, see the module.
@@ -222,21 +269,10 @@ def compile_formula(formula: str) -> CompiledFormula:
     Raises:
         ValueError: if the formula is not valid math of PEtab.
     """
-    dotted: dict[str, str] = {}
-
-    def escape(match: re.Match[str]) -> str:
-        return dotted.setdefault(match.group(1), f"{_DOT}{len(dotted)}")
-
-    escaped = _DOTTED.sub(escape, formula)
-    escaped = _BRACKETS.sub(lambda m: f"{_PREFIX}{m.group(1)}", escaped)
-    names = {identifier: name for name, identifier in dotted.items()}
+    escaped, names = _escaped(formula)
 
     def selection(name: str) -> str:
-        if name in names:
-            return names[name]
-        if name.startswith(_PREFIX):
-            return f"[{name.removeprefix(_PREFIX)}]"
-        return name
+        return _selection(name, names)
 
     try:
         # the parser of PEtab decides what is valid math
@@ -286,6 +322,12 @@ def linear_form(
     coefficient of the form is the coefficient of the formula and carries no
     factor of a unit either way.
 
+    The symbols are the selections of roadrunner, the concentration of a
+    species and the dotted name of an observable included: the formula is
+    escaped for the parser as `compile_formula` escapes it and every symbol
+    of the parsed expression is mapped back, so `[A] + 5` is a form over
+    `[A]` and is no longer refused for being unreadable (#630).
+
     Args:
         formula: the formula of the assignment.
         targets: the position in the terms of every symbol the form may read,
@@ -307,18 +349,25 @@ def linear_form(
         coefficients are not finite numbers. A formula of no symbol is
         `None` as well: it is a number the executor folds itself.
     """
-    expression = parse_math(formula)
+    escaped, names = _escaped(formula)
+    expression = parse_math(escaped)
     # the symbols of the expression itself: the parser gives them assumptions,
     # so a `sp.Symbol` of the same name is another symbol, which `Poly`
     # would take for a constant of its domain and read a degree of 0 off
     free = sorted(expression.free_symbols, key=str)
+    # the selection every symbol stands for, which is its own name but for an
+    # escaped concentration or dotted observable
+    selections = {symbol: _selection(str(symbol), names) for symbol in free}
     known = constants or {}
-    if any(str(symbol) not in targets and str(symbol) not in known for symbol in free):
+    if any(
+        selections[symbol] not in targets and selections[symbol] not in known
+        for symbol in free
+    ):
         return None
     fixed = [
-        (symbol, sp.Float(known[str(symbol)]))
+        (symbol, sp.Float(known[selections[symbol]]))
         for symbol in free
-        if str(symbol) in known
+        if selections[symbol] in known
     ]
     if fixed:
         expression = expression.subs(fixed)
@@ -334,7 +383,7 @@ def linear_form(
     try:
         constant = float(polynomial.coeff_monomial(1))
         terms = [
-            (targets[str(symbol)], float(polynomial.coeff_monomial(symbol)))
+            (targets[selections[symbol]], float(polynomial.coeff_monomial(symbol)))
             for symbol in free
         ]
     except TypeError, ValueError:

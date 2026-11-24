@@ -146,44 +146,34 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
 
 
 #: the cases of the group `sbml` which are no fit of sbmlsim-core, each with
-#: the code of its gap, see `sbmlsim.fit.fit_core.gaps_of`. 0025 has parameters
-#: which have a prior and no bounds. The other four set a concentration at a
-#: change by a formula which reads one, `C + [S]` (0016, 0031) and `[A] + 5`
-#: (0028, 0030): such a formula is no linear form over the entities of the
-#: model, since the parser of the math of PEtab does not read the brackets of
-#: a concentration, so the request can carry it neither as a form nor as a
-#: number the engine would hold where the fit started, and the fit of those
-#: cases runs in python (#617). The gaps which are gone: the values before the
-#: initialization which read a parameter the fit estimates are the `derived`
-#: of a condition (sbmlsim-core 0.17.0), the state of the model before the
-#: events of the time of a change is the `before_events` of a request and the
-#: steady state after the end of a simulation of a model with events its
-#: `steady_state_after` (both sbmlsim-core 0.18.0), and a change of a linear
-#: formula over the entities of the model is the `forms` of a change
-#: (sbmlsim-core 0.20.0).
+#: the code of its gap, see `sbmlsim.fit.fit_core.gaps_of`: 0025, whose
+#: parameters have a prior and no bounds, is the only one left. The gaps which
+#: are gone: the values before the initialization which read a parameter the
+#: fit estimates are the `derived` of a condition (sbmlsim-core 0.17.0), the
+#: state of the model before the events of the time of a change is the
+#: `before_events` of a request and the steady state after the end of a
+#: simulation of a model with events its `steady_state_after` (both
+#: sbmlsim-core 0.18.0), a change of a linear formula over the entities of the
+#: model is the `forms` of a change (sbmlsim-core 0.20.0), and the four cases
+#: which set a concentration at a change by a formula which reads one, `C +
+#: [S]` (0016, 0031) and `[A] + 5` (0028, 0030), are forms as well since
+#: `linear_form` reads the brackets of a concentration, which the parser of
+#: the math of PEtab does not (#630)
 ENGINE_GAPS: dict[str, str] = {
-    "0016": "change_value",
     "0025": "parameter",
-    "0028": "change_value",
-    "0030": "change_value",
-    "0031": "change_value",
 }
 
 #: the cases whose likelihood the engine does not fit, by the gap which keeps
 #: them out, see `_gaps_of_the_objective` (#613): the bounds of the parameters
 #: of 0025, which are no bounds of an optimizer of the engine, as they keep it
-#: out of a fit of least squares, and the change of a formula of a
-#: concentration of the four cases of `ENGINE_GAPS`, which keeps a fit of
-#: either objective out. The gaps which are gone: a noise whose scale the fit
-#: moves, because it reads an estimated parameter (0015, 0021) or a parameter
-#: of the model (0024), is the `noise_column` of the `likelihood` of its
-#: curve, a column of the model of the fit (sbmlsim-core 0.24.0)
+#: out of a fit of least squares. The gaps which are gone: a noise whose scale
+#: the fit moves, because it reads an estimated parameter (0015, 0021) or a
+#: parameter of the model (0024), is the `noise_column` of the `likelihood` of
+#: its curve, a column of the model of the fit (sbmlsim-core 0.24.0), and the
+#: change of a formula of a concentration of the four cases of `ENGINE_GAPS`
+#: is a form (#630)
 ENGINE_LIKELIHOOD_GAPS: dict[str, str] = {
-    "0016": "change_value",
     "0025": "parameter",
-    "0028": "change_value",
-    "0030": "change_value",
-    "0031": "change_value",
 }
 
 
