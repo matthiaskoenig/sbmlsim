@@ -20,8 +20,9 @@ from matplotlib.figure import Figure
 from PIL import Image
 from pypdf import PdfReader
 
+import sbmlsim.fit.report as report_module
 from examples.hctz_fitting.experiments.studies import Weir1998
-from sbmlsim import __version__
+from sbmlsim import __version__, cgroup
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping, Subset
@@ -1834,3 +1835,68 @@ def test_a_figure_legend_which_fits_stays_one_column(fitted_report: Any) -> None
     assert columns == 1
     legend = figure.legends[0]
     assert legend.get_window_extent().height <= figure.bbox.height
+
+
+def _drawn(directory: Path) -> list[str]:
+    """Get the names of the figures of the fit mappings in a folder."""
+    return sorted(path.name for path in directory.iterdir())
+
+
+#: a pool needs a second CPU, which a runner of one does not have
+many_cpus = pytest.mark.skipif(
+    cgroup.available_cpus() < 2, reason="a pool needs more than one CPU"
+)
+
+
+def test_a_report_of_few_figures_draws_them_in_this_process() -> None:
+    """A pool costs more than it saves for a report of a few mappings."""
+    assert report_module._figure_workers(1) == 1
+    assert report_module._figure_workers(report_module._FIGURE_POOL_MINIMUM - 1) == 1
+
+
+@many_cpus
+def test_a_report_of_many_figures_draws_them_in_a_pool() -> None:
+    """The figures of a report of many mappings are worth a pool."""
+    assert report_module._figure_workers(report_module._FIGURE_POOL_MINIMUM) > 1
+
+
+def test_a_worker_draws_the_figures_of_a_report_in_its_own_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker starts no pool of its own, see `sbmlsim.parallel.start_pool`."""
+    monkeypatch.setattr(report_module.parallel, "in_worker", lambda: True)
+    assert report_module._figure_workers(10_000) == 1
+
+
+@many_cpus
+def test_the_figures_of_a_pool_are_the_figures_of_the_loop(
+    tmp_path: Path,
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pool draws the figures of the mappings the loop draws, see `plot_mapping`."""
+    report = _mapping_report(op_hctz_iv, fit_settings)
+    serial = tmp_path / "serial"
+    serial.mkdir()
+    report.plot_mapping(serial)
+    assert _drawn(serial)
+
+    started: list[int] = []
+    start_pool = report_module.parallel.start_pool
+
+    def recorded(n_workers: int, **kwargs: Any) -> Any:
+        started.append(n_workers)
+        return start_pool(n_workers, **kwargs)
+
+    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", 1)
+    monkeypatch.setattr(report_module, "_FIGURE_CHUNK", 1)
+    monkeypatch.setattr(report_module.parallel, "start_pool", recorded)
+    pooled = tmp_path / "pooled"
+    pooled.mkdir()
+    report.plot_mapping(pooled)
+
+    assert started and started[0] > 1, "the figures were not drawn in a pool"
+    assert _drawn(pooled) == _drawn(serial)
+    for name in _drawn(pooled):
+        assert (pooled / name).stat().st_size > 0, name
