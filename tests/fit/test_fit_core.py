@@ -69,9 +69,12 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.model import AbstractModel
+from sbmlsim.model.symbols import ModelSymbols
 from sbmlsim.simulation import Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
+from sbmlsim.simulator.plan import PREINIT
 from sbmlsim.task import Task
+from sbmlsim.units import UnitsInformation
 from tests.engines import require_core_fit
 from tests.fit.test_data_at_change import (
     MODEL_FILE,
@@ -80,7 +83,9 @@ from tests.fit.test_data_at_change import (
     TRUTH,
     UrineStudy,
 )
+from tests.simulator.models import sbml as probe_sbml
 from tests.simulator.models import sbml_pk
+from tests.simulator.test_plan import full_plan
 
 
 def on_core(problem: OptimizationProblem, settings: FitSettings) -> OptimizationProblem:
@@ -1949,3 +1954,49 @@ def test_the_jacobian_of_a_likelihood_has_zero_rows_for_the_scales(
     assert scale_rows.size == data_rows.size
     np.testing.assert_array_equal(jac[scale_rows], 0.0)
     assert np.any(jac[data_rows] != 0.0)
+
+
+def test_the_two_walkers_of_a_plan_cover_the_same_places() -> None:
+    """The two walkers of `fit_core` read one enumeration of the places (#629).
+
+    `_held_values` gives the places the engine would hold a plain number at,
+    which is the gap `parameter_value`, and `_plan_formulas` gives the places
+    which carry a formula, which is a form, a fold or the gap `change_value`.
+    They walked the same `Plan` from two separate pieces of code: a place a
+    later change gave `Plan` and taught only one of them about would have
+    made the other go quiet instead of failing, and the fit would have run in
+    the engine against a value frozen where it started, an objective which is
+    wrong without saying so.
+
+    Both read `Plan.places` now, so this is the statement that every
+    assignment of a plan reaches `_plan_formulas` and that `_held_values` is
+    the same minus the pre-initialization of the plan itself, the one place a
+    parameter of the condition overrides. `tests/simulator/test_plan.py`
+    checks that `Plan.places` is every field of a plan which can carry one.
+    """
+    source = probe_sbml()
+    plan = full_plan(
+        (ModelSymbols.from_sbml(source), UnitsInformation.from_sbml(source))
+    )
+
+    assert [
+        (a.target, where, derivable)
+        for a, where, derivable in fit_core._plan_formulas(plan)
+    ] == [
+        ("k1", "before the initialization", True),
+        ("k2", "before the initialization of its steady state", False),
+        ("f", "at the time 0.5", False),
+        ("f", "at the time 1.0", False),
+    ]
+    assert [(a.target, where) for a, where in fit_core._held_values(plan)] == [
+        ("k2", "before the initialization of its steady state"),
+        ("f", "at the time 0.5"),
+        ("f", "at the time 1.0"),
+    ]
+
+    # the coverage, derived from the plan and not from a second list
+    everything = [a for place in plan.places for a in place.assignments]
+    assert [a for a, _, _ in fit_core._plan_formulas(plan)] == everything
+    assert [a for a, _ in fit_core._held_values(plan)] == [
+        a for place in plan.places if place.path != PREINIT for a in place.assignments
+    ]

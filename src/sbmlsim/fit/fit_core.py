@@ -154,6 +154,7 @@ from sbmlsim.fit.priors import prior_median, prior_support, untruncated_log_dens
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
+from sbmlsim.simulator.plan import PREINIT
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
@@ -2576,6 +2577,12 @@ def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
     the pre-initialization of a steady state, so the number of such a value
     is the one of the point the request was built at.
 
+    The places come from `Plan.places`, which `_plan_formulas` reads as well,
+    so the two walkers cannot drift apart over a place a later change gives a
+    `Plan`: a new place is held, which is the conservative answer, until it
+    is given one of its own (#629). `PREINIT` is the one place a parameter of
+    the condition overrides.
+
     Args:
         plan: the plan of the condition.
 
@@ -2583,18 +2590,12 @@ def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
         The assignment and where it is, for every value of the plan the
         engine would hold where the request was built.
     """
-    found: list[tuple[Assignment, str]] = []
-    if plan.steady_state is not None:
-        found += [
-            (assignment, "before the initialization of its steady state")
-            for assignment in plan.steady_state.preinit
-        ]
-    found += [
-        (assignment, f"at the time {event.time}")
-        for event in plan.events
-        for assignment in event.assignments
+    return [
+        (assignment, place.where)
+        for place in plan.places
+        if place.path != PREINIT
+        for assignment in place.assignments
     ]
-    return found
 
 
 def _gaps_at_the_folds(problem: OptimizationProblem) -> list[Gap]:
@@ -2750,6 +2751,9 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
 def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, bool]]:
     """Get every assignment of a plan which carries a formula.
 
+    The places come from `Plan.places`, the enumeration `_held_values` reads
+    as well, see there (#629).
+
     Args:
         plan: the plan of a condition.
 
@@ -2758,20 +2762,11 @@ def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, bool]]:
         as a derived value, which only the pre-initialization of the plan
         itself can be (`_derived_of`).
     """
-    found: list[tuple[Assignment, str, bool]] = [
-        (assignment, "before the initialization", True) for assignment in plan.preinit
+    return [
+        (assignment, place.where, place.path == PREINIT)
+        for place in plan.places
+        for assignment in place.assignments
     ]
-    if plan.steady_state is not None:
-        found += [
-            (assignment, "before the initialization of its steady state", False)
-            for assignment in plan.steady_state.preinit
-        ]
-    found += [
-        (assignment, f"at the time {event.time}", False)
-        for event in plan.events
-        for assignment in event.assignments
-    ]
-    return found
 
 
 def _parameter_targets(problem: OptimizationProblem) -> dict[str, int]:
