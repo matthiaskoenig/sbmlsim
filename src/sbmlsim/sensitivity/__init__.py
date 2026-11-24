@@ -18,7 +18,8 @@ dimensions and every time point of a timecourse on a grid.
   observable at once.
 - [`sensitivity.chaos`](../api/sensitivity.chaos.md): `pce`, the indices of a
   polynomial chaos expansion of a sample, the expansion as a surrogate, and
-  `choose_truncation`, the basis a number of points supports.
+  `choose_truncation`, the basis a number of points supports, and
+  `supported`, whether a number of points supports a basis of a size.
 - [`sensitivity.result`](../api/sensitivity.result.md): the `SensitivityResult`
   with the indices, their units, `to_dataframe`, `classify` and netCDF.
 - [`sensitivity.plots`](../api/sensitivity.plots.md): the heatmap, the bars of
@@ -35,7 +36,7 @@ dimensions and every time point of a timecourse on a grid.
   imported by this package.
 """
 
-from .chaos import PolynomialChaos, choose_truncation, fit_chaos, pce
+from .chaos import PolynomialChaos, choose_truncation, fit_chaos, pce, supported
 from .forward import forward
 from .indices import fast, local, morris, sobol
 from .plots import plot_heatmap, plot_indices, plot_morris
@@ -55,4 +56,5 @@ __all__ = [
     "plot_indices",
     "plot_morris",
     "sobol",
+    "supported",
 ]

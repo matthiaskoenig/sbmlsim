@@ -16,6 +16,7 @@ from sbmlsim.sensitivity.chaos import (
     fit_chaos,
     legendre_values,
     pce,
+    supported,
 )
 from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2
 from sbmlsim.simulation import (
@@ -320,6 +321,56 @@ def test_too_few_points_are_reported() -> None:
     res = _run(sampling.lhs(BOUNDS, 6, seed=8))
     with pytest.raises(ValueError, match="No degree of the basis"):
         pce(res, degree=6)
+
+
+def test_the_points_which_support_a_basis() -> None:
+    """A basis needs `POINTS_PER_TERM` points per term and a degree of freedom."""
+    assert supported(int(POINTS_PER_TERM * 10), 10)
+    assert not supported(int(POINTS_PER_TERM * 10) - 1, 10)
+    # a basis of one term needs more than two points, whatever the budget says
+    assert not supported(2, 1)
+    assert supported(3, 1)
+
+
+def test_one_decomposition_serves_every_candidate_degree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bases of the candidates are prefixes, so their QR is one QR.
+
+    The fit of a candidate is the leading block of the decomposition of the
+    largest basis the points support, which is what makes the expansion of a
+    model of twenty parameters affordable: the decomposition is the cost of
+    the method and it was taken once per candidate degree.
+    """
+    rng = np.random.default_rng(3)
+    u = rng.random((400, 4))
+    y = np.column_stack([np.sin(3 * u[:, 0]) + u[:, 1] ** 2, u.sum(axis=1)])
+    calls: list[tuple[int, ...]] = []
+    qr = np.linalg.qr
+
+    def counted(a: np.ndarray) -> object:
+        calls.append(a.shape)
+        return qr(a)
+
+    monkeypatch.setattr(np.linalg, "qr", counted)
+    chaos = fit_chaos(u, y, degree=4)
+    assert len(calls) == 1, calls
+    # of the whole basis, which the 400 points support
+    assert calls[0] == (400, chaos.multi_indices.shape[0])
+    # every candidate was still tried: the second element is linear in its
+    # inputs and keeps the degree 1, the first one needs more
+    assert chaos.degree[1] == 1
+    assert chaos.degree[0] > 1
+
+    # of the largest candidate the points support where they support not every
+    # one of them, and once again
+    calls.clear()
+    few = fit_chaos(u[:60], y[:60], degree=4)
+    assert len(calls) == 1, calls
+    terms = calls[0][1]
+    assert supported(60, terms)
+    assert terms < few.multi_indices.shape[0]
+    assert few.degree.max() <= 2
 
 
 def test_the_expansion_is_a_surrogate_of_the_model() -> None:

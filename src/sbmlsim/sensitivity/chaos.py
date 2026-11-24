@@ -273,39 +273,61 @@ def design_matrix(u: np.ndarray, multi_indices: np.ndarray) -> np.ndarray:
     return out
 
 
-def _fit_least_squares(
-    x: np.ndarray, y: np.ndarray
-) -> tuple[np.ndarray, np.ndarray] | None:
-    """Fit the terms of a design matrix to every element by least squares.
+def supported(n: int, terms: int) -> bool:
+    """Get whether `n` points support a basis of `terms` terms.
 
     Args:
-        x: the design matrix, a row per point and a column per term.
+        n: the points.
+        terms: the terms of the basis.
+
+    Returns:
+        Whether the basis has `POINTS_PER_TERM` points per term and leaves a
+        degree of freedom for the correction of the leave-one-out error.
+    """
+    return n >= POINTS_PER_TERM * terms and n > terms + 1
+
+
+def _fit_least_squares(
+    q: np.ndarray, r: np.ndarray, z: np.ndarray, y: np.ndarray, terms: int
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Fit the first terms of a decomposed design matrix to every element.
+
+    The basis of a candidate degree is a prefix of the basis of the largest
+    one, and the thin QR of the first `terms` columns of a matrix is the first
+    `terms` columns of its `Q` and the leading block of its `R`, so one
+    decomposition serves every candidate.
+
+    Args:
+        q: the `Q` of the design matrix of the largest candidate.
+        r: its `R`.
+        z: `Q' y`, a row per term and a column per element.
         y: the values, a row per point and a column per element.
+        terms: the terms of the candidate, the columns of the prefix.
 
     Returns:
         The coefficients over `(term, element)` and the corrected
         leave-one-out error of every element, or `None` when the points do not
-        support the terms (too few points or a design matrix without full
-        rank).
+        support the terms (too few points or a prefix without full rank).
     """
-    n, p = x.shape
-    if n < POINTS_PER_TERM * p or n <= p + 1:
+    n = q.shape[0]
+    if not supported(n, terms):
         return None
-    q, r = np.linalg.qr(x)
-    diagonal = np.abs(np.diag(r))
+    block = r[:terms, :terms]
+    diagonal = np.abs(np.diag(block))
     if diagonal.min(initial=np.inf) <= RANK_TOLERANCE * diagonal.max(initial=0.0):
         return None
-    coefficients = solve_triangular(r, q.T @ y)
+    coefficients = solve_triangular(block, z[:terms])
     # the leverages of the points, the diagonal of the hat matrix `Q Q'`
-    leverage = np.einsum("ij,ij->i", q, q)
-    residuals = y - x @ coefficients
+    columns = q[:, :terms]
+    leverage = np.einsum("ij,ij->i", columns, columns)
+    residuals = y - columns @ z[:terms]
     held = residuals / np.maximum(1.0 - leverage, np.finfo(float).eps)[:, None]
     error = np.mean(held**2, axis=0)
     variance = y.var(axis=0)
     # the correction of the error of a fit of many terms, whose trace is about
     # `p / n` for a basis which is orthonormal under the distribution
-    inverse = solve_triangular(r, np.eye(p))
-    factor = (n / (n - p)) * (1.0 + float(np.sum(inverse**2)))
+    inverse = solve_triangular(block, np.eye(terms))
+    factor = (n / (n - terms)) * (1.0 + float(np.sum(inverse**2)))
     return coefficients, np.divide(
         factor * error,
         variance,
@@ -475,14 +497,28 @@ def fit_chaos(
         )
     multi_indices = expansion(d, degree, q=q, max_interaction=max_interaction)
     totals = multi_indices.sum(axis=1)
-    x = design_matrix(points, multi_indices)
     elements = values.shape[1]
+    n = points.shape[0]
+    counts = [
+        int(np.count_nonzero(totals <= candidate)) for candidate in range(1, degree + 1)
+    ]
+    # one decomposition for every candidate degree, of the largest basis the
+    # points support: the candidates after it are refused by the same budget
+    largest = max((terms for terms in counts if supported(n, terms)), default=0)
+    if largest == 0:
+        raise ValueError(
+            f"No degree of the basis is supported by {n} points: a basis needs "
+            f"{POINTS_PER_TERM} points per term. Add points, lower the degree, "
+            f"lower q or cap max_interaction."
+        )
+    x = design_matrix(points, multi_indices[:largest])
+    q_matrix, r_matrix = np.linalg.qr(x)
+    z = q_matrix.T @ values
     coefficients = np.zeros((multi_indices.shape[0], elements))
     loo = np.full(elements, np.inf)
     chosen = np.zeros(elements, dtype=int)
-    for candidate in range(1, degree + 1):
-        terms = int(np.count_nonzero(totals <= candidate))
-        fit = _fit_least_squares(x[:, :terms], values)
+    for candidate, terms in enumerate(counts, start=1):
+        fit = _fit_least_squares(q_matrix, r_matrix, z, values, terms)
         if fit is None:
             break
         found, error = fit
