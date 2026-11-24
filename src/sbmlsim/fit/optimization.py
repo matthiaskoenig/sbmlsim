@@ -6,7 +6,15 @@ import logging
 import numbers
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import (
+    Callable,
+    Generator,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -18,7 +26,7 @@ import pandas as pd
 import scipy
 from scipy import interpolate
 
-from sbmlsim import cgroup
+from sbmlsim import cgroup, parallel
 from sbmlsim.console import console
 from sbmlsim.engine import (
     DEFAULT_ENGINE,
@@ -441,6 +449,10 @@ class DataTimesResult:
 
 #: the value of one evaluated parameter vector, see `_evaluate_batch`
 _V = TypeVar("_V")
+
+#: the point of the curve of a group in a batch, which is no point of its
+#: data, see `OptimizationProblem._simulate_batch`
+_CURVE = -1
 
 
 @dataclass
@@ -3974,12 +3986,77 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise output
         return output
 
+    def _threads_of_an_evaluation(self, evaluated: set[int]) -> int:
+        """Get the threads the simulations of one evaluation run on.
+
+        The groups of fit mappings of one evaluation of the objective do not
+        depend on each other, so they are a batch of the engine like the
+        vectors of a jacobian are, see `_simulate_batch`. A worker of a pool
+        keeps its one thread: the processes of the pool already use the CPUs
+        of the machine, and a worker which took the CPUs of the machine for
+        its threads would oversubscribe them.
+
+        Args:
+            evaluated: indices of the fit mappings which are evaluated.
+
+        Returns:
+            The threads of the engine, 1 for an evaluation which is no batch:
+            one group, or an evaluation in a worker.
+        """
+        if parallel.in_worker():
+            return 1
+        groups = sum(
+            1 for group in self.mapping_groups if any(k in evaluated for k in group)
+        )
+        if groups < 2:
+            return 1
+        return max(1, min(groups, cgroup.available_cpus()))
+
+    @contextmanager
+    def _batched_evaluation(
+        self, xlog: np.ndarray, evaluated: set[int], curves: bool
+    ) -> Generator[None]:
+        """Simulate the groups of one evaluation as one batch of the engine.
+
+        One evaluation of the objective is one simulation per group of fit
+        mappings (and the curve of every group for the complete data), and
+        the groups do not depend on each other: they run as one batch of the
+        engine, on its threads, instead of one simulation per call on the
+        thread of the caller, which is what makes a single evaluation use
+        more than one CPU, see `_simulate_batch`.
+
+        An evaluation which is already part of a batch (the vectors of a
+        jacobian, the members of a population, see `_evaluate_batch`) keeps
+        that batch: its simulations have run.
+
+        Args:
+            xlog: the parameter vector in the space the optimizer searches.
+            evaluated: indices of the fit mappings which are evaluated.
+            curves: batch the curve of every group as well, the simulations
+                of the complete data of the evaluation.
+
+        Yields:
+            Nothing; the batch is read by `_execute` while it is entered.
+        """
+        threads = (
+            1 if self._batch is not None else self._threads_of_an_evaluation(evaluated)
+        )
+        if threads < 2:
+            yield
+            return
+        self._batch = self._simulate_batch([xlog], evaluated, threads, curves=curves)
+        try:
+            yield
+        finally:
+            self._batch = None
+
     def _simulate_batch(
         self,
         vectors: Sequence[np.ndarray],
         evaluated: set[int],
         threads: int,
         factors: Mapping[str, float] | None = None,
+        curves: bool = False,
     ) -> _Batch:
         """Simulate the points of every parameter vector as one batch per model.
 
@@ -3997,6 +4074,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             threads: the threads of the engine the batch runs on.
             factors: the factors of the values of targets of a subject, see
                 `evaluated_plan`.
+            curves: batch the plan of the curve of every group as well, the
+                simulation of the complete data of an evaluation, which is
+                the point `_CURVE` of its group.
 
         Returns:
             The simulations of the batch, which the evaluation of a vector
@@ -4025,6 +4105,17 @@ class OptimizationProblem(ObjectJSONEncoder):
                     (k_vector, k_group, point, columns, plan)
                     for point, plan in enumerate(plans)
                 )
+                if curves and self._curve_plans[k_group] is not None:
+                    curve = self.evaluated_plan(k_group, x, quantities, curve=True)
+                    points[id(model)].append(
+                        (
+                            k_vector,
+                            k_group,
+                            _CURVE,
+                            tuple(self._selections_of(k_group, None)),
+                            curve,
+                        )
+                    )
         outputs: dict[
             tuple[int, int, int, tuple[str, ...]], TimecourseResult | Exception
         ] = {}
@@ -4046,6 +4137,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         plan: Plan,
         selections: Sequence[str],
         x: np.ndarray,
+        point: int = 0,
     ) -> DataTimesResult | None:
         """Simulate a group which outputs the times of its data, see `_compile_plans`.
 
@@ -4060,6 +4152,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 see `evaluated_plan`; the plan of its curve for the evaluation.
             selections: the columns of the output, see `_selections_of`.
             x: parameter values in the units of the parameters, for the log.
+            point: the point of the group in a batch, `_CURVE` for its curve.
 
         Returns:
             The output, `None` if the integration or an observable failed.
@@ -4067,7 +4160,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         group = self.mapping_groups[k_group]
         graph = self._group_pointwise[k_group]
         try:
-            output = self._execute(k_group, 0, plan, self.models[group[0]], selections)
+            output = self._execute(
+                k_group, point, plan, self.models[group[0]], selections
+            )
         except NotImplementedError:
             # a feature the engine does not simulate fails for every value of
             # the parameters, it is no failed integration
@@ -5239,26 +5334,30 @@ class OptimizationProblem(ObjectJSONEncoder):
             # is simulated for the evaluation of a fit
             if complete_data or self.mapping_kinds[k] is MappingKind.TRAINING
         }
-        results = self._simulate_groups(
-            simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
-        )
-        # the evaluation draws the curves of the groups which output the times
-        # of their data from the output of their simulations
+        # the groups do not depend on each other: they run as one batch of
+        # the engine, on its threads, see `_batched_evaluation`
         curves: dict[int, DataTimesResult | None] = {}
-        if complete_data:
-            for k_group, plan in enumerate(self._curve_plans):
-                if plan is None or not any(
-                    k in results for k in self.mapping_groups[k_group]
-                ):
-                    continue
-                curve = self._simulate_at_data(
-                    k_group,
-                    self.evaluated_plan(k_group, x, quantities, curve=True),
-                    self._selections_of(k_group, None),
-                    x,
-                )
-                for k in self.mapping_groups[k_group]:
-                    curves[k] = curve
+        with self._batched_evaluation(xlog, evaluated, curves=complete_data):
+            results = self._simulate_groups(
+                simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
+            )
+            # the evaluation draws the curves of the groups which output the
+            # times of their data from the output of their simulations
+            if complete_data:
+                for k_group, plan in enumerate(self._curve_plans):
+                    if plan is None or not any(
+                        k in results for k in self.mapping_groups[k_group]
+                    ):
+                        continue
+                    curve = self._simulate_at_data(
+                        k_group,
+                        self.evaluated_plan(k_group, x, quantities, curve=True),
+                        self._selections_of(k_group, None),
+                        x,
+                        point=_CURVE,
+                    )
+                    for k in self.mapping_groups[k_group]:
+                        curves[k] = curve
 
         result: DataTimesResult | GroupResult | None = None
         for k, mapping_key in enumerate(self.mapping_keys):

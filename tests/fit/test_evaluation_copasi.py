@@ -60,7 +60,11 @@ def test_an_unsupported_feature_raises_instead_of_failing_the_evaluation(
     def unsupported(*args: Any, **kwargs: Any) -> None:
         raise NotImplementedError("the engine does not simulate it")
 
+    # the one point of a call and the batch of the points of an evaluation,
+    # which `engines.execute_plans` raises it out of, see
+    # `OptimizationProblem._batched_evaluation`
     monkeypatch.setattr(optimization, "execute_plan", unsupported)
+    monkeypatch.setattr(optimization, "execute_plans", unsupported)
     for problem in (op_hctz_pk, scalar):
         x = problem.to_scale(problem.xmodel)
         with pytest.raises(NotImplementedError, match="does not simulate"):
