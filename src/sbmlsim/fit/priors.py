@@ -27,6 +27,13 @@ sum of squares, `JointPrior.residuals`:
   posterior up to a constant of the problem, which neither the estimate, its
   profiles nor its Laplace approximation depend on.
 
+A fit of the posterior runs in the engine, which evaluates the density of a
+prior itself: `untruncated_log_density` is the density of a kind without the
+truncation at the bounds, the expressions the engine evaluates term for term,
+`prior_median` the value the normalization of that truncation is read at and
+`prior_support` the interval the density is positive on, see
+`sbmlsim.fit.fit_core._priors_of` and `_gaps_of_the_priors`.
+
 `prior_distributions` and `prior_model` give the priors of a problem as the
 distributions of the designs of `sbmlsim.simulation.sampling` and as the
 `UncertaintyModel` of a propagation: a prior truncated at the bounds of its
@@ -45,11 +52,12 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
+from scipy.linalg import solve_triangular
 
-from sbmlsim.fit.objects import FitParameter, PriorDistribution
+from sbmlsim.fit.objects import FitParameter, Prior, PriorDistribution
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
@@ -63,6 +71,182 @@ CORRELATED_PRIORS: tuple[PriorDistribution, ...] = (
     PriorDistribution.NORMAL,
     PriorDistribution.LOG_NORMAL,
 )
+
+
+#: half the logarithm of `2 pi`, the term of the normalization of a normal
+#: density, as the engine writes it
+_LN_2PI_HALF: Final[float] = 0.5 * math.log(2.0 * math.pi)
+
+
+def _logarithm(value: float) -> float:
+    """Get the natural logarithm of a value, `NaN` where it has none."""
+    return math.log(value) if value > 0.0 else math.nan
+
+
+def _exponential(value: float) -> float:
+    """Get the exponential of a value, an infinity where it overflows."""
+    try:
+        return math.exp(value)
+    except OverflowError:
+        return math.inf
+
+
+def _two_parameters(prior: Prior) -> tuple[float, float]:
+    """Get the two parameters of the kind of a prior.
+
+    Args:
+        prior: the prior of a parameter.
+
+    Returns:
+        The two parameters, whose meaning is the one of the kind, see
+        `untruncated_log_density`.
+
+    Raises:
+        ValueError: for a prior which does not carry two of them.
+    """
+    if len(prior.parameters) != 2:
+        raise ValueError(
+            f"The prior {prior} carries {len(prior.parameters)} parameters, and "
+            f"a '{prior.distribution.value}' prior takes the two of its kind."
+        )
+    first, second = prior.parameters
+    return first, second
+
+
+def untruncated_log_density(prior: Prior, value: float) -> float:
+    """Get the log density of a prior at a value, without its truncation.
+
+    `Prior.log_density` is the density of the prior truncated at the bounds of
+    its parameter and this is the one of its kind, whose terms are the ones of
+    `petab.v2` and the ones the engine evaluates, term for term (the contract
+    `fit/1` of `sbmlsim.fit.fit_core`):
+
+    ```text
+    normal(mu, s)       -0.5 z^2 - ln(s) - ln(2 pi)/2            z = (x - mu)/s
+    log-normal(mu, s)   -0.5 z^2 - ln(s) - ln(2 pi)/2 - ln(x)    z = (ln(x) - mu)/s
+    laplace(mu, b)      -|x - mu|/b - ln(2 b)
+    log-laplace(mu, b)  -|ln(x) - mu|/b - ln(2 b) - ln(x)
+    uniform(a, b)       -ln(b - a) between a and b, -inf outside
+    log-uniform(a, b)   -ln(ln(b) - ln(a)) - ln(x) between a and b, -inf outside
+    ```
+
+    The difference between the two is the logarithm of the mass of the prior
+    between the bounds, which a prior of a request carries as its
+    `normalizer`: a distribution function is no term of a density, so the host
+    computes it and the engine subtracts it.
+
+    Args:
+        prior: the prior of a parameter, of one of the kinds above.
+        value: the value of the parameter.
+
+    Returns:
+        The log density of the kind, `-inf` where the density is zero and
+        `NaN` for the logarithm of a value which is not positive.
+
+    Raises:
+        ValueError: for a kind which is none of the six, whose density is no
+            expression of the contract, and for a prior which does not carry
+            the two parameters of its kind.
+    """
+    first, second = _two_parameters(prior)
+    distribution = prior.distribution
+    if distribution is PriorDistribution.NORMAL:
+        z = (value - first) / second
+        return -0.5 * z * z - math.log(second) - _LN_2PI_HALF
+    if distribution is PriorDistribution.LOG_NORMAL:
+        logarithm = _logarithm(value)
+        z = (logarithm - first) / second
+        return -0.5 * z * z - math.log(second) - _LN_2PI_HALF - logarithm
+    if distribution is PriorDistribution.LAPLACE:
+        return -abs(value - first) / second - math.log(2.0 * second)
+    if distribution is PriorDistribution.LOG_LAPLACE:
+        logarithm = _logarithm(value)
+        return -abs(logarithm - first) / second - math.log(2.0 * second) - logarithm
+    if distribution is PriorDistribution.UNIFORM:
+        if not first <= value <= second:
+            return -math.inf
+        return -math.log(second - first)
+    if distribution is PriorDistribution.LOG_UNIFORM:
+        if not first <= value <= second:
+            return -math.inf
+        return -math.log(math.log(second) - math.log(first)) - _logarithm(value)
+    raise ValueError(
+        f"The log density of a '{distribution.value}' prior is no expression of "
+        f"the contract of a fit of the engine."
+    )
+
+
+def prior_support(prior: Prior) -> tuple[float, float]:
+    """Get the interval the density of a prior is positive on.
+
+    The bounds are the doubles the density is positive at, so the lower end
+    of a log kind is the smallest positive double and not `0`, where the
+    logarithm of the value has no density.
+
+    A prior whose support does not cover the bounds of its parameter has a
+    zero density inside them, where a row of a request is `NaN` and the
+    residual of the problem is `LIKELIHOOD_FAILURE_RESIDUAL`, a penalty an
+    optimizer walks out of, so such a prior keeps a fit in python, see
+    `sbmlsim.fit.fit_core._gaps_of_the_priors`.
+
+    Args:
+        prior: the prior of a parameter, of one of the kinds of
+            `untruncated_log_density`.
+
+    Returns:
+        The smallest and the largest value whose density is positive.
+
+    Raises:
+        ValueError: for a kind which is none of the six, and for a prior which
+            does not carry the two parameters of its kind.
+    """
+    first, second = _two_parameters(prior)
+    distribution = prior.distribution
+    if distribution in (PriorDistribution.NORMAL, PriorDistribution.LAPLACE):
+        return -math.inf, math.inf
+    if distribution in (PriorDistribution.LOG_NORMAL, PriorDistribution.LOG_LAPLACE):
+        return math.nextafter(0.0, 1.0), math.inf
+    if distribution in (PriorDistribution.UNIFORM, PriorDistribution.LOG_UNIFORM):
+        return first, second
+    raise ValueError(
+        f"The support of a '{distribution.value}' prior is no expression of the "
+        f"contract of a fit of the engine."
+    )
+
+
+def prior_median(prior: Prior) -> float:
+    """Get the median of a prior, the value half of its mass lies below.
+
+    The normalization of the truncation of a prior is read off the density at
+    one value, and the median of a kind is where its density is largest or
+    next to it, so the logarithm of that density loses the fewest digits
+    there, see `sbmlsim.fit.fit_core._normalizer_of`.
+
+    Args:
+        prior: the prior of a parameter, of one of the kinds of
+            `untruncated_log_density`.
+
+    Returns:
+        The median of the kind, an infinity where it overflows.
+
+    Raises:
+        ValueError: for a kind which is none of the six, and for a prior which
+            does not carry the two parameters of its kind.
+    """
+    first, second = _two_parameters(prior)
+    distribution = prior.distribution
+    if distribution in (PriorDistribution.NORMAL, PriorDistribution.LAPLACE):
+        return first
+    if distribution in (PriorDistribution.LOG_NORMAL, PriorDistribution.LOG_LAPLACE):
+        return _exponential(first)
+    if distribution is PriorDistribution.UNIFORM:
+        return 0.5 * (first + second)
+    if distribution is PriorDistribution.LOG_UNIFORM:
+        return math.sqrt(first * second)
+    raise ValueError(
+        f"The median of a '{distribution.value}' prior is no expression of the "
+        f"contract of a fit of the engine."
+    )
 
 
 def _independent_term(
@@ -120,7 +304,7 @@ class _Correlated:
         log: whether a prior is log-normal, i.e. its score is of the logarithm.
         mu: the mean of the value or of its logarithm.
         sigma: the standard deviation of the value or of its logarithm.
-        factor: the lower Cholesky factor `L` of the correlation.
+        inverse: the inverse of the lower Cholesky factor `L` of the correlation, row major.
         offsets: the offset of the residual `sqrt(c + 2 ln(x))` of every
             log-normal prior, in the order of the log-normal priors.
         lower: the lower bounds.
@@ -133,7 +317,7 @@ class _Correlated:
     log: np.ndarray
     mu: np.ndarray
     sigma: np.ndarray
-    factor: np.ndarray
+    inverse: np.ndarray
     offsets: np.ndarray
     lower: np.ndarray
     upper: np.ndarray
@@ -149,13 +333,23 @@ class _Correlated:
         return (values - self.mu) / self.sigma
 
     def whitened(self, x: np.ndarray) -> np.ndarray:
-        """Get the whitened scores `L⁻¹ z`."""
-        from scipy.linalg import solve_triangular
+        """Get the whitened scores `L⁻¹ z`.
 
+        The product is written out, `i` outer and `j` inner with one addition per
+        `j` in ascending order from `0.0`, and no LAPACK call or `numpy` reduction,
+        so that the order of the floating point operations is fixed. The engine
+        evaluates the same loop and its numbers are compared with these.
+        """
         z = self.scores(x)
         if not np.all(np.isfinite(z)):
             return np.full(z.size, np.nan)
-        return np.asarray(solve_triangular(self.factor, z, lower=True), dtype=float)
+        w = np.zeros(z.size, dtype=float)
+        for i in range(z.size):
+            total = 0.0
+            for j in range(z.size):
+                total += float(self.inverse[i][j]) * float(z[j])
+            w[i] = total
+        return w
 
 
 def _correlated_term(
@@ -237,7 +431,7 @@ def _correlated_term(
         log=np.asarray(log, dtype=bool),
         mu=np.asarray(mu, dtype=float),
         sigma=sigma_array,
-        factor=factor,
+        inverse=solve_triangular(factor, np.eye(len(indices)), lower=True),
         offsets=np.asarray(offsets, dtype=float),
         lower=np.asarray(lower, dtype=float),
         upper=np.asarray(upper, dtype=float),
@@ -284,6 +478,28 @@ class JointPrior:
             size += len(self.correlated.indices) + len(self.correlated.offsets)
         return size
 
+    @property
+    def offset(self) -> float:
+        """Get the constant the cost of a fit of the posterior is shifted by.
+
+        Half the offset of the residual of every independent prior and, of the
+        correlated ones, half the offsets of their logarithmic rows less the
+        normalization of their multivariate normal. It is a constant of the
+        problem and does not depend on the values of the parameters, and it is
+        the offset `residuals` returns: half the sum of the squares of the
+        residuals of the prior minus this is its negative log density.
+
+        A run of the engine answers the half sum of the squares of the rows of
+        its request, so its cost carries this offset, which
+        `sbmlsim.fit.fit_core.likelihood_constant` takes off it.
+        """
+        offset = sum(0.5 * term.offset for term in self.independent)
+        if self.correlated is not None:
+            offset += (
+                0.5 * float(np.sum(self.correlated.offsets)) - self.correlated.constant
+            )
+        return float(offset)
+
     def residuals(self, x: np.ndarray) -> tuple[np.ndarray, float]:
         """Get the residuals of the prior, see the module.
 
@@ -296,7 +512,6 @@ class JointPrior:
             sum of squares minus the offset is the negative log density.
         """
         residuals: list[float] = []
-        offset = 0.0
         for term in self.independent:
             log_p = float(term.log_density(np.asarray(x[term.index], dtype=float)))
             residuals.append(
@@ -304,7 +519,6 @@ class JointPrior:
                 if math.isfinite(log_p)
                 else math.nan
             )
-            offset += 0.5 * term.offset
         if self.correlated is not None:
             c = self.correlated
             residuals.extend(c.whitened(x).tolist())
@@ -314,8 +528,7 @@ class JointPrior:
             residuals.extend(
                 np.where(np.isfinite(terms), np.sqrt(np.clip(terms, 0.0, None)), np.nan)
             )
-            offset += 0.5 * float(np.sum(c.offsets)) - c.constant
-        return np.asarray(residuals, dtype=float), offset
+        return np.asarray(residuals, dtype=float), self.offset
 
     def log_density(self, x: np.ndarray) -> float:
         """Get the log density of the prior.

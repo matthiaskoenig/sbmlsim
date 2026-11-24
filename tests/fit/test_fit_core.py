@@ -166,7 +166,6 @@ def test_the_start_and_the_bounds_of_the_request_are_the_ones_of_the_parameters(
 @pytest.mark.parametrize(
     ("change", "code"),
     [
-        ({"objective": ObjectiveType.POSTERIOR}, "objective"),
         ({"loss_function": LossFunctionType.SOFT_L1}, "loss_function"),
         ({"residual": ResidualType.ABSOLUTE_TO_BASELINE}, "residual"),
     ],
@@ -184,6 +183,24 @@ def test_an_objective_the_engine_has_not_is_a_gap_of_the_problem(
 
     assert [gap.code for gap in gaps] == [code]
     assert gaps[0].message
+
+
+def test_a_posterior_of_parameters_without_priors_is_no_gap(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A posterior of parameters without a prior is the likelihood of its data.
+
+    The parameters of the HCTZ fit carry no prior, whose uniform prior over
+    the bounds is a constant of the cost and no residual on either side, so
+    the request of such a posterior carries no prior at all.
+    """
+    problem = on_core(
+        op_hctz_iv,
+        dataclasses.replace(fit_settings, objective=ObjectiveType.POSTERIOR),
+    )
+
+    assert gaps_of(problem) == []
+    assert fit_request(problem)["priors"] == []
 
 
 def test_a_likelihood_of_a_noise_the_fit_does_not_move_is_no_gap(
@@ -358,10 +375,11 @@ def test_a_fit_which_must_run_in_the_engine_names_the_gaps_of_the_problem(
 ) -> None:
     """`engine_fit=True` refuses a fit the engine cannot run, with its gaps."""
     problem = on_core(
-        op_hctz_iv, dataclasses.replace(fit_settings, objective="posterior")
+        op_hctz_iv,
+        dataclasses.replace(fit_settings, loss_function=LossFunctionType.SOFT_L1),
     )
 
-    with pytest.raises(ValueError, match="objective"):
+    with pytest.raises(ValueError, match="loss_function"):
         run_optimization(
             problem,
             problem.settings_initialized,
@@ -1888,3 +1906,46 @@ def test_a_reduction_and_a_value_per_simulation_are_still_gaps(
     gaps = gaps_of(problem)
 
     assert "observable" in [gap.code for gap in gaps]
+
+
+def test_the_row_map_of_a_likelihood_is_the_data_rows_of_every_mapping(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The rows of the request sit in the data half of the residuals of each mapping."""
+    problem = on_core(
+        op_hctz_iv,
+        dataclasses.replace(fit_settings, objective=ObjectiveType.LIKELIHOOD),
+    )
+    sizes = [
+        len(problem.y_references[k]) for k in problem.indices(MappingKind.TRAINING)
+    ]
+    expected = np.concatenate(
+        [np.arange(size) + 2 * sum(sizes[:i]) for i, size in enumerate(sizes)]
+    )
+
+    np.testing.assert_array_equal(fit_core._residual_rows(problem), expected)
+    assert fit_core._data_rows(problem) == 2 * sum(sizes)
+    residuals = np.asarray(
+        problem.residuals(np.asarray(problem.to_scale(problem.xmodel), dtype=float))
+    )
+    assert fit_core._data_rows(problem) == residuals.size
+
+
+def test_the_jacobian_of_a_likelihood_has_zero_rows_for_the_scales(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The scale of a noise the fit does not move is a constant of the data."""
+    problem = on_core(
+        op_hctz_iv,
+        dataclasses.replace(fit_settings, objective=ObjectiveType.LIKELIHOOD),
+    )
+    x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
+
+    jac = fit_core.residual_jacobian(problem, x)
+
+    data_rows = fit_core._residual_rows(problem)
+    scale_rows = np.setdiff1d(np.arange(jac.shape[0]), data_rows)
+    assert jac.shape[0] == fit_core._data_rows(problem)
+    assert scale_rows.size == data_rows.size
+    np.testing.assert_array_equal(jac[scale_rows], 0.0)
+    assert np.any(jac[data_rows] != 0.0)

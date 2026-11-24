@@ -21,7 +21,6 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.fit import fit_core
-from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ObjectiveType
 from sbmlsim.fit.petab_v2.reader import PetabReader
@@ -35,6 +34,7 @@ from sbmlsim.fit.petab_v2.testsuite import (
     PetabSuite,
 )
 from tests.engines import require_core_fit
+from tests.fit.test_likelihood_objective import LOGARITHM_RTOL
 
 pytestmark = pytest.mark.petab_testsuite
 
@@ -170,17 +170,17 @@ ENGINE_GAPS: dict[str, str] = {
 }
 
 #: the cases whose likelihood the engine does not fit, by the gap which keeps
-#: them out, see `_gaps_of_the_objective` (#613): a noise formula which reads
-#: the observable (0015, 0021, 0024) and the parameter of 0025, whose bounds
-#: are no bounds of an optimizer of the engine, and the change of a formula of
-#: a concentration of the four cases of `ENGINE_GAPS`, which keeps a fit of
-#: either objective out
+#: them out, see `_gaps_of_the_objective` (#613): the bounds of the parameters
+#: of 0025, which are no bounds of an optimizer of the engine, as they keep it
+#: out of a fit of least squares, and the change of a formula of a
+#: concentration of the four cases of `ENGINE_GAPS`, which keeps a fit of
+#: either objective out. The gaps which are gone: a noise whose scale the fit
+#: moves, because it reads an estimated parameter (0015, 0021) or a parameter
+#: of the model (0024), is the `noise_column` of the `likelihood` of its
+#: curve, a column of the model of the fit (sbmlsim-core 0.24.0)
 ENGINE_LIKELIHOOD_GAPS: dict[str, str] = {
-    "0015": "objective",
     "0016": "change_value",
-    "0021": "objective",
-    "0024": "objective",
-    "0025": "objective",
+    "0025": "parameter",
     "0028": "change_value",
     "0030": "change_value",
     "0031": "change_value",
@@ -258,18 +258,20 @@ def test_the_engine_fits_the_likelihood_of_the_case_as_the_problem_does(
     )
     x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
     # a likelihood gives every mapping the residuals of its data and then the
-    # ones of the scale of its noise; the engine computes the first of each
+    # ones of the scale of its noise; `_residual_rows` is where each row of
+    # the request sits among them
     whole = np.asarray(problem.residuals(x), dtype=float)
-    reference_parts: list[np.ndarray] = []
-    at = 0
-    for k in problem.indices(MappingKind.TRAINING):
-        size = len(problem.y_references[k])
-        reference_parts.append(whole[at : at + size])
-        at += 2 * size
-    assert at == whole.size
-    reference = np.concatenate(reference_parts)
+    assert whole.size == fit_core._data_rows(problem)
+    reference = whole[fit_core._residual_rows(problem)]
+    request = fit_core.fit_request(problem)
+    # the scale row of a curve which carries a `likelihood` is the one row
+    # whose logarithm the engine evaluates itself, see `LOGARITHM_RTOL`
+    exact = not any("likelihood" in curve for curve in request["curves"])
 
     residuals = np.asarray(core.residuals(x), dtype=float)
 
     assert residuals.shape == reference.shape
-    np.testing.assert_array_equal(residuals, reference)
+    if exact:
+        np.testing.assert_array_equal(residuals, reference)
+    else:
+        np.testing.assert_allclose(residuals, reference, rtol=LOGARITHM_RTOL, atol=0.0)
