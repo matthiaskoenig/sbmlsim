@@ -2,14 +2,15 @@
 
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from sbmlsim.fit import FitSettings, ParameterSet, fit_core
-from sbmlsim.fit.objects import NoiseDistribution
+from sbmlsim.fit.objects import MappingKind, NoiseDistribution
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ObjectiveType, ParameterScaleType, ResidualType
 from sbmlsim.fit.petab_v2 import gaps_of_problem
 from sbmlsim.fit.petab_v2.likelihood import (
@@ -20,9 +21,17 @@ from sbmlsim.fit.petab_v2.likelihood import (
     log_prior,
 )
 from sbmlsim.fit.petab_v2.reader import PetabReader
+from tests.engines import require_core_fit
 from tests.fit.test_petab_v2_reader import SETTINGS, write_problem
 
 LIKELIHOOD = replace(SETTINGS, objective=ObjectiveType.LIKELIHOOD)
+
+#: how closely the residual of the scale of the noise of the engine follows
+#: the one of the problem. It is the one row of a request whose logarithm the
+#: engine evaluates itself, `ln` of rust, where python evaluates `numpy.log`:
+#: the two agree to within an ulp of each other and not bitwise. The rows of
+#: the data stay bitwise, see `fit_core`.
+LOGARITHM_RTOL = 1e-15
 
 
 def _reader(
@@ -79,6 +88,24 @@ def _reader(
         )
     parameters.to_csv(tmp_path / "parameters.tsv", sep="\t", index=False)
     return PetabReader.from_yaml(path)
+
+
+def _scattered(tmp_path: Path, distribution: str = "normal") -> PetabReader:
+    """Read the problem whose only estimated parameter is the scale of its noise.
+
+    The measurements scatter around the simulation by about 0.1, so the
+    maximum likelihood estimate of `sigma` is a point of its own, see
+    `test_the_scale_of_the_noise_is_estimated`.
+    """
+    # the tables of the problem, which the reader below reads once they are
+    # perturbed
+    _reader(tmp_path, "sigma", distribution, sigma=True)
+    measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    measurements["measurement"] += 0.1 * np.array(
+        [(-1) ** k * (1 + k / 10) for k in range(10)]
+    )
+    measurements.to_csv(tmp_path / "measurements.tsv", sep="\t", index=False)
+    return PetabReader.from_yaml(tmp_path / "problem.yaml")
 
 
 @pytest.mark.parametrize(
@@ -228,51 +255,240 @@ def test_a_likelihood_of_a_fixed_noise_is_a_fit_of_the_engine(
     problem.initialize(LIKELIHOOD)
 
     assert fit_core.gaps_of(problem) == []
+    # a fixed normal noise sends no `likelihood` at all, its request is the
+    # weighted least squares of the scale of its noise
+    sigma = fit_core.fixed_noise(problem, 0)
+    assert sigma is not None
+    curve = fit_core.fit_request(problem)["curves"][0]
+    assert "likelihood" not in curve
+    assert curve["noise"] == pytest.approx(list(sigma))
 
 
 @pytest.mark.parametrize("distribution", ["laplace", "log-laplace"])
-def test_a_laplace_likelihood_is_a_gap_of_the_engine(
+def test_a_laplace_likelihood_is_a_fit_of_the_engine(
     tmp_path: Path, distribution: str
 ) -> None:
-    """The residual of a Laplace noise is no difference divided by a deviation."""
+    """The residual of a Laplace noise is the one of the `likelihood` of its curve.
+
+    The scale of the noise is fixed, so it is the `noise` of the curve, and
+    the distribution of the `likelihood` is what makes the residual of a
+    measurement `sign(r) sqrt(2 |r|)` and gives the curve its scale rows.
+    """
     reader = _reader(tmp_path, noise_formula="0.05", distribution=distribution)
     problem = reader.to_optimization_problem()
     problem.initialize(LIKELIHOOD)
 
-    gaps = fit_core.gaps_of(problem)
+    assert fit_core.gaps_of(problem) == []
+    sigma = fit_core.fixed_noise(problem, 0)
+    assert sigma is not None
+    curve = fit_core.fit_request(problem)["curves"][0]
+    assert curve["likelihood"] == {"distribution": distribution}
+    assert curve["noise"] == pytest.approx(list(sigma))
 
-    assert [gap.code for gap in gaps] == ["objective"]
-    assert distribution in gaps[0].message
 
-
-def test_an_estimated_scale_of_the_noise_is_a_gap_of_the_engine(
+def test_an_estimated_scale_of_the_noise_is_a_fit_of_the_engine(
     tmp_path: Path,
 ) -> None:
-    """A noise whose scale is a parameter of the fit is no number of a curve."""
+    """A noise whose scale is a parameter of the fit is a column of the model.
+
+    The scale of such a noise moves with the search, so it is no number of a
+    curve: the model of the fit carries the noise formula as an observable of
+    its own and the curve names it as its `noise_column`.
+    """
     reader = _reader(tmp_path, "sigma", "normal", sigma=True)
     problem = reader.to_optimization_problem()
     problem.initialize(LIKELIHOOD)
     assert problem.pids == ["sigma"]
+    assert fit_core.fixed_noise(problem, 0) is None
+
+    assert fit_core.gaps_of(problem) == []
+    curve = fit_core.fit_request(problem)["curves"][0]
+    assert curve["likelihood"] == {"distribution": "normal", "noise_column": ANY}
+    assert "noise" not in curve
+
+
+def test_a_noise_which_reads_the_simulation_is_a_fit_of_the_engine(
+    tmp_path: Path,
+) -> None:
+    """A noise whose scale follows the simulation is a column of the model too.
+
+    Its observable stands for the simulation, which the noise column of the
+    model reads off the linear column of the mapping.
+    """
+    reader = _reader(tmp_path, "0.01 + 0.1 * prey_o", "normal")
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+    assert fit_core.fixed_noise(problem, 0) is None
+
+    assert fit_core.gaps_of(problem) == []
+    curve = fit_core.fit_request(problem)["curves"][0]
+    assert curve["likelihood"] == {"distribution": "normal", "noise_column": ANY}
+    assert "noise" not in curve
+
+
+def _check_rows_and_cost(problem: OptimizationProblem) -> None:
+    """Check the rows and the cost of the request of a problem of one mapping.
+
+    The rows of a curve of a `likelihood` are the residuals of the data and
+    then, in the same order, the ones of the scales of its noise, which the
+    residuals of the problem have in the same places.
+
+    The cost is a check of its own: the rows fix only `2 c + offset` of the
+    constant `c` of the density of the engine and of its `LIKELIHOOD_OFFSET`,
+    and they say nothing at all about what `likelihood_constant` takes off the
+    cost of a run, which is what makes the cost of the engine the negative
+    log-likelihood of the problem.
+    """
+    assert len(problem.indices(MappingKind.TRAINING)) == 1
+    size = len(problem.y_references[0])
+    np.testing.assert_array_equal(fit_core._residual_rows(problem), np.arange(2 * size))
+    core = fit_core.loaded_model(problem).fit_problem(
+        fit_core.fit_request(problem), threads=1
+    )
+    x = np.asarray(problem.to_scale(problem.xmodel), dtype=float)
+    residuals = np.asarray(core.residuals(x), dtype=float)
+    reference = np.asarray(problem.residuals(x), dtype=float)
+
+    assert residuals.shape == reference.shape
+    np.testing.assert_array_equal(residuals[:size], reference[:size])
+    np.testing.assert_allclose(
+        residuals[size:], reference[size:], rtol=LOGARITHM_RTOL, atol=0.0
+    )
+    cost = float(core.cost(x)) + fit_core.likelihood_constant(problem)
+    assert cost == pytest.approx(problem.cost_least_square(x), rel=1e-12)
+
+
+@pytest.mark.parametrize("distribution", ["normal", "log-normal"])
+def test_the_engine_computes_the_residuals_of_a_moved_noise_as_the_problem_does(
+    tmp_path: Path, distribution: str
+) -> None:
+    """Every row of a curve whose noise the fit moves is the row of the problem.
+
+    The noise column of the model is the number python computes, as a formula
+    observable is, so the rows of the data are bitwise; the row of the scale
+    carries the logarithm of that number, which the engine evaluates itself.
+    """
+    require_core_fit()
+    reader = _reader(tmp_path, "sigma", distribution, sigma=True)
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+
+    _check_rows_and_cost(problem)
+
+
+@pytest.mark.parametrize("distribution", ["laplace", "log-laplace"])
+def test_the_engine_computes_the_residuals_of_a_laplace_likelihood_as_the_problem_does(
+    tmp_path: Path, distribution: str
+) -> None:
+    """Every row of a Laplace curve is the row of the problem."""
+    require_core_fit()
+    reader = _reader(tmp_path, "0.05", distribution)
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+
+    _check_rows_and_cost(problem)
+
+
+@pytest.mark.parametrize("distribution", ["normal", "laplace"])
+def test_a_fit_of_a_moved_noise_in_the_engine_reports_the_log_likelihood(
+    tmp_path: Path, distribution: str
+) -> None:
+    """The cost of a run of a moved noise is the negative log-likelihood.
+
+    The engine carries the scale rows of such a curve itself, so
+    `likelihood_constant` takes only the offsets of those rows off its cost,
+    where a curve which sends no `likelihood` has the residuals of its scales
+    added as well; the rows of the request say nothing about either, see
+    `_check_rows_and_cost`.
+    """
+    require_core_fit()
+    reader = _scattered(tmp_path, distribution)
+    problem = reader.to_optimization_problem()
+    settings = replace(LIKELIHOOD, parameter_scale=ParameterScaleType.LOG10)
+    problem.initialize(settings)
+    assert problem.pids == ["sigma"]
+    assert fit_core.gaps_of(problem) == []
+
+    result = fit_core.run(problem, settings, size=2, seed=1234)
+
+    best = min(result.fits, key=lambda fit: fit.cost)
+    x = np.asarray(best.x, dtype=float)
+    assert best.cost == pytest.approx(
+        problem.cost_least_square(problem.to_scale(x)), rel=1e-9
+    )
+    pset = ParameterSet(sid="fit", values=dict(zip(problem.pids, x, strict=True)))
+    assert best.cost == pytest.approx(-log_likelihood(problem, pset), rel=1e-9)
+
+
+def test_a_noise_of_a_value_per_measurement_is_a_gap_of_the_engine(
+    tmp_path: Path,
+) -> None:
+    """A placeholder of the noise which differs between the measurements is no column.
+
+    The model of the fit carries one value of a placeholder, so a noise whose
+    placeholder is one parameter of the fit for some measurements and another
+    one for the others has no one column of the simulation.
+    """
+    write_problem(
+        tmp_path,
+        {"prey_o": "prey"},
+        {"e1": None},
+        noise_parameters=lambda _, k: "alpha" if k < 5 else "beta",
+    )
+    problem = PetabReader.from_yaml(tmp_path / "problem.yaml").to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+    assert fit_core.fixed_noise(problem, 0) is None
 
     gaps = fit_core.gaps_of(problem)
 
-    assert [gap.code for gap in gaps] == ["objective"]
-    assert "sigma" in gaps[0].message
-    assert fit_core.fixed_noise(problem, 0) is None
+    assert {gap.code for gap in gaps} == {"objective"}
+    assert "value per measurement" in gaps[0].message
 
 
-def test_a_noise_which_reads_the_simulation_is_a_gap_of_the_engine(
+def test_a_measurement_which_is_not_positive_under_a_log_noise_is_a_gap(
     tmp_path: Path,
 ) -> None:
-    """A noise whose scale follows the simulation is no number of a curve."""
-    reader = _reader(tmp_path, "0.01 + 0.1 * prey_o", "normal")
-    problem = reader.to_optimization_problem()
+    """A log kind whose measurement is not positive has no log-likelihood.
+
+    Python reports the residuals of a failure for such a mapping and keeps
+    the plain offset of its scale, where the curve of the engine would carry
+    the logarithm of the measurement as its value; the mapping is a gap
+    rather than another objective.
+    """
+    _reader(tmp_path, "0.1", "log-normal")
+    measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    measurements.loc[0, "measurement"] = 0.0
+    measurements.to_csv(tmp_path / "measurements.tsv", sep="\t", index=False)
+    problem = PetabReader.from_yaml(tmp_path / "problem.yaml").to_optimization_problem()
     problem.initialize(LIKELIHOOD)
 
     gaps = fit_core.gaps_of(problem)
 
-    assert [gap.code for gap in gaps] == ["objective"]
-    assert fit_core.fixed_noise(problem, 0) is None
+    assert {gap.code for gap in gaps} == {"objective"}
+    assert "log-normal" in gaps[0].message
+    assert "0.0" in gaps[0].message
+
+
+def test_bindings_before_the_objective_version_keep_a_moved_noise_in_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A curve of a `likelihood` needs bindings which read the field.
+
+    Neither `FitRequest` nor `CurveRequest` denies the fields it does not
+    know, so bindings before `OBJECTIVE_VERSION` would ignore the block and
+    minimize weighted least squares of the scale of the noise without a word.
+    """
+    core = pytest.importorskip("sbmlsim_core")
+    reader = _reader(tmp_path, "sigma", "normal", sigma=True)
+    problem = reader.to_optimization_problem()
+    problem.initialize(LIKELIHOOD)
+    assert fit_core.gaps_of(problem) == []
+    monkeypatch.setattr(core, "__version__", "0.22.0")
+
+    gaps = fit_core.gaps_of(problem)
+
+    assert {gap.code for gap in gaps} == {"bindings"}
+    assert fit_core.OBJECTIVE_VERSION in gaps[0].message
 
 
 def test_a_posterior_is_a_gap_of_the_engine(tmp_path: Path) -> None:

@@ -186,6 +186,7 @@ def add_observable(
     values: dict[str, float | str],
     symbols: ModelSymbols,
     entities: Entities,
+    names: Mapping[str, str] | None = None,
 ) -> None:
     """Add an observable of a fit to the entities of the model.
 
@@ -202,13 +203,17 @@ def add_observable(
         symbols: the symbols of the model.
         entities: the entities of the model, which the observable is added
             to.
+        names: the identifier of the model of a symbol the caller names, e.g.
+            the helper parameter of the column of the simulation which the
+            observable of a noise formula stands for
+            (`sbmlsim.fit.fit_core._noise_entities`), see `_names_of`.
 
     Raises:
         ValueError: if a placeholder has no value, if the formula or the
             formula of a value is not valid math, or if the formula reads the
             concentration of a species the model does not have.
     """
-    rewritten, names = _names_of(observable.formula, symbols, entities, name)
+    rewritten, resolved = _names_of(observable.formula, symbols, entities, name, names)
     for placeholder in observable.placeholders:
         if placeholder not in values:
             raise ValueError(
@@ -222,8 +227,8 @@ def add_observable(
             entities.rules[helper] = _written(inner, inner_names)
         else:
             entities.constants[helper] = float(value)
-        names[placeholder] = helper
-    entities.observables[name] = _written(rewritten, names)
+        resolved[placeholder] = helper
+    entities.observables[name] = _written(rewritten, resolved)
 
 
 def add_formula(
