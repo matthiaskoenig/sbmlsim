@@ -1,11 +1,15 @@
 """Test the parameter sets which connect a fit to its report."""
 
+import logging
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from sbmlsim.fit import FitParameter, ParameterSet, ParameterSets
+from sbmlsim.fit import FitParameter, FitSettings, ParameterSet, ParameterSets
+from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.objects import NoiseModel, NoiseParameter
 
 PARAMETERS = [
     FitParameter("p1", start_value=1.0, lower_bound=0.1, upper_bound=10.0, unit="mM"),
@@ -139,3 +143,64 @@ def test_missing_set() -> None:
     psets = ParameterSets([ParameterSet(sid="s", values={"p1": 1.0})])
     with pytest.raises(KeyError, match="unknown"):
         _ = psets["unknown"]
+
+
+def test_a_set_of_another_problem_is_named(
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A value the problem neither fits nor uses in its noise is named (#641).
+
+    A report of the set of a joint fit on one of its subsets would otherwise
+    name the parameters of the file and simulate the ones of the model.
+    """
+    problem = definition_hctz_pk.problem(opid="hctz_extra")
+    problem.initialize(fit_settings)
+    pid = problem.pids[0]
+    pset = ParameterSet(
+        sid="joint",
+        values={pid: 0.5, "FLUID__k_na": 1.0},
+        units={pid: None, "FLUID__k_na": "l/min"},
+        cost=1.0,
+        provenance="joint fit",
+    )
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.optimization"):
+        bound = problem.bind_parameter_set(pset)
+    assert "FLUID__k_na" in caplog.text
+    assert "joint" in caplog.text
+    assert bound.values["FLUID__k_na"] == pytest.approx(1.0)
+    assert bound.values[pid] == pytest.approx(0.5)
+    assert bound.cost == 1.0 and bound.provenance == "joint fit"
+
+    # a propagation binds a set per draw, which says it once
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.optimization"):
+        problem.bind_parameter_set(replace(pset, sid="draw_1"))
+    assert caplog.text == ""
+
+
+def test_a_noise_parameter_of_the_problem_is_no_extra(
+    definition_hctz_pk: FitDefinition,
+    fit_settings: FitSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The parameters of the noise models are values of the problem (#641).
+
+    The likelihood of PEtab evaluates them from the set, so they are no
+    mismatch of the set and the problem.
+    """
+    problem = definition_hctz_pk.problem(opid="hctz_noise")
+    problem.initialize(fit_settings)
+    problem.noise_models = [
+        NoiseModel(
+            formula="sigma_a",
+            parameters=(NoiseParameter(pid="sigma_a", value=1.0, estimate=True),),
+        )
+        for _ in problem.mapping_keys
+    ]
+    pset = ParameterSet(sid="noise", values={problem.pids[0]: 0.5, "sigma_a": 2.0})
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.optimization"):
+        bound = problem.bind_parameter_set(pset)
+    assert caplog.text == ""
+    assert bound.values["sigma_a"] == pytest.approx(2.0)

@@ -1138,6 +1138,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: the noise model of every mapping, `None` for a mapping without one,
         #: see `sbmlsim.fit.petab_v2.likelihood`
         self.noise_models: list[NoiseModel | None] = []
+        #: the values of a parameter set which the problem does not use and
+        #: which `bind_parameter_set` has named, so a propagation which binds
+        #: a set per draw says it once (#641)
+        self._named_extras: set[tuple[str, ...]] = set()
         #: the observable model of every mapping, `None` for a mapping which
         #: observes a selection, with the placeholder values of the data which
         #: is fitted
@@ -3119,7 +3123,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
     def bind_parameter_set(self, parameter_set: ParameterSet) -> ParameterSet:
-        """Convert a set to fit units, resolving declared model unit aliases."""
+        """Convert a set to fit units, resolving declared model unit aliases.
+
+        A value which the problem neither fits nor uses in its noise models
+        changes nothing: the model keeps its own value. The set of a joint fit
+        reported on one of its subsets carries such values, and the report
+        would name them and simulate the model instead, so they are logged
+        (#641). They stay in the set, which the report stores.
+        """
         units = self.parameter_units
         source_units = dict(parameter_set.units)
         for parameter in self.parameters:
@@ -3128,6 +3139,25 @@ class OptimizationProblem(ObjectJSONEncoder):
                 and source_units.get(parameter.pid) == parameter.unit
             ):
                 source_units[parameter.pid] = units[parameter.pid]
+        known = set(units)
+        for noise in self.noise_models:
+            if noise is not None:
+                known.update(parameter.pid for parameter in noise.parameters)
+        extra = sorted(pid for pid in parameter_set.values if pid not in known)
+        if extra and tuple(extra) not in self._named_extras:
+            self._named_extras.add(tuple(extra))
+            fitted = sorted(units)
+            logger.warning(
+                "'%s': the parameter set '%s' has the values %s, which the "
+                "problem neither fits nor uses in its noise: they change "
+                "nothing, the model keeps its values. The problem fits the "
+                "%d parameters %s.",
+                self.opid,
+                parameter_set.sid,
+                extra,
+                len(fitted),
+                fitted if len(fitted) <= 10 else [*fitted[:10], "..."],
+            )
         return ParameterSet(
             parameter_set.sid,
             dict(parameter_set.values),
