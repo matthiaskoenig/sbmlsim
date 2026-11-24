@@ -1010,6 +1010,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         # the simulations of the batch of vectors which is being evaluated,
         # see `evaluate_residuals_many`
         self._batch: _Batch | None = None
+        #: the CPUs of the process, read once, see `_threads_of_an_evaluation`
+        self._cpus: int | None = None
         # the constant of the residuals of the last evaluation of a
         # likelihood, which the cost does not hold, see `_likelihood_terms`
         self._cost_offset = 0.0
@@ -3999,7 +4001,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         vectors of a jacobian are, see `_simulate_batch`. A worker of a pool
         keeps its one thread: the processes of the pool already use the CPUs
         of the machine, and a worker which took the CPUs of the machine for
-        its threads would oversubscribe them.
+        its threads would oversubscribe them. The CPUs of the process are
+        read once and kept (`_cpus`).
 
         Args:
             evaluated: indices of the fit mappings which are evaluated.
@@ -4015,7 +4018,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         if groups < 2:
             return 1
-        return max(1, min(groups, cgroup.available_cpus()))
+        if self._cpus is None:
+            # the CPUs of the process are those of its cgroup, read from
+            # `/proc`, and they do not change while a problem is evaluated;
+            # an evaluation is a hot loop of a fit
+            self._cpus = cgroup.available_cpus()
+        return max(1, min(groups, self._cpus))
 
     @contextmanager
     def _batched_evaluation(
