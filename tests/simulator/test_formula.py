@@ -536,3 +536,37 @@ class TestLinearForm:
     def test_a_form_of_constants_alone_is_none(self) -> None:
         """A formula whose symbols are all known is a number the caller folds."""
         assert linear_form("2 * c", {"a": 0}, {"c": 3.0}) is None
+
+    @pytest.mark.parametrize(
+        "formula, expected",
+        [
+            ("[A] + 5", (5.0, [(0, 1.0)])),
+            ("c + [A]", (0.0, [(1, 1.0), (0, 1.0)])),
+            ("2 * [A]", (0.0, [(0, 2.0)])),
+            ("pk.cmax / 2", (0.0, [(2, 0.5)])),
+        ],
+    )
+    def test_a_form_reads_the_selections_of_roadrunner(
+        self, formula: str, expected: tuple[float, list[tuple[int, float]]]
+    ) -> None:
+        """The concentration of a species and a dotted name are symbols (#630).
+
+        The parser of the math of PEtab reads neither the brackets of a
+        concentration nor a dotted name, so such a formula raised instead of
+        being read as a form and every caller folded it. The formula is
+        escaped for the parser as `compile_formula` escapes it and every
+        symbol is mapped back, so it is the same formula to both.
+        """
+        assert linear_form(formula, {"[A]": 0, "c": 1, "pk.cmax": 2}) == expected
+
+    def test_a_concentration_of_a_known_value_is_substituted(self) -> None:
+        """A constant of the form is named by its selection (#630)."""
+        assert linear_form("a + 2 * [A]", {"a": 0}, {"[A]": 3.0}) == (
+            6.0,
+            [(0, 1.0)],
+        )
+
+    def test_a_concentration_which_is_no_form_is_none(self) -> None:
+        """A formula of a concentration which is not linear is refused (#630)."""
+        assert linear_form("[A] * [A]", {"[A]": 0}) is None
+        assert linear_form("[B] + 1", {"[A]": 0}) is None

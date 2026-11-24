@@ -1381,7 +1381,8 @@ def _form_terms(
     try:
         found = linear_form(formula, {s: i for i, s in enumerate(entities)})
     except ValueError:
-        # the parser of PEtab math reads no `[S]`: such a formula folds
+        # a formula which is no math of PEtab at all, which the compiled
+        # formula of the caller has already refused: such a formula folds
         return None
     if found is None:
         return None

@@ -1436,6 +1436,45 @@ def test_a_form_simulates_as_the_fold_it_replaces() -> None:
     assert np.array_equal(a.values, b.values)
 
 
+def test_a_change_of_a_concentration_formula_is_a_form_of_the_request() -> None:
+    """A formula which reads the concentration of a species is a form (#630).
+
+    `linear_form` parsed the formula as it is written, and the parser of the
+    math of PEtab does not read the brackets of a concentration: `[C] + 1`
+    raised, every caller took it for a formula which is no form and folded it
+    into the number of the point the request was built at. It is escaped for
+    the parser now as `compile_formula` escapes it, so the engine evaluates it
+    from its own state at the change, and the four cases of the PEtab v2 test
+    suite which set a concentration this way are fits of the engine again.
+    """
+    model = load_model(sbml_pk(urine=True), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    simulation = Simulation(
+        end=40,
+        changes=[
+            Change(0.0, {"PODOSE": Q(100, "mg")}),
+            Change(10.0, {"[C]": "[C] + 1"}),
+        ],
+        times=np.linspace(0, 40, 41).tolist(),
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    columns = ["time", "Aurine", "[C]"]
+
+    formed = request_of(plan, model, columns, forms=True)
+    assert formed["changes"][1]["forms"] == [
+        {"target": "[C]", "constant": 1.0, "terms": [["[C]", 1.0]]}
+    ]
+    assert formed["changes"][1]["values"] == []
+
+    # the form is the fold at the point the request was built at
+    folded = request_of(plan, model, columns)
+    assert not folded["changes"][1].get("forms")
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    assert list(a.columns) == list(b.columns)
+    assert np.array_equal(a.values, b.values)
+
+
 def test_a_plan_of_a_formula_which_is_no_form_folds_everything() -> None:
     """A form and a fold never meet in one request."""
     model, plan = _urine_plan({10.0: "0.5 * Aurine", 20.0: "Aurine * Aurine"})
@@ -1444,12 +1483,21 @@ def test_a_plan_of_a_formula_which_is_no_form_folds_everything() -> None:
     assert all(change["values"] for change in request["changes"])
 
 
-def test_a_formula_of_a_concentration_is_no_form_and_folds() -> None:
-    """The parser of PEtab math reads no `[S]`, so such a formula folds."""
+def test_a_form_reads_a_concentration_with_its_factor() -> None:
+    """A term of a form may be a concentration, the target an amount (#630).
+
+    The parser of PEtab math reads no `[S]`, so `2 * [C] + 1` raised out of
+    `linear_form` and every caller folded it; `linear_form` escapes the
+    selections of roadrunner for the parser now. The target of a form must be
+    settable and a term need only be readable, so the amount `Aurine` is set
+    from the concentration of another species.
+    """
     model, plan = _urine_plan({10.0: "2 * [C] + 1"})
     request = request_of(plan, model, ["time", "Aurine"], forms=True)
-    assert "forms" not in request["changes"][0]
-    assert request["changes"][0]["values"]
+    assert request["changes"][0]["forms"] == [
+        {"target": "Aurine", "constant": 1.0, "terms": [["[C]", 2.0]]}
+    ]
+    assert request["changes"][0]["values"] == []
 
 
 def test_a_form_of_no_symbol_is_the_number_of_the_formula() -> None:
