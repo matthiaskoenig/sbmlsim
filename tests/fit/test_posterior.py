@@ -31,12 +31,13 @@ from sbmlsim.fit.objects import (
     PriorDistribution,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ObjectiveType, ParameterScaleType
+from sbmlsim.fit.options import RUN_IN_PYTHON, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
 from sbmlsim.fit.priors import JointPrior, prior_distributions, prior_model
 from sbmlsim.fit.records import parameter_correlation
 from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.runner import run_optimization
 from sbmlsim.model import AbstractModel
 from sbmlsim.report.document import Document
 from sbmlsim.report.render import HTMLRenderer
@@ -862,6 +863,61 @@ def test_an_exotic_prior_kind_is_a_gap_of_the_engine(tmp_path: Path) -> None:
     assert {gap.code for gap in gaps} == {"objective"}
     assert "gamma" in gaps[0].message
     assert "p1" in gaps[0].message
+
+
+@pytest.mark.parametrize(
+    ("prior", "lb"),
+    [
+        (Prior(PriorDistribution.UNIFORM, (1.0, 2.0)), 0.1),
+        (Prior(PriorDistribution.LOG_UNIFORM, (1.0, 2.0)), 0.1),
+        (Prior(PriorDistribution.LOG_NORMAL, (0.0, 0.5)), -1.0),
+        (Prior(PriorDistribution.LOG_LAPLACE, (0.0, 0.5)), 0.0),
+    ],
+)
+def test_a_prior_whose_support_does_not_cover_the_bounds_is_a_gap(
+    tmp_path: Path, prior: Prior, lb: float
+) -> None:
+    """A zero density between the bounds is a penalty in python and `NaN` in the engine.
+
+    `_prior_residuals` of the problem replaces the `NaN` of a row whose
+    density is zero with `LIKELIHOOD_FAILURE_RESIDUAL`, a penalty the
+    optimizer of python walks out of, and the row of such a value in a request
+    is `NaN`, which gives every run of the engine a cost of `NaN` and the
+    values it started from: a uniform prior narrower than the bounds of its
+    parameter and a log kind of a parameter whose bounds reach zero are fitted
+    in python.
+    """
+    problem, _ = _problem(tmp_path, [_parameter("p1", prior, lb=lb)], ["y"])
+
+    gaps = fit_core.gaps_of(problem)
+
+    assert {gap.code for gap in gaps} == {"objective"}
+    assert "p1" in gaps[0].message
+    assert "zero" in gaps[0].message
+
+
+def test_the_optimizer_of_python_walks_out_of_a_zero_prior_density(
+    tmp_path: Path,
+) -> None:
+    """The fit which the gap of the support keeps in python, and what it answers.
+
+    Every run of the fit of the engine has the cost `NaN`, because every one
+    of its starts lies outside the support of the prior, so the gap is not a
+    tolerance: the gap routes the fit to python, which converges to the
+    optimum from the same seed.
+    """
+    require_core_fit()
+    problem, settings = _problem(
+        tmp_path,
+        [_parameter("p1", Prior(PriorDistribution.UNIFORM, (1.0, 2.0)))],
+        ["y"],
+    )
+
+    result = run_optimization(problem, settings, size=3, seed=7, show_progress=False)
+
+    assert result.optimizer_of == RUN_IN_PYTHON
+    assert min(fit.cost for fit in result.fits) == pytest.approx(-0.5345862, rel=1e-5)
+    assert result.xopt[0] == pytest.approx(1.2, rel=1e-6)
 
 
 def test_a_prior_of_a_parameter_whose_unit_factor_is_not_one_is_a_gap(

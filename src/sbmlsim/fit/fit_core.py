@@ -94,7 +94,9 @@ correlated priors are one block of the multivariate normal of their scores
 curves, which is where `_residual_rows` places them and where
 `residual_jacobian` drops them: a `FisherInformation` is the information of
 the data, and the curvature of the priors belongs to the posterior
-(`sbmlsim.fit.posterior`).
+(`sbmlsim.fit.posterior`). A prior whose density is zero between the bounds
+of its parameter is a gap, since such a row is a penalty in python and `NaN`
+in a request (`_gaps_of_the_priors`).
 
 The row of the scale of a noise and the row of a prior are the rows of a
 request whose logarithm the engine evaluates itself, `ln` of rust, where
@@ -140,7 +142,7 @@ from sbmlsim.fit.options import (
     ParameterScaleType,
     ResidualType,
 )
-from sbmlsim.fit.priors import prior_median, untruncated_log_density
+from sbmlsim.fit.priors import prior_median, prior_support, untruncated_log_density
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
@@ -1058,6 +1060,14 @@ def _gaps_of_the_priors(problem: OptimizationProblem) -> list[Gap]:
     parameter carries its value into (`_factors_of`), while a prior is a
     distribution of the value of the parameter itself.
 
+    A prior whose support does not cover the bounds of its parameter
+    (`prior_support`: a uniform or log-uniform prior narrower than them, a log
+    kind of a parameter which may reach zero) has a zero density inside them,
+    where the row of the request is `NaN` and the residual of the problem is
+    `LIKELIHOOD_FAILURE_RESIDUAL`: the optimizer of python walks out of that
+    penalty and the one of the engine answers a cost of `NaN`, so the fit
+    stays in python.
+
     A parameter without a prior is no row of the request and no row of the
     residuals of the problem either: its uniform prior over its bounds is a
     constant of the cost.
@@ -1083,6 +1093,21 @@ def _gaps_of_the_priors(problem: OptimizationProblem) -> list[Gap]:
                     f"'{prior.distribution.value}', whose log density is no "
                     f"expression of the contract '{CONTRACT}'; the engine "
                     f"evaluates the priors {sorted(ENGINE_PRIORS)}",
+                )
+            )
+            continue
+        lower = float(parameter.lower_bound)
+        upper = float(parameter.upper_bound)
+        support_lower, support_upper = prior_support(prior)
+        if lower < support_lower or upper > support_upper:
+            gaps.append(
+                Gap(
+                    "objective",
+                    f"the density of the prior of '{parameter.pid}' is zero "
+                    f"between its bounds [{lower}, {upper}], which the support "
+                    f"[{support_lower}, {support_upper}] of its "
+                    f"'{prior.distribution.value}' prior does not cover: such a "
+                    f"row is a penalty in python and no number of a request",
                 )
             )
         if factors[k] != 1.0:

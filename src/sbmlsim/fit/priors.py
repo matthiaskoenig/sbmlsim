@@ -30,8 +30,9 @@ sum of squares, `JointPrior.residuals`:
 A fit of the posterior runs in the engine, which evaluates the density of a
 prior itself: `untruncated_log_density` is the density of a kind without the
 truncation at the bounds, the expressions the engine evaluates term for term,
-and `prior_median` the value the normalization of that truncation is read at,
-see `sbmlsim.fit.fit_core._priors_of`.
+`prior_median` the value the normalization of that truncation is read at and
+`prior_support` the interval the density is positive on, see
+`sbmlsim.fit.fit_core._priors_of` and `_gaps_of_the_priors`.
 
 `prior_distributions` and `prior_model` give the priors of a problem as the
 distributions of the designs of `sbmlsim.simulation.sampling` and as the
@@ -172,6 +173,44 @@ def untruncated_log_density(prior: Prior, value: float) -> float:
     raise ValueError(
         f"The log density of a '{distribution.value}' prior is no expression of "
         f"the contract of a fit of the engine."
+    )
+
+
+def prior_support(prior: Prior) -> tuple[float, float]:
+    """Get the interval the density of a prior is positive on.
+
+    The bounds are the doubles the density is positive at, so the lower end
+    of a log kind is the smallest positive double and not `0`, where the
+    logarithm of the value has no density.
+
+    A prior whose support does not cover the bounds of its parameter has a
+    zero density inside them, where a row of a request is `NaN` and the
+    residual of the problem is `LIKELIHOOD_FAILURE_RESIDUAL`, a penalty an
+    optimizer walks out of, so such a prior keeps a fit in python, see
+    `sbmlsim.fit.fit_core._gaps_of_the_priors`.
+
+    Args:
+        prior: the prior of a parameter, of one of the kinds of
+            `untruncated_log_density`.
+
+    Returns:
+        The smallest and the largest value whose density is positive.
+
+    Raises:
+        ValueError: for a kind which is none of the six, and for a prior which
+            does not carry the two parameters of its kind.
+    """
+    first, second = _two_parameters(prior)
+    distribution = prior.distribution
+    if distribution in (PriorDistribution.NORMAL, PriorDistribution.LAPLACE):
+        return -math.inf, math.inf
+    if distribution in (PriorDistribution.LOG_NORMAL, PriorDistribution.LOG_LAPLACE):
+        return math.nextafter(0.0, 1.0), math.inf
+    if distribution in (PriorDistribution.UNIFORM, PriorDistribution.LOG_UNIFORM):
+        return first, second
+    raise ValueError(
+        f"The support of a '{distribution.value}' prior is no expression of the "
+        f"contract of a fit of the engine."
     )
 
 
