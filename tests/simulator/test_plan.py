@@ -1,6 +1,12 @@
 """A simulation is compiled against a model into a plan without units."""
 
+import dataclasses
 import pickle
+import re
+import types
+import typing
+from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -10,7 +16,9 @@ from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator.plan import (
     TIME_RTOL,
+    Assignment,
     OutputMode,
+    Plan,
     compile_simulation,
     merge_times,
     time_tolerance,
@@ -273,3 +281,117 @@ def test_the_times_at_the_changes_after_the_start(probe) -> None:
     times = [-10.0, -0.5 * tolerance, 0.0, 0.5 * tolerance, 2 * tolerance, 5.0, 10.0]
     assert plan.at_change(times).tolist() == [-1, 0, 0, 0, -1, -1, 1]
     assert plan.at_change([]).size == 0
+
+
+def _paths_of(annotation: Any, prefix: str, seen: frozenset[type]) -> set[str]:
+    """Get the attribute paths under an annotation which can hold assignments."""
+    origin = typing.get_origin(annotation)
+    arguments = typing.get_args(annotation)
+    if origin in (types.UnionType, typing.Union):
+        return {
+            path
+            for argument in arguments
+            if argument is not type(None)
+            for path in _paths_of(argument, prefix, seen)
+        }
+    if origin is tuple:
+        item = arguments[0] if arguments else None
+        if item is Assignment:
+            return {prefix}
+        if item is not None and dataclasses.is_dataclass(item):
+            return _paths_in(item, f"{prefix}[].", seen)
+        return set()
+    if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
+        return _paths_in(annotation, f"{prefix}.", seen)
+    return set()
+
+
+def _paths_in(cls: Any, prefix: str, seen: frozenset[type]) -> set[str]:
+    """Get every attribute path of a dataclass which can hold assignments.
+
+    The paths are derived from the annotations of the class and of the
+    dataclasses it holds, so they are what `Plan` declares and no second
+    hand-written list of its places (#629).
+    """
+    if cls in seen:
+        return set()
+    seen = seen | {cls}
+    hints = typing.get_type_hints(cls)
+    paths: set[str] = set()
+    for item in dataclasses.fields(cls):
+        paths |= _paths_of(hints[item.name], f"{prefix}{item.name}", seen)
+    return paths
+
+
+def full_plan(probe) -> Plan:
+    """Get a plan with assignments at every place it has.
+
+    The walkers of `sbmlsim.fit.fit_core` are checked against it as well, see
+    `tests/fit/test_fit_core.py` (#629).
+    """
+    symbols, uinfo = probe
+    return compile_simulation(
+        Simulation(
+            end=1,
+            preinit_changes={"k1": 1.0},
+            changes=[Change(0.5, {"f": 3.0}), Change(1.0, {"f": 4.0})],
+            presimulation=SteadyState(preinit_changes={"k2": 0.2}),
+            times=[0.0, 0.5, 1.0, np.inf],
+        ),
+        symbols,
+        uinfo,
+    )
+
+
+def test_every_field_of_a_plan_which_carries_assignments_is_a_place(probe) -> None:
+    """`Plan.places` is every place of a plan which carries a value (#629).
+
+    The expected paths are derived from the annotations of `Plan` and of the
+    dataclasses it holds, not from a second hand-written list, so a field
+    which can carry assignments and which `places` does not enumerate fails
+    here. This is what keeps the walkers which read it, `Plan.assigned` and
+    the two of `sbmlsim.fit.fit_core`, from going quiet over a new place.
+    """
+    plan = full_plan(probe)
+
+    places = {re.sub(r"\[\d+\]", "[]", place.path) for place in plan.places}
+    assert places == {"preinit", "steady_state.preinit", "events[].assignments"}
+
+    # the one field which can hold assignments and is no place: the steady
+    # state after the end continues from the state the timecourse ended in,
+    # and the constructor keeps it empty
+    assert _paths_in(Plan, "", frozenset()) - places == {"steady_state_output.preinit"}
+    assert plan.steady_state_output is not None
+    with pytest.raises(ValueError, match="no executor applies"):
+        replace(
+            plan,
+            steady_state_output=replace(
+                plan.steady_state_output,
+                preinit=(Assignment("k1", TargetKind.PARAMETER, value=1.0),),
+            ),
+        )
+
+
+def test_the_places_of_a_plan_carry_its_assignments_in_their_order(probe) -> None:
+    """A place names where it is, for the plan and for a message to a user."""
+    plan = full_plan(probe)
+
+    assert [place.path for place in plan.places] == [
+        "preinit",
+        "steady_state.preinit",
+        "events[0].assignments",
+        "events[1].assignments",
+    ]
+    assert [place.where for place in plan.places] == [
+        "before the initialization",
+        "before the initialization of its steady state",
+        "at the time 0.5",
+        "at the time 1.0",
+    ]
+    assert [a.target for place in plan.places for a in place.assignments] == [
+        "k1",
+        "k2",
+        "f",
+        "f",
+    ]
+    assert plan.assigned == frozenset({"k1", "k2", "f"})

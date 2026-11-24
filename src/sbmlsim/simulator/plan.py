@@ -204,6 +204,29 @@ class Assignment:
     formula: str | None = None
 
 
+#: the path of the pre-initialization of the plan itself in `Plan.places`,
+#: the one place whose targets the parameters of a condition of a fit of the
+#: engine override, see `sbmlsim.fit.fit_core`
+PREINIT: str = "preinit"
+
+
+@dataclass(frozen=True)
+class Place:
+    """One place of a plan which carries assignments, see `Plan.places`.
+
+    Attributes:
+        path: the attribute path of the field which holds them, e.g.
+            `preinit`, `steady_state.preinit` or `events[0].assignments`.
+        where: the place in the words of a message to a user, e.g. `before
+            the initialization`.
+        assignments: the assignments of the place, in their order.
+    """
+
+    path: str
+    where: str
+    assignments: tuple[Assignment, ...]
+
+
 @dataclass(frozen=True)
 class PlanEvent:
     """The assignments at one time.
@@ -275,6 +298,69 @@ class Plan:
     steady_state_output: SteadyStatePlan | None = None
     units: UnitsContract | None = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        """Reject a steady state after the end which carries a pre-initialization.
+
+        The steady state after the end continues from the state the timecourse
+        ended in, so no executor applies a pre-initialization of it: it is the
+        criterion and the horizon alone, for roadrunner, COPASI, AMICI and the
+        field `steady_state_after` of a request of the engine alike. Nothing
+        builds one with assignments, and one which carried them would be
+        dropped without a word by every engine, so it is refused here instead
+        of being a place the walkers of a plan have to know about (#629).
+
+        Raises:
+            ValueError: if `steady_state_output` carries assignments.
+        """
+        if self.steady_state_output is not None and self.steady_state_output.preinit:
+            raise ValueError(
+                "The steady state after the end of a simulation carries the "
+                f"pre-initialization {list(self.steady_state_output.preinit)}, "
+                "which no executor applies: it continues from the state the "
+                "timecourse ended in."
+            )
+
+    @property
+    def places(self) -> tuple[Place, ...]:
+        """Get every place of the plan which carries assignments, in their order.
+
+        This is the one enumeration of the places of a plan which carry a
+        value. `assigned` reads it, and so do the two walkers of
+        `sbmlsim.fit.fit_core` which decide whether a fit runs in the engine
+        (`_held_values` and `_plan_formulas`): a place added to `Plan`
+        reaches all of them at once instead of reaching one and leaving the
+        others quiet, which is an objective that is wrong without saying so
+        (#629). `tests/simulator/test_plan.py` derives the places from the
+        annotations of `Plan` and of the types it holds, so a new field which
+        carries assignments and is not enumerated here fails the suite.
+
+        `steady_state_output` is no place: it carries no assignments, see
+        `__post_init__`.
+
+        Returns:
+            The places, the pre-initialization of the plan first, then the
+            one of its steady state and then the assignments of every event
+            in the order of their times.
+        """
+        places = [Place(PREINIT, "before the initialization", self.preinit)]
+        if self.steady_state is not None:
+            places.append(
+                Place(
+                    "steady_state.preinit",
+                    "before the initialization of its steady state",
+                    self.steady_state.preinit,
+                )
+            )
+        places += [
+            Place(
+                f"events[{k}].assignments",
+                f"at the time {event.time}",
+                event.assignments,
+            )
+            for k, event in enumerate(self.events)
+        ]
+        return tuple(places)
+
     def check_model(self, symbols: ModelSymbols, uinfo: UnitsInformation) -> None:
         """Reject execution against different symbols or numerical units.
 
@@ -302,11 +388,7 @@ class Plan:
     @property
     def assigned(self) -> frozenset[str]:
         """Get the targets the plan assigns, before the initialization, in the steady state or at a time."""
-        targets = {a.target for e in self.events for a in e.assignments}
-        targets |= {a.target for a in self.preinit}
-        if self.steady_state is not None:
-            targets |= {a.target for a in self.steady_state.preinit}
-        return frozenset(targets)
+        return frozenset(a.target for place in self.places for a in place.assignments)
 
     @property
     def change_times(self) -> tuple[float, ...]:
