@@ -3127,15 +3127,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/6d/2a/ac44ff69317579485
 
 [[package]]
 name = "sbmlode"
-version = "0.3.2"
+version = "0.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
     { name = "python-libsbml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/97/2149891168d7f9e0b19ff41dc7ff1ef43141b9ec01ff471e19f9c66d8782/sbmlode-0.3.2.tar.gz", hash = "sha256:51ae1c180be1c1aa1ef24380204e19e55691388b21841f5e888939ab03332744", size = 302068, upload-time = "2026-11-10T23:29:03.786Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/11/a7c5fedf3675389b2eb38e3a92d599ccd331f90ae6c748422b5d0004cbb9/sbmlode-0.3.3.tar.gz", hash = "sha256:ca177f13894f6eaad0055714359dbdea6aedf7edd1b9f9bd0194957e2bf5676c", size = 311307, upload-time = "2026-11-24T12:12:26.681Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/3f/72694867aff6027a45241085830a5303ed37477195045eb573831f44d59f/sbmlode-0.3.2-py3-none-any.whl", hash = "sha256:0855c3254af83c8e90d419d7349cbef94897e2b280a3c01fca4e6b8b18e175f5", size = 133431, upload-time = "2026-11-10T23:29:02.134Z" },
+    { url = "https://files.pythonhosted.org/packages/71/18/2fa6e6bc34f832994f83bc9a605153171c39accba28e7e0108b3e4086813/sbmlode-0.3.3-py3-none-any.whl", hash = "sha256:a67009c66b16f8edab7b0a670e0bfb4b56db6747b293d32a0e718e30d74d919b", size = 138849, upload-time = "2026-11-24T12:12:25.52Z" },
 ]
 
 [[package]]
@@ -3266,9 +3266,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.10" },
     { name = "salib", specifier = ">=1.6.0" },
     { name = "sbmlmath", specifier = ">=0.4.1,<0.5" },
-    { name = "sbmlode", specifier = ">=0.3.2" },
+    { name = "sbmlode", specifier = ">=0.3.3" },
     { name = "sbmlsim-core", specifier = ">=0.24.0" },
-    { name = "sbmlutils", specifier = ">=0.17.2" },
+    { name = "sbmlutils", specifier = ">=0.17.3" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.3.2" },
@@ -3306,7 +3306,7 @@ wheels = [
 
 [[package]]
 name = "sbmlutils"
-version = "0.17.2"
+version = "0.17.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "antimony" },
@@ -3325,9 +3325,9 @@ dependencies = [
     { name = "sbmlode" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/03/c1c7b4e5c9c1beeed547c653c79323adab2fb0c9b9124bfccb9189655d9b/sbmlutils-0.17.2.tar.gz", hash = "sha256:937be3420081e7b0f63fdddaba893efcbabba5c20cb71208ab9eeda3cc9f8822", size = 3746091, upload-time = "2026-11-02T15:51:45.215Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/2d/ece540a22c811471786aab03bcfd6c3cdf3496a7067e1957d34c72941229/sbmlutils-0.17.3.tar.gz", hash = "sha256:5db487f602e4613109df4e584a65226dbf91eeafa2dfa6ca57d9c71cec80c9c5", size = 3746261, upload-time = "2026-11-24T12:56:59.969Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/d1/e3337e2f8f057683e8f51df1ec2a716e5b571e4762bfbb2d83fd82df9857/sbmlutils-0.17.2-py3-none-any.whl", hash = "sha256:96743bd1904f4fb2c5b2785fdf68a97e645837c6e3a819797dfd17d4f0caa451", size = 3632706, upload-time = "2026-11-02T15:51:42.98Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/af/fac9dfb4aa1e086826524a4d60ee9cbf58b0b7d716ef49ccb7946a2f3ec8/sbmlutils-0.17.3-py3-none-any.whl", hash = "sha256:5fe069bece9691a06883640b83031a873111b73953ea766fa11d2e95a0a4abe3", size = 3632704, upload-time = "2026-11-24T12:56:58.109Z" },
 ]
 
 [[package]]
