@@ -209,10 +209,18 @@ The total indices are the ones of the Sobol and FAST sections above, from a desi
 The indices are `S1` and `ST`, and `S2` with `second_order=True`, exact for the expansion and without a confidence interval: their uncertainty is the error of the fit, which the result carries per output next to them.
 
 - `loo` is the corrected leave-one-out error, the share of the variance of the simulated values which the expansion does not predict. Read the indices of an output of a large `loo` with care; 0.003 above means the expansion follows 99.7 % of the variance.
-- `degree` is the total degree of its basis. The degree is not given but chosen per output from `loo`, up to `degree=` (5 by default), so a higher limit costs decompositions and never accuracy.
+- `degree` is the total degree of its basis. The degree is not given but chosen per output from `loo`, up to `degree=` (5 by default), so a higher limit never costs accuracy and costs little time: the basis of a candidate is a prefix of the basis of the largest degree the points support, and the thin QR of the first columns of a matrix is the first columns of its `Q` and the leading block of its `R`, so one decomposition serves every candidate and every element of the output. The decomposition depends on the points and the basis alone, never on the values, so the observables of one scan share it as well. The decomposition is the cost of the method; `sensitivity.supported` is the budget of points per term which decides the largest basis.
 - `mean` and `sd` are the mean and standard deviation of the expansion over the distributions of the parameters, in the unit of the output. They are the moments of the distribution of the parameters and not of the sample.
 
 A basis of the degree `p` over `d` parameters has `(p + d)! / (p! d!)` terms and the fit needs at least two points per term, so a high dimension needs a truncated basis: `q` below 1 drops the terms which read many parameters at a high degree (the hyperbolic truncation of Blatman and Sudret, `q=0.5` keeps about the terms of one and two parameters) and `max_interaction` caps the number of parameters of a term. Without enough points for the first degree the analysis raises rather than reporting a fit nobody can trust.
+
+`sensitivity.choose_truncation` picks the truncation a sample supports, which is what `ChaosAnalysis` of the runner does when none is given: the exponent falls before the interaction is capped, so the basis keeps the interactions of a low degree as long as the points carry them, and a sample which carries none gets the additive basis instead of an error. The full basis of the degree 5 over 22 parameters has 80730 terms; 2048 points take `q=0.75` and its 782 terms of the degree 4.
+
+```py
+from sbmlsim.sensitivity import choose_truncation
+
+q, max_interaction = choose_truncation(22, 2048, 4)  # (0.75, None)
+```
 
 `sensitivity.fit_chaos` is the expansion itself, on the unit cube rather than on a result, which `PolynomialChaos.predict` evaluates at points which were never simulated:
 
@@ -339,6 +347,7 @@ A model package runs the same analyses over the groups of its simulations, e.g. 
 ```py
 from sbmlsim.sensitivity.parameters import parameters_from_sbml, set_relative_bounds
 from sbmlsim.sensitivity.runner import (
+    ChaosAnalysis,
     LocalAnalysis,
     SamplingAnalysis,
     SensitivityGroup,
@@ -369,6 +378,7 @@ SENSITIVITY = SensitivityRunner(
         "local": LocalAnalysis(groups=GROUPS),
         "sampling": SamplingAnalysis(groups=GROUPS, n=1000),
         "sobol": SobolAnalysis(groups=GROUPS[:1], n=4096),
+        "chaos": ChaosAnalysis(groups=GROUPS[:1], n=2048),
     },
     default=("local",),
 )
@@ -377,6 +387,8 @@ PROJECT = Project(..., sensitivities={"pk": ".sensitivity:SENSITIVITY"})
 ```
 
 The project lists the runner in `sensitivities`, as an object or a reference, and the kind `sensitivity` of the [run layer](run.md#simulate-scan-sensitivity-and-uncertainty) runs it into its output, one unit per analysis: `python -m sbmlsim.run sensitivity pk.yaml --out results/sensitivity` with `analysis: pk` and optionally `analyses: [local, sampling]`. A runner which a project lists without a `project` of its own runs on that project; a runner with `project=` and `out=` runs from a script as well, `SENSITIVITY.main()`, with the names of the analyses, `--workers` and `--out` on its command line, or `SENSITIVITY.run(["local"], path=...)`. A model with several simulations has a runner per simulation, listed as a mapping by subfolder (`run_subfolders`), which share one table of the parameters.
+
+`ChaosAnalysis` is the cheapest of the global analyses: it fits a polynomial chaos expansion on a Latin hypercube, so the indices of the Saltelli design of `SobolAnalysis` come from a fraction of its `n (d + 2)` simulations (on the HCTZ model of pkdb_models, 22 parameters, 2048 points give the total indices of a design of 98304 to three decimals). Its basis is truncated to what the points support unless `q` is given, see [Polynomial chaos](#polynomial-chaos), and `quality.tsv` says how well every output is fitted.
 
 A group runs a variant of the model of the project (`variant`, the default variant without) and may prepare the scan of every design (`prepare`, e.g. an equilibration). An analysis varies the parameters of the table which no simulation of its groups sets (`free_parameters`); a global design is drawn once and a group of another variant samples it relative to the values of its variant (`design_factors`, `relative_design`), so e.g. a group of women varies the body weight around the female one by the same factors. The designs and indices are the ones above with the seed `1234`; the environment variable `SBMLSIM_SENSITIVITY_N` replaces the numbers of samples for a quick run.
 
@@ -387,4 +399,5 @@ The files are the ones of sbmlsim 0.8.5, which manuscripts read:
 | every run | `parameters.tsv` and `parameters.tex`, the table of the parameters with the values of the other variants of the groups, `value_<variant>` |
 | `LocalAnalysis` | `local/local_d<delta>_nvar<n_var>_<k>_<group>.tsv`: the normalized sensitivity `Sij`, the mean over `n_var` steps up to `delta`, with its class, and the heatmap `.png` |
 | `SamplingAnalysis` | a Latin hypercube: `sampling/<group>/samples.tsv`, `sampling/sampling_N<n>.tsv` with the statistics of `ScanResult.summary` per group and output (`mean`, `median`, `std` the sample standard deviation, `cv`, `min`, `q005`, `q095`, `max`, the uncertainty `U = (P97.5 - P2.5) / P50` and its class), `_compact.tsv`, `.tex` and the figures of the samples and the outputs per group |
-| `FastAnalysis`, `SobolAnalysis` | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, the heatmaps of `S1` and `ST` and the bars of `plot_indices` per output |
+| `FastAnalysis`, `SobolAnalysis`, `ChaosAnalysis` | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, the heatmaps of `S1` and `ST` and the bars of `plot_indices` per output |
+| `ChaosAnalysis` | and `chaos/<group>/quality.tsv`, a row per output with the `loo`, the `degree` of its basis and the `mean` and `sd` of its expansion, plus `<output>.S2.tsv` with `second_order=True` |

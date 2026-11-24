@@ -7,12 +7,16 @@ from sbmlsim import sensitivity
 from sbmlsim.result import ScanResult
 from sbmlsim.sensitivity.chaos import (
     MAX_TERMS,
+    POINTS_PER_TERM,
+    TRUNCATIONS,
     PolynomialChaos,
+    choose_truncation,
     design_matrix,
     expansion,
     fit_chaos,
     legendre_values,
     pce,
+    supported,
 )
 from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2
 from sbmlsim.simulation import (
@@ -319,6 +323,92 @@ def test_too_few_points_are_reported() -> None:
         pce(res, degree=6)
 
 
+def test_the_points_which_support_a_basis() -> None:
+    """A basis needs `POINTS_PER_TERM` points per term and a degree of freedom."""
+    assert supported(int(POINTS_PER_TERM * 10), 10)
+    assert not supported(int(POINTS_PER_TERM * 10) - 1, 10)
+    # a basis of one term needs more than two points, whatever the budget says
+    assert not supported(2, 1)
+    assert supported(3, 1)
+
+
+def test_one_decomposition_serves_every_candidate_degree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bases of the candidates are prefixes, so their QR is one QR.
+
+    The fit of a candidate is the leading block of the decomposition of the
+    largest basis the points support, which is what makes the expansion of a
+    model of twenty parameters affordable: the decomposition is the cost of
+    the method and it was taken once per candidate degree.
+    """
+    rng = np.random.default_rng(3)
+    u = rng.random((400, 4))
+    y = np.column_stack([np.sin(3 * u[:, 0]) + u[:, 1] ** 2, u.sum(axis=1)])
+    calls: list[tuple[int, ...]] = []
+    qr = np.linalg.qr
+
+    def counted(a: np.ndarray) -> object:
+        calls.append(a.shape)
+        return qr(a)
+
+    monkeypatch.setattr(np.linalg, "qr", counted)
+    chaos = fit_chaos(u, y, degree=4)
+    assert len(calls) == 1, calls
+    # of the whole basis, which the 400 points support
+    assert calls[0] == (400, chaos.multi_indices.shape[0])
+    # every candidate was still tried: the second element is linear in its
+    # inputs and keeps the degree 1, the first one needs more
+    assert chaos.degree[1] == 1
+    assert chaos.degree[0] > 1
+
+    # of the largest candidate the points support where they support not every
+    # one of them, and once again
+    calls.clear()
+    few = fit_chaos(u[:60], y[:60], degree=4)
+    assert len(calls) == 1, calls
+    terms = calls[0][1]
+    assert supported(60, terms)
+    assert terms < few.multi_indices.shape[0]
+    assert few.degree.max() <= 2
+
+
+def test_one_decomposition_fits_every_observable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The observables of one scan are fitted on one decomposition.
+
+    The design matrix and its QR depend on the points and the basis alone, so
+    the dozen observables of a model share them; they are the larger part of
+    the work of a fit, and were taken once per observable.
+    """
+    model = Simulator().load(sbml(ISHIGAMI))
+    res = Simulator(n_workers=1).run(
+        model,
+        Scan(
+            Simulation(end=1, steps=1),
+            [sampling.lhs(BOUNDS, 400, seed=5)],
+        ),
+        [Formula("y_max", "max(y)"), Formula("yt", "y")],
+    )
+    calls: list[tuple[int, ...]] = []
+    qr = np.linalg.qr
+
+    def counted(a: np.ndarray) -> object:
+        calls.append(a.shape)
+        return qr(a)
+
+    monkeypatch.setattr(np.linalg, "qr", counted)
+    s = pce(res, degree=4)
+    assert len(calls) == 1, calls
+    # and every observable has its indices, the scalar and the timecourse
+    assert list(s["y_max.S1"].dims) == [PARAMETER]
+    assert list(s["yt.S1"].dims) == [PARAMETER, "time"]
+    for name in ("y_max.S1", "yt.S1"):
+        values = s[name].values
+        assert np.isfinite(values).all() and (values >= -1e-9).all()
+
+
 def test_the_expansion_is_a_surrogate_of_the_model() -> None:
     # the expansion predicts points which were not simulated
     rng = np.random.default_rng(9)
@@ -329,3 +419,55 @@ def test_the_expansion_is_a_surrogate_of_the_model() -> None:
     predicted = chaos.predict(other).ravel()
     exact = _ishigami(other)
     assert np.max(np.abs(predicted - exact)) < 0.05 * np.ptp(exact)
+
+
+def test_a_chosen_truncation_is_the_richest_basis_the_points_support() -> None:
+    """The exponent falls until the basis fits, the interactions are kept."""
+    # the 22 parameters of the HCTZ model of pkdb_models on 2048 points: the
+    # full basis of the degree 4 has 14950 terms, the hyperbolic one 782
+    q, max_interaction = choose_truncation(22, 2048, 4)
+    assert (q, max_interaction) == (0.75, None)
+    terms = len(expansion(22, 4, q=q, max_interaction=max_interaction))
+    assert terms == 782
+    assert terms <= 2048 // POINTS_PER_TERM
+    assert len(expansion(22, 4)) > 2048 // POINTS_PER_TERM
+
+
+def test_a_chosen_truncation_falls_back_to_the_additive_basis() -> None:
+    """A sample which supports no interaction gets the terms of one input each."""
+    q, max_interaction = choose_truncation(22, 512, 5)
+    assert (q, max_interaction) == TRUNCATIONS[-1] == (1.0, 1)
+    assert len(expansion(22, 5, q=q, max_interaction=max_interaction)) == 22 * 5 + 1
+
+
+def test_a_chosen_truncation_is_fitted_and_gives_the_indices() -> None:
+    """The chosen basis of the Ishigami function finds its inputs."""
+    rng = np.random.default_rng(3)
+    u = rng.random((600, 3))
+    q, max_interaction = choose_truncation(3, 600, 5)
+    chaos = fit_chaos(
+        u, _ishigami(u)[:, None], degree=5, q=q, max_interaction=max_interaction
+    )
+    total = chaos.total_order().ravel()
+    # x3 enters the Ishigami function only through its interaction with x1
+    assert total[0] > total[1] > total[2] > 0.0
+
+
+def test_a_sample_which_supports_no_basis_is_refused() -> None:
+    with pytest.raises(ValueError, match="the additive basis, has 7 terms"):
+        choose_truncation(2, 4, 3)
+
+
+@pytest.mark.parametrize(
+    ("d", "n", "degree", "message"),
+    [
+        (0, 10, 2, "at least one input"),
+        (2, 0, 2, "at least one point"),
+        (2, 10, -1, "must not be negative"),
+    ],
+)
+def test_a_chosen_truncation_checks_its_arguments(
+    d: int, n: int, degree: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        choose_truncation(d, n, degree)
