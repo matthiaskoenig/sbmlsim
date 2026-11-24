@@ -69,7 +69,7 @@ runs                4
 workers             1 (threads of the engine, one fit)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.1 s
+optimizer time      0.0 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
 0    1  0.049603     0.304811      0.005028
 1    0  0.049603     0.304812      0.005028
