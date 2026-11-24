@@ -172,12 +172,17 @@ def test_a_set_of_another_problem_is_named(
     assert bound.values["FLUID__k_na"] == pytest.approx(1.0)
     assert bound.values[pid] == pytest.approx(0.5)
     assert bound.cost == 1.0 and bound.provenance == "joint fit"
+    # the bound set says which of its numbers took effect (#643)
+    assert bound.unapplied == ("FLUID__k_na",)
+    assert set(bound.applied) == {pid}
 
-    # a propagation binds a set per draw, which says it once
+    # a propagation binds a set per draw, which says it once; the mark is on
+    # every bound set, it is no part of the log
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.optimization"):
-        problem.bind_parameter_set(replace(pset, sid="draw_1"))
+        again = problem.bind_parameter_set(replace(pset, sid="draw_1"))
     assert caplog.text == ""
+    assert again.unapplied == ("FLUID__k_na",)
 
 
 def test_a_noise_parameter_of_the_problem_is_no_extra(
@@ -204,3 +209,52 @@ def test_a_noise_parameter_of_the_problem_is_no_extra(
         bound = problem.bind_parameter_set(pset)
     assert caplog.text == ""
     assert bound.values["sigma_a"] == pytest.approx(2.0)
+    assert bound.unapplied == ()
+    assert bound.applied == bound.values
+
+
+def test_an_unapplied_parameter_is_a_value_of_the_set() -> None:
+    """A set cannot mark a parameter it does not carry (#643)."""
+    with pytest.raises(ValueError, match="not among its values"):
+        ParameterSet(sid="s", values={"p1": 1.0}, unapplied=("p2",))
+
+
+def test_the_unapplied_values_are_stored_and_read_back(tmp_path: Path) -> None:
+    """The mark of a set survives the JSON a report writes (#643).
+
+    `parameters.json` is what a later reader of the evidence has, so the mark
+    belongs in it. A set whose every value took effect writes no key at all,
+    so the file of such a fit is the one of sbmlsim 0.39 byte for byte.
+    """
+    marked = ParameterSet(sid="joint", values={"p1": 1.0, "p2": 2.0}, unapplied=("p2",))
+    plain = ParameterSet(sid="fit", values={"p1": 1.0})
+    assert "unapplied" not in plain.to_dict()
+    assert marked.to_dict()["unapplied"] == ["p2"]
+
+    path = tmp_path / "parameters.json"
+    ParameterSets([marked, plain]).to_json(path)
+    read = ParameterSets.from_json(path)
+
+    assert read["joint"].unapplied == ("p2",)
+    assert read["joint"].applied == {"p1": 1.0}
+    assert read["fit"].unapplied == ()
+    assert read == ParameterSets([marked, plain])
+
+
+def test_the_mark_survives_a_conversion_of_the_units() -> None:
+    """`to_units` keeps the mark, which a bound set is converted by (#643)."""
+    pset = ParameterSet(
+        sid="s",
+        values={"p1": 1000.0, "p2": 2.0},
+        units={"p1": "ml", "p2": None},
+        unapplied=("p2",),
+    )
+    converted = pset.to_units({"p1": "l"})
+    assert converted.values["p1"] == pytest.approx(1.0)
+    assert converted.unapplied == ("p2",)
+
+
+def test_an_unapplied_value_is_starred_in_the_text_of_a_set() -> None:
+    """The console and a log show which value of a set did not take effect."""
+    pset = ParameterSet(sid="s", values={"p1": 1.0, "p2": 2.0}, unapplied=("p2",))
+    assert str(pset) == "ParameterSet<s: p1=1, p2=2*>"

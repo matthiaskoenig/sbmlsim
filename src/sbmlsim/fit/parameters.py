@@ -72,6 +72,12 @@ class ParameterSet:
             `OptimizationProblem.parameter_units`.
         cost: cost of the set, if it comes from an optimization.
         provenance: where the set comes from, e.g. the id of an optimization.
+        unapplied: the parameters of the set whose value the problem it was
+            bound to does not apply, sorted; empty for a set which was never
+            bound and for one whose every value took effect. The model keeps
+            its own value for such a parameter, so the number the set carries
+            is no part of what was simulated, see
+            `OptimizationProblem.bind_parameter_set` (#643).
     """
 
     sid: str
@@ -79,19 +85,44 @@ class ParameterSet:
     units: dict[str, str | None] = field(default_factory=dict)
     cost: float | None = None
     provenance: str | None = None
+    unapplied: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        """Normalize the values and complete the units."""
+        """Normalize the values, complete the units and sort the unapplied ids.
+
+        Raises:
+            ValueError: if a parameter of `unapplied` is not in the values.
+        """
         self.values = {pid: float(value) for pid, value in self.values.items()}
         self.units = {pid: self.units.get(pid) for pid in self.values}
+        self.unapplied = tuple(sorted(self.unapplied))
+        unknown = [pid for pid in self.unapplied if pid not in self.values]
+        if unknown:
+            raise ValueError(
+                f"ParameterSet '{self.sid}': the unapplied parameters "
+                f"'{unknown}' are not among its values."
+            )
+
+    @property
+    def applied(self) -> dict[str, float]:
+        """Get the values which took effect, i.e. the values without `unapplied`."""
+        return {
+            pid: value
+            for pid, value in self.values.items()
+            if pid not in set(self.unapplied)
+        }
 
     def __len__(self) -> int:
         """Get the number of parameters."""
         return len(self.values)
 
     def __str__(self) -> str:
-        """Get string representation."""
-        values = ", ".join(f"{pid}={value:.5g}" for pid, value in self.values.items())
+        """Get string representation, an unapplied value marked with a star."""
+        unapplied = set(self.unapplied)
+        values = ", ".join(
+            f"{pid}={value:.5g}{'*' if pid in unapplied else ''}"
+            for pid, value in self.values.items()
+        )
         return f"{self.__class__.__name__}<{self.sid}: {values}>"
 
     def x(
@@ -148,6 +179,7 @@ class ParameterSet:
             {**self.units, **{pid: units[pid] for pid in pids}},
             self.cost,
             self.provenance,
+            self.unapplied,
         )
 
     @staticmethod
@@ -221,13 +253,18 @@ class ParameterSet:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""
-        return {
+        info: dict[str, Any] = {
             "sid": self.sid,
             "values": self.values,
             "units": self.units,
             "cost": self.cost,
             "provenance": self.provenance,
         }
+        if self.unapplied:
+            # only a set which carries one, so the file of a fit whose values
+            # all took effect is the one of sbmlsim 0.39 byte for byte
+            info["unapplied"] = list(self.unapplied)
+        return info
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParameterSet:
@@ -238,6 +275,7 @@ class ParameterSet:
             units=d.get("units", {}),
             cost=d.get("cost"),
             provenance=d.get("provenance"),
+            unapplied=tuple(d.get("unapplied", ())),
         )
 
 

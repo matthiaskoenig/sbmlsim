@@ -3129,7 +3129,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         changes nothing: the model keeps its own value. The set of a joint fit
         reported on one of its subsets carries such values, and the report
         would name them and simulate the model instead, so they are logged
-        (#641). They stay in the set, which the report stores.
+        (#641). They stay in the set, which the report stores, and the bound
+        set names them in `ParameterSet.unapplied`, so the stored
+        `parameters.json`, the record of an adopted fit and the
+        `credibility.json` of an assessment say which of their numbers took
+        effect (#643).
         """
         units = self.parameter_units
         source_units = dict(parameter_set.units)
@@ -3164,6 +3168,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             source_units,
             parameter_set.cost,
             parameter_set.provenance,
+            tuple(extra),
         ).to_units(units)
 
     @property
