@@ -103,10 +103,15 @@ TIMEOUT_VARIABLE: Final[str] = "SBMLSIM_CORE_TIMEOUT_MS"
 TIMEOUT_MS: Final[int] = 0
 
 #: the settings of roadrunner which a request of the engine has a field for,
-#: see `CoreSBMLModel.set_integrator_settings`
+#: see `CoreSBMLModel.set_integrator_settings`; the order of the method, the
+#: smallest step and the settings of the error test and of the nonlinear
+#: solver are the ones of sbmlsim-core 0.25.0
 REQUEST_SETTINGS: Final[frozenset[str]] = PORTABLE_SETTINGS | {
     "initial_time_step",
     "stiff",
+    "maximum_bdf_order",
+    "maximum_adams_order",
+    "minimum_time_step",
 }
 
 #: the settings of roadrunner which a request has no field for, ignored with
@@ -509,10 +514,16 @@ class CoreSBMLModel(SBMLModel):
         a field for `absolute_tolerance` (a float or an `AbsoluteTolerance`,
         sent as the tolerance of every state, see `request_settings`),
         `relative_tolerance`, `maximum_num_steps`, `maximum_time_step`,
-        `initial_time_step` and `stiff` (`REQUEST_SETTINGS`). A setting of
-        roadrunner which it has no field for, e.g. `variable_step_size`, which
-        the output of a request states instead, is ignored and reported once
-        per model (`IGNORED_SETTINGS`).
+        `initial_time_step`, `stiff`, `maximum_bdf_order`,
+        `maximum_adams_order` and `minimum_time_step` (`REQUEST_SETTINGS`). A
+        setting of roadrunner which it has no field for, e.g.
+        `variable_step_size`, which the output of a request states instead, is
+        ignored and reported once per model (`IGNORED_SETTINGS`).
+
+        An order of a method the run does not use is left to the engine, which
+        takes the order of the BDF for `stiff` true and for a model of
+        algebraic rules, and the order of the Adams method for `stiff` false;
+        `0` is the default of the solver, as in roadrunner.
 
         Args:
             **settings: the settings by their names in roadrunner.
@@ -528,6 +539,15 @@ class CoreSBMLModel(SBMLModel):
                 self.absolute_tolerance = value
             else:
                 self._settings[key] = value
+
+    @override
+    def takes_integrator_setting(self, setting: str) -> bool:
+        """Get whether a request of the engine has a field for a setting.
+
+        See `SBMLModel.takes_integrator_setting`; the settings of the engine
+        are `REQUEST_SETTINGS`.
+        """
+        return self._engine_settings.takes(setting)
 
     def request_settings(self) -> dict[str, object]:
         """Get the settings of the integrator of a request of the engine.

@@ -4,6 +4,7 @@ import dataclasses
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import libsbml
 import numpy as np
@@ -43,6 +44,7 @@ from sbmlsim.credibility.verification import (
     TOLERANCES,
     build_problems,
     relative_differences,
+    second_method_reason,
     tightened,
     verify,
 )
@@ -156,6 +158,66 @@ def test_a_verified_context() -> None:
     assert "acceptance unchanged" in factors["discretization_error"]["statement"]
     assert assessment.verification is not None
     assert assessment.verification.limit == LIMIT
+
+
+class _Model:
+    """A model which takes the settings it is given, for `second_method_reason`."""
+
+    def __init__(self, label: str, takes: bool) -> None:
+        self.label = label
+        self._takes = takes
+
+    def takes_integrator_setting(self, setting: str) -> bool:
+        assert setting == "maximum_bdf_order"
+        return self._takes
+
+
+def _fits_with_models(*models: _Model) -> FitTable:
+    """Get a table of fits whose one report has the models."""
+    fits = fit_table()
+    report = SimpleNamespace(problem=SimpleNamespace(models=list(models)))
+    return dataclasses.replace(fits, reports={"DECAY": report})
+
+
+def test_second_method_reason_is_none_where_every_model_takes_the_setting() -> None:
+    fits = _fits_with_models(_Model("decay", True), _Model("other", True))
+    assert second_method_reason(fits) is None
+
+
+def test_second_method_reason_names_the_models_which_drop_the_setting() -> None:
+    fits = _fits_with_models(_Model("decay", False), _Model("other", True))
+    reason = second_method_reason(fits)
+    assert reason is not None
+    assert "'decay'" in reason
+    assert "'other'" not in reason
+    assert "maximum_bdf_order" in reason
+    assert "The engine of the model '" in reason
+
+
+def test_a_check_which_is_not_applicable_has_no_record_and_no_factor() -> None:
+    """The check `integrator` which was not made leaves its factor unassessed.
+
+    A check which degrades silently would report the differences of
+    `tolerances` as the bound of the error of the solver, so the check is not
+    made at all and the factor `numerical_solver_error` stays at step 2.
+    """
+    fits = fit_table()
+    verification = verification_of(
+        fits, 1.0 + 1e-6, not_applicable={INTEGRATOR: "the engine drops it"}
+    )
+    assessment = _assess(fits, verification)
+    dose = _context(assessment, "dose")
+    assert [r["check"] for r in dose.verification] == [
+        c.id for c in PREDICTIONS if c is not INTEGRATOR
+    ]
+    factors = {f["id"]: f for f in dose.factors}
+    assert (
+        factors["numerical_solver_error"]["status"] == FactorStatus.NOT_ASSESSED.value
+    )
+    assert factors["numerical_solver_error"]["step"] == 2
+    assert factors["discretization_error"]["status"] == FactorStatus.ASSESSED.value
+    # the other checks still decide whether the context is verified
+    assert dose.verified is True
 
 
 def test_an_assessment_without_verification() -> None:

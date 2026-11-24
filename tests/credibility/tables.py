@@ -119,24 +119,22 @@ def verification_of(
     problems: tuple[str, ...] = (),
     limit: float = LIMIT,
     battery: Battery | None = None,
+    not_applicable: dict[Check, str] | None = None,
 ) -> Verification:
     """Get a verification whose alternatives are the reference times a factor."""
     factors = factors or {}
     failures = failures or {}
+    not_applicable = not_applicable or {}
+    made = [check for check in (TOLERANCES, INTEGRATOR) if check not in not_applicable]
     ipred = fits.table["IPRED"].astype(float)
     return Verification(
         predictions=MappingProxyType(
-            {
-                check: ipred * factors.get(check, factor)
-                for check in (TOLERANCES, INTEGRATOR)
-            }
+            {check: ipred * factors.get(check, factor) for check in made}
         ),
         failures=MappingProxyType(
-            {
-                check: MappingProxyType(failures.get(check, {}))
-                for check in (TOLERANCES, INTEGRATOR)
-            }
+            {check: MappingProxyType(failures.get(check, {})) for check in made}
         ),
+        not_applicable=MappingProxyType(dict(not_applicable)),
         summary=VerificationSummary(
             tightening=TIGHTENING,
             limit=limit,

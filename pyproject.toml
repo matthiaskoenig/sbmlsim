@@ -103,8 +103,10 @@ dependencies = [
 	# scale of a noise the fit moves and the `priors` of a posterior, and 0.24.1
 	# ends a profile which steps onto a bound of its parameter at that bound,
 	# where the way back from the search space gave a value an ulp outside the
-	# bounds and the whole analysis failed
-	"sbmlsim-core>=0.24.1",
+	# bounds and the whole analysis failed; 0.25.0 takes the settings of CVODE
+	# and of IDA which a verification of the numerical error needs, the order of
+	# the method among them
+	"sbmlsim-core>=0.25.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

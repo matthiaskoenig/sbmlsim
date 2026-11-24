@@ -40,7 +40,7 @@ import dataclasses
 import logging
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Self, TypedDict
 
@@ -89,6 +89,7 @@ __all__ = [
     "check_record_to_dict",
     "register_check",
     "relative_differences",
+    "second_method_reason",
     "tightened",
     "verify",
 ]
@@ -404,16 +405,21 @@ class Verification:
 
     Attributes:
         predictions: the predictions of every numerical check (`tolerances`,
-            `integrator`) per row of the table of the fits, `NaN` where the
-            evaluation of a fit failed.
+            `integrator`) which was made, per row of the table of the fits,
+            `NaN` where the evaluation of a fit failed.
         failures: the failed evaluations of every numerical check, the message
             by the subset of the fit.
+        not_applicable: why a numerical check was not made, by the check; a
+            check which is in it has no predictions and no record of its own,
+            as a check of the battery which is not applicable has none
+            (`sbmlsim.credibility.battery.not_applicable_result`).
         summary: what was compared, see `VerificationSummary`.
     """
 
     predictions: Mapping[Check, pd.Series]
     failures: Mapping[Check, Mapping[str, str]]
     summary: VerificationSummary
+    not_applicable: Mapping[Check, str] = field(default_factory=dict)
 
     @property
     def problems(self) -> list[str]:
@@ -485,6 +491,43 @@ def _second_method(report: FitReport) -> None:
     )
     for model in {id(m): m for m in problem.models}.values():
         model.set_integrator_settings(maximum_bdf_order=SECOND_METHOD_ORDER)
+
+
+def second_method_reason(fits: FitTable) -> str | None:
+    """Get why the check `integrator` cannot be made, `None` if it can.
+
+    The check reintegrates every adopted fit with the BDF of CVODE capped at
+    `SECOND_METHOD_ORDER`, so that a difference which is the choice of the
+    solver and not the model becomes visible. An engine which has no
+    equivalent of `maximum_bdf_order` leaves the setting out, with one report
+    per model, so the second method would be the first method and the check
+    would compare a run with itself and report the differences of `tolerances`
+    as the bound of the error of the solver. A check which degrades silently
+    is worse than one which is missing, so it is not made at all.
+
+    Args:
+        fits: the table of the fits with their reports.
+
+    Returns:
+        Why the check is not applicable, naming the models which drop the
+        setting, or `None` where every model takes it.
+    """
+    without = sorted(
+        {
+            model.label
+            for report in fits.reports.values()
+            for model in report.problem.models
+            if not model.takes_integrator_setting("maximum_bdf_order")
+        }
+    )
+    if not without:
+        return None
+    return (
+        f"The engine of the model{'s' if len(without) > 1 else ''} "
+        f"{', '.join(repr(label) for label in without)} has no equivalent of "
+        f"'maximum_bdf_order', so the BDF of order at most "
+        f"{SECOND_METHOD_ORDER} is the integration of the reference."
+    )
 
 
 def _alternative_points(
@@ -704,7 +747,19 @@ def verify(
         )
     predictions: dict[Check, pd.Series] = {}
     failures: dict[Check, Mapping[str, str]] = {}
+    not_applicable: dict[Check, str] = {}
+    reason = second_method_reason(fits)
+    if reason is not None:
+        not_applicable[INTEGRATOR] = reason
+        logger.warning(
+            "The check '%s' of '%s' is not applicable: %s",
+            INTEGRATOR.id,
+            project.name,
+            reason,
+        )
     for check in NUMERICAL_CHECKS:
+        if check in not_applicable:
+            continue
         logger.info("Verify the predictions of '%s': %s", project.name, check.label)
         predictions[check], failed = _predictions(fits, check, tightening)
         failures[check] = MappingProxyType(failed)
@@ -717,9 +772,13 @@ def verify(
                 fit=subset,
                 reference=_describe(report.settings),
                 tolerances=_describe(_tightened_settings(report.settings, tightening)),
-                integrator=_describe(
-                    _tightened_settings(report.settings, tightening),
-                    f"BDF of order at most {SECOND_METHOD_ORDER}",
+                integrator=(
+                    f"not applicable: {not_applicable[INTEGRATOR]}"
+                    if INTEGRATOR in not_applicable
+                    else _describe(
+                        _tightened_settings(report.settings, tightening),
+                        f"BDF of order at most {SECOND_METHOD_ORDER}",
+                    )
                 ),
             )
             for subset, report in fits.reports.items()
@@ -731,4 +790,5 @@ def verify(
         predictions=MappingProxyType(predictions),
         failures=MappingProxyType(failures),
         summary=summary,
+        not_applicable=MappingProxyType(not_applicable),
     )

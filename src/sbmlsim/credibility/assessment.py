@@ -1419,6 +1419,10 @@ def _check_records(
     fits = set(decisive["fit"].astype(str)) if "fit" in decisive.columns else set()
     records: list[CheckRecord] = []
     for check in NUMERICAL_CHECKS:
+        # a check which could not be made has no record, as a check of the
+        # battery which is not applicable has none
+        if check in verification.not_applicable:
+            continue
         predictions = verification.predictions[check]
         differences = relative_differences(table, predictions, summary.scale_floor)
         compared = differences.loc[decisive.index].dropna()
