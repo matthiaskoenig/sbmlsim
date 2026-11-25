@@ -72,7 +72,7 @@ from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimiza
 from sbmlsim.utils import paths_text
 
 if TYPE_CHECKING:
-    # the report draws with matplotlib, imported when a report is written
+    # the report and its figures are imported when a report is written
     from sbmlsim.fit.report import FitReport
     from sbmlsim.project import Project
     from sbmlsim.uncertainty.covariance import Covariance

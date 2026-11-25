@@ -97,9 +97,10 @@ from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 from sbmlsim.plot.colors import normalize_color
+from sbmlsim.plot.text import text_width
 from sbmlsim.progress import activity as progress_activity
 from sbmlsim.report.document import Document
-from sbmlsim.report.figures import inline_figure, save_figure
+from sbmlsim.report.figures import IMAGE_FORMATS, inline_figure, save_figure
 from sbmlsim.report.references import write_bibliography
 from sbmlsim.report.render import (
     HTMLRenderer,
@@ -295,22 +296,24 @@ POINT_SIZE: float = 9.0
 POINT_OPACITY: float = 0.7
 
 #: the box with the key metrics of a panel, see `FitReport._metrics_boxes`:
-#: its edge, fill and opacity, the distance of its lines and the width of a
-#: character of the text of the renderer (11 pixels), its padding and its
-#: distance from the corner of the panel in pixels
+#: its edge, fill and opacity, the distance of its lines of the text of the
+#: renderer (11 pixels, measured by `sbmlsim.plot.text.text_width`), its
+#: padding and its distance from the corner of the panel in pixels
 METRICS_BOX: dict[str, Any] = {
     "edge": "#999999",
     "fill": "#ffffff",
     "fill_opacity": 0.9,
 }
 BOX_LINE: float = 14.0
-BOX_CHAR: float = 6.2
 BOX_PAD: float = 5.0
 BOX_MARGIN: float = 8.0
 
-#: width in pixels of a character of the title of a figure, which the width
-#: of the figure of a fit mapping makes room for, see `_title_width`
-TITLE_CHAR: float = 8.8
+#: the font size of the title of a figure in pixels, the one of the renderer,
+#: and the factor of its bold letters over the regular ones `text_width`
+#: measures, which the width of the figure of a fit mapping makes room for,
+#: see `_title_width`
+TITLE_SIZE: float = 16.0
+TITLE_BOLD: float = 1.08
 
 #: the labels of the axes of the agreement figures
 GOF_X_LABEL: str = "Experiment y"
@@ -462,7 +465,9 @@ class FitReport:
             show_titles: add titles to the figures: the title of a fit
                 mapping above the panels of its figures, the title of a
                 figure or of its panel for the other figures.
-            image_format: format of the figures.
+            image_format: format of the figures, `svg` or `png`, see
+                `sbmlsim.report.figures.IMAGE_FORMATS`; every figure is
+                saved with its spec as `json` beside it.
             mapping_figures: draw the figure of every fit mapping, i.e. the
                 data with the simulation and the goodness of fit and the
                 Bland-Altman plot of the mapping, see `plot_mapping`, one
@@ -483,6 +488,11 @@ class FitReport:
                 the goodness of fit and the Bland-Altman plots, e.g. `tissue`,
                 the study by default.
         """
+        if image_format not in IMAGE_FORMATS:
+            raise ValueError(
+                f"The figures of a report are {' or '.join(IMAGE_FORMATS)}, "
+                f"not '{image_format}'."
+            )
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
         self.problem = deepcopy(problem)
@@ -2250,8 +2260,8 @@ class FitReport:
 
         The renderer places a text at values of the axes, so a box is placed
         by the geometry of the chart as it is drawn: its lines `BOX_LINE`
-        pixels apart below the top of the panel, on a white box whose width
-        is estimated from the longest line. The plots of the boxes are drawn
+        pixels apart below the top of the panel, on a white box as wide as
+        the renderer measures the longest line and no wider than the panel. The plots of the boxes are drawn
         before the boxes, and a box changes neither their axes nor their
         legends.
 
@@ -2268,7 +2278,12 @@ class FitReport:
         for plot, text in boxes:
             panel = drawn[plot.id]
             lines = text.splitlines()
-            width = BOX_CHAR * max(len(line) for line in lines) + 2 * BOX_PAD
+            # as wide as the renderer measures the text, never wider than the
+            # panel
+            width = min(
+                text_width(text) + 2 * BOX_PAD,
+                panel["rect"]["width"] - 2 * BOX_MARGIN,
+            )
             height = BOX_LINE * len(lines) + 2 * BOX_PAD
 
             left, top = BOX_MARGIN, BOX_MARGIN
@@ -2345,8 +2360,7 @@ class FitReport:
         """Get the width of a chart so that its title fits, at least `width`."""
         if not title:
             return width
-        longest = max(len(line) for line in title.splitlines())
-        return max(width, TITLE_CHAR * longest + 2 * BOX_MARGIN)
+        return max(width, TITLE_BOLD * text_width(title, TITLE_SIZE) + 2 * BOX_MARGIN)
 
     def _is_scalar(self, k: int) -> bool:
         """Whether mapping `k` compares one value per simulation."""
@@ -2563,7 +2577,7 @@ class FitReport:
         for column, log in enumerate((False, True)):
             y = self._curve_y_axis(k, res_data, log)
             curve = chart.plot(0, column, x=x, y=y, legend_order=order)
-            self._draw_curve(curve, k, res_data, log=y.scale == "log")
+            self._draw_curve(curve, k, res_data, log=y.scale == "log", bottom=y.min)
 
         of_mapping = {
             pset.sid: self._of_mapping(points[pset.sid], k)
@@ -2692,6 +2706,7 @@ class FitReport:
         k: int,
         res_data: Mapping[str, dict[str, list[Any]]],
         log: bool = False,
+        bottom: float | None = None,
     ) -> None:
         """Draw the data of mapping `k` and the simulation of every parameter set.
 
@@ -2701,13 +2716,17 @@ class FitReport:
         simulated value next to every row of the data. On a logarithmic axis
         a value which is not positive is a gap: a curve which is `0`, e.g. the
         urine at the start of a collection, ends at its last positive value
-        and starts again at the next one.
+        and starts again at the next one. An error bar whose lower end is at
+        or below zero, e.g. a standard deviation as large as its mean, goes to
+        the bottom of the axis and keeps its upper half.
 
         Args:
             plot: the plot.
             k: index of the mapping.
             res_data: the residual data of every parameter set.
             log: whether the y axis is logarithmic.
+            bottom: the lower end of a logarithmic y axis, which the lower
+                end of an error bar at or below zero is drawn to.
         """
 
         def shown(values: Any) -> np.ndarray:
@@ -2735,8 +2754,12 @@ class FitReport:
         if errors is not None:
             lower, upper = errors
             if log:
-                # a lower end at or below zero has no place on the axis
-                lower = np.where(y_ref - lower > 0.0, lower, np.nan)
+                # a lower end at or below zero has no place on the axis, the
+                # bar goes to the bottom of the axis instead
+                floor = bottom if bottom is not None else 0.0
+                lower = np.where(
+                    y_ref - lower > 0.0, lower, np.maximum(y_ref - floor, 0.0)
+                )
             self._draw_errors(
                 plot,
                 x_ref,

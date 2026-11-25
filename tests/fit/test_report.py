@@ -41,7 +41,7 @@ from sbmlsim.fit.report import (
 from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
-from sbmlsim.plot import Chart
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.plot.colors import normalize_color
 
 
@@ -1744,6 +1744,72 @@ def test_the_curve_of_a_mapping_draws_only_the_errors_of_the_data(
     assert sum(_n_bars(bar) for bar in bars) == int(measured.sum())
 
 
+def test_an_error_to_zero_reaches_the_bottom_of_the_log_panel(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Chart],
+) -> None:
+    """A standard deviation as large as its mean keeps its bar in the log panel.
+
+    The lower end of the bar has no logarithm, so the bar goes to the bottom
+    of the axis and keeps its upper half, as in the linear panel; e.g. the
+    data of Patel1984 `fm_25_tab`.
+    """
+    report = _mapping_report(op_hctz_pk, fit_settings)
+    wide = []
+    for k, errors in enumerate(op_hctz_pk.y_errors):
+        measured = op_hctz_pk.y_errors_measured[k]
+        if errors is None or measured is None:
+            continue
+        y = np.asarray(op_hctz_pk.y_references[k], dtype=float)
+        if np.any(measured & (y > 0) & (np.asarray(errors, dtype=float) >= y)):
+            wide.append(k)
+    assert wide
+    k = wide[0]
+    report.plot_mapping(tmp_path)
+    name = f"{op_hctz_pk.experiment_keys[k]}_{op_hctz_pk.mapping_keys[k]}"
+    linear, log = _plots(saved_figures[name])[:2]
+    assert log["y"]["scale"] == "log"
+    bars = {
+        key: [bar for bar in _error_bars(plot) if bar["legend"] == "data"]
+        for key, plot in (("linear", linear), ("log", log))
+    }
+    y = np.asarray(op_hctz_pk.y_references[k], dtype=float)
+    measured = op_hctz_pk.y_errors_measured[k]
+    assert measured is not None
+    assert sum(_n_bars(bar) for bar in bars["log"]) == int(np.sum(measured & (y > 0)))
+    lows = [
+        value
+        for bar in bars["log"]
+        if "yerr" not in bar
+        for value in bar["y"][0::3]
+        if value is not None
+    ]
+    # the bars of the points whose error reaches zero end at the bottom
+    clipped = int(
+        np.sum(measured & (y > 0) & (np.asarray(op_hctz_pk.y_errors[k]) >= y))
+    )
+    bottom = log["y"]["min"]
+    assert sum(low == pytest.approx(bottom) for low in lows) == clipped
+
+
+def test_a_box_of_metrics_stays_in_its_panel() -> None:
+    """A box of a long text is clamped to its panel, a short one fits its text."""
+    pytest.importorskip("sbmlsim_core")
+    chart = Chart(400, 300, columns=2)
+    plots = [
+        chart.plot(0, column, x=ChartAxis(min=0.0, max=1.0), y=ChartAxis(min=0, max=1))
+        for column in range(2)
+    ]
+    FitReport._metrics_boxes(chart, [(plots[0], "x" * 400), (plots[1], "n = 4")])
+    long, short = (_of_kind(plot, "polygon")[0] for plot in _plots(chart))
+    xs = [x for x, _y in long["paths"][0]]
+    assert min(xs) > 0.0 and max(xs) < 1.0
+    assert max(x for x, _y in short["paths"][0]) < 0.5
+    assert [_texts(plot) for plot in _plots(chart)] == [["x" * 400], ["n = 4"]]
+
+
 def _initialized_report(
     problem: OptimizationProblem, settings: FitSettings, **kwargs: Any
 ) -> FitReport:
@@ -1937,6 +2003,9 @@ def test_the_figures_are_saved_with_their_spec(
     assert not (tmp_path / "cost_bar.png").exists()
     with pytest.raises(ValueError, match="svg or png"):
         report.plot_cost_bar(tmp_path / "cost_bar.pdf")
+    # a report of another format is refused when it is created
+    with pytest.raises(ValueError, match="svg or png, not 'pdf'"):
+        _initialized_report(op_hctz_pk, fit_settings, image_format="pdf")
 
 
 def test_the_study_colors_and_set_markers_are_of_the_renderer(
@@ -1965,26 +2034,51 @@ def test_the_study_colors_and_set_markers_are_of_the_renderer(
 
 
 def test_fit_report_imports_no_matplotlib(tmp_path: Path) -> None:
-    """Building a report with the figures of the mappings imports no matplotlib."""
+    """Building a report with every figure imports no matplotlib.
+
+    The report of a fit of two runs with the profiles of its parameters and
+    the figures of the mappings: traces, waterfall, the agreement, the costs,
+    the mappings and the profiles.
+    """
     script = f"""
 import sys
 from pathlib import Path
 
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitSettings
+from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.runner import run_optimization
 
 problem = FIT_DEFINITIONS["IV"].problem(opid="iv")
 settings = FitSettings(absolute_tolerance=1e-6, relative_tolerance=1e-6)
+result = run_optimization(
+    problem=problem, settings=settings, size=2, n_cores=1, serial=True,
+    seed=1234, max_nfev=2,
+)
 problem.initialize(settings)
-report = FitReport(
+identifiability = profile_likelihood(
     problem=problem,
     settings=settings,
-    parameter_sets=problem.parameter_set_model(),
+    parameter_set=result.parameter_set(),
+    profile_settings=ProfileSettings(
+        reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=4
+    ),
+    serial=True,
+    show_progress=False,
+)
+report = FitReport.from_optimization_result(
+    problem=problem,
+    opt_result=result,
+    identifiability=identifiability,
     mapping_figures=True,
 )
 out = report.create(output_dir=Path({str(tmp_path)!r}), name="report")
-assert list((out / "plots").glob("*_*.svg"))
+plots = out / "plots"
+for name in ("traces", "waterfall", "goodness_of_fit", "cost_bar", "profiles"):
+    assert (plots / f"{{name}}.svg").exists(), name
+assert list(plots.glob("profile_*.svg"))
+assert len(list(plots.glob("*_fm_*.svg"))) == len(problem.mapping_keys)
 print("matplotlib" in sys.modules)
 """
     done = subprocess.run(

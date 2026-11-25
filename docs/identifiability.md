@@ -101,8 +101,8 @@ result = profile_likelihood(
 )
 print(result.summary_df())
 result.to_json(Path("identifiability.json"))
-fig = plot_profiles(result)
-fig.savefig("profiles.png")
+chart = plot_profiles(result)
+chart.save("profiles.svg")
 ```
 
 `problem`, `settings` and `parameter_sets` are the `OptimizationProblem`, the `FitSettings` and the fitted `ParameterSets` of [Parameter fitting](fitting.md).
