@@ -493,7 +493,7 @@ def test_an_override_of_run_which_raises_does_not_stop_the_run(
     assert "post-processing broken" in index
     page = (out / "RaisesAfterRun.html").read_text(encoding="utf-8")
     figures = page.split('<section id="figures">')[1].split("</section>")[0]
-    assert 'src="RaisesAfterRun_fig_ok.svg"' in figures
+    assert 'data-figure="fig_ok"' in figures
 
 
 def test_an_override_of_run_with_the_old_signature_is_run(tmp_path: Path) -> None:

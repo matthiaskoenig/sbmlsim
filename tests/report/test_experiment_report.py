@@ -6,7 +6,9 @@ editor and the LaTeX report includes the figures in a document.
 """
 
 import html as html_module
+import json
 import re
+import shutil
 import sys
 import webbrowser
 from html.parser import HTMLParser
@@ -181,8 +183,10 @@ def test_pages_are_offline_and_well_formed(report_dir: Path, page: str) -> None:
     html = _html(path)
 
     _assert_balanced(html)
-    assert "http://" not in html
-    assert "https://" not in html
+    # the namespace of an inline svg is a name and no request
+    offline = html.replace('xmlns="http://www.w3.org/2000/svg"', "")
+    assert "http://" not in offline
+    assert "https://" not in offline
 
     assert _references(path)
     assert _unresolved(path) == []
@@ -331,3 +335,61 @@ def test_an_experiment_without_a_source_file_has_a_report(tmp_path: Path) -> Non
     assert re.findall(r"^## (.+)$", text, re.M) == ["Models", "Datasets", "Figures"]
     assert "* **inline**: inline SBML" in text
     assert (tmp_path / "index.tex").exists()
+
+
+def test_experiment_page_inlines_svg_and_spec(report_dir: Path) -> None:
+    """Every figure is inline SVG with its spec, as hydrateFigures reads it."""
+    html = _html(report_dir / "Beermann1976" / "Beermann1976.html")
+    for fig in FIGURES:
+        block = re.search(
+            rf'<figure data-figure="{fig}">(.*?)</figure>', html, re.DOTALL
+        )
+        assert block, fig
+        assert "<svg" in block.group(1)
+        assert "<?xml" not in html and "<!DOCTYPE svg" not in html
+        spec = re.search(
+            rf'<script type="application/json" data-figure-spec="{fig}">(.*?)</script>',
+            block.group(1),
+            re.DOTALL,
+        )
+        assert spec, fig
+        on_disk = (report_dir / "Beermann1976" / f"Beermann1976_{fig}.json").read_text(
+            encoding="utf-8"
+        )
+        assert json.loads(spec.group(1)) == json.loads(on_disk)
+    assert "<iframe" not in html
+
+
+def test_spec_script_is_escaped(
+    report_and_dir: tuple[ExperimentReport, Path], tmp_path: Path
+) -> None:
+    """A label with a closing script tag cannot end the script of the spec."""
+    report, output_path = report_and_dir
+    folder = tmp_path / "Beermann1976"
+    shutil.copytree(output_path / "Beermann1976", folder)
+    spec_file = folder / "Beermann1976_Fig2.json"
+    spec = json.loads(spec_file.read_text(encoding="utf-8"))
+    spec["evil"] = "</script><b>x</b> <!-- y"
+    spec_file.write_text(json.dumps(spec), encoding="utf-8")
+    report.create_report(tmp_path)
+    html = _html(tmp_path / "Beermann1976" / "Beermann1976.html")
+    match = re.search(r'data-figure-spec="Fig2">(.*?)</script>', html, re.DOTALL)
+    assert match
+    assert "</" not in match.group(1) and "<!--" not in match.group(1)
+    assert json.loads(match.group(1))["evil"] == spec["evil"]
+    _assert_balanced(html)
+
+
+def test_index_thumbnails(report_dir: Path) -> None:
+    """The index keeps lazy thumbnails of the svg files and no inline figure."""
+    html = _html(report_dir / "index.html")
+    assert "<svg" not in html
+    for fig in FIGURES:
+        assert f'<img loading="lazy" src="Beermann1976/Beermann1976_{fig}.svg"' in html
+
+
+def test_latex_report_uses_png(report_dir: Path) -> None:
+    """The LaTeX report copies the png files and never the svg."""
+    tex = (report_dir / "index.tex").read_text(encoding="utf-8")
+    assert ".png}" in tex
+    assert ".svg" not in tex

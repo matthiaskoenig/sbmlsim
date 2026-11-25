@@ -20,8 +20,5 @@
 ![{{ fig_id }}]({{ exp_id }}/{{ fig.path }}.svg)
 
 {% endif %}
-{% if fig.interactive %}
-[interactive]({{ exp_id }}/{{ fig.path }}.html)
-{% endif %}
 {% endfor %}
 {% endfor %}

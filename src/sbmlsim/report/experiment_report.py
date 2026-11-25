@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import webbrowser
@@ -63,6 +64,60 @@ def _link(path: PurePath) -> str:
             "file://" + ("" if posix.startswith("/") else "/") + quote(posix, safe="/:")
         )
     return path.as_posix()
+
+
+_XML_DECLARATION = re.compile(r"^\s*<\?xml[^>]*\?>\s*", re.IGNORECASE)
+_DOCTYPE = re.compile(r"<!DOCTYPE[^>]*>\s*", re.IGNORECASE)
+
+
+def inline_svg(text: str) -> str:
+    """Get the text of an SVG file as markup of an HTML page.
+
+    Args:
+        text: the SVG file.
+
+    Returns:
+        The SVG without the XML declaration and the DOCTYPE, which an HTML
+        page must not carry inside its body.
+    """
+    return _DOCTYPE.sub("", _XML_DECLARATION.sub("", text, count=1), count=1).strip()
+
+
+def script_json(text: str) -> str:
+    r"""Get JSON text which can sit in a script element of an HTML page.
+
+    Args:
+        text: the JSON text.
+
+    Returns:
+        The text with `</` as `<\/` (a JSON parser reads it back unchanged),
+        so `</script>` and `<!--` in a label cannot end the script.
+    """
+    return text.replace("</", "<\\/").replace("<!--", "<\\u0021--")
+
+
+def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any]:
+    """Add the SVG and the spec of every figure to the context of its page.
+
+    Args:
+        context: the context of an experiment page.
+        folder: the directory of the experiment, where its figures are.
+
+    Returns:
+        A copy of the context whose figures have `svg` and `spec_text` where
+        the files exist; a figure without a spec (a hook figure) has none.
+    """
+    figures: dict[str, dict[str, Any]] = {}
+    for key, fig in context["figures"].items():
+        entry = dict(fig)
+        svg = folder / f"{fig['path']}.svg"
+        if fig.get("static") and svg.is_file():
+            spec = folder / f"{fig['path']}.json"
+            if fig.get("spec") and spec.is_file():
+                entry["svg"] = inline_svg(svg.read_text(encoding="utf-8"))
+                entry["spec_text"] = script_json(spec.read_text(encoding="utf-8"))
+        figures[key] = entry
+    return {**context, "figures": figures}
 
 
 class ReportResults:
@@ -166,7 +221,8 @@ class ReportResults:
                 "path": _link(rel_path / stem),
                 # which of the two backends wrote something for this figure
                 "static": "svg" in formats,
-                "interactive": "html" in formats,
+                "png": "png" in formats,
+                "spec": "json" in formats,
                 "formats": list(formats),
             }
 
@@ -282,6 +338,8 @@ class ExperimentReport:
         if report_type in [self.ReportType.HTML, self.ReportType.MARKDOWN]:
             # report for individual simulation experiment
             for exp_id, context in self.data_dict.items():
+                if report_type == self.ReportType.HTML:
+                    context = _with_inline_figures(context, output_path / exp_id)
                 write_report(
                     filename=f"{exp_id}/{exp_id}",
                     context=context,

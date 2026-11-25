@@ -26,11 +26,9 @@
 
 {% block head %}
 <style>
-  /* an interactive figure is a page of its own, shown in place of the image */
-  figure iframe { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-card); }
   /* a figure of one panel is not stretched to the width of the page, a figure
      of many panels still uses it */
-  #figures figure img { width: auto; max-width: 100%; max-height: 70vh; display: block; margin: 0 auto; }
+  #figures figure img, #figures figure svg { width: auto; max-width: 100%; max-height: 70vh; display: block; margin: 0 auto; }
   .mapping header .exp a + a::before { content: "·"; color: var(--fg-soft); margin: 0 6px; }
 </style>
 {% endblock %}
@@ -83,16 +81,20 @@
       <span class="name mono">{{ fig_id }}</span>
       <span class="exp">
         {% if fig.static %}<a href="{{ fig.path }}.svg">svg</a>{% endif %}
-        {% if fig.interactive %}<a href="{{ fig.path }}.html">interactive</a>{% endif %}
+        {% if fig.png %}<a href="{{ fig.path }}.png">png</a>{% endif %}
+        {% if fig.spec %}<a href="{{ fig.path }}.json">spec</a>{% endif %}
       </span>
     </header>
-    <figure>
-      {% if fig.static %}
-      <img loading="lazy" src="{{ fig.path }}.svg" alt="{{ fig_id }}">
-      {% elif fig.interactive %}
-      <iframe src="{{ fig.path }}.html" title="{{ fig_id }}" loading="lazy"></iframe>
-      {% endif %}
+    {% if fig.svg and fig.spec_text %}
+    <figure data-figure="{{ fig_id }}">
+      {{ fig.svg | safe }}
+      <script type="application/json" data-figure-spec="{{ fig_id }}">{{ fig.spec_text | safe }}</script>
     </figure>
+    {% elif fig.static %}
+    <figure><img loading="lazy" src="{{ fig.path }}.svg" alt="{{ fig_id }}"></figure>
+    {% elif fig.png %}
+    <figure><img loading="lazy" src="{{ fig.path }}.png" alt="{{ fig_id }}"></figure>
+    {% endif %}
   </div>
   {% endfor %}
   <p class="empty hidden" data-empty>No figure matches the search.</p>
