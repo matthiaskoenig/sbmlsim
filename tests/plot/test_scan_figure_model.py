@@ -189,8 +189,9 @@ def test_a_band_of_a_ragged_scan_is_drawn() -> None:
     (experiment,) = runner.experiments.values()
     experiment.run(runner.simulator, keep_results=True)
     assert experiment.results["task_ragged"].ragged
-    figure = experiment.create_mpl_figures()["fig"]
-    assert figure.axes[0].collections
+    chart = experiment.create_figures()["fig"]
+    (band,) = chart.spec()["plots"][0]["elements"]
+    assert band["kind"] == "band"
 
 
 def test_the_data_of_a_band_counts_for_the_selections() -> None:

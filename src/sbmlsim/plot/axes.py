@@ -12,13 +12,15 @@ and adds their units:
 
 from __future__ import annotations
 
-from typing import Any
-
-from matplotlib.axes import Axes
-from matplotlib.axis import Axis
+from typing import TYPE_CHECKING, Any
 
 from sbmlsim.plot.chart import axis_label as _axis_label
 from sbmlsim.units import ureg
+
+if TYPE_CHECKING:
+    # matplotlib is imported by the code which draws, not by sbmlsim
+    from matplotlib.axes import Axes
+    from matplotlib.axis import Axis
 
 
 def axis_label(name: str, axis: Axis) -> str:

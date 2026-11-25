@@ -3,7 +3,6 @@
 import gc
 import json
 import logging
-import sys
 import weakref
 from pathlib import Path
 from typing import Any, ClassVar, override
@@ -277,9 +276,7 @@ def test_a_curve_of_a_scan_without_a_selection_raises() -> None:
 def test_a_curve_of_one_point_of_a_scan_is_drawn(tmp_path: Path) -> None:
     runner = _runner(OnePointFigureExperiment)
     experiment = runner.experiments["OnePointFigureExperiment"]
-    experiment.run(
-        runner.simulator, output_path=tmp_path, figure_formats=["png", "html"]
-    )
+    experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["png"])
     assert (tmp_path / f"{experiment.sid}_fig.png").exists()
 
 
@@ -471,39 +468,23 @@ def _run_with(tmp_path: Path, formats: list[str]) -> Path:
     return tmp_path
 
 
-def test_a_static_format_is_drawn_by_matplotlib(tmp_path: Path) -> None:
-    """`svg` writes an image and no interactive page."""
+def test_a_figure_is_an_svg_and_its_spec(tmp_path: Path) -> None:
+    """`svg` writes the image of the renderer and the spec beside it, no page."""
     out = _run_with(tmp_path, ["svg"])
     assert (out / "FigureExperiment_fig.svg").exists()
+    assert (out / "FigureExperiment_fig.json").exists()
     assert not (out / "FigureExperiment_fig.html").exists()
-    assert not (out / "plotly.min.js").exists()
 
 
-def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
-    """`html` writes an interactive page and no image.
-
-    The javascript is written next to the page, so the report needs no
-    network, and matplotlib is not asked for a figure at all.
-    """
-    pytest.importorskip("plotly")
+def test_the_interactive_format_is_refused(tmp_path: Path) -> None:
+    """`html` was the page of plotly, which is gone."""
     runner = _runner(FigureExperiment)
     experiment = runner.experiments["FigureExperiment"]
-    result = experiment.run(
-        runner.simulator, output_path=tmp_path, figure_formats=["html"]
-    )
-
-    page = tmp_path / "FigureExperiment_fig.html"
-    assert page.exists()
-    assert (tmp_path / "plotly.min.js").exists()
-    assert not (tmp_path / "FigureExperiment_fig.svg").exists()
-    # matplotlib was not used, so nothing was rendered and closed
-    assert result.figures == {"fig": ["html"]}
-
-    html = page.read_text(encoding="utf-8")
-    assert "plotly-graph-div" in html
-    # the page loads its javascript from next to it and not from the network
-    assert 'src="plotly.min.js"' in html
-    assert "https://" not in html.split("<script")[1][:400]
+    with pytest.raises(ValueError, match="html is gone with plotly"):
+        experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["html"])
+    with pytest.raises(ValueError, match="html is gone with plotly"):
+        runner.run_experiments(output_path=tmp_path, figure_formats=["svg", "html"])
+    assert not (tmp_path / "FigureExperiment").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -512,27 +493,27 @@ def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
 def test_the_figures_are_released_once_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The matplotlib figures are released once a run wrote them.
+    """The charts are released once a run wrote them.
 
-    A figure keeps the pixel buffer of its last rendering: kept figures of every
-    experiment of a run would stay in memory until its end.
+    A chart holds the data of its figure: kept charts of every experiment of a
+    run would stay in memory until its end.
     """
-    figures: list[weakref.ref] = []
-    create = FigureExperiment.create_mpl_figures
+    charts: list[weakref.ref] = []
+    create = FigureExperiment.create_figures
 
     def create_and_watch(self: FigureExperiment, **kwargs: Any) -> dict:
-        mpl_figures = create(self, **kwargs)
-        figures.extend(weakref.ref(figure) for figure in mpl_figures.values())
-        return mpl_figures
+        created = create(self, **kwargs)
+        charts.extend(weakref.ref(chart) for chart in created.values())
+        return created
 
-    monkeypatch.setattr(FigureExperiment, "create_mpl_figures", create_and_watch)
+    monkeypatch.setattr(FigureExperiment, "create_figures", create_and_watch)
     runner = _runner(FigureExperiment)
     result = runner.run_experiments(output_path=tmp_path)[0]
     gc.collect()
 
-    assert figures
-    assert all(figure() is None for figure in figures)
-    assert result.figures == {"fig": ["svg"]}
+    assert charts
+    assert all(chart() is None for chart in charts)
+    assert result.figures == {"fig": ["svg", "json"]}
     assert (tmp_path / "FigureExperiment" / "FigureExperiment_fig.svg").exists()
     # the report lists the figure from its key
     report = ReportResults()
@@ -584,26 +565,10 @@ def test_the_runner_releases_the_results_of_an_experiment(tmp_path: Path) -> Non
 
 
 def test_both_formats_are_written(tmp_path: Path) -> None:
-    """An experiment asks for the image and the page in one run."""
-    pytest.importorskip("plotly")
-    out = _run_with(tmp_path, ["svg", "html"])
+    """An experiment asks for the SVG and the PNG in one run."""
+    out = _run_with(tmp_path, ["svg", "png"])
     assert (out / "FigureExperiment_fig.svg").exists()
-    assert (out / "FigureExperiment_fig.html").exists()
-
-
-def test_the_interactive_figures_need_plotly(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Without plotly the run says so and writes no page, it does not raise."""
-    monkeypatch.setitem(sys.modules, "sbmlsim.plot.serialization_plotly", None)
-    runner = _runner(FigureExperiment)
-    experiment = runner.experiments["FigureExperiment"]
-
-    with caplog.at_level(logging.ERROR):
-        experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["html"])
-
-    assert not (tmp_path / "FigureExperiment_fig.html").exists()
-    assert any("plotly" in record.getMessage() for record in caplog.records)
+    assert (out / "FigureExperiment_fig.png").exists()
 
 
 def test_the_json_of_an_experiment_needs_no_results(tmp_path: Path) -> None:

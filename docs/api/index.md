@@ -16,6 +16,7 @@ The top level modules: data, units and the shared output.
 | [engine](engine.md) | `Engine`, the engines which simulate a model, roadrunner, COPASI, AMICI and sbmlsim-core of sbmlsim-core, the imports of the optional COPASI and AMICI and of the bindings of sbmlsim-core and the directory of the compiled models of AMICI the workers of a pool load from |
 | [sbml_math](sbml_math.md) | the math of SBML as sympy expressions and numpy functions, the math of the events of a model |
 | [serialization](serialization.md) | JSON serialization of experiments |
+| [figure_formats](figure_formats.md) | the formats of the files of a figure: SVG, PNG and the spec of its chart as JSON |
 | [utils](utils.md) | timing and other helpers |
 | [parallel](parallel.md) | the process pools of sbmlsim: the start method, the kept pools and the caches of the workers |
 | [project](project.md) | `Project`, a model package: its model variants and factory, experiments, fits and their records, scans and uncertainty analyses, which the run layer resolves, with the settings of its simulator, figures, checks and release |
@@ -105,7 +106,6 @@ Figures and reports, see [Plots and reports](../plotting.md).
 | --- | --- |
 | [plot.plotting](plot.plotting.md) | `Figure`, `Plot`, `Axis`, `Curve` and their styles, the plot description independent of the backend |
 | [plot.points](plot.points.md) | the lines, colours, legend labels and colour bars of a curve over the points of a scan, and the quantiles of a band |
-| [plot.serialization_matplotlib](plot.serialization_matplotlib.md) | rendering of the figures with matplotlib |
 | [report.experiment_report](report.experiment_report.md) | HTML and markdown reports of simulation experiments |
 
 ## sbmlsim.fit

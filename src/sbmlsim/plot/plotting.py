@@ -1948,10 +1948,10 @@ class FigureSettings:
     therefore do not depend on the experiments which ran before it.
 
     Attributes:
-        fig_dpi: the resolution of a static image in dots per inch, which
-            turns the size of a figure in inches into its pixels. An
-            interactive page has a fixed 72 pixels per inch, see
-            `serialization_plotly.PAGE_PIXELS_PER_INCH`, whatever `fig_dpi`.
+        fig_dpi: the resolution of a PNG in dots per inch, which turns the
+            size of a figure in inches into its pixels. An SVG has a fixed 72
+            pixels per inch, see `sbmlsim.plot.resolve.PX_PER_INCH`, whatever
+            `fig_dpi`.
         fig_facecolor: the colour of the figure.
         fig_subplots_wspace: the horizontal spacing between the panels, as a
             fraction of the panel width.

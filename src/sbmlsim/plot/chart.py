@@ -1244,6 +1244,7 @@ class Chart:
         fonts: Mapping[str, float] | None = None,
         legend_scope: str = "plot",
         legend_position: str = "inside",
+        dpi: float | None = None,
     ) -> None:
         """Create a chart.
 
@@ -1259,6 +1260,8 @@ class Chart:
                 `legend`, the defaults of the renderer for the others.
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
             legend_position: `inside` or `outside`, right of the plot.
+            dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
+                the spec.
         """
         self.width = float(width)
         self.height = float(height)
@@ -1270,6 +1273,7 @@ class Chart:
         self.fonts = None if fonts is None else {k: float(v) for k, v in fonts.items()}
         self.legend_scope = legend_scope
         self.legend_position = legend_position
+        self.dpi = None if dpi is None else float(dpi)
         self.plots: list[ChartPlot] = []
         self._element_ids: set[str] = set()
         self._created = 0
@@ -1397,11 +1401,12 @@ class Chart:
 
         return str(import_core().render_svg(self.to_json()))
 
-    def png(self, dpi: float = DEFAULT_DPI) -> bytes:
+    def png(self, dpi: float | None = None) -> bytes:
         """Draw the chart as PNG.
 
         Args:
-            dpi: the resolution, 72 is one pixel per pixel of the chart.
+            dpi: the resolution, 72 is one pixel per pixel of the chart; the
+                `dpi` of the chart without, else `DEFAULT_DPI`.
 
         Returns:
             The bytes of the PNG.
@@ -1411,6 +1416,8 @@ class Chart:
         """
         from sbmlsim.engine import import_core
 
+        if dpi is None:
+            dpi = DEFAULT_DPI if self.dpi is None else self.dpi
         return bytes(import_core().render_png(self.to_json(), dpi=float(dpi)))
 
     def save(self, path: Path | str, dpi: float | None = None) -> Path:
@@ -1420,7 +1427,7 @@ class Chart:
 
         Args:
             path: the file, its suffix `.svg`, `.png` or `.json`.
-            dpi: the resolution of a PNG, 144 by default.
+            dpi: the resolution of a PNG, see `png`.
 
         Returns:
             The path of the file.
@@ -1433,7 +1440,7 @@ class Chart:
         if suffix == ".svg":
             write_text_atomic(path, self.svg())
         elif suffix == ".png":
-            content = self.png(DEFAULT_DPI if dpi is None else dpi)
+            content = self.png(dpi)
             with atomic_path(path) as temporary:
                 temporary.write_bytes(content)
         elif suffix == ".json":

@@ -115,13 +115,11 @@ from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import scipy.optimize
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 from scipy.stats import chi2
 
 from sbmlsim.engine import Engine
@@ -146,6 +144,11 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.parameters import ParameterSet, dump_json, load_json
 from sbmlsim.progress import activity as progress_activity
+
+if TYPE_CHECKING:
+    # matplotlib is imported when a profile is drawn, not with the analysis
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 logger = logging.getLogger(__name__)
 
@@ -1782,6 +1785,8 @@ def plot_profiles(
     n = len(pids)
     ncols = max(1, min(ncols, n))
     nrows = int(np.ceil(n / ncols))
+    from matplotlib.figure import Figure
+
     fig = Figure(figsize=(4.5 * ncols, 3.6 * nrows), layout="constrained")
     axes = fig.subplots(nrows=nrows, ncols=ncols, squeeze=False)
     for k, pid in enumerate(pids):
@@ -1819,6 +1824,8 @@ def plot_profile(
     """
     profile = result.profiles[pid]
     index = result.pids.index(pid)
+    from matplotlib.figure import Figure
+
     fig = Figure(figsize=(6.0, 7.0), layout="constrained")
     ax_profile, ax_paths = fig.subplots(
         nrows=2, ncols=1, sharex=True, height_ratios=[1.4, 1.0]

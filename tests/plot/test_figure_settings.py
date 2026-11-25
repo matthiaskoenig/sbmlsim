@@ -5,20 +5,20 @@ import importlib.util
 import logging
 import pickle
 import re
+import struct
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, override
 
 import pytest
-from matplotlib.image import imread
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentResult, ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, FigureSettings
-from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
+from sbmlsim.plot.resolve import figure_chart
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
@@ -114,15 +114,15 @@ def _run(
 
 def _legend_fontsize(result: ExperimentResult, settings: Any = None) -> float:
     """Get the font size of the legend of the figure of a run experiment."""
-    mpl_figures = result.experiment.create_mpl_figures(figure_settings=settings)
-    legend = mpl_figures["fig"].axes[0].get_legend()
-    assert legend is not None
-    return float(legend.get_texts()[0].get_fontsize())
+    charts = result.experiment.create_figures(figure_settings=settings)
+    fonts = charts["fig"].fonts
+    assert fonts is not None
+    return fonts["legend"]
 
 
 def _pixels(path: Path) -> tuple[int, int]:
-    """Get the height and the width of a PNG in pixels."""
-    height, width = imread(path).shape[:2]
+    """Get the height and the width of a PNG in pixels, from its header."""
+    width, height = struct.unpack(">II", path.read_bytes()[16:24])
     return height, width
 
 
@@ -211,8 +211,8 @@ def test_the_figure_overrides_its_experiment(tmp_path: Path) -> None:
 
     results = _run(tmp_path, FigureStyled)
     assert _legend_fontsize(results[0]) == 8
-    mpl = results[0].experiment.create_mpl_figures()["fig"]
-    assert mpl.dpi == 300
+    chart = results[0].experiment.create_figures()["fig"]
+    assert chart.dpi == 300
 
 
 def test_simulation_experiment_run_takes_figure_settings(tmp_path: Path) -> None:
@@ -254,15 +254,15 @@ def test_run_experiments_takes_figure_settings(tmp_path: Path) -> None:
 
 
 def _svg_width(path: Path) -> float:
-    """Get the width of an SVG in points."""
-    match = re.search(r'<svg[^>]*width="([0-9.]+)pt"', path.read_text(encoding="utf-8"))
+    """Get the width of an SVG in pixels of 1/72 inch."""
+    match = re.search(r'<svg[^>]*width="([0-9.]+)', path.read_text(encoding="utf-8"))
     assert match is not None
     return float(match.group(1))
 
 
 @pytest.mark.parametrize(
     "where",
-    ["run", "runner", "run_experiments", "serializer", "experiment", "figure"],
+    ["run", "runner", "run_experiments", "chart", "experiment", "figure"],
 )
 def test_an_unknown_key_raises_naming_the_settings(tmp_path: Path, where: str) -> None:
     """A key which is no setting raises at every level and names the settings."""
@@ -278,9 +278,9 @@ def test_an_unknown_key_raises_naming_the_settings(tmp_path: Path, where: str) -
             run_experiments(
                 Plain, tmp_path, Path("."), Path("."), figure_settings=unknown
             )
-        elif where == "serializer":
+        elif where == "chart":
             figure = Figure(experiment=None, sid="fig")
-            MatplotlibFigureSerializer.to_figure(None, figure, settings=unknown)
+            figure_chart(None, figure, settings=unknown)  # ty: ignore[invalid-argument-type]
         elif where == "experiment":
 
             class Unknown(Plain):
@@ -457,65 +457,38 @@ def test_an_explicit_size_is_kept_and_the_default_is_computed_at_rendering() -> 
     assert default.size(small) == (4.0, 3.0)
     assert partial.size(small) == (3.0, 1.0)
 
+    def inches(figure: Figure, experiment: Any = None, settings: Any = None) -> Any:
+        chart = figure_chart(experiment, figure, settings=settings)
+        return (chart.width / 72, chart.height / 72)
+
     for figure, expected in [(explicit, (3.0, 2.0)), (default, (4.0, 3.0))]:
-        fig = MatplotlibFigureSerializer.to_figure(None, figure, settings=small)
-        assert tuple(fig.get_size_inches()) == pytest.approx(expected)
-    fig = MatplotlibFigureSerializer.to_figure(None, default)
-    assert tuple(fig.get_size_inches()) == pytest.approx((14.0, 15.0))
+        assert inches(figure, settings=small) == pytest.approx(expected)
+    assert inches(default) == pytest.approx((14.0, 15.0))
 
     # a figure of the experiment gets the panels of the experiment
     class Panels(SimulationExperiment):
         figure_settings = MappingProxyType({"panel_width": 3.0, "panel_height": 2.0})
 
-    fig = MatplotlibFigureSerializer.to_figure(Panels(), default)
-    assert tuple(fig.get_size_inches()) == pytest.approx((6.0, 6.0))
+    assert inches(default, Panels()) == pytest.approx((6.0, 6.0))
 
 
-def test_the_pages_of_plotly_have_the_size_of_the_settings(tmp_path: Path) -> None:
-    """The pixels of a page are the inches of the figure times 72, whatever `fig_dpi`."""
-    pytest.importorskip("plotly")
-    from sbmlsim.plot.serialization_plotly import PlotlyFigureSerializer
-
-    explicit = Figure(experiment=None, sid="fig", width=3.0, height=2.0)
-    default = Figure(experiment=None, sid="fig", num_cols=2)
-    run = {"fig_dpi": 100, "panel_width": 4.0}
-    for figure, expected in [
-        (explicit, (216, 144)),
-        (default, (576, 360)),
-    ]:
-        layout = PlotlyFigureSerializer.to_figure(None, figure, settings=run).layout
-        assert (layout.width, layout.height) == expected
-    layout = PlotlyFigureSerializer.to_figure(None, default).layout
-    assert (layout.width, layout.height) == (1008, 360)
-
-
-def test_a_run_at_300_dpi_has_pages_of_the_default_size(tmp_path: Path) -> None:
-    """`fig_dpi` is the resolution of the static images, not the pixels of a page."""
-    pytest.importorskip("plotly")
-    _runner(Plain).run_experiments(tmp_path / "default", figure_formats=["html"])
-    page = _page_size(tmp_path / "default" / "Plain" / "Plain_fig.html")
-    assert page == (504, 360)
+def test_a_run_at_300_dpi_has_svgs_of_the_default_size(tmp_path: Path) -> None:
+    """`fig_dpi` is the resolution of a PNG, not the size of the figure."""
+    _runner(Plain).run_experiments(tmp_path / "default", figure_formats=["svg"])
+    width = _svg_width(tmp_path / "default" / "Plain" / "Plain_fig.svg")
+    assert width == 504
 
     # the dpi of the run and the dpi of the experiment
     _runner(Styled, Plain).run_experiments(
         tmp_path / "dpi",
-        figure_formats=["html", "png"],
+        figure_formats=["svg", "png"],
         figure_settings={"fig_dpi": 300},
     )
     for sid in ["Plain", "Styled"]:
-        assert _page_size(tmp_path / "dpi" / sid / f"{sid}_fig.html") == page
+        assert _svg_width(tmp_path / "dpi" / sid / f"{sid}_fig.svg") == width
         # the image has the resolution, about 300 / 72 times the default pixels
-        height, width = _pixels(tmp_path / "dpi" / sid / f"{sid}_fig.png")
-        assert width > 3 * page[0] and height > 3 * page[1]
-
-
-def _page_size(path: Path) -> tuple[int, int]:
-    """Get the width and the height of the layout of a plotly page."""
-    layout = path.read_text(encoding="utf-8").split('"layout":')[1]
-    width = re.search(r'"width":(\d+)', layout)
-    height = re.search(r'"height":(\d+)', layout)
-    assert width is not None and height is not None
-    return int(width.group(1)), int(height.group(1))
+        height, pixels = _pixels(tmp_path / "dpi" / sid / f"{sid}_fig.png")
+        assert pixels > 3 * width and height > 3 * 360
 
 
 class OldSignature(Plain):

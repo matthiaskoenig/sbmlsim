@@ -1,6 +1,10 @@
-"""Plotting in sbmlsim."""
+"""Plotting in sbmlsim.
 
-from sbmlsim.units import setup_matplotlib
+The figures are drawn by the renderer of sbmlsim-core (`Chart`); importing
+the package imports no matplotlib. `label_axes` labels the axes of a figure
+of matplotlib which plots quantities, whose units `ScanResult.q` and
+`sbmlsim.units.setup_matplotlib` register with matplotlib.
+"""
 
 from .axes import label_axes
 from .chart import Chart, ChartAxis, ChartPlot
@@ -31,6 +35,3 @@ __all__ = [
     "SubPlot",
     "label_axes",
 ]
-
-# the quantities of the package plot with matplotlib in their units
-setup_matplotlib()

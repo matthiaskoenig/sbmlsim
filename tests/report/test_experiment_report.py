@@ -47,7 +47,7 @@ def report_and_dir(
         output_path=output_path,
         show_figures=False,
         save_results=False,
-        figure_formats=["svg", "png", "html"],
+        figure_formats=["svg", "png"],
         reduced_selections=True,
     )
     report_results = ReportResults()
@@ -238,7 +238,7 @@ def test_markdown_experiment_page(report_dir: Path) -> None:
         "Figures",
         "Code",
     ]
-    assert "[Beermann1976_Fig3.html](Beermann1976_Fig3.html)" in text
+    assert "![Fig3](Beermann1976_Fig3.svg)" in text
     module = sys.modules[Beermann1976.__module__]
     assert module.__file__ is not None
     assert Path(module.__file__).read_text(encoding="utf-8") in text

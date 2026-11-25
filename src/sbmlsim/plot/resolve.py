@@ -15,8 +15,8 @@ the spec `figure/1` which the renderer of sbmlsim-core draws:
   bars are refused;
 - a `Band` is a band of its quantiles with its median, a `ShadedArea` an area;
 - the `FigureSettings` are the size (`PX_PER_INCH` pixels per inch), the
-  fonts (a point is a pixel), the spacing of the grid and the place and scope
-  of the legends.
+  resolution of the PNG (`fig_dpi`), the fonts (a point is a pixel), the
+  spacing of the grid and the place and scope of the legends.
 
 A legend entry is a legend group of the chart: elements of one label and one
 look share their group, so the renderer shows them once, also in the legend
@@ -189,6 +189,7 @@ def figure_chart(
         },
         legend_scope=resolved.legend_scope,
         legend_position=resolved.legend_position,
+        dpi=resolved.fig_dpi,
     )
     groups = _Groups()
     for subplot in figure.subplots:

@@ -9,7 +9,6 @@ from typing import Any, override
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
-from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import (
@@ -20,7 +19,7 @@ from sbmlsim.experiment import (
 )
 from sbmlsim.experiment.runner import run_experiments
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot import Axis, Figure
+from sbmlsim.plot import Axis, Chart, Figure
 from sbmlsim.report.experiment_report import ExperimentReport
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
@@ -68,7 +67,7 @@ def _figure(sid: str, style: Any = None) -> Figure:
 class BrokenFigureMpl(_Base):
     """An experiment whose custom figure raises when it is drawn."""
 
-    def figures_mpl(self) -> dict[str, FigureMPL]:
+    def figures_mpl(self) -> dict[str, Any]:
         raise RuntimeError("figure broken")
 
 
@@ -202,7 +201,7 @@ def test_pyplot_figures_of_a_failing_figures_mpl_are_closed(tmp_path: Path) -> N
     """The pyplot figures created before the error of `figures_mpl` are closed."""
 
     class PyplotThenError(_Base):
-        def figures_mpl(self) -> dict[str, FigureMPL]:
+        def figures_mpl(self) -> dict[str, Any]:
             plt.figure()
             raise RuntimeError("late")
 
@@ -393,47 +392,25 @@ def test_a_failed_figure_has_no_file_of_an_earlier_run(tmp_path: Path) -> None:
     stale = _stale(tmp_path / "BadCurve" / "BadCurve_fig_bad.svg")
     (result,) = _runner(BadCurve).run_experiments(output_path=tmp_path)
     assert set(result.failed_figures) == {"fig_bad"}
-    assert result.figures == {"fig_ok": ["svg"]}
+    assert result.figures == {"fig_ok": ["svg", "json"]}
     assert not stale.exists()
 
 
-def test_a_figure_failing_in_its_second_format_keeps_no_file(tmp_path: Path) -> None:
-    """The formats saved before the error of a figure are removed as well."""
-    (result,) = _runner(GoodExperiment).run_experiments(
-        output_path=tmp_path, figure_formats=["svg", "nosuchformat"]
-    )
-    assert "fig_ok" in result.failed_figures
-    assert result.figures == {}
-    assert not (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
-
-
-def test_a_figure_failing_only_as_page_keeps_its_image(
+def test_a_figure_failing_in_its_second_format_keeps_no_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The report shows the image of a figure whose interactive page failed."""
-    pytest.importorskip("plotly")
-    from sbmlsim.plot import serialization_plotly
+    """The formats saved before the error of a figure are removed as well."""
 
-    def broken(*args: Any, **kwargs: Any) -> dict:
-        raise RuntimeError("no page")
+    def broken(*args: Any, **kwargs: Any) -> bytes:
+        raise RuntimeError("no png")
 
-    monkeypatch.setattr(serialization_plotly, "figures_to_html", broken)
-    out = tmp_path / "GoodExperiment"
-    stale = _stale(out / "GoodExperiment_fig_ok.html")
+    monkeypatch.setattr(Chart, "png", broken)
     (result,) = _runner(GoodExperiment).run_experiments(
-        output_path=tmp_path, figure_formats=["svg", "html"]
+        output_path=tmp_path, figure_formats=["svg", "png"]
     )
-    assert "no page" in result.failed_figures["fig_ok"]
-    assert result.figures == {"fig_ok": ["svg"]}
-    assert (out / "GoodExperiment_fig_ok.svg").exists()
-    assert not stale.exists()
-
-    ExperimentReport([result]).create_report(output_path=tmp_path)
-    page = (out / "GoodExperiment.html").read_text(encoding="utf-8")
-    figures = page.split('<section id="figures">')[1].split("</section>")[0]
-    assert "Figures (1)" in figures
-    assert 'src="GoodExperiment_fig_ok.svg"' in figures
-    assert "GoodExperiment_fig_ok.html" not in figures
+    assert "no png" in result.failed_figures["fig_ok"]
+    assert result.figures == {}
+    assert not list((tmp_path / "GoodExperiment").glob("GoodExperiment_fig_ok.*"))
 
 
 def test_the_error_of_a_run_can_be_pickled(tmp_path: Path) -> None:
@@ -504,7 +481,7 @@ def test_an_override_of_run_which_raises_does_not_stop_the_run(
     assert "post-processing broken" in (results[0].error or "")
     assert results[0].failed
     # the figure the base run wrote is current, the one of an earlier run is not
-    assert results[0].figures == {"fig_ok": ["svg"]}
+    assert results[0].figures == {"fig_ok": ["svg", "json"]}
     assert (out / "RaisesAfterRun_fig_ok.svg").exists()
     assert not stale.exists()
     assert results[1].error is None
@@ -549,7 +526,7 @@ def test_a_raising_override_of_run_can_raise_in_a_runner_which_raises(
 class BrokenFiguresMpl(_Base):
     """An experiment whose custom figures raise."""
 
-    def figures_mpl(self) -> dict[str, FigureMPL]:
+    def figures_mpl(self) -> dict[str, Any]:
         raise RuntimeError("custom figures broken")
 
 
@@ -560,10 +537,10 @@ def test_the_runner_removes_the_stale_figures_of_unknown_keys(
     """The figure keys are unknown, so the directory of the experiment is cleaned."""
     name = broken.__name__
     stale = _stale(tmp_path / name / f"{name}_never_known.svg")
-    page = _stale(tmp_path / name / f"{name}_never_known.html")
+    page = _stale(tmp_path / name / f"{name}_never_known.json")
     other = _stale(tmp_path / name / "other_never_known.svg")
     (result, _) = _runner(broken, GoodExperiment).run_experiments(
-        output_path=tmp_path, figure_formats=["svg", "html"]
+        output_path=tmp_path, figure_formats=["svg", "png"]
     )
     assert result.failed
     assert not stale.exists()

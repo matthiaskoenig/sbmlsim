@@ -629,3 +629,236 @@ def test_the_right_axis_draws_no_grid(experiment: SimulationExperiment) -> None:
     spec = _plot(experiment, draw, yaxis=Axis("C", unit="mg/l", grid=True))
     assert spec["y"]["grid"] is True
     assert spec["y2"]["grid"] is False
+
+
+# ---------------------------------------------------------------------------
+# ported from the tests of the serializers of matplotlib and plotly (what is
+# drawn, not how a library draws it)
+# ---------------------------------------------------------------------------
+def _chart_of(experiment: SimulationExperiment, draw: Callable[[Plot], object]) -> Any:
+    chart = figure_chart(experiment, _figure(experiment, draw))
+    return chart, chart.spec()["plots"][0]
+
+
+def test_two_curves_over_one_dimension_keep_their_names_in_the_legend(
+    experiment: SimulationExperiment,
+) -> None:
+    def draw(plot: Plot) -> None:
+        _doses(plot, label="C")
+        _doses(plot, label="C again", color="tab:red")
+
+    chart, _ = _chart_of(experiment, draw)
+    labels = _legend(chart.svg())
+    assert labels[0].startswith("C, ") and labels[3].startswith("C again, ")
+
+
+def test_a_value_per_simulation_over_its_dimension(
+    experiment: SimulationExperiment,
+) -> None:
+    spec = _plot(
+        experiment,
+        lambda p: p.curve(
+            x=Data("dose.PODOSE", task="task_doses"),
+            y=Data("pk.cmax", task="task_doses"),
+            label="cmax",
+        ),
+        xaxis=Axis("PODOSE", unit="mg"),
+        yaxis=Axis("cmax", unit="mg/l"),
+    )
+    (line,) = spec["elements"]
+    assert line["x"] == pytest.approx([50.0, 100.0, 200.0])
+    assert np.all(np.diff(line["y"]) > 0)
+
+
+def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
+    def draw(plot: Plot) -> None:
+        plot.set_yaxis_right("C right", unit="mg/l")
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            name="C",
+            yaxis_position=YAxisPosition.RIGHT,
+        )
+
+    (band,) = _plot(experiment, draw)["elements"]
+    assert (band["kind"], band["axis"]) == ("band", "y2")
+
+
+def test_selected_points_are_labelled_by_their_labels(
+    experiment: SimulationExperiment,
+) -> None:
+    def draw(plot: Plot) -> None:
+        plot.curve(
+            x=Data("time", task="task_doses", sel={"dose": [2, 1]}),
+            y=Data("[C]", task="task_doses", sel={"dose": [2, 1]}),
+            over="dose",
+            label="C",
+        )
+
+    chart, spec = _chart_of(experiment, draw)
+    assert _legend(chart.svg()) == ["C, PODOSE = 200 mg", "C, PODOSE = 100 mg"]
+    high, low = spec["elements"]
+    assert np.nanmax(np.asarray(high["y"], dtype=float)) > np.nanmax(
+        np.asarray(low["y"], dtype=float)
+    )
+    # the two points are the two ends of the colours
+    ends = import_core().color_scale("viridis", 0.0, 1.0, [0.85, 0.0])
+    assert [high["style"]["color"], low["style"]["color"]] == list(ends)
+
+
+def test_a_selected_second_dimension_draws_with_its_own_labels(
+    experiment: SimulationExperiment,
+) -> None:
+    def draw(plot: Plot) -> None:
+        plot.curve(
+            x=Data("time", task="task_grid5", sel={"rate": [3, 1]}),
+            y=Data("[C]", task="task_grid5", sel={"rate": [3, 1]}),
+            over=("dose", "rate"),
+            label="C",
+        )
+
+    chart, spec = _chart_of(experiment, draw)
+    assert len([e for e in spec["elements"] if e["x"]]) == 6
+    unit = experiment.model_units("task_grid5").get("ke", "")
+    assert _legend(chart.svg())[3:] == [
+        f"ke = 0.4 {unit}".rstrip(),
+        f"ke = 0.2 {unit}".rstrip(),
+    ]
+
+
+def test_decreasing_doses_keep_line_and_bar_consistent(
+    experiment: SimulationExperiment,
+) -> None:
+    spec = _plot(experiment, lambda p: _doses(p, task="task_decreasing"))
+    scale = spec["colorbar"]["scale"]
+    assert scale["log"] is False
+    assert scale["low"] == pytest.approx(10.0)
+    values = np.linspace(120.0, 10.0, 12)
+    colors = import_core().color_scale(
+        "viridis", scale["low"], scale["high"], values.tolist()
+    )
+    assert [e["style"]["color"] for e in spec["elements"]] == list(colors)
+
+
+def test_a_named_band_with_a_colour_bar_keeps_its_legend_entry(
+    experiment: SimulationExperiment,
+) -> None:
+    chart, spec = _chart_of(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_many_draws"),
+            Data("[C]", task="task_many_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+        ),
+    )
+    assert _legend(chart.svg()) == ["C (5-95 %)"]
+    assert spec["colorbar"]["label"] == "PODOSE [mg]"
+
+
+def _two_bands(plot: Plot, quantiles: tuple[float, float] = (0.25, 0.75)) -> None:
+    for name, q in [("a", (0.05, 0.95)), ("b", quantiles)]:
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            name=name,
+            quantiles=q,
+        )
+
+
+def test_two_bands_have_an_entry_each(experiment: SimulationExperiment) -> None:
+    chart, _ = _chart_of(experiment, _two_bands)
+    assert _legend(chart.svg()) == ["a (5-95 %)", "b (25-75 %)"]
+    chart, _ = _chart_of(experiment, lambda p: _two_bands(p, quantiles=(0.05, 0.95)))
+    assert _legend(chart.svg()) == ["a (5-95 %)", "b (5-95 %)"]
+
+
+@pytest.mark.parametrize("median", [True, False], ids=["median", "no median"])
+def test_the_legend_has_one_entry_per_band_with_its_area_in_its_colour(
+    experiment: SimulationExperiment, median: bool
+) -> None:
+    """A band has one legend entry, its area in its colour, with its quantiles (#302)."""
+
+    def draw(plot: Plot) -> None:
+        for name, color, quantiles in [
+            ("a", "black", (0.0, 1.0)),
+            ("b", "blue", (0.05, 0.95)),
+        ]:
+            plot.band(
+                Data("time", task="task_draws"),
+                Data("[C]", task="task_draws"),
+                across="draw",
+                quantiles=quantiles,
+                median=median,
+                name=name,
+                color=color,
+            )
+        plot.curve(
+            x=Data("time", task="task_doses", sel={"dose": 0}),
+            y=Data("[C]", task="task_doses", sel={"dose": 0}),
+            label="sim",
+            color="black",
+        )
+
+    chart, spec = _chart_of(experiment, draw)
+    assert _legend(chart.svg()) == ["a (0-100 %)", "b (5-95 %)", "sim"]
+    a, b, _ = spec["elements"]
+    assert ("median" in a, "median" in b) == (median, median)
+    assert (a["style"]["color"], b["style"]["color"]) == ("#000000", "#0000ff")
+    assert a["style"]["fill"]["opacity"] == pytest.approx(0.3)
+
+
+def test_the_median_of_a_band_without_a_name(experiment: SimulationExperiment) -> None:
+    """A band without a name has the entry of its range."""
+
+    def draw(plot: Plot) -> None:
+        band = plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+        )
+        band.name = None
+
+    chart, spec = _chart_of(experiment, draw)
+    (band,) = spec["elements"]
+    assert "median" in band
+    assert _legend(chart.svg()) == ["5-95 %"]
+
+
+def test_the_bands_of_two_panels_keep_their_own_legend_groups(
+    experiment: SimulationExperiment,
+) -> None:
+    figure = Figure(experiment=experiment, sid="fig", num_rows=1, num_cols=2)
+    plots = figure.create_plots(
+        xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l"), legend=True
+    )
+    for plot, name in zip(plots, ("a", "b"), strict=True):
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            name=name,
+        )
+    chart = figure_chart(experiment, figure)
+    groups = [p["elements"][0]["legend"] for p in chart.spec()["plots"]]
+    assert groups[0] != groups[1]
+    assert _legend(chart.svg()) == ["a (5-95 %)", "b (5-95 %)"]
+
+
+def test_the_legend_entries_of_two_dimensions_carry_the_markers(
+    experiment: SimulationExperiment,
+) -> None:
+    spec = _plot(
+        experiment,
+        lambda p: p.curve(
+            x=Data("time", task="task_grid2"),
+            y=Data("[C]", task="task_grid2"),
+            over=("dose", "rate"),
+            label="C",
+            marker="o",
+        ),
+    )
+    assert {e["style"]["marker"]["type"] for e in spec["elements"]} == {"circle"}

@@ -99,11 +99,12 @@ for path in sorted(Path("results").rglob("*.*")):
 
 ```text title="Output"
 results/Patel1984/Patel1984.json
+results/Patel1984/Patel1984_fig_cp.json
 results/Patel1984/Patel1984_fig_cp.svg
 results/Patel1984/datasets/Patel1984_hctz25.tsv
 ```
 
-The run wrote the figure as SVG, the dataset as TSV and the definition of the experiment as JSON.
+The run wrote the figure as SVG with the spec of its chart as JSON beside it, the dataset as TSV and the definition of the experiment as JSON.
 
 In a terminal or a notebook the run also shows its progress: a bar over all experiments and a row for each experiment that is running, with what it is doing (its simulations, drawing or writing its figures, ...) and how far it got. At the end it prints how long each experiment took in each phase:
 
@@ -124,11 +125,11 @@ The phases are loading the models, initializing the experiment (its definitions 
 
 The progress and the timings are shown only when the output goes to a terminal or a notebook, not when it is redirected into a file. `run_experiments(progress=True)` always shows them, `progress=False` prints nothing at all.
 
-To look at a figure in a notebook, ask the experiment for its matplotlib figures:
+To look at a figure in a notebook, ask the experiment for its charts, which the renderer of sbmlsim-core draws and a notebook shows:
 
 ```python
 experiment = results[0].experiment
-fig = experiment.create_mpl_figures()["fig_cp"]
+chart = experiment.create_figures()["fig_cp"]
 ```
 
 ![Output figure](images/outputs/experiments-03.png)

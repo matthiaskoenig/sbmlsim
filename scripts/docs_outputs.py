@@ -20,8 +20,9 @@ change of a page or of what its code prints. The `documentation` workflow
 runs it before it builds the site, so the published pages are never stale.
 
 A figure is a figure of pyplot which is open after the block, or a
-`matplotlib.figure.Figure` which a name of the namespace holds and which no
-block before showed. The working directory of the blocks is a temporary
+`matplotlib.figure.Figure` or a `sbmlsim.plot.Chart` which a name of the
+namespace holds and which no block before showed; a chart is drawn by the
+renderer of sbmlsim-core. The working directory of the blocks is a temporary
 directory, so the files a page writes do not end up in the repository.
 """
 
@@ -41,6 +42,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
+
+    from sbmlsim.plot.chart import Chart
 
 REPO_DIR: Path = Path(__file__).parent.parent
 DOCS_DIR: Path = REPO_DIR / "docs"
@@ -113,11 +116,12 @@ class BlockResult:
 
     Attributes:
         stdout: the text it printed, without trailing whitespace.
-        figures: the figures it created, `matplotlib.figure.Figure`.
+        figures: the figures it created, `matplotlib.figure.Figure` and
+            `sbmlsim.plot.Chart`.
     """
 
     stdout: str
-    figures: list[Figure]
+    figures: list[Figure | Chart]
 
 
 def parse(text: str) -> tuple[list[str], list[Block]]:
@@ -181,14 +185,19 @@ def _skip_blank(lines: list[str], k: int) -> int:
     return k
 
 
-def _figures(namespace: dict[str, object]) -> list[Figure]:
-    """Get the open figures of pyplot and the figures the namespace holds."""
-    import matplotlib.pyplot as plt
-    from matplotlib.figure import Figure
+def _figures(namespace: dict[str, object]) -> list[Figure | Chart]:
+    """Get the open figures of pyplot and the figures and charts the namespace holds."""
+    from sbmlsim.plot.chart import Chart
 
-    figures = [plt.figure(num) for num in plt.get_fignums()]
+    figures: list[Figure | Chart] = []
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is not None:
+        figures += [pyplot.figure(num) for num in pyplot.get_fignums()]
+    kinds: tuple[type, ...] = (Chart,)
+    if (module := sys.modules.get("matplotlib.figure")) is not None:
+        kinds = (*kinds, module.Figure)
     for value in namespace.values():
-        if isinstance(value, Figure) and all(value is not f for f in figures):
+        if isinstance(value, kinds) and all(value is not f for f in figures):
             figures.append(value)
     return figures
 
@@ -228,7 +237,7 @@ def run_page(page: str, workdir: Path) -> list[BlockResult]:
     _, blocks = parse((DOCS_DIR / page).read_text(encoding="utf-8"))
     # a block runs as a script does, its guard `if __name__ == "__main__":` too
     namespace: dict[str, object] = {"__name__": "__main__"}
-    shown: list[Figure] = []
+    shown: list[Figure | Chart] = []
     results: list[BlockResult] = []
     cwd = Path.cwd()
     # a page may configure logging, e.g. `log.enable_rich_logging()`, whose
@@ -288,6 +297,8 @@ def write_page(page: str, workdir: Path) -> bool:
     Returns:
         Whether the page changed.
     """
+    from sbmlsim.plot.chart import Chart
+
     path = DOCS_DIR / page
     text = path.read_text(encoding="utf-8")
     lines, blocks = parse(text)
@@ -305,13 +316,16 @@ def write_page(page: str, workdir: Path) -> bool:
         images = []
         for i, figure in enumerate(result.figures):
             name = _image_name(page, k, i)
-            figure.savefig(
-                OUTPUTS_DIR / name,
-                dpi=DPI,
-                bbox_inches="tight",
-                facecolor="white",
-                metadata={"Software": None},
-            )
+            if not isinstance(figure, Chart):
+                figure.savefig(
+                    OUTPUTS_DIR / name,
+                    dpi=DPI,
+                    bbox_inches="tight",
+                    facecolor="white",
+                    metadata={"Software": None},
+                )
+            else:
+                figure.save(OUTPUTS_DIR / name, dpi=DPI)
             images.append(f"{IMAGES}/{name}")
         new += _region(result, images)
         position = block.region_end

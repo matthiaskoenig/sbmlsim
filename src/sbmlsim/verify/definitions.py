@@ -158,10 +158,9 @@ def capture_settings(
 
     The run is intercepted where it reaches sbmlsim: the arguments of the
     simulator (`Simulator`), of the runner (without the simulator) and of the
-    run (without the output path; with the figure settings of the run), bound
-    to the signatures, so positional and keyword calls agree, and every
-    matplotlib `rcParams` entry which differs from the value before the run, at
-    the time of the run. `calls` counts the intercepted calls. The simulator is
+    run (without the output path; with the figure settings, the formats and the
+    resolution of the PNG of the run), bound to the signatures, so positional
+    and keyword calls agree. `calls` counts the intercepted calls. The simulator is
     the one created before the runner: the designs of an experiment
     (`sbmlsim.simulation.sampling.parameters_of`, `local`) create simulators of
     their own while the runner initializes it, which are neither recorded nor
@@ -183,8 +182,6 @@ def capture_settings(
     """
     from unittest import mock
 
-    import matplotlib
-
     from sbmlsim.experiment import ExperimentRunner
     from sbmlsim.report.experiment_report import ExperimentReport
     from sbmlsim.simulator import Simulator
@@ -194,7 +191,6 @@ def capture_settings(
     simulator_init = Simulator.__init__
     runner_init = ExperimentRunner.__init__
     run_original = ExperimentRunner.run_experiments
-    baseline = dict(matplotlib.rcParams)
 
     def record_simulator(*args: object, **kwargs: object) -> None:
         # a design of an experiment creates simulators of its own while the
@@ -214,11 +210,6 @@ def capture_settings(
     def record_run(*args: object, **kwargs: object) -> list[object]:
         calls["run"] += 1
         captured["run"] = _bound(run_original, args, kwargs, skip={"output_path"})
-        captured["rc"] = {
-            key: _plain(value)
-            for key, value in sorted(dict(matplotlib.rcParams).items())
-            if key not in baseline or bool(value != baseline[key])
-        }
         return []
 
     def no_report(
@@ -238,9 +229,7 @@ def capture_settings(
             project.run_experiments(experiment, output)
         else:
             run(experiment, output)
-    missing = [
-        key for key in ("simulator", "runner", "run", "rc") if key not in captured
-    ]
+    missing = [key for key in ("simulator", "runner", "run") if key not in captured]
     if missing:
         raise RuntimeError(
             f"the run did not reach sbmlsim, nothing captured for {missing}"

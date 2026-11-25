@@ -325,7 +325,7 @@ def test_capture_settings_of_a_project() -> None:
     assert settings["run"]["figure_formats"] == ["svg", "png"]
     assert settings["run"]["reduced_selections"] is True
     assert settings["run"]["save_results"] is False
-    assert settings["rc"]["savefig.dpi"] == 30
+    assert settings["run"]["png_dpi"] == 30
     assert settings["runner"]["jit_optimization"] == "O0"
     assert settings["calls"] == {"simulator": 1, "runner": 1, "run": 1}
     assert "<root>" in settings["runner"]["base_path"]
@@ -376,20 +376,6 @@ def test_capture_settings_requires_a_complete_run() -> None:
         capture_settings(PROJECT, ToyDecay, ROOT, lambda experiment, out: None)
 
 
-def test_capture_settings_records_the_matplotlib_settings() -> None:
-    import matplotlib
-
-    from sbmlsim.verify.definitions import capture_settings
-
-    def with_font(experiment: type[SimulationExperiment], output_dir: Path) -> None:
-        with matplotlib.rc_context({"font.size": 3}):
-            PROJECT.run_experiments(experiment, output_dir)
-
-    rc = capture_settings(PROJECT, ToyDecay, ROOT, with_font)["rc"]
-    assert rc["font.size"] == 3
-    assert rc["savefig.dpi"] == 30
-
-
 def test_capture_settings_sees_a_difference() -> None:
     from sbmlsim.verify.definitions import capture_settings
 
@@ -397,7 +383,7 @@ def test_capture_settings_sees_a_difference() -> None:
     a = capture_settings(PROJECT, ToyDecay, ROOT)
     b = capture_settings(other, ToyDecay, ROOT)
     assert a["run"]["figure_formats"] != b["run"]["figure_formats"]
-    assert b["rc"]["savefig.dpi"] == 55
+    assert b["run"]["png_dpi"] == 55
 
 
 def test_settings_writes_a_file(tmp_path: Path) -> None:

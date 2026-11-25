@@ -201,4 +201,4 @@ def test_simulate_draws_the_figures_in_the_given_formats(tmp_path: Path) -> None
         run.plan("simulate", {**spec, "figure_formats": [" "]})
     run.execute("simulate", spec, tmp_path / "out")
     figures = {p.suffix for p in (tmp_path / "out").rglob("*_fig_decay.*")}
-    assert figures == {".png"}
+    assert figures == {".png", ".json"}

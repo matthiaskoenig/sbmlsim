@@ -1,6 +1,6 @@
 # Plots
 
-The figures of a simulation experiment are descriptions of what to draw. A `Figure` holds a grid of `Plot` panels, and each plot has axes and curves that read `Data`. When the experiment runs, the runner draws every figure with matplotlib as an image (SVG by default) or with plotly as an interactive HTML page. Because a figure only names its data, it is stored in the JSON file of the experiment and both backends show the same thing.
+The figures of a simulation experiment are descriptions of what to draw. A `Figure` holds a grid of `Plot` panels, and each plot has axes and curves that read `Data`. When the experiment runs, the runner draws every figure with the renderer of sbmlsim-core as an image (SVG by default). Because a figure only names its data, it is stored in the JSON file of the experiment.
 
 ## An experiment to plot
 
@@ -115,7 +115,7 @@ task_doses ScanResult(dose: 4, _point: 1009; cp, pk.cmax)
 task_patients ScanResult(patient: 50, _point: 910; cp)
 ```
 
-In a real project the figures are returned by the `figures()` method of the experiment, with `Figure(experiment=self, ...)`, and the runner writes them into the output folder (see [Simulation experiments](experiments.md)). While you design a figure it is quicker to draw it on an experiment that already ran: `MatplotlibFigureSerializer.to_figure(experiment, figure)` returns a matplotlib figure, which a notebook shows. A figure drawn this way can only read data the run recorded, which is why the experiment lists the variables in `data()`.
+In a real project the figures are returned by the `figures()` method of the experiment, with `Figure(experiment=self, ...)`, and the runner writes them into the output folder (see [Simulation experiments](experiments.md)). While you design a figure it is quicker to draw it on an experiment that already ran: `figure_chart(experiment, figure)` from `sbmlsim.plot.resolve` returns a `Chart` of the renderer of sbmlsim-core, which a notebook shows. A figure drawn this way can only read data the run recorded, which is why the experiment lists the variables in `data()`.
 
 ## Figures, plots and axes
 
@@ -123,7 +123,7 @@ A `Figure` has `num_rows` x `num_cols` panels. `create_plots` makes one `Plot` p
 
 ```python
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
+from sbmlsim.plot.resolve import figure_chart
 
 fig = Figure(experiment=experiment, sid="fig_po25", num_cols=2)
 plasma, urine = fig.create_plots(xaxis=Axis("time", unit="hr"))
@@ -146,7 +146,7 @@ urine.set_title("urine")
 urine.set_yaxis("HCTZ", unit="µmol")
 urine.add_data(task="task_po25", xid="time", yid="Aurine_hctz", label="simulation")
 
-fig_po25 = MatplotlibFigureSerializer.to_figure(experiment, fig)
+fig_po25 = figure_chart(experiment, fig)
 ```
 
 ![Output figure](images/outputs/plotting-02.png)
@@ -187,7 +187,7 @@ peak.curve(
     marker="o",
 )
 
-fig_doses = MatplotlibFigureSerializer.to_figure(experiment, fig)
+fig_doses = figure_chart(experiment, fig)
 ```
 
 ![Output figure](images/outputs/plotting-03.png)
@@ -232,7 +232,7 @@ for plot in [linear, log]:
         linestyle="",
     )
 
-fig_patients = MatplotlibFigureSerializer.to_figure(experiment, bands)
+fig_patients = figure_chart(experiment, bands)
 ```
 
 ![Output figure](images/outputs/plotting-04.png)
@@ -243,7 +243,7 @@ The quantiles are computed when the figure is drawn, so you need no summary of t
 
 ## Log axes
 
-By default a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept, as `log.yaxis.min = 1` in the band figure above. For your own matplotlib figures, `limit_log_axis(ax)` from `sbmlsim.plot.serialization_matplotlib` does the same.
+By default a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept, as `log.yaxis.min = 1` in the band figure above.
 
 ## Styles
 
@@ -280,7 +280,7 @@ plot.curve(
     name="Patel 1984",
     style=squares,
 )
-fig_style = MatplotlibFigureSerializer.to_figure(experiment, fig)
+fig_style = figure_chart(experiment, fig)
 ```
 
 ![Output figure](images/outputs/plotting-05.png)
@@ -334,27 +334,22 @@ Older code set the settings on the class, `Figure.fig_dpi = 300`, which changed 
 By default each plot has its legend inside, at the best place matplotlib finds. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
 
 ```python
-fig_row = MatplotlibFigureSerializer.to_figure(
+fig_row = figure_chart(
     experiment, bands, settings={"legend_scope": "row"}
 )
 ```
 
 ![Output figure](images/outputs/plotting-07.png)
 
-The `legend` flag of a plot decides whether its entries go into the legend of the row. In the interactive pages of plotly the figure has one legend right of all panels, and `legend_scope="row"` gives each row its own.
+The `legend` flag of a plot decides whether its entries go into the legend of the row.
 
-## Images and interactive pages
+## Images
 
-The figure formats of a run choose the backend, e.g. `run_experiments(output_path, figure_formats=["svg", "html"])` writes both:
-
-- `svg`, `png` and `pdf` are static images drawn by matplotlib, for publications.
-- `html` is an interactive page drawn by plotly, which you can zoom, pan and hover over. The pages are written with the javascript of plotly next to them, so they work offline.
-
-plotly is not a dependency of `sbmlsim`; install it to write pages. Without it, a run that asks for `html` reports that and writes no page. `PlotlyFigureSerializer.to_figure` in `sbmlsim.plot.serialization_plotly` is the counterpart of `MatplotlibFigureSerializer.to_figure`.
+The renderer of sbmlsim-core draws every figure. The figure formats of a run are `svg` (the default) and `png`, e.g. `run_experiments(output_path, figure_formats=["svg", "png"])`, and the spec of the chart, `json`, is written beside every figure. A PNG has the resolution `fig_dpi` of the settings of its figure, which `FigureOutputs.savefig_dpi` of a project replaces. The format `html` of the interactive pages of plotly is gone and raises a `ValueError`.
 
 ## Your own matplotlib figures
 
-For a figure the description cannot express, override `figures_mpl()` and return matplotlib figures by key. The runner saves them next to the other figures, but they have no interactive version. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
+For a figure the description cannot express, override `figures_mpl()` and return figures by key: a `Chart` is drawn by the renderer like the other figures, and any other object, e.g. a matplotlib figure, is saved with its own `savefig` in every image format of the run and is warned about once per experiment class, since it is slow. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
 
 ## Reports
 

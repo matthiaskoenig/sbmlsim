@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any, override
 
-import matplotlib
 import pytest
 
 from sbmlsim import parallel
@@ -29,19 +28,14 @@ PROCESS_FILE = "process.json"
 
 
 class _Recorded(_Base):
-    """An experiment which records its process and a setting of matplotlib."""
+    """An experiment which records its process."""
 
     @override
     def run(self, *args: Any, **kwargs: Any) -> ExperimentResult:
         result = super().run(*args, **kwargs)
         output_path = kwargs["output_path"]
         (output_path / PROCESS_FILE).write_text(
-            json.dumps(
-                {
-                    "pid": os.getpid(),
-                    "linewidth": matplotlib.rcParams["lines.linewidth"],
-                }
-            ),
+            json.dumps({"pid": os.getpid()}),
             encoding="utf-8",
         )
         return result
@@ -142,16 +136,15 @@ def _run(
     classes: list[type[SimulationExperiment]],
     simulator: Simulator | None = None,
 ) -> list[ExperimentResult]:
-    with matplotlib.rc_context({"lines.linewidth": 4.25}):
-        return _runner(*classes, simulator=simulator).run_experiments(
-            output_path=path, n_workers=n_workers
-        )
+    return _runner(*classes, simulator=simulator).run_experiments(
+        output_path=path, n_workers=n_workers
+    )
 
 
 def test_the_experiments_of_a_pool_give_the_results_of_a_serial_run(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The experiments run in workers, with the settings of matplotlib of the run."""
+    """The experiments run in workers and give the results of a serial run."""
     with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.runner"):
         pooled = _run(tmp_path / "pooled", 3, CLASSES)
     serial = _run(tmp_path / "serial", 1, CLASSES)
@@ -165,8 +158,7 @@ def test_the_experiments_of_a_pool_give_the_results_of_a_serial_run(
     for sid in ("First", "Second", "Third", "BadFigure"):
         assert _process(tmp_path / "pooled", sid)["pid"] != os.getpid()
         assert _process(tmp_path / "serial", sid)["pid"] == os.getpid()
-        assert _process(tmp_path / "pooled", sid)["linewidth"] == 4.25
-        for fig_format in ("svg",):
+        for fig_format in ("svg", "json"):
             assert (tmp_path / "pooled" / sid / f"{sid}_fig_ok.{fig_format}").exists()
     # the messages of the workers reach the logging of the run, in its order
     messages = [r.getMessage() for r in caplog.records]
