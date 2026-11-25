@@ -13,6 +13,7 @@
 Features include
 
 - **timecourse simulations** - concatenated timecourses with changes of parameters and initial conditions, in the units of the model
+- **interpolation** - drive an SBML simulation with measured data using constant, linear or natural cubic spline interpolation
 - **parameter scans** - simulations over dimensions of values, simulations and models, serially or in a pool of processes, with results as labeled N-dimensional arrays with units ([xarray](https://xarray.dev))
 - **simulation experiments** - models, datasets, simulations, tasks and figures of an experiment as one reproducible python object, with HTML and markdown reports
 - **parameter fitting** - optimization problems from experimental data with local and global optimizers, and PEtab archives

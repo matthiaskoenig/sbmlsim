@@ -59,6 +59,7 @@ PAGES: list[str] = [
     "units.md",
     "experiments.md",
     "data.md",
+    "interpolation.md",
     "plotting.md",
     "scans.md",
     "sampling.md",
