@@ -461,6 +461,10 @@ def test_from_df_ignores_the_unit_of_an_empty_row(junk: str) -> None:
         ("time", ["-24|-16", "0"], ["hr", "min"], r"'time'.*\['hr', 'min'\].*number"),
         # a unit which is no string
         ("value", [1.0, 2.0], ["mg", 5], r"'value'.*\['mg', 5\].*5.*no string"),
+        # the one unit of a column is read where the data is read, so an
+        # undefined one and one which is no string raise there too (#653)
+        ("value", [1.0, 2.0], ["xyz"] * 2, r"'value'.*'xyz'.*not defined"),
+        ("value", [1.0, 2.0], [5, 5], r"'value'.*\[5\].*5.*no string"),
     ],
 )
 def test_from_df_unit_errors_name_the_column_and_units(
@@ -822,3 +826,103 @@ def test_from_df_an_empty_geometric_mean_gets_the_unit_of_the_row() -> None:
     assert dset.uinfo["gmean"] == "mg/l"
     assert dset["gmean_unit"].tolist() == ["mg/l", "mg/l"]
     assert dset["gmean"].isna().all()
+
+
+def test_the_distinct_units_of_a_column_keep_their_order() -> None:
+    """`_column_units` is the units of the rows which carry one (#653)."""
+    from sbmlsim.data import _column_units
+
+    assert _column_units(pd.Series(["mg", "g", "mg", "g"])) == ("mg", "g")
+    assert _column_units(pd.Series(["g", "mg"])) == ("g", "mg")
+    assert _column_units(pd.Series(["mg", "mg"])) == ("mg",)
+    # a row without a unit carries none, whichever of the missing values it is
+    assert _column_units(pd.Series([float("nan"), "mg", None])) == ("mg",)
+    assert _column_units(pd.Series([float("nan"), float("nan")])) == ()
+    assert _column_units(pd.Series([], dtype=object)) == ()
+    # the values are python objects, so a message names `5` and not `np.int64(5)`
+    assert _column_units(pd.Series([5, 5])) == (5,)
+
+
+#: the frames the one unit answer of `_unify_units` is compared with its full
+#: path on, see `test_a_column_of_one_unit_is_answered_as_the_full_path`
+_ONE_UNIT_FRAMES: dict[str, dict[str, list]] = {
+    "a value column": {"value": [1.0, 2.0], "value_unit": ["mg", "mg"]},
+    "with its errors": {
+        "value": [1.0, 2.0],
+        "value_sd": [0.1, float("nan")],
+        "value_se": [float("nan"), 0.2],
+        "value_min": [0.9, 1.8],
+        "value_max": [1.1, 2.2],
+        "value_unit": ["mg", "mg"],
+    },
+    "a row without a value": {
+        "value": [1.0, float("nan")],
+        "value_sd": [float("nan"), 0.5],
+        "value_unit": ["mg", "mg"],
+    },
+    "no row with a value": {
+        "value": [float("nan"), float("nan")],
+        "value_sd": [0.1, 0.2],
+        "value_unit": ["mg", "mg"],
+    },
+    "a row without a unit": {
+        "value": [1.0, 2.0, 3.0],
+        "value_unit": ["mg", None, "mg"],
+    },
+    "no row with a unit": {
+        "value": [1.0, 2.0],
+        "value_unit": [None, float("nan")],
+    },
+    "an empty row": {
+        "value": [1.0, float("nan")],
+        "value_sd": [float("nan"), float("nan")],
+        "value_unit": ["mg", "mg"],
+    },
+    "a unit with a factor": {"value": [1.0, 2.0], "value_unit": ["(10*ml)/hr"] * 2},
+    "the statistics of a row": {
+        "mean": [1.0, 2.0],
+        "sd": [0.1, 0.2],
+        "count": [4, 5],
+        "unit": ["mg", "mg"],
+    },
+    "several units": {
+        "value": [1.0, 2.0, 3.0],
+        "value_unit": ["mg", "g", "mg"],
+    },
+}
+
+
+@pytest.mark.parametrize("name", list(_ONE_UNIT_FRAMES))
+def test_a_column_of_one_unit_is_answered_as_the_full_path(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one unit answer gives the dataset the masks of the full path give (#653).
+
+    The answer is taken when a column carries exactly one unit, and nothing
+    after it reads the units it was given, so doubling them is the full path
+    and no other change.
+    """
+    from sbmlsim import data as data_module
+
+    columns = _ONE_UNIT_FRAMES[name]
+    ureg = UnitRegistry(on_redefinition="ignore")
+    answered = DataSet.from_df(pd.DataFrame(columns), ureg=ureg)
+    units = data_module._column_units
+    with monkeypatch.context() as patched:
+        patched.setattr(data_module, "_column_units", lambda column: units(column) * 2)
+        full = DataSet.from_df(pd.DataFrame(columns), ureg=ureg)
+
+    pd.testing.assert_frame_equal(answered, full)
+    assert answered.uinfo.udict == full.uinfo.udict
+
+
+def test_a_column_of_one_unit_leaves_the_frame_as_it_is() -> None:
+    """Nothing is converted, so the rows keep the unit they were written with."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["mg", "mg"]})
+    before = df.copy()
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+    pd.testing.assert_frame_equal(df, before)
+    assert dset.uinfo["value"] == "mg"
+    assert dset["value"].tolist() == pytest.approx([1.0, 2.0])
+    assert dset["value_unit"].tolist() == ["mg", "mg"]
