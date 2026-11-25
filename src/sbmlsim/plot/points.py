@@ -35,6 +35,7 @@ import xarray as xr
 
 from sbmlsim.data import ROW
 from sbmlsim.engine import import_core
+from sbmlsim.plot.colors import normalize_color
 from sbmlsim.plot.padding import without_padding
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.result.timecourse import PLOT_POINTS, plot_times
@@ -64,29 +65,6 @@ _COLORMAP_END = 0.85
 
 #: the number of colours of the ramp of a colour bar
 RAMP_SIZE = 256
-
-#: the colours of the names of matplotlib which a colour of a style may use
-_NAMED = {
-    "tab:blue": "#1f77b4",
-    "tab:orange": "#ff7f0e",
-    "tab:green": "#2ca02c",
-    "tab:red": "#d62728",
-    "tab:purple": "#9467bd",
-    "tab:brown": "#8c564b",
-    "tab:pink": "#e377c2",
-    "tab:gray": "#7f7f7f",
-    "tab:olive": "#bcbd22",
-    "tab:cyan": "#17becf",
-    "black": "#000000",
-    "white": "#ffffff",
-    "red": "#ff0000",
-    "green": "#008000",
-    "blue": "#0000ff",
-    "gray": "#808080",
-    "grey": "#808080",
-    "orange": "#ffa500",
-    "purple": "#800080",
-}
 
 #: how much white the lightest shade of a colour has
 _LIGHTEST = 0.65
@@ -573,20 +551,11 @@ def _labels(
 
 
 def _rgb(color: str) -> np.ndarray:
-    """Parse a colour, a hex string or a name of `_NAMED`, as floats of 0 to 1."""
-    text = _NAMED.get(color, color)
-    digits = text[1:] if text.startswith("#") else ""
-    if len(digits) in (3, 4):
-        digits = "".join(c * 2 for c in digits)
-    digits = digits[:6]
-    try:
-        if len(digits) != 6:
-            raise ValueError(color)
-        return np.array([int(digits[i : i + 2], 16) for i in (0, 2, 4)]) / 255.0
-    except ValueError:
-        raise ValueError(
-            f"the colour {color!r} is no hex colour or known name"
-        ) from None
+    """Parse a colour, see `sbmlsim.plot.colors`, as floats of 0 to 1."""
+    hexed = normalize_color(color)
+    if hexed is None:
+        raise ValueError(f"the colour {color!r} is no colour")
+    return np.array([int(hexed[i : i + 2], 16) for i in (1, 3, 5)]) / 255.0
 
 
 def _hex(rgb: np.ndarray) -> str:
@@ -687,7 +656,6 @@ def point_styles(
     n = len(labels_of[0])
     found = point_values(dimensions[0], units, labels_of[0])
     span = point_scale(found[1]) if found is not None else None
-    ramp = point_ramp(color)
     scale: ColorBarScale | None
     if found is not None and span is not None:
         target, values, unit = found
@@ -695,6 +663,7 @@ def point_styles(
         title = f"{target} [{unit}]" if unit else target
         fractions = np.array([_fraction(float(v), low, high, log) for v in values])
         colors = _ramp(color, fractions)
+        ramp = point_ramp(color)
         ticks = _value_ticks(low, high, log)
         scale = ColorBarScale(
             low, high, log, ticks, [format_value(t) for t in ticks], False
@@ -703,7 +672,7 @@ def point_styles(
         values = np.arange(n, dtype=float)
         title = over[0]
         colors = point_colors(n, color)
-        ramp = colors if n else ramp
+        ramp = colors
         scale = (
             ColorBarScale(
                 -0.5,

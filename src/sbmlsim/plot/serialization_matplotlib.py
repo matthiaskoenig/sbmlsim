@@ -516,13 +516,14 @@ class MatplotlibFigureSerializer:
         the values as ticks of a logarithmic norm and the labels of the points
         as ticks of a discrete one, and is labelled like the axes.
         """
-        mappable = ScalarMappable(norm=style_norm(styles), cmap=style_colormap(styles))
+        norm = style_norm(styles)
+        mappable = ScalarMappable(norm=norm, cmap=style_colormap(styles))
         colorbar = fig.colorbar(mappable, cax=cax)
         ticks_of = style_ticks(styles)
         if ticks_of is not None:
             positions = tick_positions(len(ticks_of))
             colorbar.set_ticks(positions, labels=[ticks_of[k] for k in positions])
-        elif isinstance(style_norm(styles), LogNorm):
+        elif isinstance(norm, LogNorm):
             colorbar.ax.yaxis.set_major_formatter(
                 FuncFormatter(lambda value, _: format_value(value))
             )
