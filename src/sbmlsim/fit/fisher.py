@@ -597,11 +597,13 @@ def evaluator(
 ) -> Generator[Evaluate | None]:
     """Get what evaluates the residuals of the points of a jacobian.
 
-    The points of the central differences are independent of each other, so
-    they are evaluated on a pool of workers, the pool of a fit with the
-    problem initialized in every worker (`sbmlsim.fit.runner.JacobianPool`,
-    what the jacobian of least squares uses). The values are the values of
-    this process bitwise, see `JacobianPool`.
+    The points of the central differences are independent of each other.
+    sbmlsim-core evaluates them as one batch on threads of its own in this
+    process (`OptimizationProblem.evaluate_residuals_many`); any other engine
+    on a pool of workers, the pool of a fit with the problem initialized in
+    every worker (`sbmlsim.fit.runner.JacobianPool`, what the jacobian of
+    least squares uses). The values are the values of this process bitwise,
+    see `JacobianPool`.
 
     Args:
         problem: initialized optimization problem.
@@ -621,15 +623,32 @@ def evaluator(
     if cores <= 1:
         yield None
         return
-    # sbmlsim-core simulates the points of a jacobian at once on threads of
-    # its own, so they are one task of one worker, see `runner.FitPool.threads`
-    batched = problem.engine is Engine.CORE
-    with worker_pool(
-        problem,
-        settings,
-        1 if batched else cores,
-        threads=cores if batched else 1,
-    ) as pool:
+    if problem.engine is Engine.CORE:
+        # sbmlsim-core simulates the points of a jacobian at once on threads
+        # of its own: one batch in this process, which is the batch a worker
+        # of a pool would evaluate (`runner._worker_residuals_many`). A pool
+        # started a process and initialized the problem in it again for this
+        # one batch, ten seconds of the Fisher information of the HCTZ PK fit
+        # for half a second of simulations (sbmlsim#664)
+
+        def batch(points: Sequence[np.ndarray]) -> list[np.ndarray]:
+            """Evaluate the points as one batch of the engine, in their order."""
+            with progress_activity(
+                "jacobian", "Fisher information", total=len(points)
+            ) as evaluated:
+                rows = [
+                    np.asarray(residuals, dtype=float)
+                    for residuals, _ in problem.evaluate_residuals_many(
+                        points, threads=cores
+                    )
+                ]
+                if evaluated is not None:
+                    evaluated.advance(len(points))
+            return rows
+
+        yield batch
+        return
+    with worker_pool(problem, settings, cores, threads=1) as pool:
         points_pool = JacobianPool(pool)
         points_pool.start()
 
