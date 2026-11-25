@@ -321,7 +321,11 @@ def write_page(page: str, workdir: Path) -> bool:
         images = []
         for i, figure in enumerate(result.figures):
             name = _image_name(page, k, i)
-            figure.save(OUTPUTS_DIR / name)
+            target = figure.save(OUTPUTS_DIR / name)
+            if target.suffix == ".svg":
+                # the committed files end with one newline, as end-of-file-fixer has it
+                text = target.read_text(encoding="utf-8")
+                target.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
             images.append(f"{IMAGES}/{name}")
         new += _region(result, images)
         position = block.region_end
