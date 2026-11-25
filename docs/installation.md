@@ -73,11 +73,10 @@ Now continue with the [Tutorial](tutorial.md).
 
 ## Optional packages
 
-Six features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
+Five features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
 
 | feature | install |
 | --- | --- |
-| interactive HTML figures of experiments (`figure_formats=["html"]`, see [Plots and reports](plotting.md)) | `pip install plotly` |
 | hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
 | COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |

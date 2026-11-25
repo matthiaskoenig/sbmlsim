@@ -169,7 +169,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | kind | field | default | meaning |
 | --- | --- | --- | --- |
 | `simulate` | `experiments` | every experiment | the names of the groups and of the classes of the experiments to run, every experiment once; the plan sets the names of the classes |
-| `simulate` | `figure_formats` | the formats of the project | the formats of the figures, e.g. `["svg", "html"]`, which the plan writes in lower case |
+| `simulate` | `figure_formats` | the formats of the project | the formats of the figures, `svg` and `png`, e.g. `["svg", "png"]`, which the plan writes in lower case; the spec of a figure (`json`) is written beside it |
 | `simulate` | `uncertainty` | none | run the experiments over draws of the fitted parameters of the default variant of the model, the curves of their simulations as bands (see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters)): `draws` (100), `seed` (drawn by the plan without) and the `quantiles` of the bands (`[0.05, 0.95]`) |
 | `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built; none for a sensitivity analysis over groups |
 | `sensitivity` | `analyses` | the default analyses of the runner | the analyses of a sensitivity analysis over groups (`Project.sensitivities`), e.g. `[local, sampling]`, which the plan sets for a single runner |

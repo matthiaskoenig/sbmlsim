@@ -52,7 +52,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `app` | the app of the model, `sbmlsim.panel.App`: the pages of its panels with their scenarios, the variants a reader switches between, the citation, the DOI and the licenses of the provenance footer; `None` for a model without one. The service checks its pages against the panels of every variant when it registers the model, see [The app of a model](serve.md#the-app-of-a-model) |
 | `web_app` | whether `create_models` writes the web assets of the model after the factory, `True` by default: every variant compiled by sbmlsim-core (`wasm/<stem>/`) and the app `<name>_app.html`, one HTML file which simulates the model in the browser, see [Web app](webapp.md) |
 | `figure_settings` | the rendering of the figures of the experiments, a `FigureSettings` of the plots |
-| `figures` | the files of the figures, `FigureOutputs`: the `formats`, the resolution of the static images `savefig_dpi` and other parameters of matplotlib, `rc` |
+| `figures` | the files of the figures, `FigureOutputs`: the `formats` (`svg`, `png`; the spec `json` is written beside every figure) and the resolution of a PNG, `savefig_dpi` |
 | `checks` | the known exceptions of the [checks](#checks-of-a-project) of the model, `CheckSettings`, each with its reason, and the module of its experiments, `experiment_modules` (`experiments` below the package) |
 | `release` | the release metadata, `sbmlsim.release.settings.ReleaseSettings`, `None` for a project which is not released; besides the metadata of the citation it names the framework of the release (`framework`, `sbmlsim` by default), the core libraries whose release notes the notes of a release summarize (`core_libraries`, `sbmlsim` and `sbmlutils` by default), the COMBINE archive the factory writes (`archive`) and the release hook of a framework (`hook`, an object or a reference), see [Release](release.md) |
 
@@ -94,7 +94,7 @@ where `factory.yaml` names the `project` alone; its summary lists the outputs of
 
 ## The analyses of a project
 
-`python -m sbmlsim.run list my_model:PROJECT` lists the analyses a project defines (`--experiments` also the groups and classes of the experiments, which imports them) and `python -m sbmlsim.run <kind> spec.yaml --out DIR` runs one of them, see [Analyses](run.md). The kinds which take a project name it by `project: module:attribute` in their spec, the kinds `scan`, `sensitivity` and `uncertainty` the analysis by `analysis`, `fit` and its relatives a fit problem by `subset`, `simulate` the experiments by the names of their groups or classes. `Project.run_experiments(experiments, out)` is the same run from python, with the simulator, the figure settings, the formats and the rc parameters of the project.
+`python -m sbmlsim.run list my_model:PROJECT` lists the analyses a project defines (`--experiments` also the groups and classes of the experiments, which imports them) and `python -m sbmlsim.run <kind> spec.yaml --out DIR` runs one of them, see [Analyses](run.md). The kinds which take a project name it by `project: module:attribute` in their spec, the kinds `scan`, `sensitivity` and `uncertainty` the analysis by `analysis`, `fit` and its relatives a fit problem by `subset`, `simulate` the experiments by the names of their groups or classes. `Project.run_experiments(experiments, out)` is the same run from python, with the simulator, the figure settings, the formats and the resolution of the PNG of the project.
 
 ## Variants
 
