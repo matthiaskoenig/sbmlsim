@@ -5,6 +5,7 @@ of the problem, the settings and one or more parameter sets.
 """
 
 import dataclasses
+import json
 import re
 import shutil
 import subprocess
@@ -16,14 +17,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.container import ErrorbarContainer
-from matplotlib.figure import Figure
 from PIL import Image
 from pypdf import PdfReader
 
 import sbmlsim.fit.report as report_module
 from examples.hctz_fitting.experiments.studies import Weir1998
-from sbmlsim import __version__, cgroup
+from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping, Subset
@@ -33,8 +32,8 @@ from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import (
-    LEGEND_WIDTH,
     MAX_GROUP_ROWS,
+    ROW_HEIGHT,
     STUDY_COLORS,
     FitReport,
     category_color,
@@ -42,6 +41,50 @@ from sbmlsim.fit.report import (
 from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
+from sbmlsim.plot import Chart
+from sbmlsim.plot.colors import normalize_color
+
+
+def _plots(chart: Chart) -> list[dict[str, Any]]:
+    """Get the plots of the spec of a chart."""
+    return chart.spec()["plots"]
+
+
+def _of_kind(plot: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    """Get the elements of a kind of a plot of a spec."""
+    return [e for e in plot["elements"] if e["kind"] == kind]
+
+
+def _labels(plot: dict[str, Any]) -> list[str]:
+    """Get the labels of the elements of a plot of a spec."""
+    return [e["label"] for e in plot["elements"] if "label" in e]
+
+
+def _texts(plot: dict[str, Any]) -> list[str]:
+    """Get the texts of a plot of a spec, e.g. the lines of a box of metrics."""
+    return [e["text"] for e in _of_kind(plot, "text")]
+
+
+def _error_bars(plot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get the error bars of a plot: curves with errors or of segments.
+
+    Symmetric errors are the errors of a curve, asymmetric ones segments of a
+    line without markers broken by gaps, see `FitReport._draw_errors`.
+    """
+    return [
+        e
+        for e in _of_kind(plot, "curve")
+        if "xerr" in e
+        or "yerr" in e
+        or (e["style"]["marker"]["type"] == "none" and None in e["y"])
+    ]
+
+
+def _n_bars(element: dict[str, Any]) -> int:
+    """Get the number of the bars of an element of `_error_bars`."""
+    if "xerr" in element or "yerr" in element:
+        return len(element["x"])
+    return sum(value is not None for value in element["y"]) // 2
 
 
 def _fit(
@@ -342,25 +385,35 @@ def test_the_title_of_a_panel_counts_the_points_drawn() -> None:
     assert FitReport._panel_title("validation", [positive]) == "validation (n=0)"
 
 
-def test_the_legend_lists_the_studies_before_the_lines() -> None:
+def test_the_legend_lists_the_studies_before_the_lines(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Chart],
+) -> None:
     """The legend of the panels lists the points first and the lines last.
 
-    The band and the lines of twofold are labelled on the last panel, and a
-    study whose points are only in that panel, e.g. a study with validation
-    data alone, is still listed with the other studies and not after them.
+    The band and the lines of twofold are labelled in the last panel, and a
+    study whose points are only in a later panel, e.g. a study with validation
+    data alone, is still listed with the other studies and not after the
+    lines: the renderer lists the entries of a row in the order of its panels.
     """
-    from matplotlib.figure import Figure
+    pytest.importorskip("sbmlsim_core")
+    from sbmlsim.engine import import_core
 
-    fig = Figure()
-    first, last = fig.subplots(nrows=1, ncols=2)
-    first.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyA")
-    last.plot([1.0, 2.0], [1.0, 2.0], linestyle="-.", label="bias 1.00x")
-    last.plot([1.0, 2.0], [2.0, 4.0], linestyle=":", label="2-fold")
-    last.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyB")
-    FitReport._set_figure_legend(fig, [first, last])
-    (legend,) = fig.legends
-    labels = [text.get_text() for text in legend.get_texts()]
-    assert labels == ["StudyA", "StudyB", "bias 1.00x", "2-fold"]
+    report = _initialized_report(op_hctz_pk, fit_settings)
+    for name in ("goodness_of_fit", "bland_altman"):
+        getattr(report, f"plot_{name}")(tmp_path / f"{name}.svg")
+        chart = saved_figures[name]
+        assert chart.legend_scope == "row" and chart.legend_position == "outside"
+        plots = _plots(chart)
+        for plot in plots[:-1]:
+            assert "2-fold" not in _labels(plot)
+        entries = import_core().figure_geometry(chart.to_json())["legend_entries"]
+        legends = [entry["legend"] for entry in entries]
+        studies = report.studies()
+        assert legends[: len(studies)] == studies, legends
+        assert "2-fold" in legends and "prediction = measurement" in legends
 
 
 def test_both_figures_draw_the_same_band(
@@ -414,6 +467,12 @@ def test_the_goodness_of_fit_and_altman_plots(
     assert "plots/goodness_of_fit.svg" in html
     assert "plots/bland_altman.svg" in html
     assert "residual_scatter" not in html
+    # the figures are inline with their spec, as in the report of experiments
+    for name in ["goodness_of_fit", "bland_altman", "cost_bar"]:
+        assert f'<figure data-figure="{name}">' in html, name
+        assert f'data-figure-spec="{name}"' in html, name
+        assert (results_dir / "plots" / f"{name}.json").exists(), name
+    assert "<svg" in html and '<img loading="lazy"' not in html
     # the metrics of the report cover the outliers
     metrics = (results_dir / "metrics.tsv").read_text(encoding="utf-8")
     assert MappingKind.OUTLIER.value in metrics
@@ -577,6 +636,7 @@ def test_the_figures_of_every_mapping(
     for k, mapping_id in enumerate(op_hctz_iv.mapping_keys):
         sid = op_hctz_iv.experiment_keys[k]
         assert (plots / f"{sid}_{mapping_id}.svg").exists()
+        assert (plots / f"{sid}_{mapping_id}.json").exists()
         # one figure per mapping, the residual figure is gone
         assert not (plots / f"fit_{sid}_{mapping_id}.svg").exists()
 
@@ -988,7 +1048,6 @@ def test_a_failed_pdf_is_stated_with_its_reason(
 
     The fit is kept: the report has its Typst source and no PDF.
     """
-    import sbmlsim.fit.report as report_module
 
     def broken(*args: object, **kwargs: object) -> Path:
         raise RuntimeError("typst could not compile 'report.typ': boom")
@@ -1254,12 +1313,17 @@ def test_the_figures_of_the_mappings_grow_with_the_mappings(
     problem, _ = fitted
     n = len(problem.mapping_keys)
     for name in ["cost_bar", "residual_boxplot"]:
-        svg = (report_dir / "plots" / f"{name}.svg").read_text(encoding="utf-8")
-        match = re.search(r'height="([0-9.]+)pt"', svg)
-        assert match is not None, name
-        height = float(match.group(1))
-        # 0.17 inches per mapping and 1.5 inches for the axes, in points
-        assert height >= (1.5 + 0.17 * n) * 72 - 0.5, name
+        spec = json.loads(
+            (report_dir / "plots" / f"{name}.json").read_text(encoding="utf-8")
+        )
+        # a row per mapping and room for the axes, in pixels
+        assert spec["height"] >= 108.0 + ROW_HEIGHT * n - 0.5, name
+        labels = [
+            f"{e}|{m}"
+            for e, m in zip(problem.experiment_keys, problem.mapping_keys, strict=True)
+        ]
+        assert spec["plots"][0]["y"]["categories"] == labels, name
+        assert spec["plots"][0]["y"]["reverse"], name
     # a long id of a mapping breaks in the table, which stays in its card
     html = _html_of(report_dir)
     assert html.count('<td class="mono wrap">') == n
@@ -1280,20 +1344,14 @@ def test_the_panel_text_of_a_kind_is_the_text_of_its_points(
 
 
 @pytest.fixture
-def saved_figures(monkeypatch: pytest.MonkeyPatch) -> dict[str, Figure]:
-    """The figures a report saves, by the name of their file.
+def saved_figures(monkeypatch: pytest.MonkeyPatch) -> dict[str, Chart]:
+    """The figures a report saves, by the name of their file, as charts."""
+    saved: dict[str, Chart] = {}
 
-    The figures are kept as objects, so the report draws them in this
-    process: a report of many fit mappings draws them in a pool, whose
-    workers have figures of their own, see `FitReport.plot_mapping`.
-    """
-    saved: dict[str, Figure] = {}
+    def save(self: FitReport, chart: Chart, path: Path) -> None:
+        saved[path.stem] = chart
 
-    def save(self: FitReport, fig: Figure, path: Path) -> None:
-        saved[path.stem] = fig
-
-    monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
-    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", sys.maxsize)
+    monkeypatch.setattr(FitReport, "_save_chart", save)
     return saved
 
 
@@ -1319,7 +1377,7 @@ def test_the_figure_of_a_mapping_has_the_curve_and_the_agreement(
     tmp_path: Path,
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """The curve linear and logarithmic, the goodness of fit and the Bland-Altman plot."""
     report = _mapping_report(op_hctz_iv, fit_settings)
@@ -1327,25 +1385,40 @@ def test_the_figure_of_a_mapping_has_the_curve_and_the_agreement(
     assert len(saved_figures) == len(op_hctz_iv.mapping_keys)
     k = 0
     name = f"{op_hctz_iv.experiment_keys[k]}_{op_hctz_iv.mapping_keys[k]}"
-    fig = saved_figures[name]
-    curve, curve_log, gof, altman = fig.axes[:4]
-    assert curve.get_yscale() == "linear"
-    assert curve_log.get_yscale() == "log"
-    assert (gof.get_xscale(), gof.get_yscale()) == ("log", "log")
-    assert (altman.get_xscale(), altman.get_yscale()) == ("log", "linear")
-    box = "\n".join(text.get_text() for text in gof.texts)
+    chart = saved_figures[name]
+    curve, curve_log, gof, altman = _plots(chart)
+    assert curve["y"]["scale"] == "linear"
+    assert curve_log["y"]["scale"] == "log"
+    assert (gof["x"]["scale"], gof["y"]["scale"]) == ("log", "log")
+    assert (altman["x"]["scale"], altman["y"]["scale"]) == ("log", "linear")
+    box = "\n".join(_texts(gof))
     assert "GMFE" in box and "2-fold" in box and "cost" in box
+    # the box is a white polygon behind its lines, inside the panel
+    (polygon,) = _of_kind(gof, "polygon")
+    assert polygon["style"]["fill"]["color"] == "#ffffff"
+    low, high = gof["x"]["min"], gof["x"]["max"]
+    assert all(low < x < high for x, _y in polygon["paths"][0])
     # the title has the kind, also of training data, and the observable
-    title = fig.get_suptitle().splitlines()
+    assert chart.title is not None
+    title = chart.title.splitlines()
     assert title[0].endswith(f"[{op_hctz_iv.mapping_kinds[k].value}]")
     assert title[1].startswith(report._y_label(k))
-    # the data is labelled in words, the prediction at the data are open markers
-    labels = [str(line.get_label()) for line in curve.get_lines()]
-    assert not any(label.startswith("reference_data") for label in labels)
-    open_markers = [
-        line for line in curve.get_lines() if line.get_markerfacecolor() == "none"
+    # the legends are right of the rows: the curves and the agreement
+    assert (chart.legend_scope, chart.legend_position) == ("row", "outside")
+    assert curve["legend_order"][0] == "data"
+    # the data is labelled in words, the prediction at the data are hollow
+    # markers of the color of the set
+    labels = _labels(curve)
+    assert labels[0].startswith("data")
+    hollow = [
+        e
+        for e in _of_kind(curve, "curve")
+        if e["style"]["marker"].get("fill") == "#ffffff"
     ]
-    assert open_markers
+    assert hollow and all(e["legend"] == report.reference_set.sid for e in hollow)
+    # the agreement has its identity and twofold
+    assert "prediction = measurement" in _labels(gof)
+    assert "2-fold" in _labels(altman)
 
 
 def test_the_box_of_a_mapping_without_errors_has_no_uncertainty(
@@ -1421,7 +1494,7 @@ def test_the_panels_of_a_grouping(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """A row per group and a column per kind, an empty panel says so."""
     op_hctz_pk.initialize(fit_settings)
@@ -1437,24 +1510,25 @@ def test_the_panels_of_a_grouping(
     points = report.points(report.reference_set)
     groups = grouping.groups(points, report._fit_mapping)
     kinds = report.point_kinds()
-    fig = saved_figures["goodness_of_fit_tissue"]
-    assert len(fig.axes) == len(groups) * len(kinds)
+    plots = _plots(saved_figures["goodness_of_fit_tissue"])
+    assert len(plots) == len(groups) * len(kinds)
     for (label, of_group), row in zip(
-        groups, range(0, len(fig.axes), len(kinds)), strict=True
+        groups, range(0, len(plots), len(kinds)), strict=True
     ):
         for column, kind in enumerate(kinds):
-            ax = fig.axes[row + column]
-            assert ax.get_title().startswith(f"{label}: {kind}")
+            plot = plots[row + column]
+            assert (plot["row"], plot["column"]) == (row // len(kinds), column)
+            assert plot["title"].startswith(f"{label}: {kind}")
             if of_group[of_group.kind == kind].empty:
-                assert any(text.get_text() == "no data" for text in ax.texts)
-    assert len(saved_figures["bland_altman_tissue"].axes) == len(fig.axes)
+                assert _texts(plot) == ["no data"]
+    assert len(_plots(saved_figures["bland_altman_tissue"])) == len(plots)
 
 
 def test_the_bland_altman_plot_draws_twofold(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """The lines of twofold, as in the goodness of fit, and the agreement of a panel.
 
@@ -1463,14 +1537,13 @@ def test_the_bland_altman_plot_draws_twofold(
     """
     report = _mapping_report(op_hctz_pk, fit_settings)
     report.plot_bland_altman(tmp_path / "bland_altman.svg")
-    fig = saved_figures["bland_altman"]
+    plots = _plots(saved_figures["bland_altman"])
     kinds = report.point_kinds()
-    for ax, kind in zip(fig.axes, kinds, strict=False):
-        ys = [np.asarray(line.get_ydata(), dtype=float) for line in ax.get_lines()]
-        levels = {round(float(y[0]), 6) for y in ys if len(set(y)) == 1}
+    for plot, kind in zip(plots, kinds, strict=True):
+        levels = {round(e["value"], 6) for e in _of_kind(plot, "rule")}
         assert round(np.log10(2.0), 6) in levels
         assert round(-np.log10(2.0), 6) in levels
-        labels = [str(line.get_label()) for line in ax.get_lines()]
+        labels = _labels(plot)
         points = report._of_kind(report.points(report.reference_set), kind)
         n_points = int(np.sum(report._log_ratio(points)[2]))
         own = kind == MappingKind.VALIDATION.value
@@ -1484,7 +1557,7 @@ def test_error_bars(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """With `error_bars` the points of the data with an SD have error bars."""
     op_hctz_pk.initialize(fit_settings)
@@ -1501,16 +1574,15 @@ def test_error_bars(
         report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
         report.plot_bland_altman(tmp_path / "bland_altman.svg")
         for name in ("goodness_of_fit", "bland_altman"):
-            ax = saved_figures[name].axes[0]
-            bars = [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
-            assert bool(bars) is error_bars, (name, error_bars)
+            plot = _plots(saved_figures[name])[0]
+            assert bool(_error_bars(plot)) is error_bars, (name, error_bars)
 
 
 def test_color_by_a_column(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """`color_by` gives the points of one value of a column one colour."""
     op_hctz_pk.initialize(fit_settings)
@@ -1522,12 +1594,12 @@ def test_color_by_a_column(
         color_by="tissue",
     )
     report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
-    ax = saved_figures["goodness_of_fit"].axes[0]
+    plot = _plots(saved_figures["goodness_of_fit"])[0]
     tissues = set(report.points(report.reference_set).tissue)
     labelled = {
-        str(line.get_label()): line.get_color()
-        for line in ax.get_lines()
-        if str(line.get_label()) in tissues
+        e["label"]: e["style"]["color"]
+        for e in _of_kind(plot, "curve")
+        if e.get("label") in tissues
     }
     assert labelled
     assert len(set(labelled.values())) == len(labelled)
@@ -1537,7 +1609,7 @@ def test_the_legend_of_a_grouping_has_the_band(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """The band is in the legend also when the last panel has no points."""
     op_hctz_pk.initialize(fit_settings)
@@ -1554,8 +1626,9 @@ def test_the_legend_of_a_grouping_has_the_band(
     )
     report.plot_grouping(grouping, tmp_path)
     for name in ("goodness_of_fit_subsets", "bland_altman_subsets"):
-        [legend] = saved_figures[name].legends
-        labels = [text.get_text() for text in legend.get_texts()]
+        labels = [
+            label for plot in _plots(saved_figures[name]) for label in _labels(plot)
+        ]
         assert "prediction = measurement" in labels, name
         assert "2-fold" in labels, name
         assert any(label.startswith("LoA") for label in labels), name
@@ -1582,7 +1655,7 @@ def test_error_bars_only_for_points_with_a_ratio(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A point which is not drawn on the logarithmic axes has no error bar."""
@@ -1606,14 +1679,15 @@ def test_error_bars_only_for_points_with_a_ratio(
     monkeypatch.setattr(FitReport, "points", with_sd)
     assert (report.points(report.reference_set).DV <= 0).any()
     report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
-    for ax in saved_figures["goodness_of_fit"].axes:
-        for container in ax.containers:
-            if not isinstance(container, ErrorbarContainer):
-                continue
-            for collection in container.lines[2]:
-                for segment in collection.get_segments():
-                    center = 0.5 * (segment[0] + segment[1])
-                    assert center[0] > 0 and center[1] > 0
+    bars = [
+        bar
+        for plot in _plots(saved_figures["goodness_of_fit"])
+        for bar in _error_bars(plot)
+    ]
+    assert bars
+    for bar in bars:
+        assert all(x > 0 for x in bar["x"] if x is not None)
+        assert all(y > 0 for y in bar["y"] if y is not None)
 
 
 def test_long_set_ids_stay_in_their_box(
@@ -1649,7 +1723,7 @@ def test_the_curve_of_a_mapping_draws_only_the_errors_of_the_data(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """A filled error of the weights has no error bar in the curve."""
     report = _mapping_report(op_hctz_pk, fit_settings)
@@ -1662,17 +1736,12 @@ def test_the_curve_of_a_mapping_draws_only_the_errors_of_the_data(
     k = filled[0]
     report.plot_mapping(tmp_path)
     name = f"{op_hctz_pk.experiment_keys[k]}_{op_hctz_pk.mapping_keys[k]}"
-    curve = saved_figures[name].axes[0]
-    [container] = [c for c in curve.containers if isinstance(c, ErrorbarContainer)]
-    # a segment of a NaN error is not drawn
-    n_bars = sum(
-        int(len(segment) > 0 and np.isfinite(segment).all())
-        for c in container.lines[2]
-        for segment in c.get_segments()
-    )
+    curve = _plots(saved_figures[name])[0]
+    bars = [bar for bar in _error_bars(curve) if bar["legend"] == "data"]
     measured = op_hctz_pk.y_errors_measured[k]
     assert measured is not None
-    assert n_bars == int(measured.sum())
+    # a point whose error the weights filled has no bar
+    assert sum(_n_bars(bar) for bar in bars) == int(measured.sum())
 
 
 def _initialized_report(
@@ -1717,23 +1786,23 @@ def test_the_criteria_of_an_empty_subset(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     report = _initialized_report(op_hctz_pk, fit_settings)
     grouping = Grouping.of_subsets(
         "subsets", Subset("all", _select_all), Subset("none", _select_none)
     )
     report.plot_grouping(grouping, tmp_path)
-    ax = saved_figures["criteria_subsets"].axes[0]
-    assert [tick.get_text() for tick in ax.get_yticklabels()] == ["all", "none"]
-    assert any(text.get_text() == "no data" for text in ax.texts)
+    plot = _plots(saved_figures["criteria_subsets"])[0]
+    assert plot["y"]["categories"] == ["all", "none"]
+    assert "no data" in _texts(plot)
 
 
 def test_the_figures_of_many_groups_are_pages(
     tmp_path: Path,
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    saved_figures: dict[str, Figure],
+    saved_figures: dict[str, Chart],
 ) -> None:
     """A figure has at most `MAX_GROUP_ROWS` rows, more groups are more pages."""
     report = _initialized_report(op_hctz_pk, fit_settings)
@@ -1747,7 +1816,7 @@ def test_the_figures_of_many_groups_are_pages(
     ]
     assert [name for name in saved_figures if name.startswith("goodness")] == names
     n_kinds = len(report.point_kinds())
-    rows = [len(saved_figures[name].axes) // n_kinds for name in names]
+    rows = [len(_plots(saved_figures[name])) // n_kinds for name in names]
     assert sum(rows) == n_groups
     assert max(rows) <= MAX_GROUP_ROWS
 
@@ -1784,17 +1853,23 @@ def test_a_panel_of_one_point_has_no_nan(
 # ----------------------------------------------------------------------------
 # the legend and the colors of the summary figures with many studies (#511)
 # ----------------------------------------------------------------------------
-def _legend_figure(labels: list[str]) -> tuple[Figure, list[Any]]:
-    """Get a figure of two panels whose points carry one label each."""
-    figure = Figure(figsize=(5.5 * 2 + LEGEND_WIDTH, 5.5), layout="constrained")
-    axes = list(figure.subplots(nrows=1, ncols=2, squeeze=False)[0])
-    for ax in axes:
+def _legend_figure(report: FitReport, labels: list[str]) -> Chart:
+    """Get a figure of the panels of a report whose points carry one label each."""
+    chart, kinds = report._panels("legend")
+    for column in range(len(kinds)):
+        plot = chart.plot(0, column, legend_order=labels)
         for index, label in enumerate(labels):
-            ax.plot(
-                [1.0], [1.0], "o", color=category_color(index, len(labels)), label=label
+            plot.curve(
+                [1.0],
+                [1.0],
+                line="none",
+                marker="circle",
+                color=normalize_color(category_color(index, len(labels))),
+                label=label,
+                legend=label,
             )
-        ax.plot([0.0, 1.0], [0.0, 1.0], "-", color="black", label="identity")
-    return figure, axes
+        plot.curve([0.0, 1.0], [0.0, 1.0], label="identity", legend="identity")
+    return chart
 
 
 def test_the_colors_of_few_studies_are_the_categorical_ones() -> None:
@@ -1812,128 +1887,112 @@ def test_every_study_has_a_color_of_its_own(total: int) -> None:
 
 
 def test_the_figure_legend_shows_every_entry(fitted_report: Any) -> None:
-    """A legend of many studies is split into columns instead of being cut (#511).
+    """A legend of many studies shows every entry instead of being cut (#511).
 
     The legend of a fit of 35 studies ran off the bottom of the figure: it
     showed 29 of them and cut the rest and the entries of the lines with them.
+    The legend of a row is right of its panels, and the renderer grows the
+    figure for it.
     """
+    pytest.importorskip("sbmlsim_core")
+    from sbmlsim.engine import import_core
+
     labels = [f"Study{index:02d}" for index in range(35)]
-    figure, axes = _legend_figure(labels)
-    report, _plots = fitted_report
+    report, _plots_dir = fitted_report
+    chart = _legend_figure(report, labels)
 
-    columns = report._set_figure_legend(figure, axes)
-
-    assert columns > 1
-    legend = figure.legends[0]
-    assert [text.get_text() for text in legend.get_texts()] == [*labels, "identity"]
-    extent = legend.get_window_extent()
-    assert extent.height <= figure.bbox.height
-    assert extent.y0 >= -1.0
-    assert legend.get_window_extent().x1 <= figure.bbox.width + 1.0
-
-
-def test_a_figure_legend_which_fits_stays_one_column(fitted_report: Any) -> None:
-    """Few entries keep the legend of one column the report had."""
-    figure, axes = _legend_figure(["one", "two", "three"])
-    report, _plots = fitted_report
-
-    columns = report._set_figure_legend(figure, axes)
-
-    assert columns == 1
-    legend = figure.legends[0]
-    assert legend.get_window_extent().height <= figure.bbox.height
-
-
-def _drawn(directory: Path) -> list[str]:
-    """Get the names of the figures of the fit mappings in a folder."""
-    return sorted(path.name for path in directory.iterdir())
-
-
-#: the date matplotlib stamps into an SVG
-_SVG_DATE = re.compile(r"<dc:date>[^<]*</dc:date>")
-
-#: an id matplotlib builds for an element a figure reuses, salted per process
-_SVG_SALTED = re.compile(r"\b[a-z][0-9a-f]{10}\b")
-
-
-def _svg_content(path: Path) -> str:
-    """Get an SVG without what two processes write differently.
-
-    matplotlib stamps the date of the drawing and salts the ids of the
-    elements a figure reuses with a salt of its process, so the same figure
-    drawn here and in a worker differs in both. The ids are renamed by the
-    order they appear in, which keeps every reference pointing at the element
-    it pointed at: a figure of the wrong mapping, of other data or with an
-    element missing does not survive this.
-    """
-    text = _SVG_DATE.sub("<dc:date></dc:date>", path.read_text(encoding="utf-8"))
-    names: dict[str, str] = {}
-    return _SVG_SALTED.sub(
-        lambda match: names.setdefault(match.group(0), f"id{len(names)}"), text
+    geometry = import_core().figure_geometry(chart.to_json())
+    entries = geometry["legend_entries"]
+    assert [entry["legend"] for entry in entries] == [*labels, "identity"]
+    for entry in entries:
+        rect = entry["rect"]
+        assert rect["y"] >= 0.0
+        assert rect["y"] + rect["height"] <= geometry["height"] + 0.5
+        assert rect["x"] + rect["width"] <= geometry["width"] + 0.5
+    # the panels keep their room, right of them is the legend
+    panels = [plot["rect"] for plot in geometry["plots"]]
+    assert max(p["x"] + p["width"] for p in panels) <= min(
+        entry["rect"]["x"] for entry in entries
     )
 
 
-#: a pool needs a second CPU, which a runner of one does not have
-many_cpus = pytest.mark.skipif(
-    cgroup.available_cpus() < 2, reason="a pool needs more than one CPU"
-)
-
-
-def test_a_report_of_few_figures_draws_them_in_this_process() -> None:
-    """A report with the work of one worker or less is drawn in this process."""
-    minimum = report_module._FIGURE_POOL_MINIMUM
-    assert report_module._figure_workers(1) == 1
-    assert report_module._figure_workers(minimum) == 1
-    assert report_module._figure_workers(2 * minimum - 1) == 1
-
-
-@many_cpus
-def test_a_report_of_many_figures_draws_them_in_a_pool() -> None:
-    """The processes are one per `_FIGURE_POOL_MINIMUM` figures, the CPUs at most."""
-    minimum = report_module._FIGURE_POOL_MINIMUM
-    cpus = cgroup.available_cpus()
-    assert report_module._figure_workers(2 * minimum) == min(2, cpus)
-    assert report_module._figure_workers(10 * minimum) == min(10, cpus)
-    assert report_module._figure_workers(10_000 * minimum) == cpus
-
-
-def test_a_worker_draws_the_figures_of_a_report_in_its_own_process(
-    monkeypatch: pytest.MonkeyPatch,
+def test_the_figures_are_saved_with_their_spec(
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """A worker starts no pool of its own, see `sbmlsim.parallel.start_pool`."""
-    monkeypatch.setattr(report_module.parallel, "in_worker", lambda: True)
-    assert report_module._figure_workers(10_000) == 1
+    """A figure of the report document is saved with its spec and as a PNG."""
+    report = _initialized_report(op_hctz_pk, fit_settings)
+    chart = report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
+    assert isinstance(chart, Chart)
+    assert (
+        (tmp_path / "goodness_of_fit.svg")
+        .read_text(encoding="utf-8")
+        .startswith("<svg")
+    )
+    spec = json.loads((tmp_path / "goodness_of_fit.json").read_text(encoding="utf-8"))
+    assert spec == json.loads(chart.to_json())
+    with Image.open(tmp_path / "goodness_of_fit.png") as image:
+        assert image.info["dpi"] == pytest.approx((300, 300), abs=0.1)
+    # a figure of the mappings tab has no PNG
+    report.plot_cost_bar(tmp_path / "cost_bar.svg")
+    assert not (tmp_path / "cost_bar.png").exists()
+    with pytest.raises(ValueError, match="svg or png"):
+        report.plot_cost_bar(tmp_path / "cost_bar.pdf")
 
 
-@many_cpus
-def test_the_figures_of_a_pool_are_the_figures_of_the_loop(
+def test_the_study_colors_and_set_markers_are_of_the_renderer(
     tmp_path: Path,
-    op_hctz_iv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
-    monkeypatch: pytest.MonkeyPatch,
+    saved_figures: dict[str, Chart],
 ) -> None:
-    """The pool draws the figures of the mappings the loop draws, see `plot_mapping`."""
-    report = _mapping_report(op_hctz_iv, fit_settings)
-    serial = tmp_path / "serial"
-    serial.mkdir()
-    report.plot_mapping(serial)
-    assert _drawn(serial)
+    """A study has its color and a set its marker in every agreement figure."""
+    report = _mapping_report(op_hctz_pk, fit_settings, n_sets=2)
+    report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
+    report.plot_bland_altman(tmp_path / "bland_altman.svg")
+    for name in ("goodness_of_fit", "bland_altman"):
+        for plot in _plots(saved_figures[name]):
+            for element in _of_kind(plot, "curve"):
+                label = element.get("label", "")
+                for k, pset in enumerate(report.parameter_sets):
+                    if not label.endswith(f" ({pset.sid})"):
+                        continue
+                    study = label.removesuffix(f" ({pset.sid})")
+                    style = element["style"]
+                    assert style["color"] == normalize_color(
+                        STUDY_COLORS[report.studies().index(study)]
+                    )
+                    assert style["marker"]["type"] == ("circle", "square")[k]
 
-    started: list[int] = []
-    start_pool = report_module.parallel.start_pool
 
-    def recorded(n_workers: int, **kwargs: Any) -> Any:
-        started.append(n_workers)
-        return start_pool(n_workers, **kwargs)
+def test_fit_report_imports_no_matplotlib(tmp_path: Path) -> None:
+    """Building a report with the figures of the mappings imports no matplotlib."""
+    script = f"""
+import sys
+from pathlib import Path
 
-    monkeypatch.setattr(report_module, "_FIGURE_POOL_MINIMUM", 1)
-    monkeypatch.setattr(report_module, "_FIGURE_CHUNK", 1)
-    monkeypatch.setattr(report_module.parallel, "start_pool", recorded)
-    pooled = tmp_path / "pooled"
-    pooled.mkdir()
-    report.plot_mapping(pooled)
+from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+from sbmlsim.fit import FitSettings
+from sbmlsim.fit.report import FitReport
 
-    assert started and started[0] > 1, "the figures were not drawn in a pool"
-    assert _drawn(pooled) == _drawn(serial)
-    for name in _drawn(pooled):
-        assert _svg_content(pooled / name) == _svg_content(serial / name), name
+problem = FIT_DEFINITIONS["IV"].problem(opid="iv")
+settings = FitSettings(absolute_tolerance=1e-6, relative_tolerance=1e-6)
+problem.initialize(settings)
+report = FitReport(
+    problem=problem,
+    settings=settings,
+    parameter_sets=problem.parameter_set_model(),
+    mapping_figures=True,
+)
+out = report.create(output_dir=Path({str(tmp_path)!r}), name="report")
+assert list((out / "plots").glob("*_*.svg"))
+print("matplotlib" in sys.modules)
+"""
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).parents[2],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-3000:]
+    assert done.stdout.strip().splitlines()[-1] == "False", done.stdout[-2000:]

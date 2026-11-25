@@ -459,7 +459,7 @@ report = FitReport(problem, settings, ParameterSets.from_json(Path("parameters.j
 
 - `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data and sortable tables. It works offline and can be archived or sent as it is.
 - `report.pdf` with its sources `report.typ` and LaTeX (`report.tex` for `\input` in a manuscript, `report_standalone.tex`), and `references.bib`. Typst compiles the PDF, no LaTeX installation is needed; if it fails, the page says why and everything else is written.
-- the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic.
+- the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic. Every figure is a chart of the renderer of sbmlsim-core, saved as `svg` (or `png` with `image_format="png"`) with its spec as `json` beside it, and `index.html` shows the SVG inline with its spec; the figures of the report document are written as `png` as well, which LaTeX includes, at `create(png_dpi=300)`.
 - `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `fisher.tsv`, `identifiability.json`, `posterior.json`, `posterior.tsv`) where the report has them.
 
 The methods describe only what the fit used: the parameters, the data per kind, the objective (the weighted least squares, or the negative log-likelihood with the noise models of the data and, for the posterior, the priors and their correlation), the optimizer and its options, the identifiability analysis, the posterior and the provenance. The references are those it cites, see [References](references.md).
@@ -468,7 +468,7 @@ The goodness of fit and the Bland-Altman plot have one panel per kind of data, t
 
 `FitReport` takes further options:
 
-- `mapping_figures=False` leaves out the figures of the fit mappings, which are most of the time of a report.
+- `mapping_figures=False` leaves out the figures of the fit mappings, a figure per mapping, which are milliseconds each.
 - `groupings=[Grouping.by("tissue")]` (from `sbmlsim.fit.evaluation`) adds figures and metrics per group of a column of the data points, e.g. a field of the metadata. `Grouping.of_subsets("route", Subset("oral", is_oral), ...)` groups by named filters.
 - `error_bars=True` draws the standard deviations of the data, `color_by="tissue"` colors the points by a column instead of the study.
 - `context=ReportContext(title=..., description=..., parameter_descriptions=...)` (from `sbmlsim.fit.methods`) sets the title of the report and the text about the fit.
