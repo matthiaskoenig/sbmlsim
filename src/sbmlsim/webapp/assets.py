@@ -39,6 +39,7 @@ __all__ = [
     "WASM_DIR",
     "app_project",
     "default_panel",
+    "is_web_asset",
     "write_assets",
     "write_wasm",
 ]
@@ -211,6 +212,15 @@ def write_wasm(project: Project, directory: Path) -> list[Path]:
         compiled = compile_sbml(path.read_text(encoding="utf-8"), base_path=path.parent)
         written.append(write_compiled(compiled, directory / WASM_DIR / path.stem))
     return written
+
+
+def is_web_asset(path: Path) -> bool:
+    """Check whether a path below the directory of a factory is a web asset.
+
+    The compiled variants in `wasm/` and the app `<name>_app.html`, which
+    `write_assets` writes next to the models.
+    """
+    return "wasm" in path.parts or path.name.endswith("_app.html")
 
 
 def write_assets(project: Project, directory: Path) -> list[Path]:

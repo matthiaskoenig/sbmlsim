@@ -1485,7 +1485,9 @@ class Project(BaseModel):
         """
         return {}
 
-    def create_models(self, out: Path | None = None) -> Path:
+    def create_models(
+        self, out: Path | None = None, *, web_app: bool | None = None
+    ) -> Path:
         """Build the models with the factory, in place or into a rebuild.
 
         By default the factory builds the models in place, into `factory_dir`.
@@ -1501,6 +1503,9 @@ class Project(BaseModel):
         Args:
             out: the root of a rebuild, the package (`root`) without; a
                 relative directory is relative to the current directory.
+            web_app: write the web assets, `web_app` of the project without;
+                a rebuild which checks the models alone leaves them out, see
+                `sbmlsim.credibility.battery`.
 
         Returns:
             The directory the factory wrote into.
@@ -1523,7 +1528,7 @@ class Project(BaseModel):
             else Path(out) / self.factory_dir.relative_to(self.root)
         )
         factory(directory)
-        if self.web_app:
+        if self.web_app if web_app is None else web_app:
             from sbmlsim.webapp.assets import write_assets
 
             write_assets(self, directory)
