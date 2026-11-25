@@ -2,7 +2,7 @@
 
 The `python` blocks of a page, with or without a title, run in the order of
 the page and in one namespace, as a reader runs them, as the main script. What a block prints is written below it as a
-block titled `Output`, and the matplotlib figures it creates are saved as PNG
+block titled `Output`, and the charts it creates are saved as SVG
 images in `docs/images/outputs/` and shown below the output. A block which
 prints nothing and draws nothing has nothing below it.
 
@@ -19,16 +19,17 @@ which differs in the last digits between platforms; run this script after a
 change of a page or of what its code prints. The `documentation` workflow
 runs it before it builds the site, so the published pages are never stale.
 
-A figure is a figure of pyplot which is open after the block, or a
-`matplotlib.figure.Figure` or a `sbmlsim.plot.Chart` which a name of the
-namespace holds and which no block before showed; a chart is drawn by the
-renderer of sbmlsim-core. The working directory of the blocks is a temporary
+A figure is a `sbmlsim.plot.Chart` which a name of the namespace holds, or
+which is the value of the last expression of a block, and which no block
+before showed; a chart is drawn by the renderer of sbmlsim-core. A figure of
+matplotlib is not captured. The working directory of the blocks is a temporary
 directory, so the files a page writes do not end up in the repository.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import io
 import logging
@@ -41,8 +42,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from matplotlib.figure import Figure
-
     from sbmlsim.plot.chart import Chart
 
 REPO_DIR: Path = Path(__file__).parent.parent
@@ -79,13 +78,10 @@ PYTHON_FENCE = "```python"
 OUTPUT_FENCE = '```text title="Output"'
 FENCE = "```"
 #: an image of a figure of a block
-IMAGE = re.compile(r"^!\[Output figure\]\(" + re.escape(IMAGES) + r"/[\w.-]+\.png\)$")
+IMAGE = re.compile(r"^!\[Output figure\]\(" + re.escape(IMAGES) + r"/[\w.-]+\.svg\)$")
 
 #: an output longer than this is a hint that the block prints too much
 MAX_OUTPUT_LINES = 40
-
-#: the settings of a saved figure
-DPI = 100
 
 
 @dataclass
@@ -116,12 +112,11 @@ class BlockResult:
 
     Attributes:
         stdout: the text it printed, without trailing whitespace.
-        figures: the figures it created, `matplotlib.figure.Figure` and
-            `sbmlsim.plot.Chart`.
+        figures: the charts it created, `sbmlsim.plot.Chart`.
     """
 
     stdout: str
-    figures: list[Figure | Chart]
+    figures: list[Chart]
 
 
 def parse(text: str) -> tuple[list[str], list[Block]]:
@@ -185,21 +180,30 @@ def _skip_blank(lines: list[str], k: int) -> int:
     return k
 
 
-def _figures(namespace: dict[str, object]) -> list[Figure | Chart]:
-    """Get the open figures of pyplot and the figures and charts the namespace holds."""
+def _figures(namespace: dict[str, object], last: object = None) -> list[Chart]:
+    """Get the charts the namespace holds and the value of a last expression."""
     from sbmlsim.plot.chart import Chart
 
-    figures: list[Figure | Chart] = []
-    pyplot = sys.modules.get("matplotlib.pyplot")
-    if pyplot is not None:
-        figures += [pyplot.figure(num) for num in pyplot.get_fignums()]
-    kinds: tuple[type, ...] = (Chart,)
-    if (module := sys.modules.get("matplotlib.figure")) is not None:
-        kinds = (*kinds, module.Figure)
-    for value in namespace.values():
-        if isinstance(value, kinds) and all(value is not f for f in figures):
+    figures: list[Chart] = []
+    for value in (*namespace.values(), last):
+        if isinstance(value, Chart) and all(value is not f for f in figures):
             figures.append(value)
     return figures
+
+
+def _execute(code: str, name: str, namespace: dict[str, object]) -> object:
+    """Run a block and get the value of its last expression, `None` without."""
+    tree = ast.parse(code, name)
+    last = None
+    if tree.body and isinstance(tree.body[-1], ast.Expr):
+        final = tree.body.pop()
+        assert isinstance(final, ast.Expr)
+        expression = ast.Expression(final.value)
+        exec(compile(tree, name, "exec"), namespace)
+        last = eval(compile(expression, name, "eval"), namespace)
+    else:
+        exec(compile(tree, name, "exec"), namespace)
+    return last
 
 
 def _clean(stdout: str, workdir: Path) -> str:
@@ -231,13 +235,12 @@ def run_page(page: str, workdir: Path) -> list[BlockResult]:
     Raises:
         AssertionError: if a block fails, with the block in the message.
     """
-    import matplotlib.pyplot as plt
     import pandas as pd
 
     _, blocks = parse((DOCS_DIR / page).read_text(encoding="utf-8"))
     # a block runs as a script does, its guard `if __name__ == "__main__":` too
     namespace: dict[str, object] = {"__name__": "__main__"}
-    shown: list[Figure | Chart] = []
+    shown: list[Chart] = []
     results: list[BlockResult] = []
     cwd = Path.cwd()
     # a page may configure logging, e.g. `log.enable_rich_logging()`, whose
@@ -251,17 +254,18 @@ def run_page(page: str, workdir: Path) -> list[BlockResult]:
                 stdout = io.StringIO()
                 try:
                     with contextlib.redirect_stdout(stdout):
-                        exec(compile(block.code, f"{page}[{k}]", "exec"), namespace)
+                        last = _execute(block.code, f"{page}[{k}]", namespace)
                 except Exception as err:
                     raise AssertionError(
                         f"block {k} of '{page}' fails:\n{block.code}"
                     ) from err
                 figures = [
-                    f for f in _figures(namespace) if all(f is not s for s in shown)
+                    f
+                    for f in _figures(namespace, last)
+                    if all(f is not s for s in shown)
                 ]
                 shown.extend(figures)
                 results.append(BlockResult(_clean(stdout.getvalue(), workdir), figures))
-                plt.close("all")
     finally:
         os.chdir(cwd)
         for lg, (handlers, level) in zip(loggers, states, strict=True):
@@ -274,7 +278,7 @@ def _image_name(page: str, k: int, i: int) -> str:
     """Get the file name of the `i`-th figure of the `k`-th block of a page."""
     stem = Path(page).stem
     suffix = "" if i == 0 else f"-{i + 1}"
-    return f"{stem}-{k + 1:02d}{suffix}.png"
+    return f"{stem}-{k + 1:02d}{suffix}.svg"
 
 
 def _region(result: BlockResult, images: list[str]) -> list[str]:
@@ -297,16 +301,15 @@ def write_page(page: str, workdir: Path) -> bool:
     Returns:
         Whether the page changed.
     """
-    from sbmlsim.plot.chart import Chart
-
     path = DOCS_DIR / page
     text = path.read_text(encoding="utf-8")
     lines, blocks = parse(text)
     results = run_page(page, workdir)
 
     stem = Path(page).stem
-    for old in OUTPUTS_DIR.glob(f"{stem}-*.png"):
-        old.unlink()
+    for suffix in (".png", ".svg"):
+        for old in OUTPUTS_DIR.glob(f"{stem}-*{suffix}"):
+            old.unlink()
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
     new: list[str] = []
@@ -316,16 +319,7 @@ def write_page(page: str, workdir: Path) -> bool:
         images = []
         for i, figure in enumerate(result.figures):
             name = _image_name(page, k, i)
-            if not isinstance(figure, Chart):
-                figure.savefig(
-                    OUTPUTS_DIR / name,
-                    dpi=DPI,
-                    bbox_inches="tight",
-                    facecolor="white",
-                    metadata={"Software": None},
-                )
-            else:
-                figure.save(OUTPUTS_DIR / name, dpi=DPI)
+            figure.save(OUTPUTS_DIR / name)
             images.append(f"{IMAGES}/{name}")
         new += _region(result, images)
         position = block.region_end
@@ -342,9 +336,6 @@ def write_page(page: str, workdir: Path) -> bool:
 
 def main() -> None:
     """Write the outputs of the pages given on the command line, or of all."""
-    import matplotlib
-
-    matplotlib.use("Agg", force=True)
     # the blocks import the examples, a package at the root of the repository,
     # where a reader runs them (`python -m examples.timecourse`) and which the
     # `conftest.py` at the root puts on the path of the tests; the path of a

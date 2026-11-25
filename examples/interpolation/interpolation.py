@@ -19,40 +19,35 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import Axes, Figure
 
 from sbmlsim import interpolation as ip
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 
 logger = logging.getLogger(__name__)
 
 
-def interpolation_example() -> Figure:
+def interpolation_example() -> Chart:
     """Interpolate two data series with all interpolation methods.
 
     Returns:
-        The figure with the data points and the simulated interpolations. The
-        caller closes it or writes it to a file, nothing is shown, so that the
-        example does not open a window when it runs unattended.
+        The chart with the data points and the simulated interpolations. The
+        caller writes it to a file, nothing is shown, so that the example does
+        not open a window when it runs unattended.
     """
     x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
     y = [0.0, 2.0, 1.0, 1.5, 2.5, 3.5]
     z = [10.0, 5.0, 2.5, 1.25, 0.6, 0.3]
     data1 = pd.DataFrame({"time": x, "y": y, "z": z})
 
-    f: Figure
-    ax1: Axes
-    f, ax1 = plt.subplots(nrows=1, ncols=1)
-    ax1.set_xlabel("time [AU]")
-    ax1.set_ylabel("data [AU]")
-    ax1.set_title("Interpolation Example")
-    ax1.plot(x, y, "o", color="black", label="y")
-    ax1.plot(x, z, "s", color="black", label="z")
+    chart = Chart(width=640, height=400, title="Interpolation Example")
+    ax1 = chart.plot(x=ChartAxis(label="time [AU]"), y=ChartAxis(label="data [AU]"))
+    ax1.curve(x, y, line="none", marker="circle", color="#000000", label="y")
+    ax1.curve(x, z, line="none", marker="square", color="#000000", label="z")
 
     simulator = Simulator(n_workers=1)
-    colors = ["red", "green", "blue"]
+    colors = ["#d62728", "#2ca02c", "#1f77b4"]
     for k, method in enumerate(
         [
             ip.INTERPOLATION_CONSTANT,
@@ -69,13 +64,12 @@ def interpolation_example() -> Figure:
             loaded = simulator.load(tmp_f)
             loaded.set_selections(["time", "y", "z"])
             s = simulator.simulate(loaded, Simulation(end=5, steps=50))
-            ax1.plot(s["time"], s["y"], label=f"y {method}", color=colors[k])
-            ax1.plot(
-                s["time"], s["z"], label=f"z {method}", color=colors[k], linestyle="--"
+            ax1.curve(s["time"], s["y"], label=f"y {method}", color=colors[k])
+            ax1.curve(
+                s["time"], s["z"], label=f"z {method}", color=colors[k], line="dashed"
             )
 
-    ax1.legend()
-    return f
+    return chart
 
 
 if __name__ == "__main__":
@@ -83,7 +77,5 @@ if __name__ == "__main__":
 
     log.enable_rich_logging()
 
-    fig = interpolation_example()
-    fig_path = Path.cwd() / "interpolation.png"
-    fig.savefig(fig_path, bbox_inches="tight", dpi=150)
+    fig_path = interpolation_example().save(Path.cwd() / "interpolation.svg")
     logger.info("Figure written to '%s'", fig_path)

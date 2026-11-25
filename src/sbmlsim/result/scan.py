@@ -84,7 +84,6 @@ from sbmlsim.units import (
     DimensionalityError,
     Quantity,
     UnitRegistry,
-    setup_matplotlib,
 )
 from sbmlsim.units import ureg as package_ureg
 
@@ -208,10 +207,9 @@ class ScanResult:
         """Get the variables and coordinates of the result as quantities.
 
         `res.q["cp"]` is `res.quantity("cp")`, the values with their unit,
-        e.g. `res.q["time"].to("hr")`. Quantities plot with matplotlib in
-        their units, see `sbmlsim.units.setup_matplotlib`.
+        e.g. `res.q["time"].to("hr")`. A `sbmlsim.plot.Chart` takes them
+        and shows its axes in their units.
         """
-        setup_matplotlib()
         return _Quantities(self)
 
     def quantity(self, key: str, ureg: UnitRegistry | None = None) -> Quantity:

@@ -66,20 +66,20 @@ def run_scan1d_distribution() -> ScanResult:
 
 
 if __name__ == "__main__":
-    from matplotlib import pyplot as plt
+    from sbmlsim.plot import Chart, ChartAxis
 
     column = "PX"
 
     # scan0d
     res = run_scan0d()
-    fig, ax = plt.subplots()
+    chart = Chart(width=560, height=320)
+    plot = chart.plot(
+        x=ChartAxis(label="time", unit=res.units["time"]),
+        y=ChartAxis(label="amount"),
+    )
     for key in ["PX", "PY", "PZ"]:
-        ax.plot(res["time"], res[key], label=key)
-    ax.set_xlabel(f"time [{res.units['time']}]")
-    ax.set_ylabel("amount")
-    ax.legend()
-    fig.savefig("scan0d.png", bbox_inches="tight")
-    plt.close(fig)
+        plot.curve(res.q["time"], res.q[key], label=key)
+    chart.save("scan0d.svg")
 
     # scan1d
     res = run_scan1d()
@@ -90,16 +90,17 @@ if __name__ == "__main__":
     print(res.ds)
 
     da = res[column]
-    fig, ax = plt.subplots()
-    time = res["time"]
+    time = res.q["time"]
+    chart = Chart(width=560, height=320)
+    plot = chart.plot(
+        x=ChartAxis(label="time", unit=res.units["time"]),
+        y=ChartAxis(label=f"{column} (mean, min and max in black)"),
+    )
     for k in range(res.ds.sizes["dim1"]):
         # individual timecourses
-        ax.plot(time, da.isel(dim1=k))
+        plot.curve(time, da.isel(dim1=k).values, width=1.0, opacity=0.6)
 
-    ax.plot(time, da.mean(dim="dim1"), color="black", linewidth=4.0)
-    ax.plot(time, da.min(dim="dim1"), color="black", linewidth=2.0)
-    ax.plot(time, da.max(dim="dim1"), color="black", linewidth=2.0)
-    ax.set_xlabel(f"time [{res.units['time']}]")
-    ax.set_ylabel(f"{column} (mean, min and max in black)")
-    fig.savefig("scan1d_distribution.png", bbox_inches="tight")
-    plt.close(fig)
+    plot.curve(time, da.mean(dim="dim1").values, color="#000000", width=4.0)
+    plot.curve(time, da.min(dim="dim1").values, color="#000000", width=2.0)
+    plot.curve(time, da.max(dim="dim1").values, color="#000000", width=2.0)
+    chart.save("scan1d_distribution.svg")

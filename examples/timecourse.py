@@ -1,11 +1,10 @@
 """Example showing basic simulations and plotting.
 
-The figure is written to `timecourse.png` in the working directory.
+The figure is written to `timecourse.svg` in the working directory.
 """
 
-from matplotlib import pyplot as plt
-
 from sbmlsim.console import console
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Change, Simulation
@@ -37,26 +36,25 @@ def run_timecourse_examples() -> None:
     res3: ScanResult = simulator.run(model, simulation)
     console.print(simulation)
 
-    # create figure
-    fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, figsize=(15, 5))
-    fig.subplots_adjust(wspace=0.3, hspace=0.3)
-
-    ax1.set_title("simple simulation")
-    ax2.set_title("parameter change")
-    ax3.set_title("change at a time")
-
-    for res, ax in [(res1, ax1), (res2, ax2), (res3, ax3)]:
+    # create the figure
+    chart = Chart(width=1080, height=360, columns=3)
+    cases = [
+        ("simple simulation", res1),
+        ("parameter change", res2),
+        ("change at a time", res3),
+    ]
+    for column, (title, res) in enumerate(cases):
         console.print(res)
-        ax.plot(res["time"], res["[X]"], label="[X]")
-        ax.plot(res["time"], res["[Y]"], label="[Y]")
-        ax.plot(res["time"], res["[Z]"], label="[Z]")
-
-    for ax in (ax1, ax2, ax3):
-        ax.legend()
-        ax.set_xlabel("time")
-        ax.set_ylabel("concentration")
-    fig.savefig("timecourse.png", bbox_inches="tight")
-    plt.close(fig)
+        plot = chart.plot(
+            0,
+            column,
+            title=title,
+            x=ChartAxis(label="time", unit=res.units["time"]),
+            y=ChartAxis(label="concentration"),
+        )
+        for sid in ["[X]", "[Y]", "[Z]"]:
+            plot.curve(res.q["time"], res.q[sid], label=sid)
+    chart.save("timecourse.svg")
 
 
 if __name__ == "__main__":

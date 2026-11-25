@@ -830,7 +830,7 @@ class Axis(BasePlotObject):
         """Get the axis label which the label and the unit form.
 
         The unit is written in the short form of pint, as the labels of
-        `sbmlsim.plot.label_axes`, e.g. `h` for `hr` and `ng/ml`; a unit pint
+        `sbmlsim.plot.Chart`, e.g. `h` for `hr` and `ng/ml`; a unit pint
         does not read, e.g. a unit id of a model, is written as given. A unit
         of `dimensionless` is written as `-`, and a part which is not given is
         left out rather than written as `None`.

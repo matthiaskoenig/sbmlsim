@@ -10,7 +10,7 @@ python -m examples.scan
 python -m examples.sensitivity.sensitivity_example
 ```
 
-An example writes what it creates into the current working directory: figures are saved as `png` next to it, simulation experiments write their results into `results/`. No example opens a window: matplotlib figures are saved to a file, never shown, so that the examples also run on a machine without a display. The models and data an example reads stay next to the example.
+An example writes what it creates into the current working directory: figures are saved as `svg` next to it, simulation experiments write their results into `results/`. No example opens a window: a `Chart` of the renderer is saved to a file, never shown, so that the examples also run on a machine without a display. The models and data an example reads stay next to the example.
 
 ## What is where
 
