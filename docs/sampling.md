@@ -61,8 +61,6 @@ fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 
 ![Output figure](images/outputs/sampling-02.svg)
 
-![Output figure](images/outputs/sampling-02.png)
-
 `cp` is the plasma concentration in ng/ml and `cmax` its peak, one value per draw. `max` reads the steps of the integrator, before the timecourse is interpolated onto the grid, so the grid does not cut the peak. `plot_distribution` draws the values of the draws as a histogram, and the summary has their statistics:
 
 ```python
@@ -85,8 +83,6 @@ Name: cmax, dtype: float64
 
 ![Output figure](images/outputs/sampling-03.svg)
 
-![Output figure](images/outputs/sampling-03.png)
-
 ## Combine with other dimensions
 
 The draws are a dimension like any other, so they combine with doses or patient groups. The same 200 draws run for every dose, and the summary has a band per dose:
@@ -105,8 +101,6 @@ fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/sampling-04.svg)
-
-![Output figure](images/outputs/sampling-04.png)
 
 `plot_bands` draws one band per label of the other dimensions of the summary, here the doses. It draws quantities, so `time_unit` and `unit` choose the units of the axes, and a band shares an axis with lines plotted from `res.q[...]`.
 

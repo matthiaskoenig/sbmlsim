@@ -134,8 +134,6 @@ chart = experiment.create_figures()["fig_cp"]
 
 ![Output figure](images/outputs/experiments-03.svg)
 
-![Output figure](images/outputs/experiments-03.png)
-
 ## The parts of an experiment
 
 An experiment overrides the methods it needs. Define them in this order, since each part can only refer to the parts before it:

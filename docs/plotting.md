@@ -40,7 +40,7 @@ plasma.curve(
     yerr=sd,
     line="none",
     marker="circle",
-    color="#000000",
+    color="black",
     label="Patel 1984",
 )
 
@@ -419,7 +419,7 @@ The spec is the whole figure. The HTML reports of the experiments and of a fit c
 
 ## Colours
 
-A figure of the figure model takes the colour names of matplotlib: a CSS name (`dimgrey`), a base colour of one letter (`k`), a tableau name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle (`C0` to `C9`), hex (`#rgb`, `#rrggbb`, with an alpha `#rrggbbaa`), a grey level as a text (`"0.4"`) and a tuple of floats. `sbmlsim.plot.colors.normalize_color` turns each into the `#rrggbb` the spec holds, and `color_alpha` returns the opacity a colour carries. The chart builder takes `#rrggbb` as the spec does, so pass a name through `normalize_color` there:
+The chart builder and the figure model take the colour names of matplotlib: a CSS name (`dimgrey`), a base colour of one letter (`k`), a tableau name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle (`C0` to `C9`), hex (`#rgb`, `#rrggbb`, with an alpha `#rrggbbaa`), a grey level as a text (`"0.4"`) and a tuple of floats. The spec holds `#rrggbb`: `sbmlsim.plot.colors.normalize_color` converts a name, and an alpha of the colour is multiplied into the opacity of the element or of its fill. `marker_fill="none"` draws a hollow marker (white with sbmlsim-core 0.27, which has no hollow markers; 0.28 takes `none`).
 
 ```python
 from sbmlsim.plot.colors import color_alpha, normalize_color

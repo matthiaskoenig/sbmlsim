@@ -38,6 +38,7 @@ def test_the_code_of_a_page_runs_and_its_outputs_are_shown(
         )
         for image in block.images:
             assert (DOCS_DIR / image).is_file(), f"{where}: '{image}' is missing"
+            assert image.endswith(".svg"), f"{where}: '{image}' is no SVG, {advice}"
 
 
 def test_every_page_with_code_is_run() -> None:

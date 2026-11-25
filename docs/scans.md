@@ -104,7 +104,6 @@ for column, at in enumerate([None, 0]):
     plot = chart.plot(
         0,
         column,
-        title=f"at={at}",
         x=ChartAxis(label="time", unit="hr"),
         y=ChartAxis(label="HCTZ plasma", unit="µM"),
     )
@@ -191,8 +190,6 @@ ScanResult(regimen: 2, _point: 2635; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hc
 ```
 
 ![Output figure](images/outputs/scans-06.svg)
-
-![Output figure](images/outputs/scans-06.png)
 
 The simulations of the dimension replace the simulation of the scan, here `tablet`. The same daily dose split into two gives lower peaks and higher troughs.
 
@@ -410,8 +407,6 @@ ScanResult(lhs: 50, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
 ![Output figure](images/outputs/scans-13.svg)
-
-![Output figure](images/outputs/scans-13.png)
 
 A distribution without a location, like `LogNormal(cv=0.3)` or `Normal(sd=10)`, is centered on the reference of its target: the value the model has after the pre-initialization of the simulation. The dimension of a design is named after its method, here `lhs`, and the result records the design, so an analysis needs only the result.
 

@@ -154,8 +154,6 @@ fig = plot_bands(bands, "mid", time_unit="hr", name="midazolam")
 
 ![Output figure](images/outputs/uncertainty-05.svg)
 
-![Output figure](images/outputs/uncertainty-05.png)
-
 How the draws are made:
 
 - The draws are quasi-random (scrambled Sobol points, Owen 1998; Joe and Kuo 2008), one dimension of a scan, so the model is compiled once and many draws run in parallel worker processes.

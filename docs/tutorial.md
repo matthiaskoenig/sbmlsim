@@ -427,8 +427,6 @@ fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 
 ![Output figure](images/outputs/tutorial-15.svg)
 
-![Output figure](images/outputs/tutorial-15.png)
-
 Last, test a statement about the prediction: in at least 90 % of the patients, does impaired kidney function raise the AUC by more than half?
 
 ```python

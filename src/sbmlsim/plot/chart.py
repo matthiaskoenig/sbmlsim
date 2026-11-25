@@ -44,6 +44,7 @@ import xarray as xr
 from pint.errors import DimensionalityError, PintError
 
 from sbmlsim.atomic import atomic_path, write_text_atomic
+from sbmlsim.plot.colors import color_alpha
 from sbmlsim.units import Quantity, short_unit, ureg
 
 __all__ = ["Chart", "ChartAxis", "ChartPlot", "axis_label"]
@@ -263,6 +264,17 @@ def _magnitude(data: Values) -> np.ndarray:
     return np.asarray(data, dtype=float)
 
 
+def _marker_color(color: str) -> str:
+    """Get the color of a marker as `#rrggbb`, a hollow marker (`none`) as white.
+
+    sbmlsim-core 0.28 takes `none` for `Marker.fill`, which draws a hollow
+    marker; 0.27 does not, so it is white, as the figure model draws it. The
+    markers have no opacity, the alpha of a color is dropped.
+    """
+    normalized, _ = color_alpha(color)
+    return normalized if normalized is not None else "#ffffff"
+
+
 @dataclass(frozen=True)
 class _Style:
     """The style keywords of an element; `None` leaves a part to the renderer."""
@@ -283,9 +295,13 @@ class _Style:
     def spec(self) -> dict[str, Any]:
         """Get the style as a dictionary of `figure/1`."""
         style: dict[str, Any] = {}
+        opacity = float(self.opacity)
         if self.color is not None:
-            style["color"] = self.color
-        style["opacity"] = float(self.opacity)
+            color, alpha = color_alpha(self.color)
+            if color is not None:
+                style["color"] = color
+            opacity *= alpha
+        style["opacity"] = opacity
         if self.line is not None or self.width is not None:
             style["line"] = {
                 "type": self.line if self.line is not None else "solid",
@@ -296,17 +312,20 @@ class _Style:
             if self.size is not None:
                 marker["size"] = float(self.size)
             if self.marker_fill is not None:
-                marker["fill"] = self.marker_fill
+                marker["fill"] = _marker_color(self.marker_fill)
             if self.marker_edge is not None:
-                marker["edge"] = self.marker_edge
+                marker["edge"] = _marker_color(self.marker_edge)
             if self.marker_edge_width is not None:
                 marker["edge_width"] = float(self.marker_edge_width)
             style["marker"] = marker
         if self.fill is not None or self.fill_opacity is not None:
             fill: dict[str, Any] = {}
+            alpha = 1.0
             if self.fill is not None:
-                fill["color"] = self.fill
-            fill["opacity"] = float(
+                color, alpha = color_alpha(self.fill)
+                if color is not None:
+                    fill["color"] = color
+            fill["opacity"] = alpha * float(
                 self.fill_opacity
                 if self.fill_opacity is not None
                 else self.default_fill_opacity
@@ -508,7 +527,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -570,7 +590,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -623,7 +644,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -684,7 +706,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -758,7 +781,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -826,7 +850,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -880,7 +905,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -936,7 +962,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -987,7 +1014,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -1038,7 +1066,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 
@@ -1088,7 +1117,8 @@ class ChartPlot:
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
-            color: the color `#rrggbb`, the cycle by default.
+            color: the color, a name of matplotlib or hex (see
+                `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
 

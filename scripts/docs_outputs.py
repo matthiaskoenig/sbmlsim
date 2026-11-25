@@ -78,7 +78,9 @@ PYTHON_FENCE = "```python"
 OUTPUT_FENCE = '```text title="Output"'
 FENCE = "```"
 #: an image of a figure of a block
-IMAGE = re.compile(r"^!\[Output figure\]\(" + re.escape(IMAGES) + r"/[\w.-]+\.svg\)$")
+IMAGE = re.compile(
+    r"^!\[Output figure\]\(" + re.escape(IMAGES) + r"/[\w.-]+\.(?:svg|png)\)$"
+)
 
 #: an output longer than this is a hint that the block prints too much
 MAX_OUTPUT_LINES = 40

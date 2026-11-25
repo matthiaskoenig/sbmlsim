@@ -499,3 +499,29 @@ def test_spec_is_a_copy() -> None:
     spec = chart.spec()
     spec["plots"][0]["elements"][0]["y"][0] = 5.0
     assert chart.spec()["plots"][0]["elements"][0]["y"][0] == 0.0
+
+
+def test_colour_names_are_normalized_and_alpha_is_an_opacity() -> None:
+    """Names of matplotlib reach the spec as `#rrggbb`, an alpha multiplies opacity."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve(
+        [0, 1],
+        [0, 1],
+        color="#ff000080",
+        marker="circle",
+        marker_fill="none",
+        marker_edge="tab:red",
+        opacity=0.5,
+    )
+    plot.curve([0, 1], [0, 1], color="C0")
+    plot.curve([0, 1], [0, 1], color="black")
+    plot.band([0, 1], [0, 0], [1, 1], fill="tab:red", fill_opacity=0.5)
+    styles = [e["style"] for e in chart.spec()["plots"][0]["elements"]]
+    assert styles[0]["color"] == "#ff0000"
+    assert styles[0]["opacity"] == pytest.approx(0.5 * 128 / 255)
+    assert styles[0]["marker"]["fill"] == "#ffffff"
+    assert styles[0]["marker"]["edge"] == "#d62728"
+    assert styles[1]["color"] == "#1f77b4"
+    assert styles[2]["color"] == "#000000"
+    assert styles[3]["fill"] == {"color": "#d62728", "opacity": 0.5}
