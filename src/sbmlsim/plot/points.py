@@ -153,6 +153,11 @@ def curve_lines(
             f"one of them: name {scan} in over= or select one label with "
             f"Data(sel=...)."
         )
+    if not over:
+        # one line: the values as they are, without the copies of `isel`
+        values = [None if a is None else np.asarray(a.values) for a in full]
+        lx, ly, lxerr, lyerr = without_padding(*values)
+        return [Line(point=(), index=(), x=lx, y=ly, xerr=lxerr, yerr=lyerr)]
     ordered = [None if a is None else a.transpose(*over, *axis) for a in full]
     labels = _labels(ordered, over)
     lines: list[Line] = []
@@ -524,6 +529,8 @@ def _broadcast(
         ValueError: if two arrays have different coordinates of a dimension.
     """
     given = [a for a in arrays if a is not None]
+    if _aligned(given):
+        return list(arrays), [str(d) for d in given[0].dims]
     try:
         aligned = xr.align(*given, join="exact")
     except ValueError as err:
@@ -535,6 +542,25 @@ def _broadcast(
     full = [None if a is None else next(broadcast) for a in arrays]
     template = next(a for a in full if a is not None)
     return full, [str(d) for d in template.dims]
+
+
+def _aligned(arrays: Sequence[xr.DataArray]) -> bool:
+    """Get whether arrays are broadcast and aligned already.
+
+    Arrays of the same dimensions in the same order and of the same shape,
+    whose indexes of a dimension have the same labels, are what `xr.align`
+    and `xr.broadcast` give back; these two are most of the cost of the
+    lines of a figure, whose curves are mostly of such arrays (a timecourse,
+    the column of a dataset and its errors).
+    """
+    first = arrays[0]
+    if any(a.dims != first.dims or a.shape != first.shape for a in arrays[1:]):
+        return False
+    for d in first.dims:
+        labels = [a.indexes[d] for a in arrays if d in a.indexes]
+        if any(not labels[0].equals(other) for other in labels[1:]):
+            return False
+    return True
 
 
 def _labels(
@@ -619,6 +645,35 @@ class PointStyle:
     scale: ColorBarScale | None
     ramp: list[str]
     middle: str
+
+
+def colorbar_range(styles: PointStyle) -> tuple[float, float, bool] | None:
+    """Get the range of the colour scale `COLORMAP` whose colours the points have.
+
+    The points take the first `_COLORMAP_END` of the colour scale, so the
+    range of a colour bar of the whole scale reaches beyond the values of
+    the points: the colour of the scale at the value of a point is the
+    colour of the point (a categorical dimension at the position of its
+    point, from 0).
+
+    Args:
+        styles: the style of the points, see `point_styles`, of a curve
+            without a colour of its own.
+
+    Returns:
+        `(low, high, log)` of the colour scale, `None` for points which span no
+        range.
+    """
+    scale = styles.scale
+    if scale is None:
+        return None
+    if scale.categorical:
+        n = len(styles.colors)
+        return (0.0, (n - 1) / _COLORMAP_END, False) if n > 1 else None
+    if scale.log:
+        ratio = (scale.high / scale.low) ** (1 / _COLORMAP_END)
+        return scale.low, scale.low * ratio, True
+    return scale.low, scale.low + (scale.high - scale.low) / _COLORMAP_END, False
 
 
 def point_styles(

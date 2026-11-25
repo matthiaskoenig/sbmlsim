@@ -816,6 +816,11 @@ class Axis(BasePlotObject):
         """
         self._name: str | None = name
 
+    @property
+    def name_override(self) -> str | None:
+        """Get the complete axis label which overrides the label and the unit, `None` without."""
+        return self._name
+
     def _derived_name(self) -> str:
         """Get the axis label which the label and the unit form.
 
