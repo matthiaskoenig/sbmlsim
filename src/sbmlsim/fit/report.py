@@ -99,7 +99,13 @@ from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 from sbmlsim.plot.colors import normalize_color
 from sbmlsim.progress import activity as progress_activity
 from sbmlsim.report.document import Document
-from sbmlsim.report.figures import IMAGE_FORMATS, inline_figure, save_figure
+from sbmlsim.report.figures import (
+    FIGURE_SCRIPT,
+    IMAGE_FORMATS,
+    inline_figure,
+    save_figure,
+    write_figure_script,
+)
 from sbmlsim.report.references import write_bibliography
 from sbmlsim.report.render import (
     HTMLRenderer,
@@ -2180,7 +2186,9 @@ class FitReport:
         figures of the cost and weight and of the residuals of every fit
         mapping, the table of the metrics of every fit mapping and a card per
         fit mapping. It is rendered from the `fit_report.html`
-        template and needs no network access.
+        template and needs no network access; its inline figures are
+        interactive with the script `figures.js` beside it, see
+        `write_figure_script`.
 
         Args:
             path: file to write.
@@ -2195,8 +2203,13 @@ class FitReport:
             pdf_error=pdf_error,
         )
         template = template_environment().get_template("fit_report.html")
+        text = template.render(context)
+        if 'data-figure="' in text:
+            # the inline figures are interactive with the script beside the page
+            write_figure_script(path.parent)
+            text = template.render({**context, "figure_script": FIGURE_SCRIPT})
         with open(path, "w", encoding="utf-8") as f_html:
-            f_html.write(template.render(context))
+            f_html.write(text)
 
     # --------------------------------------------------------------------
     # figures

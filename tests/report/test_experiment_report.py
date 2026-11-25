@@ -20,6 +20,7 @@ from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
+from sbmlsim.report.figures import FIGURE_SCRIPT
 from sbmlsim.simulator import Simulator
 
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
@@ -358,6 +359,35 @@ def test_experiment_page_inlines_svg_and_spec(report_dir: Path) -> None:
         )
         assert json.loads(spec.group(1)) == json.loads(on_disk)
     assert "<iframe" not in html
+
+
+def test_the_figures_of_the_pages_are_interactive(
+    report_and_dir: tuple[ExperimentReport, Path], tmp_path: Path
+) -> None:
+    """The report writes the script of its figures once, which the pages include.
+
+    The experiment pages include `figures.js` of the report directory, which
+    hydrates their inline figures; the index, which shows images, does not.
+    """
+    pytest.importorskip("sbmlsim_core")
+    report, output_path = report_and_dir
+    script = output_path / FIGURE_SCRIPT
+    assert script.is_file()
+    assert "hydrateFigures" in script.read_text(encoding="utf-8")
+    html = _html(output_path / "Beermann1976" / "Beermann1976.html")
+    assert html.count('<script src="../figures.js" defer></script>') == 1
+    assert 'figures.js" defer' not in _html(output_path / "index.html")
+    assert not (output_path / "Beermann1976" / FIGURE_SCRIPT).exists()
+
+    # written once: a second report into the directory keeps the file
+    before = script.stat().st_mtime_ns
+    report.create_report(output_path)
+    assert script.stat().st_mtime_ns == before
+
+    # a report without inline figures writes none
+    shutil.copytree(output_path / "Beermann1976", tmp_path / "Beermann1976")
+    report.create_report(tmp_path, report_type=ExperimentReport.ReportType.MARKDOWN)
+    assert not (tmp_path / FIGURE_SCRIPT).exists()
 
 
 def test_spec_script_is_escaped(

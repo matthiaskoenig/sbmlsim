@@ -473,6 +473,9 @@ def test_the_goodness_of_fit_and_altman_plots(
         assert f'data-figure-spec="{name}"' in html, name
         assert (results_dir / "plots" / f"{name}.json").exists(), name
     assert "<svg" in html and '<img loading="lazy"' not in html
+    # the script of the report beside its page makes the figures interactive
+    assert html.count('<script src="figures.js" defer></script>') == 1
+    assert "hydrateFigures" in (results_dir / "figures.js").read_text(encoding="utf-8")
     # the metrics of the report cover the outliers
     metrics = (results_dir / "metrics.tsv").read_text(encoding="utf-8")
     assert MappingKind.OUTLIER.value in metrics

@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.plot import Chart
-from sbmlsim.report.figures import inline_figure, save_figure
+from sbmlsim.report.figures import (
+    FIGURE_SCRIPT,
+    inline_figure,
+    save_figure,
+    write_figure_script,
+)
 
 
 def _chart() -> Chart:
@@ -50,3 +55,18 @@ def test_an_inline_figure_is_its_svg_and_its_spec(tmp_path: Path) -> None:
     assert inline_figure(tmp_path / "f.png") == {}
     (tmp_path / "f.json").unlink()
     assert inline_figure(tmp_path / "f.svg") == {}
+
+
+def test_the_figure_script_is_written_once(tmp_path: Path) -> None:
+    """The script of a report directory is written when it is missing or other."""
+    pytest.importorskip("sbmlsim_core")
+    path = write_figure_script(tmp_path)
+    assert path == tmp_path / FIGURE_SCRIPT
+    text = path.read_text(encoding="utf-8")
+    assert "hydrateFigures" in text and "atob" in text
+    before = path.stat().st_mtime_ns
+    assert write_figure_script(tmp_path) == path
+    assert path.stat().st_mtime_ns == before
+    path.write_text("stale", encoding="utf-8")
+    write_figure_script(tmp_path)
+    assert path.read_text(encoding="utf-8") == text

@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from sbmlsim import __version__, display
 from sbmlsim.model import AbstractModel
-from sbmlsim.report.figures import inline_figure
+from sbmlsim.report.figures import FIGURE_SCRIPT, inline_figure, write_figure_script
 from sbmlsim.report.templates import TEMPLATE_DIR, template_environment
 
 if TYPE_CHECKING:
@@ -76,6 +76,9 @@ def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any
     Returns:
         A copy of the context whose figures have `svg` and `spec_text` where
         the files exist; a figure without a spec (a hook figure) has none.
+        A page with an inline figure gets `figure_script`, the script of the
+        figures in the directory of the report above the one of the
+        experiment, see `write_figure_script`.
     """
     figures: dict[str, dict[str, Any]] = {}
     for key, fig in context["figures"].items():
@@ -83,7 +86,9 @@ def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any
         if fig.get("static") and fig.get("spec"):
             entry.update(inline_figure(folder / f"{fig['path']}.svg"))
         figures[key] = entry
-    return {**context, "figures": figures}
+    inline = any("svg" in entry for entry in figures.values())
+    script = f"../{FIGURE_SCRIPT}" if inline else None
+    return {**context, "figures": figures, "figure_script": script}
 
 
 class ReportResults:
@@ -306,6 +311,8 @@ class ExperimentReport:
             for exp_id, context in self.data_dict.items():
                 if report_type == self.ReportType.HTML:
                     context = _with_inline_figures(context, output_path / exp_id)
+                    if context["figure_script"]:
+                        write_figure_script(output_path)
                 write_report(
                     filename=f"{exp_id}/{exp_id}",
                     context=context,

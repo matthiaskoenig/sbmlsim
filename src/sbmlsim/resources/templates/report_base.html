@@ -168,6 +168,7 @@ figure img, figure svg {
   width: 100%; height: auto; background: #fff; border: 1px solid var(--line);
   border-radius: 8px; cursor: zoom-in;
 }
+figure[data-hydrated] svg { cursor: auto; }
 figcaption { color: var(--fg-soft); font-size: 12.5px; margin-top: 6px; }
 
 .mapping { }
@@ -226,6 +227,7 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
 </footer>
 
 <div id="lightbox"></div>
+{% if figure_script %}<script src="{{ figure_script }}" defer></script>{% endif %}
 
 <script>
 (function () {
@@ -353,9 +355,18 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
     lightbox.replaceChildren(copy);
     lightbox.classList.add("open");
   }
-  for (const figure of document.querySelectorAll("figure > img, figure > svg")) {
-    figure.addEventListener("click", () => enlarge(figure));
-  }
+  // a figure which figures.js made interactive takes the clicks for its
+  // legend and its curves and is enlarged by a double click; the script
+  // replaces its SVG, so the listeners are on the document
+  document.addEventListener("click", (event) => {
+    const node = event.target.closest("figure > img, figure > svg");
+    if (node && !node.parentElement.hasAttribute("data-hydrated")) enlarge(node);
+  });
+  document.addEventListener("dblclick", (event) => {
+    const figure = event.target.closest("figure[data-hydrated]");
+    const svg = figure && figure.querySelector("svg");
+    if (svg) enlarge(svg);
+  });
   lightbox.addEventListener("click", closeLightbox);
 
   apply();
