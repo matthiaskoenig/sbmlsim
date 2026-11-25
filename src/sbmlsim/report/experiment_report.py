@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from sbmlsim import __version__, display
 from sbmlsim.model import AbstractModel
-from sbmlsim.report.figures import inline_svg, script_json
+from sbmlsim.report.figures import inline_figure
 from sbmlsim.report.templates import TEMPLATE_DIR, template_environment
 
 if TYPE_CHECKING:
@@ -80,12 +80,8 @@ def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any
     figures: dict[str, dict[str, Any]] = {}
     for key, fig in context["figures"].items():
         entry = dict(fig)
-        svg = folder / f"{fig['path']}.svg"
-        if fig.get("static") and svg.is_file():
-            spec = folder / f"{fig['path']}.json"
-            if fig.get("spec") and spec.is_file():
-                entry["svg"] = inline_svg(svg.read_text(encoding="utf-8"))
-                entry["spec_text"] = script_json(spec.read_text(encoding="utf-8"))
+        if fig.get("static") and fig.get("spec"):
+            entry.update(inline_figure(folder / f"{fig['path']}.svg"))
         figures[key] = entry
     return {**context, "figures": figures}
 

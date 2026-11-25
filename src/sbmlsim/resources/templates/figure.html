@@ -1,0 +1,16 @@
+{#
+  A figure of a report: an SVG with its spec inline, `data-figure` and
+  `data-figure-spec` by its key, which a page reads, else the image of `src`.
+  A caption is the body of a call of the macro.
+#}
+{% macro figure(key, svg=None, spec_text=None, src=None, alt="") -%}
+<figure{% if svg and spec_text %} data-figure="{{ key }}"{% endif %}>
+  {% if svg and spec_text -%}
+  {{ svg | safe }}
+  <script type="application/json" data-figure-spec="{{ key }}">{{ spec_text | safe }}</script>
+  {%- else -%}
+  <img loading="lazy" src="{{ src }}" alt="{{ alt }}">
+  {%- endif %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</figure>
+{%- endmacro %}

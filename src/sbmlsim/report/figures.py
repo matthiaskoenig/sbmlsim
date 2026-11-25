@@ -17,7 +17,13 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sbmlsim.plot.chart import Chart
 
-__all__ = ["inline_figure", "inline_svg", "save_figure", "script_json"]
+__all__ = [
+    "IMAGE_FORMATS",
+    "inline_figure",
+    "inline_svg",
+    "save_figure",
+    "script_json",
+]
 
 #: the formats a figure of a report is saved in
 IMAGE_FORMATS: tuple[str, ...] = ("svg", "png")

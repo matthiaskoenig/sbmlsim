@@ -1,4 +1,5 @@
 {% extends "report_base.html" %}
+{% from "figure.html" import figure %}
 
 {% block title %}{{ exp_id }} | sbmlsim experiment{% endblock %}
 {% block items %}figures{% endblock %}
@@ -85,15 +86,8 @@
         {% if fig.spec %}<a href="{{ fig.path }}.json">spec</a>{% endif %}
       </span>
     </header>
-    {% if fig.svg and fig.spec_text %}
-    <figure data-figure="{{ fig_id }}">
-      {{ fig.svg | safe }}
-      <script type="application/json" data-figure-spec="{{ fig_id }}">{{ fig.spec_text | safe }}</script>
-    </figure>
-    {% elif fig.static %}
-    <figure><img loading="lazy" src="{{ fig.path }}.svg" alt="{{ fig_id }}"></figure>
-    {% elif fig.png %}
-    <figure><img loading="lazy" src="{{ fig.path }}.png" alt="{{ fig_id }}"></figure>
+    {% if (fig.svg and fig.spec_text) or fig.static or fig.png %}
+    {{ figure(fig_id, fig.svg, fig.spec_text, fig.path ~ (".svg" if fig.static else ".png"), fig_id) }}
     {% endif %}
   </div>
   {% endfor %}

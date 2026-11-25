@@ -1,20 +1,11 @@
 {% extends "report_base.html" %}
 
-{#
-  A figure: an SVG with its spec inline, which a page reads, `data-figure` and
-  `data-figure-spec` as in the report of the experiments, else the image; the
-  caption links the files.
-#}
+{% from "figure.html" import figure %}
+{#- a plot of the page: its figure, its caption and the links of its files -#}
 {% macro figure_of(plot) -%}
-<figure{% if plot.svg and plot.spec_text %} data-figure="{{ plot.key }}"{% endif %}>
-  {% if plot.svg and plot.spec_text -%}
-  {{ plot.svg | safe }}
-  <script type="application/json" data-figure-spec="{{ plot.key }}">{{ plot.spec_text | safe }}</script>
-  {%- else -%}
-  <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-  {%- endif %}
-  <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %} <span class="files"><a href="{{ plot.src }}">{{ plot.src.rsplit('.', 1)[-1] }}</a>{% if plot.spec %} <a href="{{ plot.spec }}">spec</a>{% endif %}</span></figcaption>
-</figure>
+{% call figure(plot.key, plot.svg, plot.spec_text, plot.src, plot.caption) -%}
+<figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %} <span class="files"><a href="{{ plot.src }}">{{ plot.src.rsplit('.', 1)[-1] }}</a>{% if plot.spec %} <a href="{{ plot.spec }}">spec</a>{% endif %}</span></figcaption>
+{%- endcall %}
 {%- endmacro %}
 
 {% block title %}{{ title }}{% endblock %}
