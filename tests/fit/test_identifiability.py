@@ -5,6 +5,7 @@ import shutil
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,13 +14,14 @@ from scipy.stats import chi2
 
 from sbmlsim.fit import FitSettings, ParameterSet, ParameterSets, identifiability
 from sbmlsim.fit.cli import FitDefinition, identifiability_cli
-from sbmlsim.fit.fisher import fisher_information
+from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     Identifiability,
     IdentifiabilityResult,
     ParameterProfile,
     ProfileSettings,
     cost_threshold,
+    first_steps,
     plot_profile,
     plot_profiles,
     profile_likelihood,
@@ -902,3 +904,173 @@ def test_a_stuck_scan_of_a_parallel_analysis_is_given_up(
     assert given_up not in result.profiles
     # the parameter whose two scans both finished has its profile
     assert op_hctz_pk.pids[1] in result.profiles
+
+
+# ---------------------------------------------------------------------------
+# the first step of a scan and the correction of a step (#647)
+# ---------------------------------------------------------------------------
+def test_a_scan_starts_at_the_scale_of_its_parameter(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The first step of a parameter is `sqrt(2 max_rise)` of its error."""
+    op_hctz_pk.initialize(fit_settings)
+    parameter_set = op_hctz_pk.parameter_set_model()
+    settings = ProfileSettings()
+    steps = first_steps(
+        op_hctz_pk, fit_settings, parameter_set, settings, op_hctz_pk.pids
+    )
+
+    information = fisher_information(op_hctz_pk, fit_settings, parameter_set)
+    max_rise = settings.max_cost_fraction * settings.delta / 2.0
+    expected = [
+        min(max(np.sqrt(2.0 * max_rise) * error, settings.min_step), settings.max_step)
+        for error in information.standard_errors
+    ]
+    assert steps == pytest.approx(expected)
+    # the parameters of the reference problem have different scales, so the
+    # one step of the settings is not the step of any of them
+    assert all(step != settings.initial_step for step in steps)
+
+
+def test_a_first_step_outside_the_steps_of_the_settings_is_clamped(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A scale below `min_step` or above `max_step` takes the bound."""
+    op_hctz_pk.initialize(fit_settings)
+    parameter_set = op_hctz_pk.parameter_set_model()
+    narrow = ProfileSettings(min_step=0.4, initial_step=0.4, max_step=0.5)
+    steps = first_steps(
+        op_hctz_pk, fit_settings, parameter_set, narrow, op_hctz_pk.pids
+    )
+    assert all(narrow.min_step <= step <= narrow.max_step for step in steps)
+
+
+def test_a_parameter_without_a_scale_keeps_the_step_of_the_settings(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A direction the data does not constrain has no standard error."""
+    op_hctz_pk.initialize(fit_settings)
+    parameter_set = op_hctz_pk.parameter_set_model()
+    settings = ProfileSettings()
+
+    errors = np.full(len(op_hctz_pk.pids), np.nan)
+    errors[0] = 0.25
+    monkeypatch.setattr(
+        FisherInformation, "standard_errors", property(lambda self: errors)
+    )
+    steps = first_steps(
+        op_hctz_pk, fit_settings, parameter_set, settings, op_hctz_pk.pids
+    )
+    max_rise = settings.max_cost_fraction * settings.delta / 2.0
+    assert steps[0] == pytest.approx(np.sqrt(2.0 * max_rise) * 0.25)
+    assert steps[1:] == [settings.initial_step] * (len(op_hctz_pk.pids) - 1)
+
+
+def test_an_information_which_fails_leaves_every_scan_at_the_step_of_the_settings(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A first step is where a scan starts, so a failure does not end the analysis."""
+    op_hctz_pk.initialize(fit_settings)
+    settings = ProfileSettings()
+
+    def _fails(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("no jacobian here")
+
+    monkeypatch.setattr(identifiability, "fisher_information", _fails)
+    with caplog.at_level("WARNING"):
+        steps = first_steps(
+            op_hctz_pk,
+            fit_settings,
+            op_hctz_pk.parameter_set_model(),
+            settings,
+            op_hctz_pk.pids,
+        )
+    assert steps == [settings.initial_step] * len(op_hctz_pk.pids)
+    assert "no jacobian here" in caplog.text
+
+
+def test_the_scans_of_an_analysis_start_at_the_steps_it_computed(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every task of the analysis carries the first step of its parameter."""
+    op_hctz_pk.initialize(fit_settings)
+    computed = [0.21, 0.22, 0.23]
+    monkeypatch.setattr(
+        identifiability, "first_steps", lambda *args, **kwargs: computed
+    )
+    seen: list[tuple[str, int, float]] = []
+    scan_task = identifiability._scan_task
+
+    def _record(problem: OptimizationProblem, task: dict, **kwargs: Any) -> Any:
+        seen.append(
+            (problem.pids[task["index"]], task["direction"], task["first_step"])
+        )
+        return scan_task(problem, task, **kwargs)
+
+    monkeypatch.setattr(identifiability, "_scan_task", _record)
+    profile_likelihood(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_set=op_hctz_pk.parameter_set_model(),
+        profile_settings=SCAN_SETTINGS,
+        serial=True,
+        show_progress=False,
+        engine_profiles=False,
+    )
+    # the two scans of a parameter start at the step of that parameter
+    assert seen == [
+        (pid, direction, step)
+        for pid, step in zip(op_hctz_pk.pids, computed, strict=True)
+        for direction in (-1, 1)
+    ]
+
+
+def test_a_step_which_rises_too_fast_is_corrected_by_the_curvature(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """One correction reaches the scale of the profile, where halving needs several.
+
+    The scan starts at a step far above the scale of its parameter, which is
+    what an analysis without the scale of a parameter does. The curvature of
+    the profile gives the step of the rise the walk allows at once, so the
+    first point costs one correction where halving the step costs several and
+    discards the re-optimization of every one of them (#647).
+    """
+    op_hctz_pk.initialize(fit_settings)
+    parameter_set = op_hctz_pk.parameter_set_model()
+    x = parameter_set.x(op_hctz_pk.pids)
+    theta_optimum = op_hctz_pk.to_scale(x)
+    cost_optimum = op_hctz_pk.cost_least_square(theta_optimum)
+    settings = ProfileSettings(
+        initial_step=2.0, min_step=1e-3, max_step=2.0, max_points=1
+    )
+
+    evaluated = 0
+    evaluate = identifiability._evaluate_point
+
+    def _counted(*args: Any, **kwargs: Any) -> Any:
+        nonlocal evaluated
+        evaluated += 1
+        return evaluate(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(identifiability, "_evaluate_point", _counted)
+        points = identifiability._scan_direction(
+            problem=op_hctz_pk,
+            theta_optimum=theta_optimum,
+            cost_optimum=cost_optimum,
+            index=op_hctz_pk.pids.index("KI__HCTZEX_k"),
+            direction=1,
+            settings=settings,
+        )
+    assert len(points) == 1
+    # the first point of the scan, the two decades of the step corrected to
+    # the scale of the profile; halving two decades to it takes six or more
+    assert evaluated <= 3

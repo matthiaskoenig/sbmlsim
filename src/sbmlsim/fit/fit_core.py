@@ -126,6 +126,15 @@ the model is the number python computes, as a column of a formula observable
 is. No published fit of sbmlsim moves a noise or fits a posterior, so no
 stored fit changes: every fit which carries one of the fields is one python
 fitted before.
+
+The walk of a profile in the engine is the walk of python down to its first
+step: `walk_of` carries the settings of the analysis and `profile_points`
+carries the first step of every parameter, which the analysis computes from
+the standard error of the Fisher information of the optimum
+(`sbmlsim.fit.identifiability.first_steps`). The two must walk alike, so
+bindings which do not read those steps (`reads_profile_steps`,
+sbmlsim-core `PROFILE_STEPS_VERSION`) keep the gap `bindings` of
+`gaps_of_the_profiles` and the analysis runs in python.
 """
 
 from __future__ import annotations
@@ -215,6 +224,10 @@ MULTI_MODEL_VERSION = "0.22.0"
 #: distribution of its measurements and the column of the scale of a noise the
 #: fit moves, see `reads_objective`
 OBJECTIVE_VERSION: Final = "0.24.0"
+
+#: the release of sbmlsim-core whose identifiability reads `steps`, the first
+#: step of the walk of every parameter, see `reads_profile_steps`
+PROFILE_STEPS_VERSION: Final = "0.26.0"
 
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
@@ -722,6 +735,30 @@ def reads_objective(loaded: Any) -> bool:
         Whether the bindings read it.
     """
     return _reads(loaded, OBJECTIVE_VERSION)
+
+
+def reads_profile_steps(loaded: Any) -> bool:
+    """Whether the bindings read the first steps of the profiles of a request.
+
+    The `identifiability` of `fit/1` carries one first step per parameter
+    from sbmlsim-core `PROFILE_STEPS_VERSION` on (`profile_points`), the step
+    the walk of that parameter starts at instead of the one step of the walk,
+    which is what the analysis knows of the scale of the parameter before it
+    is walked.
+
+    `Identifiability` denies the fields it does not know, so an older binding
+    answers an error instead of walking otherwise. The gate therefore buys a
+    clear message and the analysis of python, whose scans take the same first
+    steps, and no safety.
+
+    Args:
+        loaded: the loaded model, `None` for a model which is not loaded in
+            sbmlsim-core.
+
+    Returns:
+        Whether the bindings read them.
+    """
+    return _reads(loaded, PROFILE_STEPS_VERSION)
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -3268,7 +3305,10 @@ def gaps_of_the_profiles(
     point which is no setting of the engine. A fit of one parameter is none of
     it either: every point of its profile holds that parameter and fits
     nothing, which the optimizer of the engine refuses and python evaluates as
-    the cost at the point.
+    the cost at the point. Bindings which do not read the first step of every
+    parameter (`reads_profile_steps`) are none of it either: they would walk
+    every profile from one step where the analysis of python walks it from
+    the step of its parameter, so the two would not answer the same points.
 
     Args:
         problem: the initialized problem.
@@ -3304,6 +3344,18 @@ def gaps_of_the_profiles(
                     f"setting of the optimizer of the engine",
                 )
             )
+    if not reads_profile_steps(_loaded_of(problem)):
+        import sbmlsim_core
+
+        gaps.append(
+            Gap(
+                "bindings",
+                f"the walk of every parameter starts at the first step the "
+                f"analysis computes for it, which the bindings of sbmlsim-core "
+                f"{sbmlsim_core.__version__} deny; {PROFILE_STEPS_VERSION} is "
+                f"the first release which reads them",
+            )
+        )
     return gaps
 
 
@@ -3312,6 +3364,7 @@ def profile_points(
     settings: ProfileSettings,
     at: Sequence[float] | np.ndarray,
     pids: Sequence[str],
+    steps: Sequence[float],
     *,
     threads: int | None = None,
     jacobian: str | None = None,
@@ -3329,6 +3382,10 @@ def profile_points(
         settings: the settings of the analysis.
         at: the optimum, in the space the parameters are searched.
         pids: the parameters to profile, in the order of the profiles.
+        steps: the first step of the walk of every parameter of `pids`, in its
+            order and in the space that parameter is searched, which replaces
+            the `step` of the walk for it, see
+            `sbmlsim.fit.identifiability.first_steps`.
         threads: the threads of the batch of the analysis, all cores of the
             machine without.
         jacobian: where the jacobian of a step of a point comes from, see
@@ -3341,8 +3398,16 @@ def profile_points(
         cost on the scale of `OptimizationProblem.cost_least_square`, shifted
         by `likelihood_constant` as the cost of a run is, and whether the
         optimizer of the point converged.
+
+    Raises:
+        ValueError: if `steps` is not one first step per parameter of `pids`.
     """
     at = np.asarray(at, dtype=float)
+    if len(steps) != len(pids):
+        raise ValueError(
+            f"'{problem.opid}': the analysis walks {len(pids)} parameters with "
+            f"{len(steps)} first steps."
+        )
     points: dict[str, Any] = {"max_iterations": MAX_ITERATIONS_OF_A_POINT}
     if "gtol" in settings.optimizer_kwargs:
         points["gradient_tolerance"] = float(settings.optimizer_kwargs["gtol"])
@@ -3359,6 +3424,7 @@ def profile_points(
         identifiability={
             "parameters": list(pids),
             "walk": walk_of(settings),
+            "steps": [float(step) for step in steps],
             "profiles": True,
             "fisher": False,
             "optimizer": points,
