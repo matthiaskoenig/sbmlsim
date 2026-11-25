@@ -17,7 +17,8 @@ from typing import Any
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
 
-from sbmlsim.units import short_unit, ureg
+from sbmlsim.plot.chart import axis_label as _axis_label
+from sbmlsim.units import ureg
 
 
 def axis_label(name: str, axis: Axis) -> str:
@@ -34,8 +35,7 @@ def axis_label(name: str, axis: Axis) -> str:
     units: Any = axis.get_units()
     if units is None or not isinstance(units, ureg.Unit):
         return name
-    text = short_unit(str(units))
-    return f"{name} [{text}]" if text else name
+    return _axis_label(name, units)
 
 
 def label_axes(ax: Axes, x: str | None = None, y: str | None = None) -> None:

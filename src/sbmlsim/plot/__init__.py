@@ -3,6 +3,7 @@
 from sbmlsim.units import setup_matplotlib
 
 from .axes import label_axes
+from .chart import Chart, ChartAxis, ChartPlot
 from .plotting import (
     Axis,
     Band,
@@ -18,6 +19,9 @@ from .plotting import (
 __all__ = [
     "Axis",
     "Band",
+    "Chart",
+    "ChartAxis",
+    "ChartPlot",
     "ColorType",
     "Curve",
     "Figure",
