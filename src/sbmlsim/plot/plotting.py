@@ -25,9 +25,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import numpy as np
-from matplotlib.colors import to_hex, to_rgba
 
 from sbmlsim.data import Data
+from sbmlsim.plot.colors import color_alpha
 from sbmlsim.units import short_unit
 
 if TYPE_CHECKING:
@@ -126,7 +126,8 @@ class ColorType:
         """Parse given color and add alpha information.
 
         Args:
-            color: Color as matplotlib color string or hex color.
+            color: a colour as matplotlib accepts it, see `sbmlsim.plot.colors`,
+                or hex.
             alpha: Alpha value in [0, 1].
 
         Returns:
@@ -158,8 +159,12 @@ class ColorType:
                 raise ValueError(f"Incorrect hex color: '{color}'")
 
         else:
-            rgba = to_rgba(color, alpha)
-            color_hex = to_hex(rgba, keep_alpha=True)
+            # the alpha replaces the one of the colour, as `to_rgba` of
+            # matplotlib does; `none` is transparent black
+            hexed, _ = color_alpha(color)
+            if hexed is None:
+                hexed, alpha = "#000000", 0.0
+            color_hex = f"{hexed}{round(alpha * 255):02x}"
 
         return ColorType(color_hex)
 
@@ -816,11 +821,16 @@ class Axis(BasePlotObject):
         """
         self._name: str | None = name
 
+    @property
+    def name_override(self) -> str | None:
+        """Get the complete axis label which overrides the label and the unit, `None` without."""
+        return self._name
+
     def _derived_name(self) -> str:
         """Get the axis label which the label and the unit form.
 
         The unit is written in the short form of pint, as the labels of
-        `sbmlsim.plot.label_axes`, e.g. `h` for `hr` and `ng/ml`; a unit pint
+        `sbmlsim.plot.Chart`, e.g. `h` for `hr` and `ng/ml`; a unit pint
         does not read, e.g. a unit id of a model, is written as given. A unit
         of `dimensionless` is written as `-`, and a part which is not given is
         left out rather than written as `None`.
@@ -1938,10 +1948,10 @@ class FigureSettings:
     therefore do not depend on the experiments which ran before it.
 
     Attributes:
-        fig_dpi: the resolution of a static image in dots per inch, which
-            turns the size of a figure in inches into its pixels. An
-            interactive page has a fixed 72 pixels per inch, see
-            `serialization_plotly.PAGE_PIXELS_PER_INCH`, whatever `fig_dpi`.
+        fig_dpi: the resolution of a PNG in dots per inch, which turns the
+            size of a figure in inches into its pixels. An SVG has a fixed 72
+            pixels per inch, see `sbmlsim.plot.resolve.PX_PER_INCH`, whatever
+            `fig_dpi`.
         fig_facecolor: the colour of the figure.
         fig_subplots_wspace: the horizontal spacing between the panels, as a
             fraction of the panel width.

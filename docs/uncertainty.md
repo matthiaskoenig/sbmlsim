@@ -143,17 +143,16 @@ The inhibitor triples the mean AUC (in ng/ml × min). The PK parameters are comp
 `res.results` holds the result of each scenario, a scan over the dimension `draw`. The quantiles of its summary over the draws are bands of the prediction, which `plot_bands` draws as a median line and a band from the 5 % to the 95 % quantile, in the units you ask for:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim.sensitivity.uncertainty import plot_bands
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for scenario, result in res.results.items():
-    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    plot_bands(bands, "mid", ax=ax, label=scenario, time_unit="hr", name="midazolam")
+bands = {
+    scenario: result.summary(quantiles=[0.05, 0.5, 0.95])
+    for scenario, result in res.results.items()
+}
+fig = plot_bands(bands, "mid", time_unit="hr", name="midazolam")
 ```
 
-![Output figure](images/outputs/uncertainty-05.png)
+![Output figure](images/outputs/uncertainty-05.svg)
 
 How the draws are made:
 
@@ -170,15 +169,21 @@ How the draws are made:
 A question about a prediction is a probability over the draws. For example: is the probability that the inhibitor raises the AUC by more than 25 % at least 90 %, and how likely is it to more than triple the AUC? The paired ratio of the AUCs over the draws shows the answers:
 
 ```python
+import numpy as np
+
+from sbmlsim.plot import Chart, ChartAxis
+
 ratio = res.contrast("pk.auc_last", "inhibitor", "control")
-fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.hist(ratio, bins=30, alpha=0.6)
-ax.axvline(3.0, color="black", linestyle="--", label="ratio 3")
-ax.set(xlabel="AUC inhibitor / AUC control", ylabel="draws")
-ax.legend(loc="upper left")
+counts, edges = np.histogram(ratio, bins=30)
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="AUC inhibitor / AUC control"), y=ChartAxis(label="draws")
+)
+plot.histogram(edges, counts, fill_opacity=0.6)
+plot.rule(3.0, orientation="vertical", line="dashed", color="#000000", label="ratio 3")
 ```
 
-![Output figure](images/outputs/uncertainty-06.png)
+![Output figure](images/outputs/uncertainty-06.svg)
 
 `P(H)` is the probability that the output satisfies a hypothesis H, given everything that is uncertain. It is estimated by the fraction of the draws that satisfy H. `P(H)` is a property of the model and its uncertainties, not of the number of draws; more draws only estimate it more precisely. A `Hypothesis` compares `P(H)` with a threshold `at_least=p0`:
 

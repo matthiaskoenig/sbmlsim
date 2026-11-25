@@ -43,6 +43,10 @@ The layout of the results below the folder of a run:
 | fast, sobol, chaos | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, `<analysis>/<prefix>_sensitivity_<k>_<group>_S1.png`, `_ST.png` and `_<ko>_<output>.png` |
 | chaos | and `<analysis>/<group>/quality.tsv`, with `<output>.S2.tsv` for `second_order` |
 | subfolders | `<subfolder>/<analysis>/...`, the table once in the folder |
+
+Every figure is drawn by the renderer of sbmlsim-core and written twice: the
+PNG of sbmlsim 0.8.5 at 300 dpi with its name, which manuscripts read, and an
+SVG of the same name next to it.
 """
 
 from __future__ import annotations
@@ -63,11 +67,12 @@ from typing import TYPE_CHECKING, Any, NamedTuple, override
 
 import numpy as np
 import pandas as pd
-from matplotlib.figure import Figure
 
 from sbmlsim import display
 from sbmlsim.console import console
 from sbmlsim.domains import Domain
+from sbmlsim.plot.chart import Chart, ChartAxis
+from sbmlsim.plot.colors import normalize_color
 from sbmlsim.sensitivity import indices, plots
 from sbmlsim.sensitivity.chaos import choose_truncation, pce
 from sbmlsim.sensitivity.classification import (
@@ -200,9 +205,9 @@ class SensitivityGroup:
             `preinit_changes`; an analysis varies no parameter which it sets,
             see `free_parameters`.
         color: the color of the group in the figures of `sampling` which
-            compare the groups, a color of matplotlib; the color of the
-            property cycle of matplotlib (`C0`, `C1`, ...) of its position if
-            `None`.
+            compare the groups, a color of `sbmlsim.plot.colors.normalize_color`
+            (`#rrggbb`, a name of matplotlib, ...); the color `C<k>` of the
+            cycle of matplotlib (`C0`, `C1`, ...) of its position if `None`.
         variant: the variant of the model of the project which the group runs
             (`Project.variants`), the default variant (the first) if `None`;
             the design of an analysis is the same for every group, relative to
@@ -422,7 +427,7 @@ def _heatmap(
             path.name,
         )
         cutoff = 0.0
-    plots.plot_heatmap(result, index, cutoff=cutoff, path=path, **options)
+    _save(plots.plot_heatmap(result, index, cutoff=cutoff, **options), path)
 
 
 def _labelled(
@@ -468,6 +473,13 @@ def _classes(
     return symbolize(value), classification.value
 
 
+FIGURE_DPI = 300
+"""The resolution of the PNG of a figure, as sbmlsim 0.8.5 wrote it."""
+
+PANEL_SIZE = 288.0
+"""The width and height of a panel of a figure of the sampling in pixels (4 inches)."""
+
+
 def _figshape(n: int) -> tuple[int, int]:
     """Get the rows and columns of a figure of `n` panels, as sbmlsim 0.8.5 did."""
     if n <= 4:
@@ -478,75 +490,83 @@ def _figshape(n: int) -> tuple[int, int]:
     return int(nrows), int(ncols)
 
 
+def _save(chart: Chart, path: Path) -> None:
+    """Save a figure as SVG and as the PNG of sbmlsim 0.8.5, which manuscripts read.
+
+    Args:
+        chart: the figure.
+        path: the PNG of the figure, its name the one of sbmlsim 0.8.5; the
+            SVG is written next to it.
+    """
+    chart.save(path.with_suffix(".svg"))
+    chart.save(path, dpi=FIGURE_DPI)
+
+
 def _plot_groups(
     panels: Sequence[tuple[str, Sequence[np.ndarray]]],
     groups: Sequence[SensitivityGroup],
     path: Path,
     seed: int,
 ) -> None:
-    """Draw the values of every group as box, violin and points, a panel per quantity.
+    """Draw the values of every group as violin, box and points, a panel per quantity.
 
-    The figures of the sampling of sbmlsim 0.8.5: a box (without outliers), a
-    violin (the mean and the median) and the points of every group side by
-    side in the color of the group. A group with fewer than two distinct
-    values has no violin, which needs a spread.
+    The figures of the sampling of sbmlsim 0.8.5: the violin, the box
+    (without outliers) and the points of every group on top of each other in
+    the color of the group. A group with fewer than two distinct values has
+    no violin, which needs a spread.
 
     Args:
         panels: the label of the axis and the values of every group.
         groups: the groups.
-        path: the file of the figure.
+        path: the PNG of the figure, see `_save`.
         seed: the seed of the jitter of the points.
     """
     nrows, ncols = _figshape(len(panels))
-    # a `Figure`, not a pyplot figure: pyplot binds it to the backend, which
-    # aborts the process with TkAgg next to a pool of processes
-    fig = Figure(figsize=(4 * ncols, 4 * nrows), layout="constrained")
-    axes = fig.subplots(nrows=nrows, ncols=ncols, squeeze=False)
-    colors = [g.color or f"C{k}" for k, g in enumerate(groups)]
+    chart = Chart(
+        PANEL_SIZE * ncols,
+        PANEL_SIZE * nrows,
+        rows=nrows,
+        columns=ncols,
+        wspace=0.4,
+        hspace=0.4,
+        # the bold labels and tick labels of sbmlsim 0.8.5
+        fonts={"label": 13, "label_weight": "bold", "tick_weight": "bold"},
+    )
+    colors = [normalize_color(g.color or f"C{k}") or "" for k, g in enumerate(groups)]
+    names = [g.uid for g in groups]
+    positions = list(range(len(groups)))
     rng = np.random.default_rng(seed)
-    for k, ax in enumerate(axes.flat):
-        if k >= len(panels):
-            ax.axis("off")
-            continue
-        label, values = panels[k]
-        data = [v[np.isfinite(v)] for v in values]
-        plots.draw_boxes(
-            ax,
-            data,
-            range(len(groups)),
-            [g.uid for g in groups],
-            facecolors=colors,
-            showfliers=False,
-            median_color="black",
+    for k, (label, values) in enumerate(panels):
+        plot = chart.plot(
+            k // ncols,
+            k % ncols,
+            x=ChartAxis(scale="category", categories=names, tick_rotation=90.0),
+            y=ChartAxis(label=label),
+            legend=False,
         )
-        for kg, (d, color) in enumerate(zip(data, colors, strict=True)):
+        data = [v[np.isfinite(v)] for v in values]
+        for position, d, color in zip(positions, data, colors, strict=True):
             if np.unique(d).size > 1:
-                violin = ax.violinplot(
-                    d,
-                    positions=[kg + 0.3],
-                    showmeans=True,
-                    showmedians=True,
-                    showextrema=False,
+                plot.violin(
+                    [position],
+                    [plots.density(d)],
+                    color=color,
+                    width=1.0,
+                    fill_opacity=0.3,
                 )
-                for body in violin["bodies"]:
-                    body.set_facecolor(color)
-                # the lines of the mean and the median in one color, as the one
-                # call of `violinplot` of sbmlsim 0.8.5 drew them
-                for key in ["cmeans", "cmedians"]:
-                    violin[key].set_color("C0")
-            ax.scatter(
-                rng.normal(kg + 0.3, 0.02, d.size),
+        plots.draw_boxes(plot, data, positions, colors=colors, showfliers=False)
+        for position, d in zip(positions, data, strict=True):
+            plot.curve(
+                rng.normal(position, 0.04, d.size),
                 d,
-                alpha=0.7,
-                s=30,
-                color="white",
-                edgecolors="black",
+                line="none",
+                marker="circle",
+                size=5.0,
+                marker_fill="#ffffff",
+                marker_edge="#000000",
+                opacity=0.7,
             )
-        ax.set_ylabel(label, fontsize=13, fontweight="bold")
-        for tick in ax.get_xticklabels() + ax.get_yticklabels():
-            tick.set_fontweight("bold")
-        ax.tick_params(axis="x", labelrotation=90)
-    fig.savefig(path, dpi=300, bbox_inches="tight")
+    _save(chart, path)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1171,11 +1191,11 @@ class _GlobalAnalysis(_SampledAnalysis):
             self._write_extra(context, result, group_path)
             figures = f"{prefix}_sensitivity_{kg:>02}_{group.uid}"
             for ko, output in enumerate(context.outputs):
-                plots.plot_indices(
-                    result,
-                    output.observable,
-                    title=f"{output.name} ({group.name})",
-                    path=path / f"{figures}_{ko:>03}_{output.uid}.png",
+                _save(
+                    plots.plot_indices(
+                        result, output.observable, title=f"{output.name} ({group.name})"
+                    ),
+                    path / f"{figures}_{ko:>03}_{output.uid}.png",
                 )
             labelled = _labelled(result, varied, context.outputs)
             for key in ["ST", "S1"]:

@@ -4,16 +4,15 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.figure import Figure
 
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import ParameterScaleType
-from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.report import MAPPING_SIZE, FitReport
+from sbmlsim.plot import Chart
 from tests.fit.scalar_experiment import (
     CMAX,
     TRUE_V,
@@ -157,19 +156,52 @@ def test_metrics_of_mappings_with_one_key_in_two_experiments(tmp_path: Path) -> 
 
 
 @pytest.fixture
-def figures(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Figure]]:
-    """The figures a report saves, by the name of their file."""
-    saved: dict[str, Figure] = {}
+def figures(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Chart]]:
+    """The figures a report saves, by the name of their file, as charts."""
+    saved: dict[str, Chart] = {}
 
-    def save(self: FitReport, fig: Figure, path: Path) -> None:
-        saved[path.stem] = fig
+    def save(self: FitReport, chart: Chart, path: Path) -> None:
+        saved[path.stem] = chart
 
-    monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
+    monkeypatch.setattr(FitReport, "_save_chart", save)
     yield saved
 
 
+def _plots(chart: Chart) -> list[dict[str, Any]]:
+    """Get the plots of the spec of a chart."""
+    return chart.spec()["plots"]
+
+
+def _curves(plot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get the curves of a plot of a spec."""
+    return [e for e in plot["elements"] if e["kind"] == "curve"]
+
+
+def _labelled(plot: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    """Get the curves of a plot of a spec with a label."""
+    return [e for e in _curves(plot) if e.get("label") == label]
+
+
+def _geometry(chart: Chart) -> dict[str, Any]:
+    """Get the geometry of a chart as the renderer draws it."""
+    pytest.importorskip("sbmlsim_core")
+    from sbmlsim.engine import import_core
+
+    return import_core().figure_geometry(chart.to_json())
+
+
+def _overlaps(a: dict[str, float], b: dict[str, float]) -> bool:
+    """Check whether two rectangles of a geometry overlap."""
+    return (
+        a["x"] < b["x"] + b["width"]
+        and b["x"] < a["x"] + a["width"]
+        and a["y"] < b["y"] + b["height"]
+        and b["y"] < a["y"] + a["height"]
+    )
+
+
 def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
-    tmp_path: Path, figures: dict[str, Figure]
+    tmp_path: Path, figures: dict[str, Chart]
 ) -> None:
     """Every marker is inside, the simulation is next to the rows, one dose has room."""
     problem = _problem(
@@ -188,66 +220,33 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
 
     rows = CMAX[1] * np.array([0.9, 1.0, 1.2])
     # the curve, linear and logarithmic
-    for ax in figures["RowsStudy_fm_rows"].axes[:2]:
-        bottom, top = ax.get_ylim()
-        assert bottom < rows.min() and top > rows.max()
-        if ax.get_yscale() == "log":
+    for plot in _plots(figures["RowsStudy_fm_rows"])[:2]:
+        if plot["y"]["scale"] == "log":
             # the top marker has room above it, also when the rows span less
             # than a decade
-            assert top > 1.2 * rows.max()
-        assert ax.get_ylabel() == "pk.cmax [mg/l]"
-        [simulation] = [line for line in ax.get_lines() if line.get_label() == "near"]
+            assert plot["y"]["min"] < rows.min()
+            assert plot["y"]["max"] > 1.2 * rows.max()
+        assert plot["y"]["label"] == "pk.cmax [mg/l]"
+        # the rows have no x, no ticks
+        assert not plot["x"]["ticks_visible"]
+        [simulation] = _labelled(plot, "near")
         # next to every row, not on top of it
-        x_sim = np.asarray(simulation.get_xdata(), dtype=float)
+        x_sim = np.asarray(simulation["x"], dtype=float)
         assert np.all((x_sim > np.arange(3)) & (x_sim < np.arange(3) + 0.5))
-    for ax in figures["OneDoseStudy_fm_one"].axes[:2]:
-        left, right = ax.get_xlim()
-        assert left < 100.0 < right
-    assert figures["OneDoseStudy_fm_one"].axes[0].get_xlabel() == "PODOSE [mg]"
+        assert plot["x"]["min"] < 0.0 and plot["x"]["max"] > 2.5
+    for plot in _plots(figures["OneDoseStudy_fm_one"])[:2]:
+        assert plot["x"]["min"] < 100.0 < plot["x"]["max"]
+    assert _plots(figures["OneDoseStudy_fm_one"])[0]["x"]["label"] == "PODOSE [mg]"
 
 
-def _legend_rows(fig: Figure) -> list[list[str]]:
-    """Get the labels of the one legend of a figure in its rows, as they are read.
-
-    The blank entries which fill a row are left out.
-    """
-    fig.draw_without_rendering()
-    [legend] = fig.legends
-    # the centers of the texts of a row differ by a little, mathtext is taller
-    entries = []
-    for text in legend.get_texts():
-        if text.get_text():
-            extent = text.get_window_extent()
-            center = 0.5 * (extent.y0 + extent.y1)
-            entries.append((-center, extent.x0, extent.height, text.get_text()))
-    rows: list[list[tuple[float, str]]] = []
-    top = -np.inf
-    for y, x, height, label in sorted(entries):
-        if not rows or y - top > 0.5 * height:
-            rows.append([])
-            top = y
-        rows[-1].append((x, label))
-    return [[label for _, label in sorted(row)] for row in rows]
-
-
-def _inside(inner: Any, outer: Any) -> bool:
-    """Check whether a box lies inside another one."""
-    return bool(
-        outer.x0 <= inner.x0
-        and inner.x1 <= outer.x1
-        and outer.y0 <= inner.y0
-        and inner.y1 <= outer.y1
-    )
-
-
-def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
-    tmp_path: Path, figures: dict[str, Figure]
+def test_the_figures_of_a_mapping_have_one_title_and_legends_right_of_rows(
+    tmp_path: Path, figures: dict[str, Chart]
 ) -> None:
-    """The title is above the panels and the legend below them, never inside.
+    """The title is above the panels and the legends right of the rows.
 
     A title per panel overlaps the next one for a long key, a legend inside
-    a panel covers the data. The legend has the data first and every
-    parameter set in a row of its own.
+    a panel covers the data. The legend of the curves has the data first and
+    then every parameter set, the legend of the agreement its lines.
     """
     problem = _problem(
         [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
@@ -261,37 +260,35 @@ def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
         ],
     )
     report.plot_mapping(tmp_path)
-    fig = figures["DoseStudy_fm_dose"]
-    title = fig.get_suptitle().splitlines()
+    chart = figures["DoseStudy_fm_dose"]
+    assert chart.title is not None
+    title = chart.title.splitlines()
     assert title[0] == "DoseStudy fm_dose [training]"
     assert title[1].startswith("pk.cmax [mg/l]")
-    assert all(ax.get_title() == "" for ax in fig.axes)
-    assert all(ax.get_legend() is None for ax in fig.axes)
-    # the data first, the entries of a set together, the lines of neither
-    # set last
-    read = [label for row in _legend_rows(fig) for label in row if label]
-    assert read[0].startswith("data")
-    for sid in ("true", "near"):
-        at = [k for k, label in enumerate(read) if label.split(" ")[0] == sid]
-        assert at == list(range(at[0], at[0] + len(at))), read
-    assert read[-2:] == ["prediction = measurement", "2-fold"]
+    plots = _plots(chart)
+    assert all("title" not in plot for plot in plots)
+    assert (chart.legend_scope, chart.legend_position) == ("row", "outside")
+    entries = _geometry(chart)["legend_entries"]
+    curves = [e["legend"] for e in entries if e["owner"] == "row:0"]
+    assert curves == ["data", "true", "near"]
+    lines = [e["legend"] for e in entries if e["owner"] == "row:1"]
+    assert "prediction = measurement" in lines and "2-fold" in lines
 
     figures.clear()
     report.show_titles = False
     report.plot_mapping(tmp_path)
-    assert figures["DoseStudy_fm_dose"].get_suptitle() == ""
+    assert figures["DoseStudy_fm_dose"].title is None
 
 
 @pytest.mark.parametrize("n_sets", [1, 2, 4])
 @pytest.mark.parametrize("length", [8, 60, 120])
 def test_the_legend_of_a_mapping_fits_into_its_figure(
-    tmp_path: Path, figures: dict[str, Figure], n_sets: int, length: int
+    tmp_path: Path, figures: dict[str, Chart], n_sets: int, length: int
 ) -> None:
     """The legend is inside the figure and clear of the panels for long set ids.
 
-    Two or three columns of long ids are wider than the figure: the legend
-    takes fewer columns, and a figure is widened for an id which is wider
-    than it in one column. The entries of a set stay together.
+    The legends are right of the rows, which the renderer widens the figure
+    for, so the panels keep their size.
     """
     problem = _problem(
         [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
@@ -306,23 +303,20 @@ def test_the_legend_of_a_mapping_fits_into_its_figure(
         ],
     )
     report.plot_mapping(tmp_path)
-    for name in ("DoseStudy_fm_dose",):
-        fig = figures[name]
-        rows = _legend_rows(fig)
-        [legend] = fig.legends
-        extent = legend.get_window_extent()
-        assert _inside(extent, fig.bbox), name
-        assert not any(ax.get_window_extent().overlaps(extent) for ax in fig.axes)
-        assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
-        assert rows[0][0].startswith("data")
-        read = [label for row in rows for label in row]
-        for sid in sids:
-            at = [k for k, label in enumerate(read) if label.split(" ")[0] == sid]
-            assert at == list(range(at[0], at[0] + len(at))), (name, read)
+    geometry = _geometry(figures["DoseStudy_fm_dose"])
+    entries = geometry["legend_entries"]
+    panels = [plot["rect"] for plot in geometry["plots"]]
+    for entry in entries:
+        rect = entry["rect"]
+        assert rect["x"] + rect["width"] <= geometry["width"] + 0.5, entry
+        assert rect["y"] + rect["height"] <= geometry["height"] + 0.5, entry
+        assert not any(_overlaps(rect, panel) for panel in panels), entry
+    curves = [e["legend"] for e in entries if e["owner"] == "row:0"]
+    assert curves == ["data", *sids]
 
 
 def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
-    tmp_path: Path, figures: dict[str, Figure], monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, figures: dict[str, Chart], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An identifier stays whole, a figure is widened for one wider than it."""
     problem = _problem(
@@ -338,21 +332,19 @@ def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
         FitReport, "mapping_title", lambda self, k: f"DoseStudy {identifier} [kind]"
     )
     report.plot_mapping(tmp_path)
-    fig = figures["DoseStudy_fm_dose"]
-    assert fig.get_suptitle().split("\n")[:3] == ["DoseStudy", identifier, "[kind]"]
-    fig.draw_without_rendering()
-    assert fig.get_figwidth() > 10.0
-    assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
-    assert _inside(fig.legends[0].get_window_extent(), fig.bbox)
+    chart = figures["DoseStudy_fm_dose"]
+    assert chart.title is not None
+    assert chart.title.split("\n")[:3] == ["DoseStudy", identifier, "[kind]"]
+    assert chart.width > MAPPING_SIZE[0]
 
 
 def test_the_log_panels_of_a_mapping_leave_out_zeros(
-    tmp_path: Path, figures: dict[str, Figure]
+    tmp_path: Path, figures: dict[str, Chart]
 ) -> None:
     """The zero residuals of a perfect fit and negative ones are not in a log panel.
 
-    A logarithmic axis clips them to the bottom of the panel, a line drops
-    there; the error bars stay, also where they reach zero.
+    A logarithmic axis cannot show them, a line has a gap there; the error
+    bars stay.
     """
     problem = _problem(
         [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
@@ -366,23 +358,20 @@ def test_the_log_panels_of_a_mapping_leave_out_zeros(
         ],
     )
     report.plot_mapping(tmp_path)
-    axes = figures["DoseStudy_fm_dose"].axes
-    linear, log = axes[0], axes[1]
-    assert (linear.get_yscale(), log.get_yscale()) == ("linear", "log")
-    lines = {line.get_label(): line for line in linear.get_lines()}
-    for masked in log.get_lines():
-        y_log = np.asarray(masked.get_ydata(), dtype=float)
+    linear, log = _plots(figures["DoseStudy_fm_dose"])[:2]
+    assert (linear["y"]["scale"], log["y"]["scale"]) == ("linear", "log")
+    for masked, curve in zip(_curves(log), _curves(linear), strict=True):
+        y_log = np.array([np.nan if y is None else y for y in masked["y"]])
         assert not np.any(y_log <= 0.0)
-        label = str(masked.get_label())
-        if label.startswith("_"):
+        if "yerr" in curve:
+            assert "yerr" in masked, "the error bars of the data"
             continue
-        y = np.asarray(lines[label].get_ydata(), dtype=float)
+        y = np.array([np.nan if v is None else v for v in curve["y"]])
         np.testing.assert_array_equal(np.where(y > 0, y, np.nan), y_log)
-    assert axes[1].collections, "the error bars of the data"
 
 
 def test_a_mapping_without_positive_values_has_a_linear_log_panel(
-    tmp_path: Path, figures: dict[str, Figure], monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, figures: dict[str, Chart], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The log panel of the data figure stays linear, without a warning."""
     problem = _problem(
@@ -398,6 +387,7 @@ def test_a_mapping_without_positive_values_has_a_linear_log_panel(
     def negative(self: FitReport, pset: ParameterSet) -> dict[str, Any]:
         data = original(self, pset)
         data["y_obs"] = [-np.abs(y) for y in data["y_obs"]]
+        data["y_obsip"] = [-np.abs(y) for y in data["y_obsip"]]
         return data
 
     monkeypatch.setattr(FitReport, "residual_data", negative)
@@ -407,14 +397,12 @@ def test_a_mapping_without_positive_values_has_a_linear_log_panel(
         [-np.abs(y) for y in report.problem.y_references],
     )
     report.plot_mapping(tmp_path)
-    assert [ax.get_yscale() for ax in figures["RowsStudy_fm_rows"].axes[:2]] == [
-        "linear",
-        "linear",
-    ]
+    plots = _plots(figures["RowsStudy_fm_rows"])[:2]
+    assert [plot["y"]["scale"] for plot in plots] == ["linear", "linear"]
 
 
 def test_the_cost_axis_of_a_perfect_fit_starts_at_zero(
-    tmp_path: Path, figures: dict[str, Figure]
+    tmp_path: Path, figures: dict[str, Chart]
 ) -> None:
     """A cost of zero has no logarithm, its linear axis has no negative costs."""
     problem = _problem(
@@ -426,14 +414,13 @@ def test_the_cost_axis_of_a_perfect_fit_starts_at_zero(
         ParameterSet(sid="true", values={"V": TRUE_V}),
     )
     report.plot_cost_bar(tmp_path / "cost.png")
-    ax = figures["cost"].axes[0]
-    assert ax.get_xscale() == "linear"
-    left, right = ax.get_xlim()
-    assert left == 0.0 and right > 0.0
+    x = _plots(figures["cost"])[0]["x"]
+    assert x["scale"] == "linear"
+    assert x["min"] == 0.0 and x["max"] > 0.0
 
 
 def test_the_figure_of_a_dimension_draws_what_the_legend_lists(
-    tmp_path: Path, figures: dict[str, Figure]
+    tmp_path: Path, figures: dict[str, Chart]
 ) -> None:
     """The line of a dimension of one value has the marker which shows it."""
     problem = _problem(
@@ -445,9 +432,9 @@ def test_the_figure_of_a_dimension_draws_what_the_legend_lists(
         ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
     )
     report.plot_mapping(tmp_path)
-    for ax in figures["OneDoseStudy_fm_one"].axes[:2]:
-        [line] = [line for line in ax.get_lines() if line.get_label() == "near"][:1]
-        assert line.get_marker() not in (None, "None", "")
+    for plot in _plots(figures["OneDoseStudy_fm_one"])[:2]:
+        [line] = _labelled(plot, "near")
+        assert line["style"]["marker"]["type"] != "none"
 
 
 def test_the_x_limits_ignore_a_measurement_at_infinity(
@@ -465,8 +452,7 @@ def test_the_x_limits_ignore_a_measurement_at_infinity(
     monkeypatch.setattr(
         FitReport, "_x_positions", lambda self, k: np.array([0.0, 2.0, np.inf])
     )
-    fig, ax = plt.subplots()
-    report._set_x_limits(ax, 0, [np.array([0.0, 2.0])])
-    left, right = ax.get_xlim()
-    plt.close(fig)
+    limits = report._x_limits(0, [np.array([0.0, 2.0])])
+    assert limits is not None
+    left, right = limits
     assert np.isfinite(left) and np.isfinite(right) and left < 0.0 and right > 2.0

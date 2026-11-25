@@ -6,7 +6,9 @@ editor and the LaTeX report includes the figures in a document.
 """
 
 import html as html_module
+import json
 import re
+import shutil
 import sys
 import webbrowser
 from html.parser import HTMLParser
@@ -18,6 +20,7 @@ from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
+from sbmlsim.report.figures import FIGURE_SCRIPT
 from sbmlsim.simulator import Simulator
 
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
@@ -47,7 +50,7 @@ def report_and_dir(
         output_path=output_path,
         show_figures=False,
         save_results=False,
-        figure_formats=["svg", "png", "html"],
+        figure_formats=["svg", "png"],
         reduced_selections=True,
     )
     report_results = ReportResults()
@@ -181,8 +184,10 @@ def test_pages_are_offline_and_well_formed(report_dir: Path, page: str) -> None:
     html = _html(path)
 
     _assert_balanced(html)
-    assert "http://" not in html
-    assert "https://" not in html
+    # the namespace of an inline svg is a name and no request
+    offline = html.replace('xmlns="http://www.w3.org/2000/svg"', "")
+    assert "http://" not in offline
+    assert "https://" not in offline
 
     assert _references(path)
     assert _unresolved(path) == []
@@ -238,7 +243,7 @@ def test_markdown_experiment_page(report_dir: Path) -> None:
         "Figures",
         "Code",
     ]
-    assert "[Beermann1976_Fig3.html](Beermann1976_Fig3.html)" in text
+    assert "![Fig3](Beermann1976_Fig3.svg)" in text
     module = sys.modules[Beermann1976.__module__]
     assert module.__file__ is not None
     assert Path(module.__file__).read_text(encoding="utf-8") in text
@@ -331,3 +336,157 @@ def test_an_experiment_without_a_source_file_has_a_report(tmp_path: Path) -> Non
     assert re.findall(r"^## (.+)$", text, re.M) == ["Models", "Datasets", "Figures"]
     assert "* **inline**: inline SBML" in text
     assert (tmp_path / "index.tex").exists()
+
+
+def test_experiment_page_inlines_svg_and_spec(report_dir: Path) -> None:
+    """Every figure is inline SVG with its spec, as hydrateFigures reads it."""
+    html = _html(report_dir / "Beermann1976" / "Beermann1976.html")
+    for fig in FIGURES:
+        block = re.search(
+            rf'<figure data-figure="{fig}">(.*?)</figure>', html, re.DOTALL
+        )
+        assert block, fig
+        assert "<svg" in block.group(1)
+        assert "<?xml" not in html and "<!DOCTYPE svg" not in html
+        spec = re.search(
+            rf'<script type="application/json" data-figure-spec="{fig}">(.*?)</script>',
+            block.group(1),
+            re.DOTALL,
+        )
+        assert spec, fig
+        on_disk = (report_dir / "Beermann1976" / f"Beermann1976_{fig}.json").read_text(
+            encoding="utf-8"
+        )
+        assert json.loads(spec.group(1)) == json.loads(on_disk)
+    assert "<iframe" not in html
+
+
+def test_the_figures_of_the_pages_are_interactive(
+    report_and_dir: tuple[ExperimentReport, Path], tmp_path: Path
+) -> None:
+    """The report writes the script of its figures once, which the pages include.
+
+    The experiment pages include `figures.js` of the report directory, which
+    hydrates their inline figures; the index, which shows images, does not.
+    """
+    pytest.importorskip("sbmlsim_core")
+    report, output_path = report_and_dir
+    script = output_path / FIGURE_SCRIPT
+    assert script.is_file()
+    assert "hydrateFigures" in script.read_text(encoding="utf-8")
+    html = _html(output_path / "Beermann1976" / "Beermann1976.html")
+    assert html.count('<script src="../figures.js" defer></script>') == 1
+    assert 'figures.js" defer' not in _html(output_path / "index.html")
+    assert not (output_path / "Beermann1976" / FIGURE_SCRIPT).exists()
+
+    # written once: a second report into the directory keeps the file
+    before = script.stat().st_mtime_ns
+    report.create_report(output_path)
+    assert script.stat().st_mtime_ns == before
+
+    # a report without inline figures writes none
+    shutil.copytree(output_path / "Beermann1976", tmp_path / "Beermann1976")
+    report.create_report(tmp_path, report_type=ExperimentReport.ReportType.MARKDOWN)
+    assert not (tmp_path / FIGURE_SCRIPT).exists()
+
+
+def test_spec_script_is_escaped(
+    report_and_dir: tuple[ExperimentReport, Path], tmp_path: Path
+) -> None:
+    """A label with a closing script tag cannot end the script of the spec."""
+    report, output_path = report_and_dir
+    folder = tmp_path / "Beermann1976"
+    shutil.copytree(output_path / "Beermann1976", folder)
+    spec_file = folder / "Beermann1976_Fig2.json"
+    spec = json.loads(spec_file.read_text(encoding="utf-8"))
+    spec["evil"] = "</script><b>x</b> <!-- y"
+    spec_file.write_text(json.dumps(spec), encoding="utf-8")
+    report.create_report(tmp_path)
+    html = _html(tmp_path / "Beermann1976" / "Beermann1976.html")
+    match = re.search(r'data-figure-spec="Fig2">(.*?)</script>', html, re.DOTALL)
+    assert match
+    assert "</" not in match.group(1) and "<!--" not in match.group(1)
+    assert json.loads(match.group(1))["evil"] == spec["evil"]
+    _assert_balanced(html)
+
+
+def test_index_thumbnails(report_dir: Path) -> None:
+    """The index keeps lazy thumbnails of the svg files and no inline figure."""
+    html = _html(report_dir / "index.html")
+    assert "<svg" not in html
+    for fig in FIGURES:
+        assert f'<img loading="lazy" src="Beermann1976/Beermann1976_{fig}.svg"' in html
+
+
+def test_latex_report_uses_png(report_dir: Path) -> None:
+    """The LaTeX report copies the png files and never the svg."""
+    tex = (report_dir / "index.tex").read_text(encoding="utf-8")
+    assert ".png}" in tex
+    assert ".svg" not in tex
+
+
+HOOK_EXPERIMENT = """
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.model import AbstractModel
+from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.simulation import Simulation
+from sbmlsim.task import Task
+
+
+class _Saved:
+    def savefig(self, path, **kwargs):
+        path.write_text("figure", encoding="utf-8")
+
+
+class Hooked(SimulationExperiment):
+    def models(self):
+        return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
+
+    def simulations(self):
+        return {"sim": Simulation(end=20, steps=20)}
+
+    def tasks(self):
+        return {"task": Task(model="m", simulation="sim")}
+
+    def figures_mpl(self):
+        return {"custom": _Saved()}
+"""
+
+
+def _hooked_page(tmp_path: Path, formats: list[str]) -> str:
+    """Run an experiment with a figure of the hook and read its page."""
+    namespace: dict[str, object] = {}
+    exec(HOOK_EXPERIMENT, namespace)
+    experiment_class = namespace["Hooked"]
+    assert isinstance(experiment_class, type)
+    assert issubclass(experiment_class, SimulationExperiment)
+    runner = ExperimentRunner(experiment_class, simulator=Simulator(), on_error="raise")
+    results = runner.run_experiments(
+        output_path=tmp_path, save_results=False, figure_formats=formats
+    )
+    ExperimentReport(results).create_report(
+        tmp_path, report_type=ExperimentReport.ReportType.HTML
+    )
+    return _html(tmp_path / "Hooked" / "Hooked.html")
+
+
+def test_a_png_only_figure_is_an_image(tmp_path: Path) -> None:
+    """A figure written as PNG only has no SVG to inline and shows the PNG."""
+    html = _hooked_page(tmp_path, ["png"])
+    block = re.search(r"<figure>(.*?)</figure>", html, re.DOTALL)
+    assert block
+    assert re.search(r'<img [^>]*src="Hooked_custom\.png"', block.group(1))
+    assert "data-figure" not in html
+    assert "<svg" not in block.group(1)
+    assert "svg</a>" not in html
+
+
+def test_a_hook_figure_is_an_image_without_a_spec(tmp_path: Path) -> None:
+    """A figure of the hook has no spec: its SVG is an image and it has no spec link."""
+    html = _hooked_page(tmp_path, ["svg", "png"])
+    block = re.search(r"<figure>(.*?)</figure>", html, re.DOTALL)
+    assert block
+    assert re.search(r'<img [^>]*src="Hooked_custom\.svg"', block.group(1))
+    assert "data-figure-spec" not in html
+    assert "spec</a>" not in html
+    assert 'href="Hooked_custom.png"' in html

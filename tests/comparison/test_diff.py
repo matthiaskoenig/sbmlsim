@@ -1,6 +1,8 @@
 """The comparison of the results of two simulators."""
 
 import warnings
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -8,6 +10,7 @@ import pytest
 
 from sbmlsim.comparison.diff import DataSetsComparison, to_dataframe
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.plot.chart import Chart
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
@@ -267,12 +270,54 @@ def test_the_report_warns_nothing(other: list[float]) -> None:
         comparison.report()
 
 
-def test_the_figure_of_a_comparison_does_not_use_pyplot(no_pyplot: None) -> None:
-    """The figure of the differences depends on no backend of pyplot (#317)."""
-    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+def _elements(plot: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    return [e for e in plot["elements"] if e["kind"] == kind]
+
+
+def test_the_figure_of_a_comparison_is_a_chart(tmp_path: Path) -> None:
+    """The differences are a heatmap on a diverging scale and three panels of lines."""
+    reference = pd.DataFrame({"time": [0.0, 1.0, 2.0], "X": [1.0, 2.0, 3.0]})
     comparison = DataSetsComparison(
-        {"reference": reference, "different": reference.assign(X=[1.5, 2.5])}
+        {"reference": reference, "different": reference.assign(X=[1.5, 2.5, 3.0])},
+        title="reference | different",
     )
-    figure = comparison.plot_diff()
-    assert figure.canvas.manager is None
-    figure.savefig("diff.png")
+    chart = comparison.plot_diff()
+    assert isinstance(chart, Chart)
+    spec = chart.spec()
+    assert spec["title"] == "reference | different"
+    # the labels of the axes are bold, as matplotlib drew them
+    assert spec["fonts"]["label_weight"] == "bold"
+    heat, tolerance, absolute, relative = spec["plots"]
+    assert (heat["row"], heat["column"]) == (0, 1)
+    (heatmap,) = _elements(heat, "heatmap")
+    assert heatmap["rows"] == ["X"] and heatmap["columns"] == ["0", "1", "2"]
+    # the differences above the tolerances, on a scale centered at 0
+    assert heatmap["values"][0][2] is None
+    assert heatmap["scale"]["name"] == "coolwarm"
+    assert heatmap["scale"]["center"] == 0.0
+    assert heatmap["scale"]["low"] == -heatmap["scale"]["high"]
+    assert heat["title"] == "equal = FALSE"
+    assert [c["label"] for c in _elements(tolerance, "curve")] == ["X"]
+    (zero,) = _elements(tolerance, "rule")
+    assert zero["value"] == 0.0
+    for plot in (absolute, relative):
+        assert plot["y"]["scale"] == "log"
+        assert plot["y"]["min"] == 1e-10
+        (rule,) = _elements(plot, "rule")
+        assert rule["value"] == DataSetsComparison.tol_abs
+    chart.save(tmp_path / "diff.svg")
+    chart.save(tmp_path / "diff.png")
+
+
+def test_the_figure_of_equal_results_says_so() -> None:
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    comparison = DataSetsComparison({"a": reference, "b": reference.copy()})
+    chart = comparison.plot_diff()
+    (heat,) = [
+        p for p in chart.spec()["plots"] if p.get("title", "").startswith("equal")
+    ]
+    assert not _elements(heat, "heatmap")
+    (text,) = _elements(heat, "text")
+    assert text["text"] == "every value within the tolerances"
+    assert heat["title"] == "equal = TRUE"
+    chart.svg()

@@ -22,13 +22,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import Axes, Figure
 from sbmlutils.factory import Model, Parameter, create_model
 from sbmlutils.validation import ValidationOptions
 
 from sbmlsim import interpolation as ip
 from sbmlsim.console import console
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 
@@ -45,7 +44,7 @@ def interpolate_data(
     xid_model: str,
     yid_model: str,
     title: str | None = None,
-) -> Figure:
+) -> Chart:
     """Drive `yid_model` of a model by `xid_model` with the data `yid ~ xid`.
 
     Args:
@@ -57,9 +56,9 @@ def interpolate_data(
         title: title of the figure
 
     Returns:
-        The figure with the data points and the driven dose responses,
-        nothing is shown, so that the example does not open a window when it
-        runs unattended.
+        The chart with the data points and the driven dose responses, which
+        the caller saves, nothing is shown, so that the example does not open
+        a window when it runs unattended.
     """
     x: np.ndarray = data[xid].to_numpy(dtype=float)
     y: np.ndarray = data[yid].to_numpy(dtype=float)
@@ -74,21 +73,18 @@ def interpolate_data(
     margin = 0.1 * (x.max() - x.min())
     xvec = np.linspace(x.min() - margin, x.max() + margin, num=100)
 
-    f: Figure
-    ax: Axes
-    f, ax = plt.subplots(nrows=1, ncols=1)
-    ax.set_xlabel(f"{xid_model} [AU]")
-    ax.set_ylabel(f"{yid_model} [AU]")
-    if title:
-        ax.set_title(title)
-    ax.plot(x, y, "o", color="black", label="data")
+    chart = Chart(width=560, height=360, title=title)
+    ax = chart.plot(
+        x=ChartAxis(label=f"{xid_model} [AU]"), y=ChartAxis(label=f"{yid_model} [AU]")
+    )
+    ax.curve(x, y, line="none", marker="circle", color="#000000", label="data")
 
     simulator = Simulator(n_workers=1)
     scan = Scan(
         simulation=Simulation(end=1.0, steps=1),
         dimensions=[Dimension("dose", values={xid_model: xvec})],
     )
-    colors = ["tab:red", "tab:green", "tab:blue"]
+    colors = ["#d62728", "#2ca02c", "#1f77b4"]
     with tempfile.TemporaryDirectory() as tmpdir:
         model_path = Path(tmpdir) / "pancreas.xml"
         create_model(
@@ -109,10 +105,9 @@ def interpolate_data(
             result = simulator.run(loaded, scan)
             # The dose is constant during each simulation, so read at time zero.
             yvec = result[yid_model].isel(time=0).to_numpy()
-            ax.plot(xvec, yvec, label=f"{method}", color=colors[k])
+            ax.curve(xvec, yvec, label=f"{method}", color=colors[k])
 
-    ax.legend()
-    return f
+    return chart
 
 
 if __name__ == "__main__":
@@ -120,7 +115,7 @@ if __name__ == "__main__":
 
     log.enable_rich_logging()
 
-    figure = interpolate_data(
+    chart = interpolate_data(
         data=pd.read_csv(DATA_DIR / "atp_adp_mean.tsv", sep="\t"),
         xid="dose",
         yid="atp_adp",
@@ -128,6 +123,5 @@ if __name__ == "__main__":
         yid_model="atp_adp_total",
         title="ATP/ADP ratio driven by glucose: atp_adp_mean",
     )
-    figure_path = Path.cwd() / "interpolation_pancreas.png"
-    figure.savefig(figure_path, bbox_inches="tight", dpi=150)
+    figure_path = chart.save(Path.cwd() / "interpolation_pancreas.svg")
     logger.info("Figure written to '%s'", figure_path)

@@ -199,6 +199,8 @@ def test_simulate_draws_the_figures_in_the_given_formats(tmp_path: Path) -> None
     assert getattr(run.plan("simulate", spec), "figure_formats", None) == ["png"]
     with pytest.raises(ConfigurationError, match="figure formats"):
         run.plan("simulate", {**spec, "figure_formats": [" "]})
+    with pytest.raises(ConfigurationError, match="html is gone with plotly"):
+        run.plan("simulate", {**spec, "figure_formats": ["svg", "html"]})
     run.execute("simulate", spec, tmp_path / "out")
     figures = {p.suffix for p in (tmp_path / "out").rglob("*_fig_decay.*")}
-    assert figures == {".png"}
+    assert figures == {".png", ".json"}

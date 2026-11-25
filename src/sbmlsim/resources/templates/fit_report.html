@@ -1,5 +1,13 @@
 {% extends "report_base.html" %}
 
+{% from "figure.html" import figure %}
+{#- a plot of the page: its figure, its caption and the links of its files -#}
+{% macro figure_of(plot) -%}
+{% call figure(plot.key, plot.svg, plot.spec_text, plot.src, plot.caption) -%}
+<figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %} <span class="files"><a href="{{ plot.src }}">{{ plot.src.rsplit('.', 1)[-1] }}</a>{% if plot.spec %} <a href="{{ plot.spec }}">spec</a>{% endif %}</span></figcaption>
+{%- endcall %}
+{%- endmacro %}
+
 {% block title %}{{ title }}{% endblock %}
 {% block items %}mappings{% endblock %}
 {% block heading %}{{ fit_id }}{% endblock %}
@@ -21,6 +29,9 @@
 <style>
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+/* the files of a figure next to its caption */
+figcaption .files { margin-left: 6px; font-size: 11.5px; }
+figcaption .files a + a { margin-left: 4px; }
 /* the groupings of the evaluation, one shown at a time */
 .grouping-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .grouping-tab {
@@ -259,10 +270,7 @@
   <h3>Optimization runs</h3>
   <div class="grid">
     {% for plot in run_plots %}
-    <div class="card"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-    </figure></div>
+    <div class="card">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -271,10 +279,7 @@
   <h3>Predictions and costs</h3>
   <div class="grid">
     {% for plot in result_plots %}
-    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-    </figure></div>
+    <div class="card{% if plot.wide %} wide{% endif %}">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -306,10 +311,7 @@
   <div class="grouping-panel{% if loop.first %} active{% endif %}" data-grouping="{{ grouping.name }}">
   <div class="grid">
     {% for plot in grouping.plots %}
-    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}</figcaption>
-    </figure></div>
+    <div class="card{% if plot.wide %} wide{% endif %}">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   <div class="card">
@@ -426,10 +428,7 @@
   {% if identifiability.plots %}
   <div class="grid">
     {% for plot in identifiability.plots %}
-    <div class="card wide"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-    </figure></div>
+    <div class="card wide">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -437,10 +436,7 @@
   <h3>Profiles</h3>
   <div class="grid">
     {% for plot in identifiability.profile_plots %}
-    <div class="card"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-    </figure></div>
+    <div class="card">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -499,10 +495,7 @@
   <h3>Cost, weight and residuals of the fit mappings</h3>
   <div class="grid">
     {% for plot in mapping_plots %}
-    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
-      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-    </figure></div>
+    <div class="card{% if plot.wide %} wide{% endif %}">{{ figure_of(plot) }}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -543,10 +536,7 @@
     </header>
     <div class="grid">
       {% for plot in mapping.plots %}
-      <figure>
-        <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
-        <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
-      </figure>
+      {{ figure_of(plot) }}
       {% endfor %}
     </div>
   </div>

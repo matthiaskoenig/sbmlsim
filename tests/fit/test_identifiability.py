@@ -22,6 +22,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
     cost_threshold,
     first_steps,
+    plot_all,
     plot_profile,
     plot_profiles,
     profile_likelihood,
@@ -35,6 +36,7 @@ from sbmlsim.fit.options import (
     ParameterScaleType,
 )
 from sbmlsim.fit.report import FitReport
+from sbmlsim.plot import Chart
 
 #: settings of a fast analysis of the reference problem, plain scans with a
 #: few large steps
@@ -250,31 +252,38 @@ def test_the_profiles_of_a_parameter_on_the_linear_scale(tmp_path: Path) -> None
     # the crossing is linear between -3 (cost 2) and -4 (cost 5)
     assert profile.ci_lower == pytest.approx(-3.0 - (threshold - 2.0) / 3.0)
 
-    figure = plot_profiles(result)
-    ax_w, ax_k = figure.axes[:2]
-    assert ax_w.get_xscale() == "linear"
-    assert ax_k.get_xscale() == "log"
-    lower, upper = ax_w.get_xlim()
+    spec = plot_profiles(result).spec()
+    plot_w, plot_k = spec["plots"][:2]
+    assert plot_w["x"]["scale"] == "linear"
+    assert plot_k["x"]["scale"] == "log"
+    lower, upper = plot_w["x"]["min"], plot_w["x"]["max"]
     assert np.isfinite(lower) and np.isfinite(upper)
     assert lower < -4.0 and upper > 0.5
-    assert ax_k.get_xlim() == pytest.approx((0.1 / 1.5, 10.0 * 1.5))
+    assert (plot_k["x"]["min"], plot_k["x"]["max"]) == pytest.approx(
+        (0.1 / 1.5, 10.0 * 1.5)
+    )
+    # the threshold of the profile is a dashed line across every panel
+    rules = [e for e in plot_w["elements"] if e["kind"] == "rule"]
+    threshold = [e for e in rules if e.get("label") == "threshold"]
+    assert threshold and threshold[0]["value"] == pytest.approx(result.threshold)
+    assert threshold[0]["style"]["line"]["type"] == "dashed"
 
     plot_profiles(result, path=tmp_path / "profiles.svg")
     plot_profile(result, pid="w", path=tmp_path / "profile_w.svg")
-    assert (tmp_path / "profiles.svg").exists()
-    assert (tmp_path / "profile_w.svg").exists()
+    for name in ("profiles", "profile_w"):
+        assert (
+            (tmp_path / f"{name}.svg").read_text(encoding="utf-8").startswith("<svg")
+        ), name
+        assert (tmp_path / f"{name}.json").exists(), name
 
     # the paths are differences for linear and ratios for logarithmic ones
-    figure = plot_profile(result, pid="k")
-    (line,) = figure.axes[1].get_lines()[:1]
-    np.testing.assert_allclose(
-        np.asarray(line.get_ydata(), dtype=float), [-0.5, 0.0, 1.0]
-    )
-    figure = plot_profile(result, pid="w")
-    (line,) = figure.axes[1].get_lines()[:1]
-    np.testing.assert_allclose(
-        np.asarray(line.get_ydata(), dtype=float), np.log10([0.8, 0.9, 1.0, 1.1, 1.3])
-    )
+    def first_path(pid: str) -> list[float]:
+        paths = plot_profile(result, pid=pid).spec()["plots"][1]
+        (curve, *_) = [e for e in paths["elements"] if e["kind"] == "curve"]
+        return curve["y"]
+
+    np.testing.assert_allclose(first_path("k"), [-0.5, 0.0, 1.0])
+    np.testing.assert_allclose(first_path("w"), np.log10([0.8, 0.9, 1.0, 1.1, 1.3]))
 
 
 def test_profile_non_identifiable_lower() -> None:
@@ -726,15 +735,21 @@ def test_parameter_set_of_result() -> None:
     assert result.summary_df().loc[0, "identifiability"] == "identifiable"
 
 
-def test_the_profile_figures_do_not_use_pyplot(tmp_path: Path, no_pyplot: None) -> None:
-    """The figures of the profiles depend on no backend of pyplot (#317)."""
+def test_the_profile_figures_are_charts(tmp_path: Path) -> None:
+    """The figures of the profiles are charts of the renderer, PNG as well."""
     result = _linear_result()
     plot_profiles(result, path=tmp_path / "profiles.png")
     plot_profile(result, pid="k", path=tmp_path / "profile_k.png")
-    figure = plot_profiles(result)
-    assert figure.canvas.manager is None
-    assert (tmp_path / "profiles.png").exists()
-    assert (tmp_path / "profile_k.png").exists()
+    assert isinstance(plot_profiles(result), Chart)
+    for name in ("profiles", "profile_k"):
+        assert (tmp_path / f"{name}.png").read_bytes().startswith(b"\x89PNG")
+    written = plot_all(result, tmp_path / "all", png_dpi=100.0)
+    assert [path.name for path in written] == [
+        "profiles.svg",
+        *[f"profile_{pid}.svg" for pid in result.profiles],
+    ]
+    assert (tmp_path / "all" / "profiles.png").exists()
+    assert (tmp_path / "all" / "profiles.json").exists()
 
 
 def test_a_timeout_gives_up_the_scans_and_keeps_the_profiles_it_has(

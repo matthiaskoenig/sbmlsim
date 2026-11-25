@@ -164,10 +164,11 @@ td:last-child .hint::after, th:last-child .hint::after { left: auto; right: 0; t
 }
 
 figure { margin: 0; }
-figure img {
+figure img, figure svg {
   width: 100%; height: auto; background: #fff; border: 1px solid var(--line);
   border-radius: 8px; cursor: zoom-in;
 }
+figure[data-hydrated] svg { cursor: auto; }
 figcaption { color: var(--fg-soft); font-size: 12.5px; margin-top: 6px; }
 
 .mapping { }
@@ -191,7 +192,7 @@ pre.code {
   display: none; align-items: center; justify-content: center; padding: 24px; cursor: zoom-out;
 }
 #lightbox.open { display: flex; }
-#lightbox img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 8px; }
+#lightbox img, #lightbox svg { max-width: 100%; max-height: 100%; background: #fff; border-radius: 8px; }
 footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-width: 1400px; margin: 0 auto; }
 </style>
 {% block head %}{% endblock %}
@@ -225,7 +226,8 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
   {% if version %}<br>created by sbmlsim {{ version }}{% if created %} on {{ created }}{% endif %}{% endif %}
 </footer>
 
-<div id="lightbox"><img alt=""></div>
+<div id="lightbox"></div>
+{% if figure_script %}<script src="{{ figure_script }}" defer></script>{% endif %}
 
 <script>
 (function () {
@@ -340,14 +342,31 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
 
   // ---- click a figure to enlarge it ------------------------------------
   const lightbox = document.getElementById("lightbox");
-  const lightboxImage = lightbox.querySelector("img");
-  function closeLightbox() { lightbox.classList.remove("open"); lightboxImage.src = ""; }
-  for (const image of document.querySelectorAll("figure img")) {
-    image.addEventListener("click", () => {
-      lightboxImage.src = image.getAttribute("src");
-      lightbox.classList.add("open");
-    });
+  function closeLightbox() { lightbox.classList.remove("open"); lightbox.replaceChildren(); }
+  function enlarge(figure) {
+    let copy;
+    if (figure.tagName.toLowerCase() === "svg") {
+      copy = figure.cloneNode(true);
+    } else {
+      copy = document.createElement("img");
+      copy.alt = "";
+      copy.src = figure.getAttribute("src");
+    }
+    lightbox.replaceChildren(copy);
+    lightbox.classList.add("open");
   }
+  // a figure which figures.js made interactive takes the clicks for its
+  // legend and its curves and is enlarged by a double click; the script
+  // replaces its SVG, so the listeners are on the document
+  document.addEventListener("click", (event) => {
+    const node = event.target.closest("figure > img, figure > svg");
+    if (node && !node.parentElement.hasAttribute("data-hydrated")) enlarge(node);
+  });
+  document.addEventListener("dblclick", (event) => {
+    const figure = event.target.closest("figure[data-hydrated]");
+    const svg = figure && figure.querySelector("svg");
+    if (svg) enlarge(svg);
+  });
   lightbox.addEventListener("click", closeLightbox);
 
   apply();

@@ -11,14 +11,12 @@ from typing import Any
 
 import numpy as np
 import pytest
-from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure, Plot
-from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
+from sbmlsim.plot.resolve import figure_chart
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
@@ -121,55 +119,31 @@ def _assert_jump(x: Any, y: Any, before: float, after: float) -> None:
 
 
 @pytest.mark.parametrize(("task", "over", "jumps"), CASES)
-def test_matplotlib_draws_the_jump_vertically(
+def test_the_chart_draws_the_jump_vertically(
     experiment: SimulationExperiment,
     task: str,
     over: str | None,
     jumps: list[tuple[float, float]],
 ) -> None:
     figure = _figure(experiment, _curve(task, over))
-    fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
-    try:
-        lines = [
-            line
-            for line in fig.axes[0].get_lines()
-            if isinstance(line, Line2D) and np.size(line.get_xdata()) > 2
-        ]
-        assert len(lines) == len(jumps)
-        for line, (before, after) in zip(lines, jumps, strict=True):
-            _assert_jump(line.get_xdata(), line.get_ydata(), before, after)
-    finally:
-        plt.close(fig)
-
-
-@pytest.mark.parametrize(("task", "over", "jumps"), CASES)
-def test_plotly_draws_the_jump_vertically(
-    experiment: SimulationExperiment,
-    task: str,
-    over: str | None,
-    jumps: list[tuple[float, float]],
-) -> None:
-    pytest.importorskip("plotly")
-    from sbmlsim.plot.serialization_plotly import PlotlyFigureSerializer
-
-    figure = _figure(experiment, _curve(task, over))
-    traces = [
-        trace
-        for trace in PlotlyFigureSerializer.to_figure(experiment, figure).data
-        if trace.x is not None and len(trace.x) > 2
-    ]
-    assert len(traces) == len(jumps)
-    for trace, (before, after) in zip(traces, jumps, strict=True):
-        _assert_jump(trace.x, trace.y, before, after)
+    elements = figure_chart(experiment, figure).spec()["plots"][0]["elements"]
+    lines = [e for e in elements if len(e["x"]) > 2]
+    assert len(lines) == len(jumps)
+    for line, (before, after) in zip(lines, jumps, strict=True):
+        x = [np.nan if v is None else v for v in line["x"]]
+        y = [np.nan if v is None else v for v in line["y"]]
+        finite = np.isfinite(np.asarray(x, dtype=float))
+        _assert_jump(
+            np.asarray(x, dtype=float)[finite],
+            np.asarray(y, dtype=float)[finite],
+            before,
+            after,
+        )
 
 
 def test_the_jump_in_a_png(experiment: SimulationExperiment, tmp_path: Path) -> None:
     """The figure of every task renders."""
     for task, over, _ in CASES:
         figure = _figure(experiment, _curve(task, over))
-        fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
-        try:
-            fig.savefig(tmp_path / f"{task}.png")
-        finally:
-            plt.close(fig)
-        assert (tmp_path / f"{task}.png").stat().st_size > 0
+        path = figure_chart(experiment, figure).save(tmp_path / f"{task}.png")
+        assert path.stat().st_size > 0

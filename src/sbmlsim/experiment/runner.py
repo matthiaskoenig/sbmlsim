@@ -59,8 +59,6 @@ from multiprocessing.queues import Queue
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, cast, override
 
-import matplotlib
-
 from sbmlsim import cgroup, parallel
 from sbmlsim.engine import (
     DEFAULT_ENGINE,
@@ -73,10 +71,10 @@ from sbmlsim.experiment import progress
 from sbmlsim.experiment.draws import UncertaintyRun
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
-    STATIC_FORMAT,
     ExperimentResult,
     ExperimentRunError,
     SimulationExperiment,
+    figure_formats_of,
 )
 from sbmlsim.experiment.progress import (
     Event,
@@ -455,6 +453,7 @@ class ExperimentRunner:
         figure_settings: FigureSettings | Mapping[str, Any] | None = None,
         n_workers: int | None = None,
         progress: bool | None = None,
+        png_dpi: float | None = None,
     ) -> list[ExperimentResult]:
         """Run the experiments and write their outputs.
 
@@ -466,9 +465,10 @@ class ExperimentRunner:
 
         Args:
             output_path: directory of the outputs, one directory per experiment.
-            show_figures: show the matplotlib figures.
+            show_figures: show the figures in a notebook.
             save_results: write the results of the tasks.
-            figure_formats: formats of the figures.
+            figure_formats: formats of the figures, see
+                `sbmlsim.figure_formats.figure_formats_of`.
             reduced_selections: simulate only the selections an experiment uses.
             keep_results: keep the results of every experiment after its outputs
                 are written. By default they are released, so a run holds only
@@ -503,16 +503,20 @@ class ExperimentRunner:
                 included. A run without progress inside of
                 `progress.reporting` reports its events to the listener of
                 that context, also from its workers.
+            png_dpi: the resolution of every PNG, the `fig_dpi` of the
+                settings of each figure without.
 
         Returns:
             The results of the experiments, which the report is created from.
 
         Raises:
             ExperimentRunError: with `raise_on_failure`, if something failed.
-            ValueError: if a key of `figure_settings` is no setting or
-                `n_workers` is less than 1, before any experiment runs.
+            ValueError: if a key of `figure_settings` is no setting, a figure
+                format is no figure format or `n_workers` is less than
+                1, before any experiment runs.
         """
         parallel.check_workers(n_workers)
+        formats = figure_formats_of(figure_formats)
         settings = (
             FigureSettings.resolve(run=figure_settings)
             if figure_settings is not None
@@ -525,13 +529,13 @@ class ExperimentRunner:
         if not output_path.exists():
             output_path.mkdir(parents=True)
 
-        formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
         options: dict[str, Any] = {
             "show_figures": show_figures,
             "save_results": save_results,
             "reduced_selections": reduced_selections,
             "keep_results": keep_results,
             "figure_settings": settings,
+            "png_dpi": png_dpi,
         }
         jobs = self._jobs(output_path, formats, figure_formats, options)
         spread = self._workers(n_workers, jobs, options)
@@ -701,7 +705,7 @@ class ExperimentRunner:
         options: dict[str, Any],
     ) -> dict[str, _Job]:
         """Get what a worker needs to run every experiment, see `_run_job`."""
-        rc, levels = _changed_rc_params(), _logger_levels()
+        levels = _logger_levels()
         cache = amici_cache(self.engine, self.models.values())
         return {
             sid: _Job(
@@ -722,7 +726,6 @@ class ExperimentRunner:
                 formats=formats,
                 figure_formats=figure_formats,
                 options=options,
-                rc=rc,
                 levels=levels,
             )
             for sid in self._order
@@ -1129,8 +1132,6 @@ class _Job:
     figure_formats: list[str] | None
     #: the other arguments of `SimulationExperiment.run`
     options: dict[str, Any]
-    #: the parameters of matplotlib which the run changed, see `_changed_rc_params`
-    rc: dict[Any, Any]
     #: the levels of the loggers of the run, see `_logger_levels`
     levels: dict[str, int]
 
@@ -1222,27 +1223,11 @@ def _modules(jobs: Iterable[_Job]) -> list[str]:
     """Get the modules which the forkserver imports once for all workers.
 
     The runner and the modules of the experiments, with what they import
-    (sbmlsim, matplotlib, the packages of a model); the main module is not
+    (sbmlsim, the packages of a model); the main module is not
     preloaded, see `sbmlsim.parallel`.
     """
     modules = {job.experiment_class.__module__ for job in jobs} - {"__main__"}
     return sorted({__name__, *modules})
-
-
-def _changed_rc_params() -> dict[Any, Any]:
-    """Get the parameters of matplotlib which differ from the ones as loaded.
-
-    A caller sets them for the figures of a run, e.g. with `rc_context`; the
-    worker loads the same `matplotlibrc` and sets them again. The backend is
-    the one of the worker.
-    """
-    # `copy` reads the values without the warnings of deprecated parameters
-    current, loaded = matplotlib.rcParams.copy(), matplotlib.rcParamsOrig.copy()
-    return {
-        key: value
-        for key, value in current.items()
-        if key != "backend" and value != loaded.get(key)
-    }
 
 
 def _logger_levels() -> dict[str, int]:
@@ -1282,7 +1267,6 @@ def _run_job(job: _Job) -> _Outcome:
         simulator.set_integrator_settings(**job.integrator_settings)
     try:
         with (
-            matplotlib.rc_context(job.rc),
             reporting(_EVENTS.put if _EVENTS is not None else None),
             worker_reporting(_EVENTS),
             using_amici_cache(job.amici_cache),
@@ -1377,6 +1361,7 @@ def run_experiments(
     reduced_selections: bool = True,
     jit_optimization: JitOptimization | str | None = None,
     uncertainty: UncertaintyRun | None = None,
+    png_dpi: float | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -1407,6 +1392,8 @@ def run_experiments(
         uncertainty: run every experiment over the draws of the fitted
             parameters, its setting `uncertainty`, see
             `sbmlsim.experiment.draws`; `None` runs them once.
+        png_dpi: the resolution of every PNG, see
+            `ExperimentRunner.run_experiments`.
 
     Returns:
         The results of the experiments.
@@ -1440,6 +1427,7 @@ def run_experiments(
         figure_settings=figure_settings,
         n_workers=n_workers,
         progress=progress,
+        png_dpi=png_dpi,
     )
     report_results = ReportResults()
     for exp_result in results:

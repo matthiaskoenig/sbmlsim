@@ -73,11 +73,10 @@ Now continue with the [Tutorial](tutorial.md).
 
 ## Optional packages
 
-Six features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
+Five features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
 
 | feature | install |
 | --- | --- |
-| interactive HTML figures of experiments (`figure_formats=["html"]`, see [Plots and reports](plotting.md)) | `pip install plotly` |
 | hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
 | COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |
@@ -127,7 +126,7 @@ pip installs these packages together with `sbmlsim`:
 | [packaging](https://packaging.pypa.io) | the check of the installed libroadrunner at the import |
 | [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | PEtab problems and global sensitivity analysis |
 | [pkpdutils](https://github.com/matthiaskoenig/pkpdutils) | non-compartmental pharmacokinetic analysis |
-| [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | figures, reports and console output |
+| [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | reports and console output (the figures are drawn by the renderer of sbmlsim-core) |
 | [certifi](https://github.com/certifi/python-certifi) | the certificates with which sbmlutils and pymetadata reach the network |
 
 ## Logging

@@ -22,6 +22,10 @@ compiled to `report.pdf`, and as LaTeX (`report.tex`, a fragment, and
 `report_standalone.tex`) with its references (`references.bib`, and
 `references.csl`, the style of the Typst bibliography). A PDF which cannot be
 compiled is stated in the HTML, the other outputs are written.
+
+Every figure is a chart of the renderer of sbmlsim-core (`sbmlsim.plot.chart`),
+saved as SVG or PNG with its spec (`sbmlsim.report.figures`), which `index.html`
+shows inline; building a report imports no matplotlib.
 """
 
 from __future__ import annotations
@@ -31,25 +35,20 @@ import json
 import logging
 import textwrap
 import webbrowser
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from functools import cached_property
 from pathlib import Path
 from tokenize import TokenError
 from typing import Any, ClassVar, Literal
 
-import matplotlib
 import numpy as np
 import pandas as pd
-from matplotlib import colormaps
-from matplotlib.axes import Axes
-from matplotlib.colors import to_hex
-from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
 from pint.errors import PintError
 
-from sbmlsim import __version__, cgroup, parallel
+from sbmlsim import __version__
 from sbmlsim.atomic import write_text_atomic
+from sbmlsim.engine import import_core
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import (
     HookSummary,
@@ -96,8 +95,17 @@ from sbmlsim.fit.posterior import POSTERIOR_FILE, ParameterPosterior
 from sbmlsim.fit.report_document import FIGURES, fit_document
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
+from sbmlsim.plot.colors import normalize_color
 from sbmlsim.progress import activity as progress_activity
 from sbmlsim.report.document import Document
+from sbmlsim.report.figures import (
+    FIGURE_SCRIPT,
+    IMAGE_FORMATS,
+    inline_figure,
+    save_figure,
+    write_figure_script,
+)
 from sbmlsim.report.references import write_bibliography
 from sbmlsim.report.render import (
     HTMLRenderer,
@@ -169,9 +177,36 @@ STUDY_COLORS: tuple[str, ...] = (
 #: told apart (#511)
 CATEGORY_COLORMAP: str = "turbo"
 
+#: the coefficients of the polynomials of the red, green and blue of `turbo`,
+#: from the constant term on (Mikhailov 2019, the polynomial approximation of
+#: the colormap of Google), see `_turbo`
+_TURBO: tuple[tuple[float, ...], ...] = (
+    (0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943),
+    (0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604),
+    (0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973),
+)
+
 #: markers of the parameter sets in the figures which color by study, so that
-#: the sets are told apart where the color is taken
-SET_MARKERS: tuple[str, ...] = ("o", "s", "^", "D", "v", "P")
+#: the sets are told apart where the color is taken, the markers of the
+#: renderer
+SET_MARKERS: tuple[str, ...] = (
+    "circle",
+    "square",
+    "triangle",
+    "diamond",
+    "cross",
+    "plus",
+)
+
+
+def _turbo(position: float) -> str:
+    """Get the color of `turbo` at a position of `[0, 1]` as `#rrggbb`."""
+    x = min(max(float(position), 0.0), 1.0)
+    channels = [
+        min(max(sum(c * x**n for n, c in enumerate(coefficients)), 0.0), 1.0)
+        for coefficients in _TURBO
+    ]
+    return "#" + "".join(f"{round(255 * c):02x}" for c in channels)
 
 
 def category_color(index: int, total: int) -> str:
@@ -189,20 +224,22 @@ def category_color(index: int, total: int) -> str:
         total: the number of categories of the figure.
 
     Returns:
-        The color, a name of matplotlib or a hex string.
+        The color, a name of `STUDY_COLORS` or a hex string, see
+        `sbmlsim.plot.colors.normalize_color`.
     """
     if total <= len(STUDY_COLORS):
         return STUDY_COLORS[index % len(STUDY_COLORS)]
     position = min(max(index, 0), total - 1) / (total - 1)
-    return to_hex(colormaps[CATEGORY_COLORMAP](position))
+    return _turbo(position)
 
 
 #: styles of the agreement band. The goodness of fit and the Bland-Altman plot
 #: draw the same band, once as lines parallel to the identity and once as
 #: horizontal lines, so the two figures are read the same way
-IDENTITY_STYLE: dict[str, Any] = {"linestyle": "-", "linewidth": 1.5}
-BIAS_STYLE: dict[str, Any] = {"linestyle": "-.", "linewidth": 1.2}
-LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
+#: (the line and its width in pixels of a curve or a rule of the renderer)
+IDENTITY_STYLE: dict[str, Any] = {"line": "solid", "width": 1.5}
+BIAS_STYLE: dict[str, Any] = {"line": "dashdot", "width": 1.2}
+LIMITS_STYLE: dict[str, Any] = {"line": "dashed", "width": 1.2}
 
 #: opacity of the filled area between the limits of agreement
 BAND_ALPHA: float = 0.12
@@ -212,9 +249,9 @@ BAND_ALPHA: float = 0.12
 #: from the black limits of agreement and the gray band, which they lie close
 #: to for a fit of a typical scatter
 TWOFOLD_STYLE: dict[str, Any] = {
-    "linestyle": ":",
-    "linewidth": 2.0,
-    "color": "darkred",
+    "line": "dotted",
+    "width": 2.0,
+    "color": "#8b0000",
 }
 
 #: the header of a column of the metrics whose name is not what a table shows
@@ -231,8 +268,7 @@ METRIC_HEADERS: dict[str, str] = {
 WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
 
 #: resolution of the PNG copies of the figures of the report document, which
-#: LaTeX includes, unless the matplotlib parameters of the report set
-#: `savefig.dpi`
+#: LaTeX includes, see `FitReport.create`
 PNG_DPI: float = 300.0
 
 #: the files of the report document in a report folder, as they are linked
@@ -244,22 +280,51 @@ DOCUMENT_FILES: tuple[tuple[str, str], ...] = (
     ("references.bib", "BibTeX"),
 )
 
-#: height in inches of a row of the figures with a row per curve, i.e. of the
+#: height in pixels of a row of the figures with a row per curve, i.e. of the
 #: costs and of the residuals of the fit mappings
-ROW_HEIGHT: float = 0.17
-#: width in inches of a character of the label of a row, of 8 points
-ROW_LABEL_CHAR: float = 0.065
+ROW_HEIGHT: float = 12.24
+#: the font size of the labels of the rows of these figures
+ROW_FONT: float = 8.0
+#: width in pixels of a character of the label of a row, of `ROW_FONT` points
+ROW_LABEL_CHAR: float = 4.7
 
-#: width in inches of the legend next to the panels of a wide plot
-LEGEND_WIDTH: float = 3.0
+#: width and height in pixels of a panel of the goodness of fit and the
+#: Bland-Altman plot, whose legend is right of the panels
+PANEL_SIZE: float = 396.0
 
-#: style of the box with the key metrics of a panel
+#: width and height in pixels of the four panels of the figure of a fit
+#: mapping, whose legends are right of its rows
+MAPPING_SIZE: tuple[float, float] = (720.0, 700.0)
+
+#: size in pixels and opacity of a data point of the agreement figures
+POINT_SIZE: float = 9.0
+POINT_OPACITY: float = 0.7
+
+#: the box with the key metrics of a panel, see `FitReport._metrics_boxes`:
+#: its edge, fill and opacity, the font size of a text element of the
+#: renderer (the size of the x tick labels, 11 pixels by default) and the
+#: distance of the lines of a text of several lines, 1.2 font sizes, its
+#: padding and its distance from the corner of the panel in pixels
 METRICS_BOX: dict[str, Any] = {
-    "boxstyle": "round,pad=0.4",
-    "facecolor": "white",
-    "edgecolor": "0.6",
-    "alpha": 0.9,
+    "edge": "#999999",
+    "fill": "#ffffff",
+    "fill_opacity": 0.9,
 }
+TEXT_SIZE: float = 11.0
+BOX_LINE: float = 1.2 * TEXT_SIZE
+BOX_PAD: float = 5.0
+BOX_MARGIN: float = 8.0
+
+#: the font size of the title of a figure in pixels, the one of the renderer,
+#: which draws it bold; the width of the figure of a fit mapping makes room
+#: for it, see `_title_width`
+TITLE_SIZE: float = 16.0
+
+#: the labels of the axes of the agreement figures
+GOF_X_LABEL: str = "Experiment y"
+GOF_Y_LABEL: str = "Prediction f(x)"
+ALTMAN_X_LABEL: str = "Geometric mean √(f(x) · y)"
+ALTMAN_Y_LABEL: str = "log10(f(x) / y)"
 
 #: colors of the parameter sets, in the order of the sets. Black is the color
 #: of the reference data of a fit mapping, so no parameter set uses it
@@ -271,6 +336,14 @@ SET_COLORS: tuple[str, ...] = (
     "tab:purple",
     "tab:brown",
 )
+
+
+def _hex(color: str) -> str:
+    """Get a color of the report as `#rrggbb`, see `normalize_color`."""
+    normalized = normalize_color(color)
+    if normalized is None:
+        raise ValueError(f"The color '{color}' of a figure is none.")
+    return normalized
 
 
 def _percent(value: Any) -> str:
@@ -310,92 +383,44 @@ def _cell(value: Any, spec: str) -> str:
     return f"{value:{spec}}"
 
 
-#: the figures a worker of the pool needs to earn the initialization of the
-#: problem of the report it draws them with, see `_figure_workers`
-_FIGURE_POOL_MINIMUM = 16
-
-#: the fit mappings one task of the pool draws, see `plot_mapping`
-_FIGURE_CHUNK = 4
-
-#: what a worker draws the figures of the fit mappings with, see `_set_drawing`
-_DRAWING: (
-    tuple[FitReport, Mapping[str, dict[str, list[Any]]], Mapping[str, pd.DataFrame]]
-    | None
-) = None
-
-
-def _figure_workers(n_figures: int) -> int:
-    """Get the processes the figures of the fit mappings are drawn on.
-
-    A figure of a fit mapping is about 0.4 s and nine tenths of it is the
-    writing of its SVG, so the figures of a report are worth a pool. A worker
-    initializes the problem of the report once before it draws anything
-    (about 3 s), so it has to be given figures enough to earn that: the
-    processes are one per `_FIGURE_POOL_MINIMUM` figures, and a report with
-    the work of one worker or less is drawn in the calling process.
-
-    The cap is what keeps the pool at its best, not only what keeps a small
-    report out of it. On the 160 figures of the report of the HCTZ PK fit of
-    pkdb_models, a machine of 12 physical cores and 20 logical: 8 workers
-    draw them in 23 to 25 s, 10 in 25 to 26 s, 12 in 26 to 28 s and 20 in 28
-    s. Past the optimum a worker costs more than the figures it takes away
-    from the others.
+def _panel_point(panel: Mapping[str, Any], dx: float, dy: float) -> tuple[float, float]:
+    """Get the values of the axes of a plot at pixels from its upper left corner.
 
     Args:
-        n_figures: the number of fit mappings of the report.
+        panel: the plot of `figure_geometry`, its `rect` and its scales.
+        dx: the pixels to the right of the left edge of its panel.
+        dy: the pixels below the top edge of its panel.
 
     Returns:
-        The processes, 1 for a report which is drawn in this process.
+        The values of the x and of the y axis there.
     """
-    if parallel.in_worker():
-        return 1
-    return max(1, min(n_figures // _FIGURE_POOL_MINIMUM, cgroup.available_cpus()))
+    rect = panel["rect"]
+    return (
+        _scale_value(panel["x"], dx / rect["width"]),
+        _scale_value(panel["y"], 1.0 - dy / rect["height"]),
+    )
 
 
-def _set_drawing(
-    report: FitReport,
-    settings: FitSettings,
-    res_data: Mapping[str, dict[str, list[Any]]],
-    points: Mapping[str, pd.DataFrame],
-) -> None:
-    """Keep what a worker draws the figures of the fit mappings with.
-
-    A pickled problem is its definition, not its resolved data, see
-    `OptimizationProblem.__getstate__`: the worker initializes the problem of
-    the report it received, once, before it draws anything with it.
+def _scale_value(scale: Mapping[str, Any], fraction: float) -> float:
+    """Get the value at a fraction of an axis of the geometry of a chart.
 
     Args:
-        report: the report, as the parent pickled it.
-        settings: the settings the problem of the report is initialized with.
-        res_data: the residual data of every parameter set.
-        points: the data points of every parameter set.
-    """
-    global _DRAWING
-    report.problem.initialize(settings)
-    _DRAWING = (report, res_data, points)
-
-
-def _draw_mappings(task: tuple[Sequence[int], Path]) -> int:
-    """Draw the figures of some fit mappings in a worker, see `plot_mapping`.
-
-    Args:
-        task: the fit mappings of the task and the folder of the figures.
+        scale: the scale of the axis of `figure_geometry`: its `kind`, `low`,
+            `high` and `reverse`.
+        fraction: the fraction from the lower end of the axis, its left or
+            its bottom.
 
     Returns:
-        The number of figures which were drawn, for the progress of the
-        parent.
-
-    Raises:
-        RuntimeError: if the worker has no report, which only happens when
-            the function is called outside a pool of `plot_mapping`.
+        The value of the axis there, on a logarithmic axis in its decades.
     """
-    mappings, output_dir = task
-    if _DRAWING is None:
-        raise RuntimeError("The worker has no report to draw the figures with")
-    report, res_data, points = _DRAWING
-    for k in mappings:
-        report.draw_mapping(k, output_dir, res_data, points)
-    return len(mappings)
+    if scale.get("reverse"):
+        fraction = 1.0 - fraction
+    low, high = float(scale["low"]), float(scale["high"])
+    if scale["kind"] == "log":
+        return float(
+            10 ** (np.log10(low) + fraction * (np.log10(high) - np.log10(low)))
+        )
+    return low + fraction * (high - low)
 
 
 class FitReport:
@@ -445,14 +470,15 @@ class FitReport:
             show_titles: add titles to the figures: the title of a fit
                 mapping above the panels of its figures, the title of a
                 figure or of its panel for the other figures.
-            image_format: format of the figures.
+            image_format: format of the figures, `svg` or `png`, see
+                `sbmlsim.report.figures.IMAGE_FORMATS`; every figure is
+                saved with its spec as `json` beside it.
             mapping_figures: draw the figure of every fit mapping, i.e. the
                 data with the simulation and the goodness of fit and the
-                Bland-Altman plot of the mapping, see `plot_mapping`. They are
-                one figure per mapping and most of the cost of a report. A
-                report which is only read for its tables and its overview
-                figures is created without them, and its mapping cards carry
-                their metrics alone.
+                Bland-Altman plot of the mapping, see `plot_mapping`, one
+                figure per mapping. A report which is only read for its
+                tables and its overview figures is created without them, and
+                its mapping cards carry their metrics alone.
             context: what the report document says about the fit beyond the
                 fit, e.g. its title and its description; sbmlsim reports a fit
                 with an empty context.
@@ -467,6 +493,11 @@ class FitReport:
                 the goodness of fit and the Bland-Altman plots, e.g. `tissue`,
                 the study by default.
         """
+        if image_format not in IMAGE_FORMATS:
+            raise ValueError(
+                f"The figures of a report are {' or '.join(IMAGE_FORMATS)}, "
+                f"not '{image_format}'."
+            )
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
         self.problem = deepcopy(problem)
@@ -484,7 +515,7 @@ class FitReport:
         self.error_bars = error_bars
         self.color_by = color_by
         # resolution of the PNG copies of the figures, see `_create_figures`
-        self._png_dpi: float | str = PNG_DPI
+        self._png_dpi: float = PNG_DPI
 
         # Resolve data in the runtime owned by this report.
         self.problem.initialize(settings)
@@ -609,9 +640,9 @@ class FitReport:
         return f"{title} [{self.problem.mapping_kinds[k].value}]"
 
     def color(self, pset: ParameterSet) -> str:
-        """Get the color of a parameter set."""
+        """Get the color of a parameter set as `#rrggbb`."""
         index = [p.sid for p in self.parameter_sets].index(pset.sid)
-        return SET_COLORS[index % len(SET_COLORS)]
+        return _hex(SET_COLORS[index % len(SET_COLORS)])
 
     def studies(self) -> list[str]:
         """Get the studies of the problem, i.e. its simulation experiments.
@@ -624,7 +655,7 @@ class FitReport:
     def study_color(self, study: str) -> str:
         """Get the color of a study, the same in every figure of the report."""
         studies = self.studies()
-        return category_color(studies.index(study), len(studies))
+        return _hex(category_color(studies.index(study), len(studies)))
 
     def set_marker(self, pset: ParameterSet) -> str:
         """Get the marker of a parameter set in the figures colored by study."""
@@ -842,7 +873,7 @@ class FitReport:
         output_dir: Path,
         name: str | None = None,
         show_report: bool = False,
-        mpl_parameters: dict[str, Any] | None = None,
+        png_dpi: float = PNG_DPI,
     ) -> Path:
         """Create the complete report.
 
@@ -856,7 +887,9 @@ class FitReport:
             output_dir: base directory of the reports.
             name: name of this report, the id of the optimization by default.
             show_report: open the HTML report in a web browser.
-            mpl_parameters: additional matplotlib rc parameters of the figures.
+            png_dpi: the resolution of the PNG figures, the copies of the
+                figures of the report document, which LaTeX includes, and
+                the figures of a report of the format `png`.
 
         Returns:
             Path of the directory the report was written to.
@@ -927,7 +960,7 @@ class FitReport:
             )
 
         self._write_text_report(path=results_dir / "report.txt")
-        self._create_figures(plots_dir=plots_dir, mpl_parameters=mpl_parameters)
+        self._create_figures(plots_dir=plots_dir, png_dpi=png_dpi)
         # the document shows the figures which exist, so it follows them
         document = self.document(plots_dir)
         pdf_error = self._write_document(document, results_dir)
@@ -1317,18 +1350,43 @@ class FitReport:
     def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, Any]]:
         """Get the plots of the given names which were created.
 
-        A plot of `WIDE_PLOTS` is `wide`, i.e. it covers a full row.
+        A plot of `WIDE_PLOTS` is `wide`, i.e. it covers a full row. A plot
+        with its spec is shown inline, see `_plot`.
         """
         return [
-            {
-                "src": f"plots/{name}.{self.image_format}",
-                "caption": self.plot_caption(name),
-                "hint": self.PLOT_HINTS.get(name, ""),
-                "wide": name in WIDE_PLOTS,
-            }
+            self._plot(
+                plots_dir,
+                name,
+                caption=self.plot_caption(name),
+                hint=self.PLOT_HINTS.get(name, ""),
+                wide=name in WIDE_PLOTS,
+            )
             for name in names
             if (plots_dir / f"{name}.{self.image_format}").exists()
         ]
+
+    def _plot(self, plots_dir: Path, name: str, **fields: Any) -> dict[str, Any]:
+        """Get a plot of the page: its file, its fields and its inline figure.
+
+        Args:
+            plots_dir: the folder of the plots.
+            name: the name of the plot, its file without the suffix.
+            **fields: the fields of the plot on the page, e.g. its caption.
+
+        Returns:
+            `key`, `src` and `spec`, the file of its spec where it exists,
+            the fields, and `svg` and `spec_text` of an SVG with its spec,
+            which the page shows inline, see `inline_figure`.
+        """
+        path = plots_dir / f"{name}.{self.image_format}"
+        spec = path.with_suffix(".json")
+        return {
+            "key": name,
+            "src": f"plots/{path.name}",
+            "spec": f"plots/{spec.name}" if spec.exists() else None,
+            **fields,
+            **inline_figure(path),
+        }
 
     def html_context(
         self,
@@ -1685,12 +1743,13 @@ class FitReport:
                 ).exists():
                     name = grouping_page(plot, grouping.name, page)
                     plots.append(
-                        {
-                            "src": f"plots/{name}.{self.image_format}",
-                            "caption": f"{caption}, by {grouping.name}"
+                        self._plot(
+                            plots_dir,
+                            name,
+                            caption=f"{caption}, by {grouping.name}"
                             + (f", page {page}" if page > 1 else ""),
-                            "wide": plot != "criteria",
-                        }
+                            wide=plot != "criteria",
+                        )
                     )
                     page += 1
             rows = metrics[metrics.grouping == grouping.name].drop(columns="grouping")
@@ -2127,7 +2186,9 @@ class FitReport:
         figures of the cost and weight and of the residuals of every fit
         mapping, the table of the metrics of every fit mapping and a card per
         fit mapping. It is rendered from the `fit_report.html`
-        template and needs no network access.
+        template and needs no network access; its inline figures are
+        interactive with the script `figures.js` beside it, see
+        `write_figure_script`.
 
         Args:
             path: file to write.
@@ -2142,91 +2203,120 @@ class FitReport:
             pdf_error=pdf_error,
         )
         template = template_environment().get_template("fit_report.html")
+        text = template.render(context)
+        if 'data-figure="' in text:
+            # the inline figures are interactive with the script beside the page
+            write_figure_script(path.parent)
+            text = template.render({**context, "figure_script": FIGURE_SCRIPT})
         with open(path, "w", encoding="utf-8") as f_html:
-            f_html.write(template.render(context))
+            f_html.write(text)
 
     # --------------------------------------------------------------------
     # figures
     # --------------------------------------------------------------------
-    def _create_figures(
-        self, plots_dir: Path, mpl_parameters: dict[str, Any] | None = None
-    ) -> None:
+    def _create_figures(self, plots_dir: Path, png_dpi: float = PNG_DPI) -> None:
         """Create all figures of the report.
 
-        The figures are drawn with the defaults of matplotlib and the
-        parameters, and the parameters of the process are restored afterwards
-        (`rc_context`, which leaves the backend alone: reading the backend
-        from `rcParams` resolves it, to an interactive one with a display).
+        Every figure is a chart of the renderer of sbmlsim-core, saved as its
+        image and its spec, see `sbmlsim.report.figures.save_figure`. The
+        figures of the report document (`FIGURES`) are saved as PNG as well
+        if the format of the report is another one, since LaTeX includes PNG
+        and no SVG.
 
-        The figures of the report document (`FIGURES`) are saved as PNG as
-        well if the format of the report is another one, since LaTeX includes
-        PNG and no SVG; their resolution is `savefig.dpi` of the parameters,
-        `PNG_DPI` by default.
+        Args:
+            plots_dir: the folder of the figures.
+            png_dpi: the resolution of the PNG figures.
         """
-        parameters: dict[str, Any] = {
-            "axes.titlesize": 14,
-            "axes.labelsize": 12,
-            "axes.labelweight": "normal",
-        }
-        parameters.update(mpl_parameters or {})
-        self._png_dpi = parameters.get("savefig.dpi", PNG_DPI)
+        self._png_dpi = float(png_dpi)
+        if self.opt_result:
+            self.plot_traces(path=plots_dir / f"traces.{self.image_format}")
+            if self.opt_result.size > 1:
+                self.plot_waterfall(path=plots_dir / f"waterfall.{self.image_format}")
 
-        with matplotlib.rc_context():
-            matplotlib.rcdefaults()
-            # the keys of RcParams are typed as literals since matplotlib 3.11
-            matplotlib.rcParams.update(parameters)  # ty: ignore[no-matching-overload]
+        self.plot_goodness_of_fit(
+            path=plots_dir / f"goodness_of_fit.{self.image_format}"
+        )
+        self.plot_bland_altman(path=plots_dir / f"bland_altman.{self.image_format}")
+        self.plot_cost_bar(path=plots_dir / f"cost_bar.{self.image_format}")
+        self.plot_residual_boxplot(
+            path=plots_dir / f"residual_boxplot.{self.image_format}"
+        )
+        if len(self.parameter_sets) > 1:
+            self.plot_cost_scatter(path=plots_dir / f"cost_scatter.{self.image_format}")
 
-            if self.opt_result:
-                self.plot_traces(path=plots_dir / f"traces.{self.image_format}")
-                if self.opt_result.size > 1:
-                    self.plot_waterfall(
-                        path=plots_dir / f"waterfall.{self.image_format}"
-                    )
-
-            self.plot_goodness_of_fit(
-                path=plots_dir / f"goodness_of_fit.{self.image_format}"
+        for grouping in self.groupings:
+            self.plot_grouping(grouping, plots_dir)
+        if self.mapping_figures:
+            self.plot_mapping(output_dir=plots_dir)
+        if self.identifiability:
+            plot_all(
+                self.identifiability,
+                plots_dir,
+                self.image_format,
+                png_dpi=self._png_dpi,
             )
-            self.plot_bland_altman(path=plots_dir / f"bland_altman.{self.image_format}")
-            self.plot_cost_bar(path=plots_dir / f"cost_bar.{self.image_format}")
-            self.plot_residual_boxplot(
-                path=plots_dir / f"residual_boxplot.{self.image_format}"
-            )
-            if len(self.parameter_sets) > 1:
-                self.plot_cost_scatter(
-                    path=plots_dir / f"cost_scatter.{self.image_format}"
-                )
 
-            for grouping in self.groupings:
-                self.plot_grouping(grouping, plots_dir)
-            if self.mapping_figures:
-                self.plot_mapping(output_dir=plots_dir)
-            if self.identifiability:
-                plot_all(
-                    self.identifiability,
-                    plots_dir,
-                    self.image_format,
-                    png_dpi=self._png_dpi,
-                )
-
-    def _create_mpl_figure(
-        self,
-        width: float = 5.0,
-        height: float = 5.0,
-        layout: Literal["constrained", "compressed", "tight"] = "constrained",
-    ) -> tuple[Figure, Axes]:
-        """Create a figure of one axes, which pyplot does not hold (#317)."""
-        fig = Figure(figsize=(width, height), layout=layout)
-        return fig, fig.subplots(nrows=1, ncols=1)
-
-    def _save_mpl_figure(self, fig: Figure, path: Path) -> None:
-        """Save matplotlib figure to path.
+    def _save_chart(self, chart: Chart, path: Path) -> None:
+        """Save a figure as its image and its spec, see `save_figure`.
 
         A figure of the report document (`FIGURES`) in another format than
-        PNG is saved as PNG next to it as well, which LaTeX includes.
+        PNG is saved as PNG next to it as well, which LaTeX includes; a
+        figure of the format PNG is saved at the resolution of the report.
         """
-        fig.savefig(path)
-        if path.stem in FIGURES and path.suffix.lower() != ".png":
-            fig.savefig(path.with_suffix(".png"), dpi=self._png_dpi)
+        png = path.stem in FIGURES or path.suffix.lower() == ".png"
+        save_figure(chart, path, png_dpi=self._png_dpi if png else None)
+
+    @staticmethod
+    def _metrics_boxes(chart: Chart, boxes: Sequence[tuple[ChartPlot, str]]) -> None:
+        """Draw boxes of key metrics into the upper left corner of plots.
+
+        The renderer places a text at values of the axes, so a box is placed
+        by the geometry of the chart as it is drawn: one text of its lines,
+        `BOX_LINE` pixels apart, below the top of the panel on a white box as
+        wide as the renderer measures the longest line and no wider than the
+        panel. The plots of the boxes are drawn before the boxes, and a box
+        changes neither their axes nor their legends.
+
+        Args:
+            chart: the chart, with every other element drawn.
+            boxes: the plots of the chart and the text of their box, a line
+                per line of the box.
+        """
+        boxes = [(plot, text) for plot, text in boxes if text]
+        if not boxes:
+            return
+        core = import_core()
+        geometry = core.figure_geometry(chart.to_json())
+        drawn = {plot["id"]: plot for plot in geometry["plots"]}
+        for plot, text in boxes:
+            panel = drawn[plot.id]
+            lines = text.splitlines()
+            # as wide as the renderer measures the widest line, never wider
+            # than the panel
+            width = min(
+                core.text_width(text, TEXT_SIZE) + 2 * BOX_PAD,
+                panel["rect"]["width"] - 2 * BOX_MARGIN,
+            )
+            height = BOX_LINE * len(lines) + 2 * BOX_PAD
+
+            left, top = BOX_MARGIN, BOX_MARGIN
+            plot.polygon(
+                [
+                    [
+                        _panel_point(panel, left, top),
+                        _panel_point(panel, left + width, top),
+                        _panel_point(panel, left + width, top + height),
+                        _panel_point(panel, left, top + height),
+                    ]
+                ],
+                width=1.0,
+                color=METRICS_BOX["edge"],
+                fill=METRICS_BOX["fill"],
+                fill_opacity=METRICS_BOX["fill_opacity"],
+            )
+            # the lines of a text are centred on its position
+            x, y = _panel_point(panel, left + BOX_PAD, top + height / 2)
+            plot.text(x, y, "\n".join(lines), color="#000000")
 
     @staticmethod
     def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:
@@ -2243,247 +2333,46 @@ class FitReport:
         return float(np.min(positive)) / factor, float(np.max(positive)) * factor
 
     @staticmethod
-    def _set_log_scale(ax: Axes, axis: Literal["x", "y"] = "y") -> None:
-        """Set a logarithmic scale on an axis of a panel with positive data.
+    def _has_positive(*data: Any) -> bool:
+        """Whether data has a positive finite value, which a log axis can show.
 
         A panel without positive values, e.g. the weighted residuals of a
         perfect fit, has no logarithm and stays linear.
         """
-        if axis == "x":
-            if np.isfinite(ax.dataLim.minposx):
-                ax.set_xscale("log")
-        elif np.isfinite(ax.dataLim.minposy):
-            ax.set_yscale("log")
+        for d in data:
+            values = np.asarray(d, dtype=float).ravel()
+            if np.any(np.isfinite(values) & (values > 0.0)):
+                return True
+        return False
 
-    @staticmethod
-    def _mask_nonpositive_lines(ax: Axes) -> None:
-        """Leave out the values of the lines of a log panel which are not positive.
-
-        A logarithmic axis clips such a value to a tiny positive one, so a
-        curve which is `0`, e.g. the urine at the start or after a reset of a
-        collection, drops in a vertical line to the bottom of the panel. The
-        curve has a gap there instead: it ends at the last positive value and
-        starts again at the next one. The error bars, which are no lines, stay
-        clipped, so an error bar which reaches `0` goes to the bottom of the
-        panel rather than vanishing, which masking on the axis would do.
-        """
-        if ax.get_yscale() != "log":
-            return
-        for line in ax.get_lines():
-            y = np.asarray(line.get_ydata(), dtype=float)
-            if np.any(y <= 0.0):
-                line.set_ydata(np.where(y > 0.0, y, np.nan))
-
-    def _set_mapping_title(self, fig: Figure, k: int) -> None:
-        """Set the title of a figure of a fit mapping, once over its panels.
+    def _mapping_title(self, k: int) -> str | None:
+        """Get the title of a figure of a fit mapping, once over its panels.
 
         The experiment, the mapping and its kind, and below them the observable
         with its unit and the metadata of the mapping, see `mapping_subtitle`.
-        A title per panel overlaps the one of the panel next to it for a long
-        experiment and mapping key. A long title is wrapped between its
-        words, never inside an identifier, and a figure is widened for a word
-        which is wider than it, see `_widen_to_fit`.
+        A long title is wrapped between its words, never inside an
+        identifier. `None` without titles.
         """
         if not self.show_titles:
-            return
+            return None
         details = ", ".join(
             part for part in (self._y_label(k), self.mapping_subtitle(k)) if part
         )
-        title = fig.suptitle(
-            "\n".join(
-                textwrap.fill(
-                    line, width=80, break_long_words=False, break_on_hyphens=False
-                )
-                for line in (self.mapping_title(k), details)
+        return "\n".join(
+            textwrap.fill(
+                line, width=80, break_long_words=False, break_on_hyphens=False
             )
+            for line in (self.mapping_title(k), details)
+            if line
         )
-        self._widen_to_fit(fig, title.get_window_extent().width)
 
     @staticmethod
-    def _layout_pad(fig: Figure) -> float:
-        """Get the width a figure keeps free at its sides in pixels.
-
-        Twice the padding of the constrained layout on each side.
-        """
-        engine = fig.get_layout_engine()
-        pad = engine.get().get("w_pad", 3.0 / 72.0) if engine is not None else 0.0
-        return 4.0 * float(pad) * fig.dpi
-
-    @classmethod
-    def _widen_to_fit(cls, fig: Figure, width: float) -> None:
-        """Widen a figure so that an artist of a width in pixels fits into it.
-
-        The panels get the width, a figure which is wide enough stays as it is.
-        """
-        needed = width + cls._layout_pad(fig)
-        if needed > fig.bbox.width:
-            fig.set_figwidth(needed / fig.dpi)
-
-    def _set_legend(self, ax: Axes) -> None:
-        """Add a legend without duplicate entries."""
-        handles, labels = ax.get_legend_handles_labels()
-        unique = dict(zip(labels, handles, strict=True))
-        if unique:
-            ax.legend(unique.values(), unique.keys())
-
-    @staticmethod
-    def _legend_entries(axes: Sequence[Axes]) -> dict[str, Any]:
-        """Get the entries of the legends of panels by label, without duplicates."""
-        handles: list[Any] = []
-        labels: list[str] = []
-        for ax in axes:
-            ax_handles, ax_labels = ax.get_legend_handles_labels()
-            handles.extend(ax_handles)
-            labels.extend(ax_labels)
-        return dict(zip(labels, handles, strict=True))
-
-    @classmethod
-    def _set_figure_legend(cls, fig: Figure, axes: Sequence[Axes]) -> int:
-        """Add one legend for all panels of a figure, without duplicates.
-
-        A study is not in every panel, e.g. only one study has outliers, so the
-        entries are collected over the panels and shown once next to them.
-        The points of the studies come first and the lines, i.e. the band and
-        the lines of twofold, last, also when a study has points only in the
-        last panel, which labels the lines.
-
-        The legend is one column while that fits the height of the figure and
-        takes as many columns as it needs otherwise, and the figure grows by
-        what the legend needs beyond the width `_panels` keeps free for it, so
-        the panels keep their size. It ran off the bottom of the figure
-        before, which cut the last studies of a fit of 35 of them and the
-        entries of the band with them (#511).
-
-        Returns:
-            The columns of the legend, `0` for a figure without entries.
-        """
-        entries = cls._legend_entries(axes)
-        columns = 0
-
-        def is_line(handle: Any) -> bool:
-            return isinstance(handle, Line2D) and handle.get_marker() in (
-                None,
-                "",
-                "None",
-                "none",
-            )
-
-        unique = dict(sorted(entries.items(), key=lambda entry: is_line(entry[1])))
-        if not unique:
-            return columns
-        available = fig.bbox.height - cls._layout_pad(fig)
-        legend = None
-        extent = None
-        for ncols in range(1, len(unique) + 1):
-            if legend is not None:
-                legend.remove()
-            legend = fig.legend(
-                unique.values(),
-                unique.keys(),
-                loc="outside right upper",
-                ncols=ncols,
-                fontsize="small",
-            )
-            extent = legend.get_window_extent()
-            columns = ncols
-            if extent.height <= available:
-                break
-        assert extent is not None
-        excess = extent.width / fig.dpi - LEGEND_WIDTH
-        if excess > 0:
-            fig.set_figwidth(fig.get_figwidth() + excess)
-        if extent.height > available:
-            # every entry of the legend is shown, whatever that costs in
-            # height: a legend which is cut hides which study a point is of
-            fig.set_figheight((extent.height + cls._layout_pad(fig)) / fig.dpi)
-        return columns
-
-    def _set_mapping_legend(self, fig: Figure, axes: Sequence[Axes]) -> None:
-        """Add one legend below the panels of a figure of a fit mapping.
-
-        A legend inside a panel covers the data, the simulation or the
-        residuals of a crowded panel wherever it is placed. The reference data
-        comes first and the entries of every parameter set stay next to each
-        other, see `_legend_rows`, in as many columns as a set has entries (at
-        least two) or in fewer where these are wider than the figure, e.g. for
-        long ids; a legend which is wider than the figure in one column widens
-        it. The figure grows by the height of the legend, so the panels keep
-        their size.
-        """
-        unique = self._legend_entries(axes)
-        if not unique:
-            return
-        groups = self._legend_groups(unique)
-        available = fig.bbox.width - self._layout_pad(fig)
-        for ncols in range(max(2, *(len(group) for group in groups)), 0, -1):
-            rows = self._legend_rows(groups, ncols)
-            # matplotlib fills the columns of a legend one after the other
-            cells = [row[c] for c in range(ncols) for row in rows]
-            legend = fig.legend(
-                [handle for handle, _ in cells],
-                [label for _, label in cells],
-                loc="outside lower center",
-                ncols=ncols,
-                fontsize="small",
-            )
-            extent = legend.get_window_extent()
-            if extent.width <= available or ncols == 1:
-                break
-            legend.remove()
-        self._widen_to_fit(fig, extent.width)
-        fig.set_figheight(fig.get_figheight() + extent.height / fig.dpi)
-
-    def _legend_groups(self, entries: dict[str, Any]) -> list[list[tuple[Any, str]]]:
-        """Group the entries of a legend: the reference data, then every set.
-
-        An entry belongs to the parameter set whose id its label is or starts
-        with, the longest such id, since an id may start with another one.
-        Entries of neither come last.
-        """
-        sids = [pset.sid for pset in self.parameter_sets]
-        groups: list[list[tuple[Any, str]]] = [[] for _ in range(len(sids) + 2)]
-        for label, handle in entries.items():
-            if label == "data" or label.startswith("data ("):
-                groups[0].append((handle, label))
-                continue
-            matches = [
-                (len(sid), k)
-                for k, sid in enumerate(sids)
-                if label == sid or label.startswith(f"{sid} ")
-            ]
-            group = 1 + max(matches)[1] if matches else len(sids) + 1
-            groups[group].append((handle, label))
-        return [group for group in groups if group]
-
-    @staticmethod
-    def _legend_rows(
-        groups: Sequence[Sequence[tuple[Any, str]]], ncols: int
-    ) -> list[list[tuple[Any, str]]]:
-        """Lay the groups of a legend out in rows of `ncols` entries.
-
-        The entries of a group stay together: a group which does not fit into
-        what is left of a row starts the next one, a group of more entries
-        than a row has fills rows one after the other. The gaps are blank
-        entries.
-        """
-        rows: list[list[tuple[Any, str]]] = []
-        row: list[tuple[Any, str]] = []
-        for group in groups:
-            if row and len(row) + len(group) > ncols:
-                rows.append(row)
-                row = []
-            for entry in group:
-                row.append(entry)
-                if len(row) == ncols:
-                    rows.append(row)
-                    row = []
-        if row:
-            rows.append(row)
-        return [
-            row
-            + [(Line2D([], [], linestyle="none"), "") for _ in range(ncols - len(row))]
-            for row in rows
-        ]
+    def _title_width(title: str | None, width: float) -> float:
+        """Get the width of a chart so that its title fits, at least `width`."""
+        if not title:
+            return width
+        measured = import_core().text_width(title, TITLE_SIZE, bold=True)
+        return max(width, measured + 2 * BOX_MARGIN)
 
     def _is_scalar(self, k: int) -> bool:
         """Whether mapping `k` compares one value per simulation."""
@@ -2542,20 +2431,23 @@ class FitReport:
         """
         return 0.5 * (ks + 1) / (len(self.parameter_sets) + 1)
 
-    def _set_x_limits(self, ax: Axes, k: int, x_obs: Sequence[np.ndarray]) -> None:
-        """Set the x limits of mapping `k`.
+    def _x_limits(
+        self, k: int, x_obs: Sequence[np.ndarray]
+    ) -> tuple[float, float] | None:
+        """Get the x limits of mapping `k`.
 
         The limits of a timecourse are the data, of values over a dimension the
         data and the simulated curves, and of a value per simulation the rows
-        and the simulated values next to them, with room for the legend on the
-        right. A single x, e.g. values over a dimension of one value, is drawn
-        at a quarter of the width with the room for the legend on the right.
+        and the simulated values next to them. A single x, e.g. values over a
+        dimension of one value, is drawn at a quarter of the width.
+
+        Returns:
+            The limits, `None` for an axis without a finite value, which the
+            renderer scales.
         """
         x_pos = self._x_positions(k)
         if self._is_scalar(k):
-            ax.set_xlim(-0.6, x_pos.size + 1.0)
-            ax.set_xticks([])
-            return
+            return -0.6, x_pos.size + 1.0
         if self.problem.observation_kinds[k] is ObservationKind.DIMENSION:
             values = np.concatenate(
                 [x_pos, *[np.asarray(x, dtype=float) for x in x_obs]]
@@ -2565,27 +2457,66 @@ class FitReport:
         # a measurement at infinity, a steady state, has no place on the axis
         values = values[np.isfinite(values)]
         if values.size == 0:
-            return
+            return None
         low, high = float(np.min(values)), float(np.max(values))
         if high == low:
             delta = abs(high) or 1.0
-            ax.set_xlim(left=low - 0.1 * delta, right=high + 0.3 * delta)
-            return
+            return low - 0.1 * delta, high + 0.3 * delta
         delta = high - low
-        ax.set_xlim(left=low - 0.1 * delta, right=high + 0.1 * delta)
+        return low - 0.1 * delta, high + 0.1 * delta
 
-    @staticmethod
-    def _set_log_y_limits(ax: Axes, y_ref: np.ndarray) -> None:
-        """Set the y limits of a logarithmic panel of the data and the simulation.
+    def _reference_errors(self, k: int) -> tuple[np.ndarray, np.ndarray] | None:
+        """Get the lower and the upper error of the data of mapping `k`.
 
-        The bottom is 0.3 times the smallest reference value, the top 1.5 times
+        A standard deviation is symmetric, a geometric mean is divided and
+        multiplied by its geometric SD; an error which the weights filled is
+        no error of the data and is `NaN`.
+
+        Returns:
+            The lower and the upper error of every point, `None` without
+            errors.
+        """
+        y_ref = np.asarray(self.problem.y_references[k], dtype=float)
+        y_ref_err = self.problem.y_errors[k]
+        measured = self.problem.y_errors_measured[k]
+        log_err = self.problem.y_errors_log[k]
+        if log_err is not None:
+            factor = np.exp(np.asarray(log_err, dtype=float))
+            errors = np.array([y_ref - y_ref / factor, y_ref * factor - y_ref])
+        elif y_ref_err is not None:
+            err = np.asarray(y_ref_err, dtype=float)
+            errors = np.array([err, err])
+        else:
+            return None
+        if measured is not None:
+            errors = np.where(np.asarray(measured, dtype=bool), errors, np.nan)
+        return errors[0], errors[1]
+
+    def _curve_y_axis(
+        self, k: int, res_data: Mapping[str, dict[str, list[Any]]], log: bool
+    ) -> ChartAxis:
+        """Get the y axis of the curve of mapping `k`, linear or logarithmic.
+
+        A logarithmic axis of a mapping without a positive value stays linear.
+        Its bottom is 0.3 times the smallest reference value, its top 1.5 times
         the largest value of the panel, the error bars included, so the
         markers of the data stay inside the panel also when the data spans less
         than a decade.
         """
-        bottom = FitReport._log_limits(y_ref, factor=1.0 / 0.3)[0]
-        top = FitReport._log_limits(y_ref, [ax.dataLim.y1], factor=1.5)[1]
-        ax.set_ylim(bottom=bottom, top=top)
+        y_ref = np.asarray(self.problem.y_references[k], dtype=float)
+        simulated = [
+            np.asarray(res_data[p.sid][key][k], dtype=float)
+            for p in self.parameter_sets
+            for key in ("y_obs", "y_obsip")
+        ]
+        label = self._y_label(k)
+        if not log or not self._has_positive(y_ref, *simulated):
+            return ChartAxis(label=label)
+        errors = self._reference_errors(k)
+        upper = y_ref + errors[1] if errors is not None else y_ref
+        bottom = self._log_limits(y_ref, factor=1.0 / 0.3)[0]
+        top = self._log_limits(y_ref, upper, *simulated, factor=1.5)[1]
+        return ChartAxis(label=label, scale="log", min=bottom, max=top)
 
     def plot_mapping(self, output_dir: Path) -> None:
         """Plot the figure of every fit mapping: its curve and its agreement.
@@ -2595,42 +2526,21 @@ class FitReport:
         Bland-Altman plot of the points of the mapping, drawn as the summary
         figures draw them (`_draw_goodness_of_fit`, `_draw_bland_altman`), so
         a point reads the same in the figure of its mapping and in the summary
-        figures. The prediction at the data points are open markers on the
+        figures. The prediction at the data points are hollow markers on the
         curve, the points of the lower panels. The box of the goodness of fit
-        has the metrics of the mapping, see `mapping_text`.
+        has the metrics of the mapping, see `mapping_text`. The figures are
+        drawn in this process, one after the other: a figure of the renderer
+        is milliseconds.
         """
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
         mappings = range(len(self.problem.mapping_keys))
-
-        # a figure per fit mapping, the long part of a report of a large fit:
-        # the figures do not depend on each other and nine tenths of one is
-        # the writing of its SVG, so they are drawn in a pool
         with progress_activity(
             "report", "mapping figures", total=len(mappings)
         ) as drawn:
-            workers = _figure_workers(len(mappings))
-            if workers < 2:
-                for k in mappings:
-                    self.draw_mapping(k, output_dir, res_data, points)
-                    drawn.advance()
-                return
-            chunks = [
-                list(mappings[start : start + _FIGURE_CHUNK])
-                for start in range(0, len(mappings), _FIGURE_CHUNK)
-            ]
-            executor = parallel.start_pool(
-                workers,
-                initializer=_set_drawing,
-                initargs=(self, self.settings, res_data, points),
-            )
-            try:
-                for chunk in executor.map(
-                    _draw_mappings, [(chunk, output_dir) for chunk in chunks]
-                ):
-                    drawn.advance(chunk)
-            finally:
-                parallel.stop(executor)
+            for k in mappings:
+                self.draw_mapping(k, output_dir, res_data, points)
+                drawn.advance()
 
     def draw_mapping(
         self,
@@ -2638,15 +2548,11 @@ class FitReport:
         output_dir: Path,
         res_data: Mapping[str, dict[str, list[Any]]],
         points: Mapping[str, pd.DataFrame],
-    ) -> None:
+    ) -> Chart:
         """Draw and save the figure of one fit mapping, see `plot_mapping`.
 
-        It runs in a worker of the pool for a report of many mappings, so
-        anything which is to affect it has to travel with the pickled report:
-        a subclass which overrides a step of it works, because the report
-        pickles with its class and the worker imports it, while a patch of
-        `FitReport` in this process after the fact does not, because the
-        worker imports the class as it is written.
+        The legend of the curves is right of the upper row, the legend of the
+        agreement right of the lower one.
 
         Args:
             k: index of the fit mapping.
@@ -2654,46 +2560,69 @@ class FitReport:
             res_data: the residual data of every parameter set, see
                 `residual_data`.
             points: the data points of every parameter set, see `points`.
+
+        Returns:
+            The figure, saved as `<experiment>_<mapping>` in the folder.
         """
         mapping_id = self.problem.mapping_keys[k]
-        fig = Figure(figsize=(10, 10), layout="constrained")
-        (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
         sid = self.problem.experiment_keys[k]
-        self._set_mapping_title(fig, k)
-        for ax in (ax1, ax2):
-            self._draw_curve(ax, k, res_data)
-        self._set_log_scale(ax2, "y")
-        if ax2.get_yscale() == "log":
-            self._set_log_y_limits(ax2, self.problem.y_references[k])
-            self._mask_nonpositive_lines(ax2)
+        title = self._mapping_title(k)
+        chart = Chart(
+            self._title_width(title, MAPPING_SIZE[0]),
+            MAPPING_SIZE[1],
+            title=title,
+            rows=2,
+            columns=2,
+            legend_scope="row",
+            legend_position="outside",
+        )
+        limits = self._x_limits(
+            k, [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
+        )
+        x = ChartAxis(
+            label=self._x_label(k),
+            min=None if limits is None else limits[0],
+            max=None if limits is None else limits[1],
+            ticks_visible=not self._is_scalar(k),
+        )
+        order = ["data", *(pset.sid for pset in self.parameter_sets)]
+        for column, log in enumerate((False, True)):
+            y = self._curve_y_axis(k, res_data, log)
+            curve = chart.plot(0, column, x=x, y=y, legend_order=order)
+            self._draw_curve(curve, k, res_data, log=y.scale == "log", bottom=y.min)
 
         of_mapping = {
             pset.sid: self._of_mapping(points[pset.sid], k)
             for pset in self.parameter_sets
         }
-        limits = self._log_limits(
+        gof_limits = self._log_limits(
             *[dp.DV for dp in of_mapping.values()],
             *[dp.IPRED for dp in of_mapping.values()],
         )
+        x_gof, y_gof = self._goodness_axes(gof_limits, y_label=True)
+        gof = chart.plot(1, 0, x=x_gof, y=y_gof)
         self._draw_goodness_of_fit(
-            ax3, of_mapping, limits, label_band=True, point_labels=False
+            gof, of_mapping, gof_limits, label_band=True, point_labels=False
         )
-        ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
-        self._add_metrics_box(ax3, self.mapping_text(k))
+        own_agreement = self.problem.mapping_kinds[k] is not MappingKind.OUTLIER
+        x_altman, y_altman = self._altman_axes(of_mapping, own_agreement, y_label=True)
+        altman = chart.plot(1, 1, x=x_altman, y=y_altman)
         self._draw_bland_altman(
-            ax4,
+            altman,
             of_mapping,
             label_band=True,
             point_labels=False,
-            own_agreement=self.problem.mapping_kinds[k] is not MappingKind.OUTLIER,
+            own_agreement=own_agreement,
         )
-        ax4.set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
-        self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
-        self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
-
-        self._save_mpl_figure(
-            fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
+        self._metrics_boxes(
+            chart,
+            [
+                (gof, self.mapping_text(k)),
+                (altman, self._panel_text(of_mapping, "bland_altman")),
+            ],
         )
+        self._save_chart(chart, output_dir / f"{sid}_{mapping_id}.{self.image_format}")
+        return chart
 
     def _of_mapping(self, df: pd.DataFrame, k: int) -> pd.DataFrame:
         """Get the data points of mapping `k`."""
@@ -2725,86 +2654,174 @@ class FitReport:
                 parts.append(f"N = {low}" if low == high else f"N = {low}-{high}")
         return f"data ({', '.join(parts)})" if parts else "data"
 
+    @staticmethod
+    def _draw_errors(
+        plot: ChartPlot,
+        x: np.ndarray,
+        y: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        *,
+        along: Literal["x", "y"],
+        color: str,
+        legend: str | None,
+        opacity: float = 1.0,
+    ) -> None:
+        """Draw the error bars of the points which have an error.
+
+        Symmetric errors are the error bars of the renderer, asymmetric ones,
+        e.g. a geometric SD or the error of a log ratio, are segments of a
+        line broken by gaps; a point without a finite error has no bar.
+
+        Args:
+            plot: the plot.
+            x: the x of every point.
+            y: the y of every point.
+            lower: the lower error of every point.
+            upper: the upper error of every point.
+            along: the axis of the errors.
+            color: the color of the bars.
+            legend: the legend group of the points, which toggles the bars
+                with them.
+            opacity: the opacity of the bars.
+        """
+        finite = np.isfinite(lower) & np.isfinite(upper) & np.isfinite(x)
+        finite &= np.isfinite(y)
+        if not finite.any():
+            return
+        x, y, lower, upper = x[finite], y[finite], lower[finite], upper[finite]
+        if np.allclose(lower, upper, rtol=1e-12, atol=0.0):
+            plot.curve(
+                x,
+                y,
+                xerr=lower if along == "x" else None,
+                yerr=lower if along == "y" else None,
+                line="none",
+                width=1.0,
+                color=color,
+                opacity=opacity,
+                legend=legend,
+            )
+            return
+        gap = np.full(x.size, np.nan)
+        if along == "y":
+            xs = np.column_stack([x, x, gap]).ravel()
+            ys = np.column_stack([y - lower, y + upper, gap]).ravel()
+        else:
+            xs = np.column_stack([x - lower, x + upper, gap]).ravel()
+            ys = np.column_stack([y, y, gap]).ravel()
+        plot.curve(xs, ys, width=1.0, color=color, opacity=opacity, legend=legend)
+
     def _draw_curve(
-        self, ax: Axes, k: int, res_data: Mapping[str, dict[str, list[Any]]]
+        self,
+        plot: ChartPlot,
+        k: int,
+        res_data: Mapping[str, dict[str, list[Any]]],
+        log: bool = False,
+        bottom: float | None = None,
     ) -> None:
         """Draw the data of mapping `k` and the simulation of every parameter set.
 
         A timecourse is the simulated curve with the prediction at the data
-        points as open markers on it, values over a dimension the simulated
+        points as hollow markers on it, values over a dimension the simulated
         values with their markers and a value per simulation the one
-        simulated value next to every row of the data.
+        simulated value next to every row of the data. On a logarithmic axis
+        a value which is not positive is a gap: a curve which is `0`, e.g. the
+        urine at the start of a collection, ends at its last positive value
+        and starts again at the next one. An error bar whose lower end is at
+        or below zero, e.g. a standard deviation as large as its mean, goes to
+        the bottom of the axis and keeps its upper half.
+
+        Args:
+            plot: the plot.
+            k: index of the mapping.
+            res_data: the residual data of every parameter set.
+            log: whether the y axis is logarithmic.
+            bottom: the lower end of a logarithmic y axis, which the lower
+                end of an error bar at or below zero is drawn to.
         """
+
+        def shown(values: Any) -> np.ndarray:
+            values = np.asarray(values, dtype=float)
+            return np.where(values > 0.0, values, np.nan) if log else values
+
         x_ref = self._x_positions(k)
-        y_ref = self.problem.y_references[k]
-        y_ref_err = self.problem.y_errors[k]
-        measured = self.problem.y_errors_measured[k]
-        log_err = self.problem.y_errors_log[k]
-        if log_err is not None:
-            # a geometric mean divided and multiplied by its geometric SD
-            factor = np.exp(np.asarray(log_err, dtype=float))
-            y_ref_err = np.array([y_ref - y_ref / factor, y_ref * factor - y_ref])
-        if y_ref_err is not None and measured is not None:
-            # an error which the weights filled is no error of the data
-            y_ref_err = np.where(measured, y_ref_err, np.nan)
+        y_ref = np.asarray(self.problem.y_references[k], dtype=float)
         scalar = self._is_scalar(k)
         dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
-        ax.set_ylabel(self._y_label(k))
-        ax.set_xlabel(self._x_label(k))
 
         # reference data, the same for all parameter sets
-        label = self._data_label(k)
-        if y_ref_err is None:
-            ax.plot(x_ref, y_ref, "s", color="black", label=label, markersize=8)
-        else:
-            ax.errorbar(
+        black = "#000000"
+        plot.curve(
+            x_ref,
+            shown(y_ref),
+            line="none",
+            marker="square",
+            size=8,
+            color=black,
+            label=self._data_label(k),
+            legend="data",
+        )
+        errors = self._reference_errors(k)
+        if errors is not None:
+            lower, upper = errors
+            if log:
+                # a lower end at or below zero has no place on the axis, the
+                # bar goes to the bottom of the axis instead
+                floor = bottom if bottom is not None else 0.0
+                lower = np.where(
+                    y_ref - lower > 0.0, lower, np.maximum(y_ref - floor, 0.0)
+                )
+            self._draw_errors(
+                plot,
                 x_ref,
-                y_ref,
-                yerr=y_ref_err,
-                marker="s",
-                linestyle="",
-                color="black",
-                label=label,
-                markersize=8,
+                shown(y_ref),
+                lower,
+                upper,
+                along="y",
+                color=black,
+                legend="data",
             )
 
         for ks, pset in enumerate(self.parameter_sets):
             data = res_data[pset.sid]
             color = self.color(pset)
+            marker = self.set_marker(pset)
             if scalar:
                 # the one simulated value, next to every row of the data
-                ax.plot(
+                plot.curve(
                     x_ref + self._simulation_offset(ks),
-                    np.full(x_ref.size, float(data["y_obs"][k][0])),
-                    "-",
-                    marker=self.set_marker(pset),
+                    shown(np.full(x_ref.size, float(data["y_obs"][k][0]))),
+                    marker=marker,
+                    width=1.5,
                     color=color,
                     label=pset.sid,
+                    legend=pset.sid,
                 )
                 continue
             # the points of a scan are the simulated values over a dimension,
             # a dimension of one value has no line
-            ax.plot(
+            plot.curve(
                 data["x_obs"][k],
-                data["y_obs"][k],
-                "-",
-                marker=self.set_marker(pset) if dimension else None,
+                shown(data["y_obs"][k]),
+                marker=marker if dimension else "none",
+                width=1.5,
                 color=color,
                 label=pset.sid,
+                legend=pset.sid,
             )
             if not dimension:
-                ax.plot(
+                plot.curve(
                     x_ref,
-                    data["y_obsip"][k],
-                    linestyle="",
-                    marker=self.set_marker(pset),
-                    markerfacecolor="none",
+                    shown(data["y_obsip"][k]),
+                    line="none",
+                    marker=marker,
+                    size=7,
+                    marker_fill="none",
+                    marker_edge_width=1.5,
                     color=color,
+                    legend=pset.sid,
                 )
-
-        self._set_x_limits(
-            ax, k, [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
-        )
 
     def mapping_text(self, k: int) -> str:
         """Get the metrics of mapping `k`, one line per parameter set.
@@ -2927,32 +2944,52 @@ class FitReport:
             ),
         )
 
-    kwargs_scatter: ClassVar[dict[str, Any]] = {
-        "markersize": "10",
-        "markeredgecolor": "black",
-        "alpha": 0.7,
-        "linestyle": "",
-        "marker": "o",
-    }
-
     # --------------------------------------------------------------------
     # comparison of the parameter sets
     # --------------------------------------------------------------------
-    def _panels(self, height: float = 5.5) -> tuple[Figure, list[Axes], list[str]]:
-        """Create a figure with a panel per subset of the data points.
+    def _panels(self, title: str, rows: int = 1) -> tuple[Chart, list[str]]:
+        """Create a chart for a panel per subset of the data points and row.
 
         The figure covers a full row of the report, so the panels are large
-        enough for the points, the band and the box with the metrics. The
-        legend of the figure is next to the panels and gets a width of its own,
-        otherwise it takes the width from the panels, which a single panel
-        does not have to give.
+        enough for the points, the band and the box with the metrics. A row
+        has one legend right of its panels, whose entries the renderer merges
+        over the panels; it widens the figure, the panels keep their size.
+
+        Args:
+            title: the title of the figure, shown with `show_titles`.
+            rows: the rows of panels.
+
+        Returns:
+            The chart and the kinds of the columns.
         """
         kinds = self.point_kinds()
-        fig = Figure(
-            figsize=(height * len(kinds) + LEGEND_WIDTH, height), layout="constrained"
+        chart = Chart(
+            PANEL_SIZE * len(kinds),
+            PANEL_SIZE * rows,
+            title=title if self.show_titles else None,
+            rows=rows,
+            columns=len(kinds),
+            wspace=0.25,
+            hspace=0.35,
+            legend_scope="row",
+            legend_position="outside",
         )
-        axes = fig.subplots(nrows=1, ncols=len(kinds), squeeze=False)
-        return fig, list(axes[0]), kinds
+        return chart, kinds
+
+    def _legend_order(self, points: Mapping[str, pd.DataFrame]) -> list[str]:
+        """Get the legend groups of the points of a figure, in their order.
+
+        The points of the studies, or of the values of `color_by`, come first
+        and the lines, i.e. the band and the lines of twofold, last, also when
+        a study has points only in the last panel, which labels the lines.
+        """
+        column = self.color_by if self.color_by is not None else "experiment"
+        order: list[str] = []
+        for pset in self.parameter_sets:
+            df = points[pset.sid]
+            for key in dict.fromkeys(np.asarray(df[column], dtype=object)):
+                order.append(self._point_label(key, pset))
+        return list(dict.fromkeys(order))
 
     def _band_color(self, pset: ParameterSet) -> str:
         """Get the color of the agreement band of a parameter set.
@@ -2960,7 +2997,7 @@ class FitReport:
         The points carry the color of their study, so the band is neutral and
         only takes a color when several sets are compared.
         """
-        return "black" if len(self.parameter_sets) == 1 else self.color(pset)
+        return "#000000" if len(self.parameter_sets) == 1 else self.color(pset)
 
     def _band_labels(self, pset: ParameterSet) -> tuple[str, str, str]:
         """Get the legend entries of the identity, the bias and the limits."""
@@ -3027,7 +3064,7 @@ class FitReport:
                 lines.append(
                     f"R² = {_box_value(r_squared(dp.DV, dp.IPRED), '.3f')}, "
                     f"NRMSE = {_box_value(rmse(dp.NRES), '.3g')}, "
-                    f"RMSE$_w$ = {_box_value(rmse(dp.IWRES), '.3g')}"
+                    f"RMSE_w = {_box_value(rmse(dp.IWRES), '.3g')}"
                 )
                 lines.append(
                     f"GMFE = {_box_value(metrics['GMFE'], '.3g')}, "
@@ -3070,21 +3107,6 @@ class FitReport:
             sid = f"{sid[: BOX_ID_LENGTH - 3]}..."
         return [f"{sid}:"]
 
-    @staticmethod
-    def _add_metrics_box(ax: Axes, text: str) -> None:
-        """Draw the box with the key metrics into the corner of a panel."""
-        ax.text(
-            0.03,
-            0.97,
-            text,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize="small",
-            bbox=METRICS_BOX,
-            zorder=10,
-        )
-
     def _value_color(self, value: Any) -> str:
         """Get the color of a value of the column `color_by`.
 
@@ -3101,11 +3123,11 @@ class FitReport:
         index = values.index(str(value)) if str(value) in values else len(values)
         # a value which is in no data point is a category of its own, so it
         # takes no color of a value which is
-        return category_color(index, len(values) + 1)
+        return _hex(category_color(index, len(values) + 1))
 
     def _draw_points(
         self,
-        ax: Axes,
+        plot: ChartPlot,
         dp: pd.DataFrame,
         pset: ParameterSet,
         x: np.ndarray,
@@ -3123,7 +3145,7 @@ class FitReport:
         per point, `NaN` for a point without a standard deviation.
 
         Args:
-            ax: the panel.
+            plot: the panel.
             dp: the data points of the set which are drawn.
             pset: the parameter set.
             x: the x of every point.
@@ -3134,10 +3156,6 @@ class FitReport:
         """
         column = self.color_by if self.color_by is not None else "experiment"
         keys = np.asarray(dp[column], dtype=object)
-        kwargs: dict[str, Any] = {
-            **self.kwargs_scatter,
-            "marker": self.set_marker(pset),
-        }
         for key in dict.fromkeys(keys):
             of_key = keys == key
             if not point_labels:
@@ -3146,34 +3164,284 @@ class FitReport:
                 color = self._value_color(key)
             else:
                 color = self.study_color(str(key))
-            ax.plot(
+            label = self._point_label(key, pset) if point_labels else None
+            plot.curve(
                 x[of_key],
                 y[of_key],
-                label=self._point_label(key, pset) if point_labels else None,
+                line="none",
+                marker=self.set_marker(pset),
+                size=POINT_SIZE,
+                marker_edge="#000000",
+                marker_edge_width=1.0,
+                opacity=POINT_OPACITY,
                 color=color,
-                **kwargs,
+                label=label,
+                legend=label,
             )
             if not self.error_bars:
                 continue
-            for err, along in ((xerr, "x"), (yerr, "y")):
+            errors: tuple[tuple[np.ndarray | None, Literal["x", "y"]], ...] = (
+                (xerr, "x"),
+                (yerr, "y"),
+            )
+            for err, along in errors:
                 if err is None:
                     continue
-                part = err[:, of_key]
-                finite = np.all(np.isfinite(part), axis=0)
-                if not finite.any():
-                    continue
-                errors = part[:, finite]
-                ax.errorbar(
-                    x[of_key][finite],
-                    y[of_key][finite],
-                    xerr=errors if along == "x" else None,
-                    yerr=errors if along == "y" else None,
-                    fmt="none",
-                    ecolor=color,
-                    elinewidth=1.0,
-                    alpha=0.6,
-                    zorder=1,
+                part = np.asarray(err, dtype=float)[:, of_key]
+                self._draw_errors(
+                    plot,
+                    x[of_key],
+                    y[of_key],
+                    part[0],
+                    part[1],
+                    along=along,
+                    color=color,
+                    legend=label,
+                    opacity=0.6,
                 )
+
+    def _draw_subset_agreement(
+        self,
+        plot: ChartPlot,
+        dp: pd.DataFrame,
+        pset: ParameterSet,
+        x_limits: tuple[float, float],
+    ) -> tuple[float, float] | None:
+        """Draw the agreement of the points of a panel with its confidence.
+
+        The bias and the limits of agreement of the points of the panel,
+        thinner than the band of the training data, and the 95% confidence
+        intervals of the bias and of the limits as shaded bands, see
+        `sbmlsim.fit.evaluation.subset_agreement`; a panel of fewer than
+        `MIN_POINTS_SUBSET_AGREEMENT` points has none. The lines are labelled
+        in every panel which has them, the legend of a figure has an entry
+        once; they are violet for a single set, which the band of the training
+        data has in black, and in the color of a set when sets are compared.
+
+        Args:
+            plot: the panel.
+            dp: the data points of the panel which have a ratio.
+            pset: the parameter set.
+            x_limits: the limits of the x axis, which the bands span.
+
+        Returns:
+            The lowest and the highest value drawn, `None` without an agreement.
+        """
+        agreement = subset_agreement(dp)
+        if agreement is None:
+            return None
+        bias, half, bias_ci, limit_ci = agreement
+        single = len(self.parameter_sets) == 1
+        color = SUBSET_AGREEMENT_COLOR if single else self.color(pset)
+        prefix = "" if single else f"{pset.sid} "
+        edge = list(x_limits)
+        plot.area(
+            edge,
+            [bias - bias_ci] * 2,
+            [bias + bias_ci] * 2,
+            color=color,
+            fill_opacity=0.15,
+        )
+        for limit in (bias - half, bias + half):
+            plot.area(
+                edge,
+                [limit - limit_ci] * 2,
+                [limit + limit_ci] * 2,
+                color=color,
+                fill_opacity=0.1,
+            )
+        bias_label = f"{prefix}this panel bias"
+        plot.rule(
+            bias,
+            line="dashdot",
+            width=0.9,
+            color=color,
+            opacity=0.9,
+            label=bias_label,
+            legend=bias_label,
+        )
+        limits_label = f"{prefix}this panel LoA"
+        for limit in (bias - half, bias + half):
+            plot.rule(
+                limit,
+                line="dashed",
+                width=0.9,
+                color=color,
+                opacity=0.9,
+                label=limits_label,
+                legend=limits_label,
+            )
+        return bias - half - limit_ci, bias + half + limit_ci
+
+    @staticmethod
+    def _goodness_axes(
+        limits: tuple[float, float], y_label: bool
+    ) -> tuple[ChartAxis, ChartAxis]:
+        """Get the logarithmic axes of a panel of the goodness of fit.
+
+        Args:
+            limits: the limits of both axes.
+            y_label: show the label of the y axis, which the first panel of a
+                row does.
+        """
+        low, high = limits
+        x = ChartAxis(label=GOF_X_LABEL, scale="log", min=low, max=high, grid=True)
+        y = ChartAxis(
+            label=GOF_Y_LABEL,
+            scale="log",
+            min=low,
+            max=high,
+            grid=True,
+            label_visible=y_label,
+        )
+        return x, y
+
+    def _draw_goodness_of_fit(
+        self,
+        plot: ChartPlot,
+        points: Mapping[str, pd.DataFrame],
+        limits: tuple[float, float],
+        label_band: bool,
+        point_labels: bool = True,
+    ) -> None:
+        """Draw a panel of the goodness of fit: the prediction over the data.
+
+        The band of `agreement` of every set, the identity, the lines of
+        twofold and the points by study and set, on the logarithmic axes of
+        `_goodness_axes` within `limits`. A panel of the summary figure, of a
+        grouping and of the figure of a mapping is drawn by it, so a point
+        reads the same in all.
+
+        Args:
+            plot: the panel, of the axes of `_goodness_axes`.
+            points: the data points of every parameter set, by the id of the
+                set.
+            limits: the limits of both axes.
+            label_band: label the band and the lines, which the last panel
+                of a row does: the renderer lists the entries of the panels of
+                a row in the order of the panels, so the lines come after the
+                points of every panel.
+            point_labels: label and color the points by their study; the
+                figure of a mapping, which has one study, colors them by their
+                set, as its curves, and does not label them.
+        """
+        min_dp, max_dp = limits
+        edge = np.array([min_dp, max_dp])
+        for pset in self.parameter_sets:
+            bias, half = self.agreement(pset)
+            color = self._band_color(pset)
+            _identity, bias_label, limits_label = self._band_labels(pset)
+            plot.area(
+                edge,
+                edge * 10 ** (bias - half),
+                edge * 10 ** (bias + half),
+                color=color,
+                fill_opacity=BAND_ALPHA,
+            )
+            plot.curve(
+                edge,
+                edge * 10**bias,
+                color=color,
+                label=bias_label if label_band else None,
+                legend=bias_label if label_band else None,
+                **BIAS_STYLE,
+            )
+            for limit in (bias - half, bias + half):
+                plot.curve(
+                    edge,
+                    edge * 10**limit,
+                    color=color,
+                    label=limits_label if label_band else None,
+                    legend=limits_label if label_band else None,
+                    **LIMITS_STYLE,
+                )
+        identity = self._band_labels(self.reference_set)[0]
+        plot.curve(
+            edge,
+            edge,
+            color="#000000",
+            label=identity if label_band else None,
+            legend=identity if label_band else None,
+            **IDENTITY_STYLE,
+        )
+        for factor in (2.0, 0.5):
+            plot.curve(
+                edge,
+                edge * factor,
+                label="2-fold" if label_band and factor > 1 else None,
+                legend="2-fold" if label_band else None,
+                **TWOFOLD_STYLE,
+            )
+
+        for pset in self.parameter_sets:
+            # the points with a ratio, the others have no place on the axes
+            dp = points[pset.sid][self._log_ratio(points[pset.sid])[2]]
+            sd = np.asarray(dp.DV_SD, dtype=float)
+            self._draw_points(
+                plot,
+                dp,
+                pset,
+                np.asarray(dp.DV, dtype=float),
+                np.asarray(dp.IPRED, dtype=float),
+                point_labels,
+                xerr=np.vstack([sd, sd]),
+            )
+
+    def plot_goodness_of_fit(self, path: Path) -> Chart:
+        """Plot the predicted against the measured data points, per kind.
+
+        One panel per kind of fit mapping, i.e. the training data, the
+        validation data and the outliers separately. The points scatter around
+        the identity line when the model describes the data.
+
+        The band is the agreement of `agreement`, i.e. the bias and the limits
+        `bias ± 1.96 SD` of the training data, which on logarithmic axes are
+        lines parallel to the identity: a point inside the band is a prediction
+        the fit agrees to. It is the same band the Bland-Altman plot draws, in
+        the same styles, so the two figures are read the same way.
+
+        The dark red dotted lines are twofold, `f = 2y` and `f = y/2`: the
+        percentage of the points between them is `within_2fold` of the
+        metrics, which the box of a panel states, and the caption states the
+        points with their denominator, see `twofold_statement`. The title of a
+        panel states the points drawn, see `_panel_title`.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
+        """
+        points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        chart, kinds = self._panels("Goodness of fit")
+        order = self._legend_order(points)
+        limits = self._log_limits(
+            *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
+        )
+        boxes: list[tuple[ChartPlot, str]] = []
+        for column, kind in enumerate(kinds):
+            of_kind = {
+                pset.sid: self._of_kind(points[pset.sid], kind)
+                for pset in self.parameter_sets
+            }
+            x, y = self._goodness_axes(limits, y_label=column == 0)
+            plot = chart.plot(
+                0,
+                column,
+                x=x,
+                y=y,
+                title=self._panel_title(
+                    kind, [points[pset.sid] for pset in self.parameter_sets]
+                ),
+                legend_order=order,
+            )
+            self._draw_goodness_of_fit(
+                plot, of_kind, limits, label_band=column == len(kinds) - 1
+            )
+            boxes.append((plot, self._panel_text(of_kind, "goodness_of_fit")))
+        self._metrics_boxes(chart, boxes)
+        self._save_chart(chart, path)
+        return chart
 
     @staticmethod
     def _log_ratio_errors(dp: pd.DataFrame, difference: np.ndarray) -> np.ndarray:
@@ -3198,186 +3466,6 @@ class FitReport:
             upper = np.where(below > 0, upper - difference, 1.0)
         upper = np.where(np.isfinite(sd), upper, np.nan)
         return np.vstack([lower, upper])
-
-    def _draw_subset_agreement(
-        self, ax: Axes, dp: pd.DataFrame, pset: ParameterSet
-    ) -> tuple[float, float] | None:
-        """Draw the agreement of the points of a panel with its confidence.
-
-        The bias and the limits of agreement of the points of the panel,
-        thinner than the band of the training data, and the 95% confidence
-        intervals of the bias and of the limits as shaded bands, see
-        `sbmlsim.fit.evaluation.subset_agreement`; a panel of fewer than
-        `MIN_POINTS_SUBSET_AGREEMENT` points has none. The lines are labelled
-        in every panel which has them, the legend of a figure has an entry
-        once; they are violet for a single set, which the band of the training
-        data has in black, and in the color of a set when sets are compared.
-
-        Returns:
-            The lowest and the highest value drawn, `None` without an agreement.
-        """
-        agreement = subset_agreement(dp)
-        if agreement is None:
-            return None
-        bias, half, bias_ci, limit_ci = agreement
-        single = len(self.parameter_sets) == 1
-        color = SUBSET_AGREEMENT_COLOR if single else self.color(pset)
-        prefix = "" if single else f"{pset.sid} "
-        style: dict[str, Any] = {"color": color, "linewidth": 0.9, "alpha": 0.9}
-        ax.axhline(
-            bias,
-            label=f"{prefix}this panel bias",
-            linestyle="-.",
-            **style,
-        )
-        ax.axhspan(bias - bias_ci, bias + bias_ci, color=color, alpha=0.15, zorder=0)
-        for limit in (bias - half, bias + half):
-            ax.axhline(
-                limit,
-                label=f"{prefix}this panel LoA",
-                linestyle="--",
-                **style,
-            )
-            ax.axhspan(
-                limit - limit_ci, limit + limit_ci, color=color, alpha=0.1, zorder=0
-            )
-        return bias - half - limit_ci, bias + half + limit_ci
-
-    def _draw_goodness_of_fit(
-        self,
-        ax: Axes,
-        points: Mapping[str, pd.DataFrame],
-        limits: tuple[float, float],
-        label_band: bool,
-        point_labels: bool = True,
-    ) -> None:
-        """Draw a panel of the goodness of fit: the prediction over the data.
-
-        The band of `agreement` of every set, the identity, the lines of
-        twofold and the points by study and set, on logarithmic axes within
-        `limits`. A panel of the summary figure, of a grouping and of the
-        figure of a mapping is drawn by it, so a point reads the same in all.
-
-        Args:
-            ax: the panel.
-            points: the data points of every parameter set, by the id of the
-                set.
-            limits: the limits of both axes.
-            label_band: label the band and the lines, which a figure does once.
-            point_labels: label and color the points by their study; the
-                figure of a mapping, which has one study, colors them by their
-                set, as its curves, and does not label them.
-        """
-        min_dp, max_dp = limits
-        edge = np.array([min_dp, max_dp])
-        for pset in self.parameter_sets:
-            bias, half = self.agreement(pset)
-            color = self._band_color(pset)
-            _identity, bias_label, limits_label = self._band_labels(pset)
-            ax.fill_between(
-                edge,
-                edge * 10 ** (bias - half),
-                edge * 10 ** (bias + half),
-                color=color,
-                alpha=BAND_ALPHA,
-                zorder=0,
-            )
-            ax.plot(
-                edge,
-                edge * 10**bias,
-                color=color,
-                label=bias_label if label_band else None,
-                **BIAS_STYLE,
-            )
-            for limit in (bias - half, bias + half):
-                ax.plot(
-                    edge,
-                    edge * 10**limit,
-                    color=color,
-                    label=limits_label if label_band else None,
-                    **LIMITS_STYLE,
-                )
-        ax.plot(
-            edge,
-            edge,
-            color="black",
-            label=self._band_labels(self.reference_set)[0] if label_band else None,
-            **IDENTITY_STYLE,
-        )
-        for factor in (2.0, 0.5):
-            ax.plot(
-                edge,
-                edge * factor,
-                label="2-fold" if label_band and factor > 1 else None,
-                **TWOFOLD_STYLE,
-            )
-
-        for pset in self.parameter_sets:
-            # the points with a ratio, the others have no place on the axes
-            dp = points[pset.sid][self._log_ratio(points[pset.sid])[2]]
-            sd = np.asarray(dp.DV_SD, dtype=float)
-            self._draw_points(
-                ax,
-                dp,
-                pset,
-                np.asarray(dp.DV, dtype=float),
-                np.asarray(dp.IPRED, dtype=float),
-                point_labels,
-                xerr=np.vstack([sd, sd]),
-            )
-
-        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlim(min_dp, max_dp)
-        ax.set_ylim(min_dp, max_dp)
-        ax.grid()
-
-    def plot_goodness_of_fit(self, path: Path) -> None:
-        """Plot the predicted against the measured data points, per kind.
-
-        One panel per kind of fit mapping, i.e. the training data, the
-        validation data and the outliers separately. The points scatter around
-        the identity line when the model describes the data.
-
-        The band is the agreement of `agreement`, i.e. the bias and the limits
-        `bias ± 1.96 SD` of the training data, which on logarithmic axes are
-        lines parallel to the identity: a point inside the band is a prediction
-        the fit agrees to. It is the same band the Bland-Altman plot draws, in
-        the same styles, so the two figures are read the same way.
-
-        The dark red dotted lines are twofold, `f = 2y` and `f = y/2`: the
-        percentage of the points between them is `within_2fold` of the
-        metrics, which the box of a panel states, and the caption states the
-        points with their denominator, see `twofold_statement`. The title of a
-        panel states the points drawn, see `_panel_title`.
-        """
-        points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
-        fig, axes, kinds = self._panels()
-
-        min_dp, max_dp = self._log_limits(
-            *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
-        )
-        for ax, kind in zip(axes, kinds, strict=True):
-            of_kind = {
-                pset.sid: self._of_kind(points[pset.sid], kind)
-                for pset in self.parameter_sets
-            }
-            self._draw_goodness_of_fit(
-                ax, of_kind, (min_dp, max_dp), label_band=ax is axes[-1]
-            )
-            ax.set_title(
-                self._panel_title(
-                    kind, [points[pset.sid] for pset in self.parameter_sets]
-                )
-            )
-            self._add_metrics_box(ax, self._panel_text(of_kind, "goodness_of_fit"))
-
-        axes[0].set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
-        self._set_figure_legend(fig, axes)
-        if self.show_titles:
-            fig.suptitle("Goodness of fit")
-        self._save_mpl_figure(fig=fig, path=path)
 
     @classmethod
     def _panel_title(cls, kind: str, points: Sequence[pd.DataFrame]) -> str:
@@ -3423,23 +3511,6 @@ class FitReport:
         dv, ipred = dv[mask], ipred[mask]
         return np.sqrt(dv * ipred), np.log10(ipred / dv), mask
 
-    @staticmethod
-    def _include_limits(ax: Axes, agreement: Iterable[tuple[float, float]]) -> None:
-        """Widen the y axis of a panel so that the limits of agreement fit.
-
-        The limits are those of the training data and are drawn in every panel,
-        so a panel whose own points stay well inside them must not crop them.
-        """
-        bounds = [bias + sign * half for bias, half in agreement for sign in (-1, 1)]
-        if not bounds:
-            return
-        low, high = ax.get_ylim()
-        margin = 0.05 * max(high - low, max(bounds) - min(bounds), 1e-6)
-        ax.set_ylim(
-            min(low, min(bounds) - margin),
-            max(high, max(bounds) + margin),
-        )
-
     def agreement(self, pset: ParameterSet) -> tuple[float, float]:
         """Get the bias and the half width of the limits of agreement.
 
@@ -3467,9 +3538,69 @@ class FitReport:
         half = 1.96 * float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
         return float(np.mean(difference)), half
 
+    def _altman_x_limits(
+        self, points: Mapping[str, pd.DataFrame]
+    ) -> tuple[float, float]:
+        """Get the limits of the geometric mean of a panel of the Bland-Altman plot."""
+        means = [self._log_ratio(dp)[0] for dp in points.values()]
+        return self._log_limits(*means, factor=1.5)
+
+    def _altman_axes(
+        self,
+        points: Mapping[str, pd.DataFrame],
+        own_agreement: bool,
+        y_label: bool,
+    ) -> tuple[ChartAxis, ChartAxis]:
+        """Get the axes of a panel of the Bland-Altman plot.
+
+        The x axis is the logarithmic geometric mean of the points. The y axis
+        shows the points, the lines of twofold and the agreement of the panel,
+        not the error bars, which may reach far beyond the points, e.g. a
+        standard deviation as large as the value; and the limits of agreement
+        of the training data, which are drawn in every panel, so a panel whose
+        own points stay well inside them does not crop them.
+
+        Args:
+            points: the data points of every parameter set, by the id of the
+                set.
+            own_agreement: whether the panel draws the agreement of its points.
+            y_label: show the label of the y axis, which the first panel of a
+                row does.
+        """
+        shown_y: list[float] = [np.log10(2.0), -np.log10(2.0)]
+        for pset in self.parameter_sets:
+            dp = points[pset.sid]
+            _mean, difference, mask = self._log_ratio(dp)
+            if difference.size == 0:
+                continue
+            shown_y.extend(difference.tolist())
+            if own_agreement:
+                agreement = subset_agreement(dp[mask])
+                if agreement is not None:
+                    bias, half, _bias_ci, limit_ci = agreement
+                    shown_y.extend([bias - half - limit_ci, bias + half + limit_ci])
+        low, high = min(shown_y), max(shown_y)
+        pad = 0.08 * (high - low)
+        low, high = low - pad, high + pad
+        bounds = [
+            bias + sign * half
+            for bias, half in (self.agreement(pset) for pset in self.parameter_sets)
+            for sign in (-1, 1)
+        ]
+        margin = 0.05 * max(high - low, max(bounds) - min(bounds), 1e-6)
+        low, high = min(low, min(bounds) - margin), max(high, max(bounds) + margin)
+        x_low, x_high = self._altman_x_limits(points)
+        x = ChartAxis(
+            label=ALTMAN_X_LABEL, scale="log", min=x_low, max=x_high, grid=True
+        )
+        y = ChartAxis(
+            label=ALTMAN_Y_LABEL, min=low, max=high, grid=True, label_visible=y_label
+        )
+        return x, y
+
     def _draw_bland_altman(
         self,
-        ax: Axes,
+        plot: ChartPlot,
         points: Mapping[str, pd.DataFrame],
         label_band: bool,
         point_labels: bool = True,
@@ -3484,10 +3615,13 @@ class FitReport:
         a grouping and of the figure of a mapping is drawn by it.
 
         Args:
-            ax: the panel.
+            plot: the panel, of the axes of `_altman_axes`.
             points: the data points of every parameter set, by the id of the
                 set.
-            label_band: label the band and the lines, which a figure does once.
+            label_band: label the band and the lines, which the last panel
+                of a row does: the renderer lists the entries of the panels of
+                a row in the order of the panels, so the lines come after the
+                points of every panel.
             point_labels: label the points by their study, see
                 `_draw_goodness_of_fit`.
             own_agreement: draw the agreement of the points of the panel. The
@@ -3495,19 +3629,67 @@ class FitReport:
                 agreement of the band, the reference, and the outliers were
                 dropped for not agreeing, so both leave it out.
         """
-        # the values the y axis shows: the points, the lines of twofold and the
-        # agreement of the panel; not the error bars, which may reach far
-        # beyond the points, e.g. a standard deviation as large as the value
-        shown_y: list[float] = [np.log10(2.0), -np.log10(2.0)]
+        x_limits = self._altman_x_limits(points)
+        edge = list(x_limits)
+        # the agreement of the training data, the same lines in every panel.
+        # The points carry the color of their study, so the lines are neutral
+        # and only take a color when several sets are compared; the same band
+        # as the goodness of fit, here as horizontal lines
+        for pset in self.parameter_sets:
+            bias, half = self.agreement(pset)
+            color = self._band_color(pset)
+            _identity, bias_label, limits_label = self._band_labels(pset)
+            plot.area(
+                edge,
+                [bias - half] * 2,
+                [bias + half] * 2,
+                color=color,
+                fill_opacity=BAND_ALPHA,
+            )
+            plot.rule(
+                bias,
+                color=color,
+                label=bias_label if label_band else None,
+                legend=bias_label if label_band else None,
+                **BIAS_STYLE,
+            )
+            for limit in (bias - half, bias + half):
+                plot.rule(
+                    limit,
+                    color=color,
+                    label=limits_label if label_band else None,
+                    legend=limits_label if label_band else None,
+                    **LIMITS_STYLE,
+                )
+
+        # the identity of the goodness of fit is no difference here, its lines
+        # of twofold are the differences of `±log10(2)`
+        identity = self._band_labels(self.reference_set)[0]
+        plot.rule(
+            0.0,
+            color="#000000",
+            label=identity if label_band else None,
+            legend=identity if label_band else None,
+            **IDENTITY_STYLE,
+        )
+        for sign in (1.0, -1.0):
+            plot.rule(
+                sign * np.log10(2.0),
+                label="2-fold" if label_band and sign > 0 else None,
+                legend="2-fold" if label_band else None,
+                **TWOFOLD_STYLE,
+            )
+
         for pset in self.parameter_sets:
             dp = points[pset.sid]
             mean, difference, mask = self._log_ratio(dp)
             if difference.size == 0:
                 continue
-            shown_y.extend(difference.tolist())
             shown = dp[mask]
+            if own_agreement:
+                self._draw_subset_agreement(plot, shown, pset, x_limits)
             self._draw_points(
-                ax,
+                plot,
                 shown,
                 pset,
                 mean,
@@ -3515,63 +3697,8 @@ class FitReport:
                 point_labels,
                 yerr=self._log_ratio_errors(shown, difference),
             )
-            if own_agreement:
-                extent = self._draw_subset_agreement(ax, shown, pset)
-                if extent is not None:
-                    shown_y.extend(extent)
 
-        # the agreement of the training data, the same lines in every panel.
-        # The points carry the color of their study, so the lines are neutral
-        # and only take a color when several sets are compared; the same band
-        # as the goodness of fit, here as horizontal lines
-        agreement = [self.agreement(pset) for pset in self.parameter_sets]
-        for pset, (bias, half) in zip(self.parameter_sets, agreement, strict=True):
-            color = self._band_color(pset)
-            _identity, bias_label, limits_label = self._band_labels(pset)
-            ax.axhspan(
-                bias - half,
-                bias + half,
-                color=color,
-                alpha=BAND_ALPHA,
-                zorder=0,
-            )
-            ax.axhline(
-                bias,
-                color=color,
-                label=bias_label if label_band else None,
-                **BIAS_STYLE,
-            )
-            for limit in (bias - half, bias + half):
-                ax.axhline(
-                    limit,
-                    color=color,
-                    label=limits_label if label_band else None,
-                    **LIMITS_STYLE,
-                )
-
-        # the identity of the goodness of fit is no difference here, its lines
-        # of twofold are the differences of `±log10(2)`
-        ax.axhline(
-            0.0,
-            color="black",
-            label=self._band_labels(self.reference_set)[0] if label_band else None,
-            **IDENTITY_STYLE,
-        )
-        for sign in (1.0, -1.0):
-            ax.axhline(
-                sign * np.log10(2.0),
-                label="2-fold" if label_band and sign > 0 else None,
-                **TWOFOLD_STYLE,
-            )
-        ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
-        ax.set_xscale("log")
-        ax.grid()
-        low, high = min(shown_y), max(shown_y)
-        pad = 0.08 * (high - low)
-        ax.set_ylim(low - pad, high + pad)
-        self._include_limits(ax, agreement)
-
-    def plot_bland_altman(self, path: Path) -> None:
+    def plot_bland_altman(self, path: Path) -> Chart:
         """Plot the agreement of prediction and measurement, per kind.
 
         A Bland-Altman plot of the ratio: the difference of the logarithms,
@@ -3588,33 +3715,44 @@ class FitReport:
 
         Data points which are zero or negative have no logarithm and are left
         out, i.e. the plot shows the points a ratio is defined for.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
-        fig, axes, kinds = self._panels()
-
-        for ax, kind in zip(axes, kinds, strict=True):
+        chart, kinds = self._panels("Bland-Altman")
+        order = self._legend_order(points)
+        boxes: list[tuple[ChartPlot, str]] = []
+        for column, kind in enumerate(kinds):
             of_kind = {
                 pset.sid: self._of_kind(points[pset.sid], kind)
                 for pset in self.parameter_sets
             }
-            self._draw_bland_altman(
-                ax,
-                of_kind,
-                label_band=ax is axes[-1],
-                own_agreement=kind == MappingKind.VALIDATION.value,
-            )
-            ax.set_title(
-                self._panel_title(
+            own_agreement = kind == MappingKind.VALIDATION.value
+            x, y = self._altman_axes(of_kind, own_agreement, y_label=column == 0)
+            plot = chart.plot(
+                0,
+                column,
+                x=x,
+                y=y,
+                title=self._panel_title(
                     kind, [points[pset.sid] for pset in self.parameter_sets]
-                )
+                ),
+                legend_order=order,
             )
-            self._add_metrics_box(ax, self._panel_text(of_kind, "bland_altman"))
-
-        axes[0].set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
-        self._set_figure_legend(fig, axes)
-        if self.show_titles:
-            fig.suptitle("Bland-Altman")
-        self._save_mpl_figure(fig=fig, path=path)
+            self._draw_bland_altman(
+                plot,
+                of_kind,
+                label_band=column == len(kinds) - 1,
+                own_agreement=own_agreement,
+            )
+            boxes.append((plot, self._panel_text(of_kind, "bland_altman")))
+        self._metrics_boxes(chart, boxes)
+        self._save_chart(chart, path)
+        return chart
 
     def plot_grouping(self, grouping: Grouping, plots_dir: Path) -> None:
         """Plot the figures of a grouping of the data points.
@@ -3638,92 +3776,115 @@ class FitReport:
             sid: grouping.groups(df, self._fit_mapping) for sid, df in points.items()
         }
         labels = [label for label, _ in groups[self.reference_set.sid]]
-        kinds = self.point_kinds()
+        order = self._legend_order(points)
         limits = self._log_limits(
             *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
         )
-        height = 5.5
         pages = [
             list(range(start, min(start + MAX_GROUP_ROWS, len(labels))))
             for start in range(0, max(len(labels), 1), MAX_GROUP_ROWS)
         ]
         for plot in ("goodness_of_fit", "bland_altman"):
+            title = "Goodness of fit" if plot == "goodness_of_fit" else "Bland-Altman"
             for number, rows in enumerate(pages, start=1):
-                fig = Figure(
-                    figsize=(
-                        height * len(kinds) + LEGEND_WIDTH,
-                        height * max(len(rows), 1),
-                    ),
-                    layout="constrained",
+                page = f", {number} of {len(pages)}" if len(pages) > 1 else ""
+                chart, kinds = self._panels(
+                    f"{title} by {grouping.name}{page}", rows=max(len(rows), 1)
                 )
-                axes = fig.subplots(
-                    nrows=max(len(rows), 1), ncols=len(kinds), squeeze=False
-                )
-                flat = [ax for row in axes for ax in row]
+                boxes: list[tuple[ChartPlot, str]] = []
                 for r, g in enumerate(rows):
-                    for c, kind in enumerate(kinds):
-                        self._draw_group_panel(
-                            axes[r][c], plot, labels[g], kind, groups, g, limits
+                    # the last panel of the row with points labels the band
+                    drawn_kinds = [
+                        kind
+                        for kind in kinds
+                        if any(
+                            not self._of_kind(groups[sid][g][1], kind).empty
+                            for sid in groups
                         )
-                for row in axes:
-                    row[0].set_ylabel(
-                        "Prediction $f(x_{i,k})$"
-                        if plot == "goodness_of_fit"
-                        else "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$",
-                        fontweight="bold",
-                    )
-                self._set_figure_legend(fig, flat)
-                if self.show_titles:
-                    title = (
-                        "Goodness of fit"
-                        if plot == "goodness_of_fit"
-                        else "Bland-Altman"
-                    )
-                    page = f", {number} of {len(pages)}" if len(pages) > 1 else ""
-                    fig.suptitle(f"{title} by {grouping.name}{page}")
-                self._save_mpl_figure(
-                    fig=fig,
-                    path=plots_dir
+                    ]
+                    for c, kind in enumerate(kinds):
+                        drawn = self._draw_group_panel(
+                            chart,
+                            r,
+                            c,
+                            plot,
+                            labels[g],
+                            kind,
+                            groups,
+                            g,
+                            limits,
+                            order,
+                            label_band=bool(drawn_kinds) and kind == drawn_kinds[-1],
+                        )
+                        if drawn is not None:
+                            boxes.append(drawn)
+                self._metrics_boxes(chart, boxes)
+                self._save_chart(
+                    chart,
+                    plots_dir
                     / f"{grouping_page(plot, grouping.name, number)}.{self.image_format}",
                 )
         self._plot_criteria(grouping, plots_dir)
 
     def _draw_group_panel(
         self,
-        ax: Axes,
+        chart: Chart,
+        row: int,
+        column: int,
         plot: str,
         label: str,
         kind: str,
         groups: Mapping[str, list[tuple[str, pd.DataFrame]]],
         g: int,
         limits: tuple[float, float],
-    ) -> None:
+        order: Sequence[str],
+        label_band: bool,
+    ) -> tuple[ChartPlot, str] | None:
         """Draw the panel of a group and a kind of a figure of a grouping.
 
-        A panel without points says so. Every drawn panel labels the band, the
-        legend has an entry once; the last panel may have no points.
+        A panel without points says so. The last panel of a row with points
+        labels the band, so the renderer lists the lines after the points of
+        every panel of the row in the legend of the row.
+
+        Args:
+            chart: the figure.
+            row: the row of the panel.
+            column: the column of the panel.
+            plot: `goodness_of_fit` or `bland_altman`.
+            label: the label of the group.
+            kind: the kind of the column.
+            groups: the groups of every parameter set.
+            g: the index of the group.
+            limits: the limits of the axes of the goodness of fit.
+            order: the legend groups of the points of the figure.
+            label_band: label the band and the lines.
+
+        Returns:
+            The panel and the text of its box of metrics, `None` for a panel
+            without points.
         """
         of_panel = {sid: self._of_kind(groups[sid][g][1], kind) for sid in groups}
-        ax.set_title(f"{label}: " + self._panel_title(kind, list(of_panel.values())))
+        title = f"{label}: " + self._panel_title(kind, list(of_panel.values()))
         if all(df.empty for df in of_panel.values()):
-            ax.text(
-                0.5, 0.5, "no data", transform=ax.transAxes, ha="center", va="center"
-            )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            return
+            empty = ChartAxis(min=0.0, max=1.0, ticks_visible=False)
+            panel = chart.plot(row, column, x=empty, y=empty, title=title)
+            panel.text(0.5, 0.5, "no data", anchor="middle", color="#000000")
+            return None
+        own_agreement = kind != MappingKind.OUTLIER.value
         if plot == "goodness_of_fit":
-            self._draw_goodness_of_fit(ax, of_panel, limits, label_band=True)
+            x, y = self._goodness_axes(limits, y_label=column == 0)
+        else:
+            x, y = self._altman_axes(of_panel, own_agreement, y_label=column == 0)
+        panel = chart.plot(row, column, x=x, y=y, title=title, legend_order=order)
+        if plot == "goodness_of_fit":
+            self._draw_goodness_of_fit(panel, of_panel, limits, label_band=label_band)
         else:
             self._draw_bland_altman(
-                ax,
-                of_panel,
-                label_band=True,
-                own_agreement=kind != MappingKind.OUTLIER.value,
+                panel, of_panel, label_band=label_band, own_agreement=own_agreement
             )
-        self._add_metrics_box(ax, self._panel_text(of_panel, plot))
+        return panel, self._panel_text(of_panel, plot)
 
-    def _plot_criteria(self, grouping: Grouping, plots_dir: Path) -> None:
+    def _plot_criteria(self, grouping: Grouping, plots_dir: Path) -> Chart:
         """Plot the criteria of the groups of a grouping, see `plot_grouping`."""
         points = self.points(self.reference_set)
         metrics = group_metrics(points, grouping, self._fit_mapping)
@@ -3731,17 +3892,28 @@ class FitReport:
         labels = [label for label, _ in grouping.groups(points, self._fit_mapping)]
         kinds = [kind for kind in self.point_kinds() if kind in set(metrics.kind)]
         criteria = (("within_2fold", "2-fold"), ("within_2sd", "2 SD"))
-        fig = Figure(
-            figsize=(
-                5.0 * len(criteria) + LEGEND_WIDTH,
-                1.0 + 0.5 * len(labels) * max(len(kinds), 1),
-            ),
-            layout="constrained",
+        chart = Chart(
+            360.0 * len(criteria),
+            72.0 + 36.0 * len(labels) * max(len(kinds), 1),
+            title=f"Criteria by {grouping.name}" if self.show_titles else None,
+            columns=len(criteria),
+            legend_scope="row",
+            legend_position="outside",
         )
-        axes = fig.subplots(nrows=1, ncols=len(criteria), squeeze=False, sharey=True)[0]
         width = 0.8 / max(len(kinds), 1)
         y = np.arange(len(labels))
-        for ax, (column, name) in zip(axes, criteria, strict=True):
+        for column_index, (column, name) in enumerate(criteria):
+            plot = chart.plot(
+                0,
+                column_index,
+                x=ChartAxis(label=f"within {name} [%]", min=0.0, max=110.0, grid=True),
+                y=ChartAxis(
+                    scale="category",
+                    categories=labels,
+                    reverse=True,
+                    ticks_visible=column_index == 0,
+                ),
+            )
             for j, kind in enumerate(kinds):
                 of_kind = metrics[metrics.kind == kind].set_index("group")
                 values = np.array(
@@ -3753,12 +3925,14 @@ class FitReport:
                     ]
                 )
                 positions = y + (j - (len(kinds) - 1) / 2) * width
-                ax.barh(
+                plot.bar(
                     positions,
                     np.nan_to_num(values),
-                    height=width,
-                    color=KIND_COLORS.get(kind, "gray"),
+                    horizontal=True,
+                    bar_width=width,
+                    color=normalize_color(KIND_COLORS.get(kind, "gray")),
                     label=kind,
+                    legend=kind,
                 )
                 # the value at every bar, `-` where the criterion applies to no
                 # point, so that 0% and no value read differently
@@ -3767,88 +3941,109 @@ class FitReport:
                 ):
                     if label not in of_kind.index:
                         continue
-                    ax.text(
+                    plot.text(
                         (value if np.isfinite(value) else 0.0) + 1.0,
                         position,
                         f"{value:.0f}%" if np.isfinite(value) else "-",
-                        va="center",
-                        fontsize="small",
+                        color="#000000",
                     )
             for position, label in zip(y, labels, strict=True):
                 if label not in set(metrics.group):
-                    ax.text(1.0, position, "no data", va="center", fontsize="small")
-            ax.set_yticks(y, labels)
-            ax.set_ylim(len(labels) - 0.5, -0.5)
-            ax.set_xlim(0.0, 110.0)
-            ax.set_xticks(np.arange(0, 101, 20))
-            ax.set_xlabel(f"within {name} [%]", fontweight="bold")
-            ax.grid(axis="x")
-        self._set_figure_legend(fig, list(axes))
-        if self.show_titles:
-            fig.suptitle(f"Criteria by {grouping.name}")
-        self._save_mpl_figure(
-            fig=fig,
-            path=plots_dir / f"criteria_{grouping.name}.{self.image_format}",
+                    plot.text(1.0, position, "no data", color="#000000")
+        self._save_chart(
+            chart, plots_dir / f"criteria_{grouping.name}.{self.image_format}"
         )
+        return chart
 
-    def plot_cost_bar(self, path: Path) -> None:
+    def _row_labels(self) -> list[str]:
+        """Get the labels of the rows of the figures with a row per fit mapping."""
+        return [
+            f"{experiment}|{mapping}"
+            for experiment, mapping in zip(
+                self.problem.experiment_keys, self.problem.mapping_keys, strict=True
+            )
+        ]
+
+    def plot_cost_bar(self, path: Path) -> Chart:
         """Plot the cost and the weight of every curve, per set.
 
         A curve is a row, in the order of the fit mappings from the top; the
         figure grows with the number of curves and the length of their labels,
         so that every label is readable, e.g. the 164 curves of a large fit.
+        The weights of the curves do not depend on the parameters, they are
+        the weights of the reference set.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
         """
         costs = {pset.sid: self._cost_df(pset) for pset in self.parameter_sets}
         costs_ref = costs[self.reference_set.sid]
-
+        labels = self._row_labels()
         n_sets = len(self.parameter_sets)
         height = 0.8 / n_sets
-        position = np.arange(len(costs_ref))
-        ticklabels = [
-            f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
-            for k in range(len(costs_ref))
-        ]
-        fig = Figure(
-            figsize=self._rows_size(ticklabels, width=8.0, panels=5.0),
-            layout="constrained",
+        position = np.arange(len(labels))
+        chart = Chart(
+            *self._rows_size(labels, width=576.0, panels=360.0),
+            title="Curve costs and weights" if self.show_titles else None,
+            columns=3,
+            wspace=0.1,
+            fonts={"tick": ROW_FONT},
+            legend_scope="row",
+            legend_position="outside",
         )
-        ax1, ax2 = fig.subplots(
-            nrows=1, ncols=2, sharey=True, gridspec_kw={"width_ratios": [2, 1]}
+        all_costs = np.concatenate(
+            [np.asarray(df.cost, dtype=float) for df in costs.values()]
         )
-        if self.show_titles:
-            fig.suptitle("Curve costs and weights")
-
-        for ks, pset in enumerate(self.parameter_sets):
-            ax1.barh(
-                position + ks * height,
-                costs[pset.sid].cost,
-                height=height,
-                color=self.color(pset),
-                alpha=0.8,
-                label=pset.sid,
-            )
-
-        ax1.set_yticks(position + 0.4 - height / 2)
-        ax1.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
-        # the first fit mapping at the top, as in the table of the mappings
-        ax1.set_ylim(len(ticklabels) - 0.5, -0.5)
-        ax1.grid(True, axis="x")
-        ax1.set_xlabel("Cost")
-        self._set_log_scale(ax1, "x")
-        if ax1.get_xscale() == "linear":
+        log = self._has_positive(all_costs)
+        finite = all_costs[np.isfinite(all_costs)]
+        cost_axis = (
+            ChartAxis(label="Cost", scale="log", grid=True)
+            if log
             # a cost is not negative, e.g. the zero cost of a perfect fit
-            ax1.set_xlim(left=0.0, right=max(float(ax1.dataLim.x1), 1.0) * 1.05)
-        # above the panels, a legend inside would cover the bars of the curves
-        handles, labels = ax1.get_legend_handles_labels()
-        fig.legend(handles, labels, loc="outside upper center", ncols=min(n_sets, 3))
-
-        # the weights of the curves do not depend on the parameters
-        ax2.barh(position, costs_ref.weight_curve, color="tab:blue", alpha=0.8)
-        ax2.tick_params(axis="y", labelleft=False)
-        ax2.grid(True, axis="x")
-        ax2.set_xlabel("Weight curve: $w_{k}$")
-
-        self._save_mpl_figure(fig=fig, path=path)
+            else ChartAxis(
+                label="Cost",
+                min=0.0,
+                max=max(float(finite.max()) if finite.size else 0.0, 1.0) * 1.05,
+                grid=True,
+            )
+        )
+        rows = ChartAxis(scale="category", categories=labels, reverse=True)
+        plot_cost = chart.plot(0, 0, column_span=2, x=cost_axis, y=rows)
+        for ks, pset in enumerate(self.parameter_sets):
+            cost = np.asarray(costs[pset.sid].cost, dtype=float)
+            if log:
+                cost = np.where(cost > 0.0, cost, np.nan)
+            plot_cost.bar(
+                position + (ks - (n_sets - 1) / 2) * height,
+                cost,
+                horizontal=True,
+                bar_width=height,
+                color=self.color(pset),
+                fill_opacity=0.8,
+                label=pset.sid,
+                legend=pset.sid,
+            )
+        plot_weight = chart.plot(
+            0,
+            2,
+            x=ChartAxis(label="Weight curve w_k", grid=True),
+            y=ChartAxis(
+                scale="category", categories=labels, reverse=True, ticks_visible=False
+            ),
+            legend=False,
+        )
+        plot_weight.bar(
+            position,
+            np.asarray(costs_ref.weight_curve, dtype=float),
+            horizontal=True,
+            color=normalize_color("tab:blue"),
+            fill_opacity=0.8,
+        )
+        self._save_chart(chart, path)
+        return chart
 
     @staticmethod
     def _rows_size(
@@ -3857,124 +4052,145 @@ class FitReport:
         """Get the size of a figure with a row per curve and its label.
 
         The figure grows with the number of curves and the length of their
-        labels of 8 points, so that every label is readable, e.g. the 164
-        curves of a large fit.
+        labels of `ROW_FONT` points, so that every label is readable, e.g.
+        the 164 curves of a large fit.
 
         Args:
             labels: the labels of the rows.
-            width: the smallest width in inches, the height is at least 6.
-            panels: the width in inches of the panels next to the labels.
+            width: the smallest width in pixels, the height is at least 432.
+            panels: the width in pixels of the panels next to the labels.
 
         Returns:
-            The width and the height in inches.
+            The width and the height in pixels.
         """
         longest = max((len(label) for label in labels), default=0)
         return (
             max(width, panels + ROW_LABEL_CHAR * longest),
-            max(6.0, 1.5 + ROW_HEIGHT * len(labels)),
+            max(432.0, 108.0 + ROW_HEIGHT * len(labels)),
         )
 
-    def plot_residual_boxplot(self, path: Path) -> None:
+    def plot_residual_boxplot(self, path: Path) -> Chart:
         """Plot the distribution of the squared weighted residuals per curve.
 
         A curve is a row, in the order of the fit mappings from the top.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
         """
-        costs_ref = self._cost_df(self.reference_set)
-
-        n_mappings = len(self.problem.mapping_keys)
-        ticklabels = [
-            f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
-            for k in range(len(costs_ref))
-        ]
-        fig, ax = self._create_mpl_figure(
-            *self._rows_size(ticklabels, width=6.0, panels=3.5)
-        )
-        if self.show_titles:
-            ax.set_title("Residual contribution")
-
+        labels = self._row_labels()
         n_sets = len(self.parameter_sets)
+        residuals = {
+            pset.sid: [
+                np.power(np.asarray(values, dtype=float), 2)
+                for values in self.residual_data(pset)["residuals_weighted"]
+            ]
+            for pset in self.parameter_sets
+        }
+        log = self._has_positive(*(r for rs in residuals.values() for r in rs))
+        chart = Chart(
+            *self._rows_size(labels, width=432.0, panels=252.0),
+            title="Residual contribution" if self.show_titles else None,
+            fonts={"tick": ROW_FONT},
+            legend_position="outside",
+        )
+        plot = chart.plot(
+            x=ChartAxis(
+                label="Weighted residuals² (w_k · w_ik · (f(x_ik) - y_ik))²",
+                scale="log" if log else "linear",
+                grid=True,
+            ),
+            y=ChartAxis(scale="category", categories=labels, reverse=True),
+        )
         for ks, pset in enumerate(self.parameter_sets):
-            res_data = self.residual_data(pset)
             offset = (ks - (n_sets - 1) / 2) * 0.25
-            for k in range(n_mappings):
-                res_weighted2 = np.power(res_data["residuals_weighted"][k], 2)
-                ax.plot(
-                    res_weighted2,
-                    (k + 1 + offset) * np.ones_like(res_weighted2),
-                    linestyle="",
-                    marker="s",
-                    markeredgecolor="black",
-                    color=self.color(pset),
-                    markersize=3,
-                    label=pset.sid if k == 0 else None,
-                )
+            x = np.concatenate(residuals[pset.sid]) if residuals[pset.sid] else []
+            y = np.concatenate(
+                [
+                    np.full(len(values), k + offset)
+                    for k, values in enumerate(residuals[pset.sid])
+                ]
+            )
+            if log:
+                x = np.where(np.asarray(x) > 0.0, x, np.nan)
+            plot.curve(
+                x,
+                y,
+                line="none",
+                marker="square",
+                size=4,
+                marker_edge="#000000",
+                marker_edge_width=0.5,
+                color=self.color(pset),
+                label=pset.sid,
+                legend=pset.sid,
+            )
+        self._save_chart(chart, path)
+        return chart
 
-        ax.set_yticks(list(range(1, n_mappings + 1)))
-        ax.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
-        ax.set_ylim(n_mappings + 0.5, 0.5)
-        ax.grid(True, axis="x")
-        ax.set_xlabel(
-            "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
-        )
-        self._set_log_scale(ax, "x")
-        # above the panel as in the figure of the costs, a legend inside would
-        # cover the residuals of the curves
-        handles, labels = ax.get_legend_handles_labels()
-        unique = dict(zip(labels, handles, strict=True))
-        fig.legend(
-            list(unique.values()),
-            list(unique),
-            loc="outside upper center",
-            ncols=min(n_sets, 3),
-        )
-        self._save_mpl_figure(fig=fig, path=path)
+    def plot_cost_scatter(self, path: Path) -> Chart:
+        """Plot the cost of every curve against the cost of the reference set.
 
-    def plot_cost_scatter(self, path: Path) -> None:
-        """Plot the cost of every curve against the cost of the reference set."""
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
+        """
         reference = self.reference_set
         costs_ref: pd.DataFrame = self._cost_df(reference)
-
-        fig, ax = self._create_mpl_figure()
         other_sets = list(self.parameter_sets)[1:]
         all_costs = [costs_ref.cost, *[self._cost_df(p).cost for p in other_sets]]
         min_cost, max_cost = self._log_limits(*all_costs, factor=2.0)
-
-        ax.plot([min_cost, max_cost], [min_cost, max_cost], "--", color="black")
-        if self.show_titles:
-            ax.set_title(f"Cost against '{reference.sid}'")
-
+        chart = Chart(
+            400.0,
+            400.0,
+            title=f"Cost against '{reference.sid}'" if self.show_titles else None,
+        )
+        plot = chart.plot(
+            x=ChartAxis(
+                label=f"Cost '{reference.sid}'",
+                scale="log",
+                min=min_cost,
+                max=max_cost,
+                grid=True,
+            ),
+            y=ChartAxis(
+                label="Cost", scale="log", min=min_cost, max=max_cost, grid=True
+            ),
+        )
+        plot.curve(
+            [min_cost, max_cost],
+            [min_cost, max_cost],
+            line="dashed",
+            width=1.5,
+            color="#000000",
+            label="no change",
+            legend="no change",
+        )
+        x_ref = np.asarray(costs_ref.cost, dtype=float)
         for pset in other_sets:
-            costs_x = self._cost_df(pset)
-            ax.plot(
-                costs_ref.cost,
-                costs_x.cost,
-                linestyle="",
-                marker="o",
+            costs_x = np.asarray(self._cost_df(pset).cost, dtype=float)
+            plot.curve(
+                x_ref,
+                costs_x,
+                line="none",
+                marker="circle",
+                size=10,
+                opacity=0.8,
                 color=self.color(pset),
-                markersize=10,
-                alpha=0.8,
                 label=pset.sid,
+                legend=pset.sid,
             )
             for k, exp_key in enumerate(self.problem.experiment_keys):
-                ax.annotate(
-                    exp_key,
-                    xy=(costs_ref.cost[k], costs_x.cost[k]),
-                    fontsize="x-small",
-                    alpha=0.7,
-                )
-
-        ax.set_xlabel(f"Cost '{reference.sid}'")
-        ax.set_ylabel("Cost")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.grid()
-
-        legend_elements = [
-            Line2D([0], [0], linestyle="--", color="black", label="no change"),
-        ]
-        handles, _labels = ax.get_legend_handles_labels()
-        ax.legend(handles=[*handles, *legend_elements])
-        self._save_mpl_figure(fig=fig, path=path)
+                if x_ref[k] > 0 and costs_x[k] > 0:
+                    plot.text(
+                        x_ref[k], costs_x[k], exp_key, color="#000000", opacity=0.7
+                    )
+        self._save_chart(chart, path)
+        return chart
 
     # --------------------------------------------------------------------
     # the optimization runs
@@ -3993,47 +4209,74 @@ class FitReport:
             )
         return self.opt_result
 
-    def plot_waterfall(self, path: Path) -> None:
+    def plot_waterfall(self, path: Path) -> Chart:
         """Create waterfall plot for the fit results.
 
         Plots the optimization runs sorted by cost.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
         """
         optres = self.opt_result_required
-        fig, ax = self._create_mpl_figure()
-        if self.show_titles:
-            ax.set_title("Waterfall plot")
-        ax.plot(
-            range(optres.size),
-            1 + (optres.df_fits.cost.values - optres.df_fits.cost.values[0]),
-            "-o",
-            color="black",
+        chart = Chart(400.0, 400.0)
+        plot = chart.plot(
+            title="Waterfall plot" if self.show_titles else None,
+            x=ChartAxis(label="Index (ordered optimizer run)"),
+            y=ChartAxis(
+                label="Offset cost value (relative to best start)", scale="log"
+            ),
+            legend=False,
         )
-        ax.set_xlabel("Index (ordered optimizer run)")
-        ax.set_ylabel("Offset cost value (relative to best start)")
-        ax.set_yscale("log")
-        self._save_mpl_figure(fig, path=path)
+        costs = np.asarray(optres.df_fits.cost.values, dtype=float)
+        plot.curve(
+            np.arange(optres.size),
+            1 + (costs - costs[0]),
+            marker="circle",
+            width=1.5,
+            color="#000000",
+        )
+        self._save_chart(chart, path)
+        return chart
 
-    def plot_traces(self, path: Path) -> None:
+    def plot_traces(self, path: Path) -> Chart:
         """Plot optimization traces.
 
-        Optimization time course of costs.
+        Optimization time course of costs, the final cost of every run as a
+        black point.
+
+        Args:
+            path: the file of the figure, see `_save_chart`.
+
+        Returns:
+            The figure.
         """
         optres = self.opt_result_required
-        fig, ax = self._create_mpl_figure()
-        if self.show_titles:
-            ax.set_title("Optimization traces")
-        for run in range(optres.size):
-            df_run = optres.df_traces[optres.df_traces.run == run]
-            if len(df_run) == 0:
-                continue
-            ax.plot(range(len(df_run)), df_run.cost.values, "-", alpha=0.8)
-            # final cost of the trace
-            ax.plot(
-                len(df_run) - 1, df_run.cost.values[-1], "o", color="black", alpha=0.8
+        traces = [
+            np.asarray(optres.df_traces[optres.df_traces.run == run].cost, dtype=float)
+            for run in range(optres.size)
+        ]
+        traces = [trace for trace in traces if trace.size]
+        log = self._has_positive(*traces)
+        chart = Chart(400.0, 400.0)
+        plot = chart.plot(
+            title="Optimization traces" if self.show_titles else None,
+            x=ChartAxis(label="Optimization step"),
+            y=ChartAxis(label="Cost", scale="log" if log else "linear"),
+            legend=False,
+        )
+        for trace in traces:
+            shown = np.where(trace > 0.0, trace, np.nan) if log else trace
+            plot.curve(np.arange(trace.size), shown, width=1.5, opacity=0.8)
+            plot.curve(
+                [trace.size - 1],
+                [shown[-1]],
+                line="none",
+                marker="circle",
+                color="#000000",
+                opacity=0.8,
             )
-
-        ax.set_xlabel("Optimization step")
-        ax.set_ylabel("Cost")
-        self._set_log_scale(ax, "y")
-
-        self._save_mpl_figure(fig, path=path)
+        self._save_chart(chart, path)
+        return chart

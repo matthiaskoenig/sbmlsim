@@ -70,6 +70,7 @@ nav = [
       { "engine" = "api/engine.md" },
       { "sbml_math" = "api/sbml_math.md" },
       { "serialization" = "api/serialization.md" },
+      { "figure_formats" = "api/figure_formats.md" },
       { "utils" = "api/utils.md" },
       { "parallel" = "api/parallel.md" },
       { "project" = "api/project.md" },
@@ -142,7 +143,6 @@ nav = [
       { "plotting" = "api/plot.plotting.md" },
       { "axes" = "api/plot.axes.md" },
       { "points" = "api/plot.points.md" },
-      { "serialization_matplotlib" = "api/plot.serialization_matplotlib.md" },
     ] },
     { "sbmlsim.report" = [
       { "experiment_report" = "api/report.experiment_report.md" },

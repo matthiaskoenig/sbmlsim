@@ -9,6 +9,8 @@ project decays with half the rate, 0.1/min.
 import dataclasses
 import logging
 import math
+import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -16,9 +18,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.figure import Figure
 
 from sbmlsim.domains import Domain
+from sbmlsim.plot.chart import Chart
 from sbmlsim.project import Project, SimulatorSettings
 from sbmlsim.sensitivity import SensitivityResult, indices, plots
 from sbmlsim.sensitivity import runner as module
@@ -118,8 +120,10 @@ def test_local_writes_one_table_and_heatmap_per_group(tmp_path: Path) -> None:
     assert (path / "parameters.tex").is_file()
     assert sorted(p.name for p in (path / "local").iterdir()) == [
         "local_d0.01_nvar3_00_control.png",
+        "local_d0.01_nvar3_00_control.svg",
         "local_d0.01_nvar3_00_control.tsv",
         "local_d0.01_nvar3_01_large.png",
+        "local_d0.01_nvar3_01_large.svg",
         "local_d0.01_nvar3_01_large.tsv",
     ]
 
@@ -709,7 +713,9 @@ def test_sampling_writes_the_tables_and_figures_of_sbmlsim_085(tmp_path: Path) -
         "sampling_N8.tsv",
         "sampling_N8_compact.tsv",
         "sampling_N8_sensitivity_outputs.png",
+        "sampling_N8_sensitivity_outputs.svg",
         "sampling_N8_sensitivity_samples.png",
+        "sampling_N8_sensitivity_samples.svg",
     ]
     df = pd.read_csv(folder / "sampling_N8.tsv", sep="\t", keep_default_na=False)
     assert list(df.columns) == [
@@ -778,11 +784,11 @@ def test_a_global_analysis_writes_the_figures_of_sbmlsim_085(
     path = runner(tmp_path).run([name], workers=1)
     folder = path / name
     uids = ["A_auc", "A_thalf", "[A]_min"]
-    expected = [f"{prefix}_sensitivity_00_control_{key}.png" for key in ["S1", "ST"]]
-    expected += [
-        f"{prefix}_sensitivity_00_control_{ko:03}_{uid}.png"
-        for ko, uid in enumerate(uids)
+    stems = [f"{prefix}_sensitivity_00_control_{key}" for key in ["S1", "ST"]]
+    stems += [
+        f"{prefix}_sensitivity_00_control_{ko:03}_{uid}" for ko, uid in enumerate(uids)
     ]
+    expected = [f"{stem}{suffix}" for stem in stems for suffix in (".png", ".svg")]
     assert sorted(p.name for p in folder.iterdir() if p.is_file()) == sorted(expected)
 
 
@@ -791,16 +797,22 @@ def test_the_heatmaps_of_sbmlsim_085_are_labelled_with_the_names(
 ) -> None:
     calls: dict[str, tuple[list[str], list[str], dict[str, object]]] = {}
     plot_heatmap = plots.plot_heatmap
+    save = module._save
 
-    def recorded(result: SensitivityResult, index: str, **kwargs: Any) -> Figure:
-        calls[Path(str(kwargs["path"])).name] = (
-            result.parameters,
-            result.observables,
-            kwargs,
-        )
-        return plot_heatmap(result, index, **kwargs)
+    heatmaps: dict[int, tuple[list[str], list[str], dict[str, object]]] = {}
+
+    def recorded(result: SensitivityResult, index: str, **kwargs: Any) -> Chart:
+        chart = plot_heatmap(result, index, **kwargs)
+        heatmaps[id(chart)] = (result.parameters, result.observables, kwargs)
+        return chart
+
+    def saved(chart: Chart, path: Path) -> None:
+        if id(chart) in heatmaps:
+            calls[path.name] = heatmaps[id(chart)]
+        save(chart, path)
 
     monkeypatch.setattr(plots, "plot_heatmap", recorded)
+    monkeypatch.setattr(module, "_save", saved)
     analyses = {
         "local": LocalAnalysis(groups=[CONTROL]),
         "fast": FastAnalysis(groups=[CONTROL], n=65),
@@ -896,13 +908,15 @@ def test_an_undefined_or_negative_index_is_classified(tmp_path: Path) -> None:
     assert df.loc["A_negative", "U"] == pytest.approx(-df.loc["A_thalf", "U"])
 
 
-@pytest.mark.usefixtures("no_pyplot")
 @pytest.mark.parametrize("name", ["local", "sampling", "fast", "sobol"])
-def test_the_figures_of_an_analysis_do_not_use_pyplot(
+def test_the_figures_of_an_analysis_are_written_as_png_and_svg(
     tmp_path: Path, name: str
 ) -> None:
     path = runner(tmp_path).run([name], workers=1)
     assert list((path / name).glob("*.png"))
+    assert sorted(p.stem for p in (path / name).glob("*.png")) == sorted(
+        p.stem for p in (path / name).glob("*.svg")
+    )
 
 
 def test_an_undefined_value_has_no_class_and_an_infinite_one_the_highest() -> None:
@@ -1261,3 +1275,65 @@ def test_the_statistics_skip_nan_values(
     assert df.loc["A_end", "max"] == pytest.approx(np.max(finite))
     # an output without NaN is not reported
     assert "'A_auc'" not in caplog.text
+
+
+def test_the_figures_import_neither_matplotlib_nor_seaborn(tmp_path: Path) -> None:
+    """The figures of every analysis, the plots and the comparison are charts."""
+    script = f"""
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+from sbmlsim.comparison.diff import DataSetsComparison
+from sbmlsim.sensitivity.uncertainty import plot_bands, plot_distribution
+from sbmlsim.simulation import Formula, Scan, Simulation
+from sbmlsim.simulation.sampling import LogNormal, random
+from sbmlsim.simulator import Simulator
+from tests.sensitivity.test_runner import runner
+from tests.simulator.models import sbml
+
+path = runner(Path({str(tmp_path)!r})).run(
+    ["local", "sampling", "fast", "sobol"], workers=1
+)
+draws = random({{"k1": LogNormal(0.8, 0.3)}}, 20, seed=1)
+result = Simulator(n_workers=1).run(
+    sbml(), Scan(Simulation(end=1, steps=4), [draws]), [Formula("rate", "k1"), Formula("k", "max(k1)")]
+)
+plot_bands(result.summary("random", quantiles=[0.05, 0.5, 0.95]), "rate").svg()
+for kind in ("hist", "box", "violin"):
+    plot_distribution(result, "k", dim="random", kind=kind).svg()
+assert list(path.glob("*/*.svg")) and list(path.glob("*/*.png"))
+reference = pd.DataFrame({{"time": [0.0, 1.0], "X": [1.0, 2.0]}})
+comparison = DataSetsComparison({{"a": reference, "b": reference.assign(X=[1.5, 2.5])}})
+comparison.plot_diff().save(Path({str(tmp_path)!r}) / "diff.png")
+print("matplotlib" in sys.modules, "seaborn" in sys.modules)
+"""
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).parents[2],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-3000:]
+    assert done.stdout.strip().splitlines()[-1] == "False False", done.stdout[-2000:]
+
+
+def test_the_figures_of_the_groups_have_bold_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The labels and tick labels of the sampling figures are bold, as in sbmlsim 0.8.5."""
+    saved: list[Chart] = []
+    monkeypatch.setattr(module, "_save", lambda chart, path: saved.append(chart))
+    groups = [
+        SensitivityGroup(uid="a", name="A", simulation=Simulation(end=1.0)),
+        SensitivityGroup(uid="b", name="B", simulation=Simulation(end=1.0)),
+    ]
+    values = [np.array([1.0, 2.0, 3.0]), np.array([2.0, 3.0, 4.0])]
+    module._plot_groups([("auc", values)], groups, tmp_path / "groups.png", seed=1)
+    (chart,) = saved
+    fonts = chart.spec()["fonts"]
+    assert fonts["label_weight"] == fonts["tick_weight"] == "bold"
+    assert fonts["label"] == 13.0
+    chart.svg()

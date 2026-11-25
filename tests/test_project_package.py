@@ -490,9 +490,11 @@ def test_the_figure_outputs() -> None:
         FigureOutputs(formats="svg")
     with pytest.raises(ValidationError, match="figure format"):
         FigureOutputs(formats=())
-    assert FigureOutputs().rc_params() == {}
-    outputs = FigureOutputs(savefig_dpi=17, rc={"font.size": 9})
-    assert outputs.rc_params() == {"font.size": 9, "savefig.dpi": 17}
+    with pytest.raises(ValidationError, match="html is gone"):
+        FigureOutputs(formats=("svg", "html"))
+    with pytest.raises(ValidationError, match="no field 'rc'"):
+        FigureOutputs(savefig_dpi=17, rc={"font.size": 9})
+    assert FigureOutputs(savefig_dpi=17).savefig_dpi == 17
     assert PROJECT.figures.formats == ("svg", "png")
 
 
@@ -633,7 +635,11 @@ def test_run_experiments_writes_into_out(
     assert [r.experiment.sid for r in results] == ["ToyDecay"]
     assert not any(r.failed for r in results)
     figures = {p.name for p in (tmp_path / "results").rglob("*_fig_decay.*")}
-    assert figures == {"ToyDecay_fig_decay.svg", "ToyDecay_fig_decay.png"}
+    assert figures == {
+        "ToyDecay_fig_decay.svg",
+        "ToyDecay_fig_decay.png",
+        "ToyDecay_fig_decay.json",
+    }
     # the static images have the resolution of the project, 30 dpi, and not
     # the 72 dpi of the figure settings
     png = tmp_path / "results" / "ToyDecay" / "ToyDecay_fig_decay.png"
@@ -649,7 +655,7 @@ def test_run_experiments_with_classes_and_formats(tmp_path: Path) -> None:
         ToyDecaySlow, tmp_path, n_workers=1, progress=False, figure_formats=["SVG"]
     )
     assert [r.experiment.sid for r in results] == ["ToyDecaySlow"]
-    assert {p.suffix for p in tmp_path.rglob("*_fig_decay.*")} == {".svg"}
+    assert {p.suffix for p in tmp_path.rglob("*_fig_decay.*")} == {".svg", ".json"}
     with pytest.raises(TypeError, match="names of groups"):
         PROJECT.run_experiments(["ToyDecay", ToyDecaySlow], tmp_path)  # ty: ignore[invalid-argument-type]
 

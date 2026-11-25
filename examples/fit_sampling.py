@@ -2,15 +2,15 @@
 
 The sampling types of `sbmlsim.fit.sampling` are compared on three parameters with
 logarithmic bounds; `START` does not sample and shows the one point every run starts
-from. The figure is written to `fit_sampling.png` in the working directory.
+from. The figure is written to `fit_sampling.svg` in the working directory.
 """
 
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from sbmlsim.console import console
 from sbmlsim.fit import FitParameter
 from sbmlsim.fit.sampling import SamplingType, create_samples
+from sbmlsim.plot import Chart, ChartAxis
 
 PAD = 1.4  # factor between a bound and the edge of a panel, so no marker is cut
 
@@ -26,31 +26,37 @@ def plot_samples(
 
     ncols = 3
     nrows = -(-len(samples) // ncols)
-    fig, axes = plt.subplots(
-        nrows=nrows, ncols=ncols, figsize=(5 * ncols, 5 * nrows), layout="constrained"
-    )
-    for ax in axes.flatten()[len(samples) :]:
-        ax.set_visible(False)
-    for ax, (key, df) in zip(axes.flatten(), samples.items(), strict=False):
-        ax.set_title(key)
-        ax.set_xlabel(p_x.pid)
-        ax.set_ylabel(p_y.pid)
-        ax.plot(
-            df[p_x.pid],
-            df[p_y.pid],
-            markersize=10,
-            alpha=0.9,
-            label=key,
-            linestyle="None",
-            marker="s",
-            color="black",
+    chart = Chart(width=360 * ncols, height=360 * nrows, rows=nrows, columns=ncols)
+    for k, (key, df) in enumerate(samples.items()):
+        plot = chart.plot(
+            k // ncols,
+            k % ncols,
+            title=key,
+            x=ChartAxis(
+                label=p_x.pid,
+                scale="log",
+                min=p_x.lower_bound / PAD,
+                max=p_x.upper_bound * PAD,
+            ),
+            y=ChartAxis(
+                label=p_y.pid,
+                scale="log",
+                min=p_y.lower_bound / PAD,
+                max=p_y.upper_bound * PAD,
+            ),
+            legend=False,
         )
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlim(p_x.lower_bound / PAD, p_x.upper_bound * PAD)
-        ax.set_ylim(p_y.lower_bound / PAD, p_y.upper_bound * PAD)
+        plot.curve(
+            df[p_x.pid].to_numpy(),
+            df[p_y.pid].to_numpy(),
+            line="none",
+            marker="square",
+            size=8,
+            opacity=0.9,
+            color="#000000",
+        )
 
-    fig.savefig(path, bbox_inches="tight")
+    chart.save(path)
 
 
 def run_sampling_example() -> None:
@@ -87,7 +93,7 @@ def run_sampling_example() -> None:
         console.print(df)
         samples[sampling.name] = df
 
-    plot_samples(samples, parameters=parameters, path="fit_sampling.png")
+    plot_samples(samples, parameters=parameters, path="fit_sampling.svg")
 
 
 if __name__ == "__main__":

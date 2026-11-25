@@ -113,10 +113,8 @@ The metrics are computed separately for the training data and the validation dat
 `report.points` is the table behind the figures of the report: one row per data point with its time `x`, the data `DV`, its standard deviation `DV_SD` and the prediction `IPRED`, all in the units of the model, which the columns `x_unit` and `unit` give. To draw the fitted curves against the data, simulate the doses with the fitted values and turn both into quantities:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
@@ -128,8 +126,14 @@ points = report.points(fitted)
 simulator = Simulator()
 model = simulator.load(HCTZ_SBML)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
-for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
+chart = Chart(width=720, height=300, columns=2)
+time_axis = ChartAxis(label="time", unit="hr")
+ax1 = chart.plot(0, 0, x=time_axis, y=ChartAxis(label="HCTZ plasma", unit="µM"))
+ax2 = chart.plot(0, 1, x=time_axis, y=ChartAxis(label="HCTZ urine", unit="µmol"))
+for dose, kind, marker, color in [
+    (25, "training", "circle", "#1f77b4"),
+    (50, "validation", "square", "#ff7f0e"),
+]:
     tablet = Simulation(
         time_unit="hr",
         end=48,
@@ -141,37 +145,46 @@ for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
         (ax2, f"fm_{dose}_tab_urine", "Aurine_hctz", "µmol"),
     ]:
         label = f"{dose} mg ({kind})"
-        (line,) = ax.plot(res.q["time"].to("hr"), res.q[yid].to(unit), label=label)
+        ax.curve(res.q["time"], res.q[yid], label=label, color=color)
         data = points[points.mapping == key]
         time = Q(data.x.to_numpy(), data.x_unit.iloc[0])
         dv = Q(data.DV.to_numpy(), data.unit.iloc[0])
         sd = Q(data.DV_SD.to_numpy(), data.unit.iloc[0])
-        ax.vlines(time, dv - sd, dv + sd, color=line.get_color())
-        ax.plot(time, dv, marker, color=line.get_color())
-label_axes(ax1, "time", "HCTZ plasma")
-label_axes(ax2, "time", "HCTZ urine")
-ax1.legend()
+        ax.curve(time, dv, yerr=sd, line="none", marker=marker, color=color)
 ```
 
-![Output figure](images/outputs/fitting-04.png)
+![Output figure](images/outputs/fitting-04.svg)
 
 The fitted model follows the 25 mg data, although in the urine it rises faster than the data between 12 and 36 hours. For the 50 mg tablet, which the fit has not seen, it predicts about 10 % more HCTZ in the urine than was measured. The goodness of fit plots every prediction against its measurement on logarithmic axes, so plasma and urine fit into one plot. Points on the diagonal are perfect predictions, and the dotted lines mark a factor of two:
 
 ```python
-fig, ax = plt.subplots(figsize=(4.5, 4.5))
 positive = points[(points.DV > 0) & (points.IPRED > 0)]
-for kind, data in positive.groupby("kind"):
-    ax.loglog(data.DV, data.IPRED, "o", alpha=0.7, label=kind)
 limits = [positive[["DV", "IPRED"]].min().min() / 2, positive.DV.max() * 2]
-ax.plot(limits, limits, color="black", linewidth=1)
+chart = Chart(width=420, height=420)
+plot = chart.plot(
+    x=ChartAxis(
+        label="measurement [model units]", scale="log", min=limits[0], max=limits[1]
+    ),
+    y=ChartAxis(
+        label="prediction [model units]", scale="log", min=limits[0], max=limits[1]
+    ),
+)
+for (kind, data), color in zip(positive.groupby("kind"), ["#1f77b4", "#ff7f0e"]):
+    plot.curve(
+        data.DV.to_numpy(),
+        data.IPRED.to_numpy(),
+        line="none",
+        marker="circle",
+        opacity=0.7,
+        color=color,
+        label=kind,
+    )
+plot.curve(limits, limits, color="#000000", width=1)
 for factor in [2, 0.5]:
-    ax.plot(limits, [factor * v for v in limits], ":", color="darkred")
-ax.set(xlabel="measurement [model units]", ylabel="prediction [model units]")
-ax.set(xlim=limits, ylim=limits)
-ax.legend()
+    plot.curve(limits, [factor * v for v in limits], line="dotted", color="#8b0000")
 ```
 
-![Output figure](images/outputs/fitting-05.png)
+![Output figure](images/outputs/fitting-05.svg)
 
 The report draws this figure and a Bland-Altman plot with a panel per kind of data, see [Report of a fit](#report-of-a-fit).
 
@@ -457,9 +470,9 @@ report = FitReport(problem, settings, ParameterSets.from_json(Path("parameters.j
 
 `FitReport.from_optimization_result(problem, fit)` is the shortcut for a finished fit: it takes the settings from the result and adds the figures of the runs. `with_model=True` adds the values of the model as a reference set, so the report shows what the fit changed. `report.create(output_dir, name)` writes a folder with:
 
-- `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data and sortable tables. It works offline and can be archived or sent as it is.
+- `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data, sortable tables and figures whose legend entries toggle their curves and whose points are read out under the pointer (the script `figures.js` beside it). It works offline and can be archived or sent with `figures.js`; without it the figures are static.
 - `report.pdf` with its sources `report.typ` and LaTeX (`report.tex` for `\input` in a manuscript, `report_standalone.tex`), and `references.bib`. Typst compiles the PDF, no LaTeX installation is needed; if it fails, the page says why and everything else is written.
-- the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic.
+- the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic. Every figure is a chart of the renderer of sbmlsim-core, saved as `svg` (or `png` with `image_format="png"`) with its spec as `json` beside it, and `index.html` shows the SVG inline with its spec; the figures of the report document are written as `png` as well, which LaTeX includes, at `create(png_dpi=300)`.
 - `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `fisher.tsv`, `identifiability.json`, `posterior.json`, `posterior.tsv`) where the report has them.
 
 The methods describe only what the fit used: the parameters, the data per kind, the objective (the weighted least squares, or the negative log-likelihood with the noise models of the data and, for the posterior, the priors and their correlation), the optimizer and its options, the identifiability analysis, the posterior and the provenance. The references are those it cites, see [References](references.md).
@@ -468,7 +481,7 @@ The goodness of fit and the Bland-Altman plot have one panel per kind of data, t
 
 `FitReport` takes further options:
 
-- `mapping_figures=False` leaves out the figures of the fit mappings, which are most of the time of a report.
+- `mapping_figures=False` leaves out the figures of the fit mappings, a figure per mapping, which are milliseconds each.
 - `groupings=[Grouping.by("tissue")]` (from `sbmlsim.fit.evaluation`) adds figures and metrics per group of a column of the data points, e.g. a field of the metadata. `Grouping.of_subsets("route", Subset("oral", is_oral), ...)` groups by named filters.
 - `error_bars=True` draws the standard deviations of the data, `color_by="tissue"` colors the points by a column instead of the study.
 - `context=ReportContext(title=..., description=..., parameter_descriptions=...)` (from `sbmlsim.fit.methods`) sets the title of the report and the text about the fit.

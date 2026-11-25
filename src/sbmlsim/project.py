@@ -65,6 +65,7 @@ from pydantic import (
 
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import DEFAULT_ENGINE, Engine, JitOptimization
+from sbmlsim.figure_formats import figure_formats_of
 from sbmlsim.panel import App, Panel
 from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
@@ -472,28 +473,41 @@ class SimulatorSettings(BaseModel):
 class FigureOutputs(BaseModel):
     """The files of the figures of the runs of a project.
 
-    The rendering of a figure (the resolution, the sizes of the panels, the
-    fonts and the legends) is `Project.figure_settings`, the
-    `sbmlsim.plot.FigureSettings` of every figure of a run; these are the
-    formats of the files and the parameters of matplotlib while the figures of
-    a run are drawn.
+    The rendering of a figure (the sizes of the panels, the fonts and the
+    legends) is `Project.figure_settings`, the `sbmlsim.plot.FigureSettings`
+    of every figure of a run; these are the formats of the files, which the
+    renderer of sbmlsim-core draws.
 
     Attributes:
-        formats: the formats of the figures, static images drawn by matplotlib
-            (`svg`, `png`) and interactive pages drawn by plotly (`html`); SVG
-            only by default. Stored in lower case.
-        savefig_dpi: the resolution of the static images, the `savefig.dpi` of
-            matplotlib, `None` keeps the one of matplotlib. An interactive page
-            has 72 pixels per inch.
-        rc: other parameters of matplotlib while the figures are drawn, e.g.
-            `{"font.family": "serif"}`.
+        formats: the formats of the figures, `svg` and `png` (see
+            `sbmlsim.figure_formats.FIGURE_FORMATS`); SVG only by
+            default. The spec of a figure (`json`) is written beside it in any
+            case. Stored in lower case.
+        savefig_dpi: the resolution of every PNG, `None` keeps the `fig_dpi`
+            of the settings of each figure.
     """
 
     model_config = _CONFIG
 
     formats: tuple[str, ...] = ("svg",)
     savefig_dpi: float | None = None
-    rc: dict[str, Any] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_rc(cls, data: Any) -> Any:
+        """Refuse the parameters of matplotlib, which drew the figures before.
+
+        Raises:
+            ValueError: for the field `rc`.
+        """
+        if isinstance(data, Mapping) and "rc" in data:
+            raise ValueError(
+                "FigureOutputs has no field 'rc' any more: the figures are drawn "
+                "by the renderer of sbmlsim-core and not by matplotlib, so its "
+                "parameters do not reach them; set the fonts and sizes with "
+                "Project.figure_settings (sbmlsim.plot.FigureSettings) instead."
+            )
+        return data
 
     @field_validator("formats", mode="before")
     @classmethod
@@ -502,24 +516,15 @@ class FigureOutputs(BaseModel):
 
         Raises:
             TypeError: if the formats are a single string.
-            ValueError: if there is no format.
+            ValueError: if there is no format, or a format is none of
+                `FIGURE_FORMATS`, e.g. `html`.
         """
         if isinstance(formats, Sequence):
             formats = normalize_formats(formats)
             if not formats:
                 raise ValueError("A project needs at least one figure format.")
+            figure_formats_of(formats)
         return formats
-
-    def rc_params(self) -> dict[str, Any]:
-        """Get the parameters of matplotlib while the figures of a run are drawn.
-
-        Returns:
-            `rc` with `savefig.dpi` of `savefig_dpi`.
-        """
-        params = dict(self.rc)
-        if self.savefig_dpi is not None:
-            params["savefig.dpi"] = self.savefig_dpi
-        return params
 
 
 class CheckSettings(BaseModel):
@@ -882,8 +887,7 @@ class Project(BaseModel):
             or a reference is an action without a description.
         simulator: the settings of the simulator of the analyses.
         figure_settings: the settings of the rendering of the figures of a run.
-        figures: the formats of the figures of a run and the parameters of
-            matplotlib while they are drawn.
+        figures: the formats of the figures of a run and their resolution.
         checks: the known exceptions of the checks of the model.
         release: the release metadata, `None` for a project which is not
             released.
@@ -2023,8 +2027,6 @@ class Project(BaseModel):
             ExperimentRunError: with `raise_on_failure`, if an experiment or a
                 figure failed; its `failures` name them.
         """
-        import matplotlib
-
         from sbmlsim import display
         from sbmlsim.experiment import ExperimentRunError
         from sbmlsim.experiment.draws import UncertaintyRun
@@ -2045,27 +2047,26 @@ class Project(BaseModel):
                 }
             )
         output_path = Path(out)
-        rc: dict[Any, Any] = self.figures.rc_params()
-        with matplotlib.rc_context(rc):
-            results = run_experiments(
-                classes,
-                output_path=output_path,
-                base_path=self.base_path or self.root,
-                data_path=self.data_path,
-                show_report=show_report,
-                raise_on_failure=False,
-                figure_settings=self.figure_settings,
-                n_workers=n_workers,
-                progress=progress,
-                simulator=settings.simulator(
-                    n_workers if scan_workers is None else scan_workers
-                ),
-                figure_formats=list(formats),
-                save_results=save_results,
-                reduced_selections=reduced_selections,
-                jit_optimization=settings.jit_optimization,
-                uncertainty=run,
-            )
+        results = run_experiments(
+            classes,
+            output_path=output_path,
+            base_path=self.base_path or self.root,
+            data_path=self.data_path,
+            show_report=show_report,
+            raise_on_failure=False,
+            figure_settings=self.figure_settings,
+            n_workers=n_workers,
+            progress=progress,
+            simulator=settings.simulator(
+                n_workers if scan_workers is None else scan_workers
+            ),
+            figure_formats=list(formats),
+            save_results=save_results,
+            reduced_selections=reduced_selections,
+            jit_optimization=settings.jit_optimization,
+            uncertainty=run,
+            png_dpi=self.figures.savefig_dpi,
+        )
         if collect_figures:
             collect_figure_files(output_path)
         if raise_on_failure and any(result.failed for result in results):

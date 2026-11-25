@@ -3,10 +3,11 @@ Example for handling units in simulations and results.
 """
 
 import numpy as np
-from matplotlib import pyplot as plt
 
 from sbmlsim import Q
 from sbmlsim.console import console
+from sbmlsim.plot import Chart, ChartAxis
+from sbmlsim.plot.colors import CYCLE
 from sbmlsim.resources import DEMO_SBML
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
@@ -43,39 +44,35 @@ def run_demo_example():
     res = Simulator().run(DEMO_SBML, tc_scan)
     console.log(res)
 
-    # create figure
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))
-    fig.subplots_adjust(wspace=0.3, hspace=0.3)
-    axes = (ax1, ax2, ax3, ax4)
-
+    # create the figure, every axis shows the quantities in its own units
+    chart = Chart(width=1200, height=300, columns=4)
     axes_units = [
         {"xunit": "s", "yunit": "mM"},
         {"xunit": "ms", "yunit": "mole/litre"},
         {"xunit": "min", "yunit": "nM"},
         {"xunit": "hr", "yunit": "pmole/cm**3"},
     ]
-
-    ax: plt.Axes
-    for ax, ax_units in dict(zip(axes, axes_units, strict=False)).items():
-        xunit = ax_units["xunit"]
-        yunit = ax_units["yunit"]
-
-        keys = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+    keys = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+    for column, ax_units in enumerate(axes_units):
+        plot = chart.plot(
+            0,
+            column,
+            x=ChartAxis(label="time", unit=ax_units["xunit"]),
+            y=ChartAxis(label="concentration", unit=ax_units["yunit"]),
+        )
         for k, key in enumerate(keys):
-            # the values are (dim1, time), one line per point of the scan
-            lines = ax.plot(
-                res.quantity("time").to(xunit).m,
-                res.quantity(key).to(yunit).m.T,
-                color=f"C{k}",
-            )
-            # the lines of a variable share its color and its entry of the legend
-            lines[0].set_label(f"{key} [{yunit}]")
-        ax.legend()
-        ax.set_xlabel(f"time [{xunit}]")
-        ax.set_ylabel(f"concentration [{yunit}]")
+            # the values are (dim1, time), one line per point of the scan, the
+            # lines of a variable share its color and its entry of the legend
+            for point in range(res.ds.sizes["dim1"]):
+                plot.curve(
+                    res.q["time"],
+                    res.isel(dim1=point).q[key],
+                    color=CYCLE[k],
+                    label=key if point == 0 else None,
+                    legend=key,
+                )
 
-    fig.savefig("units.png", bbox_inches="tight")
-    plt.close(fig)
+    chart.save("units.svg")
 
 
 if __name__ == "__main__":

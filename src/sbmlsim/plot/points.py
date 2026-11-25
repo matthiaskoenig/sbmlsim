@@ -32,19 +32,10 @@ from typing import Any
 
 import numpy as np
 import xarray as xr
-from matplotlib import colormaps
-from matplotlib.colors import (
-    BoundaryNorm,
-    Colormap,
-    LinearSegmentedColormap,
-    ListedColormap,
-    LogNorm,
-    Normalize,
-    to_hex,
-    to_rgb,
-)
 
 from sbmlsim.data import ROW
+from sbmlsim.engine import import_core
+from sbmlsim.plot.colors import normalize_color
 from sbmlsim.plot.padding import without_padding
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.result.timecourse import PLOT_POINTS, plot_times
@@ -65,12 +56,13 @@ COLORMAP = "viridis"
 #: colours and its colour bar follow a logarithmic norm, if all are positive
 LOG_RATIO = 100.0
 
-#: the most tick labels of a discrete colour bar, every k-th label above
-MAX_TICKS = 12
-
 #: the part of the colour map the points use: its light yellow end is hard to
 #: see on white
 _COLORMAP_END = 0.85
+
+#: the most points of a categorical colour bar, a band per point; a dimension
+#: of more points gets a colour bar of their positions
+MAX_BANDS = 256
 
 #: how much white the lightest shade of a colour has
 _LIGHTEST = 0.65
@@ -159,6 +151,11 @@ def curve_lines(
             f"one of them: name {scan} in over= or select one label with "
             f"Data(sel=...)."
         )
+    if not over:
+        # one line: the values as they are, without the copies of `isel`
+        values = [None if a is None else np.asarray(a.values) for a in full]
+        lx, ly, lxerr, lyerr = without_padding(*values)
+        return [Line(point=(), index=(), x=lx, y=ly, xerr=lxerr, yerr=lyerr)]
     ordered = [None if a is None else a.transpose(*over, *axis) for a in full]
     labels = _labels(ordered, over)
     lines: list[Line] = []
@@ -349,31 +346,29 @@ def point_colors(n: int, color: str | None) -> list[str]:
 
     Returns:
         Shades of the colour from light to the colour itself, or colours of the
-        colour map `COLORMAP`, as hex strings; one point keeps the colour.
+        colour scale `COLORMAP` of sbmlsim-core, as hex strings; one point
+        keeps the colour.
+    """
+    if color is not None and n == 1:
+        return [_hex(_rgb(color))]
+    return _ramp(color, np.linspace(0.0, 1.0, n))
+
+
+def _ramp(color: str | None, fractions: np.ndarray) -> list[str]:
+    """Get the colours at fractions of the colour range of the points.
+
+    The range is the shades of a colour from light to the colour or the first
+    `_COLORMAP_END` of the colour scale.
     """
     if color is not None:
-        if n == 1:
-            return [to_hex(color)]
-        return [_shade(color, f) for f in np.linspace(_LIGHTEST, 0.0, n)]
-    return [to_hex(colormaps[COLORMAP](f)) for f in np.linspace(0.0, _COLORMAP_END, n)]
-
-
-def point_colormap(color: str | None) -> Colormap:
-    """Get the colour map of the colour bar of a dimension, see `point_colors`."""
-    if color is not None:
-        return LinearSegmentedColormap.from_list(
-            "shades", [_shade(color, _LIGHTEST), to_hex(color)]
+        return [_shade(color, _LIGHTEST * (1.0 - float(f))) for f in fractions]
+    if fractions.size == 0:
+        return []
+    return list(
+        import_core().color_scale(
+            COLORMAP, 0.0, 1.0, [float(f) * _COLORMAP_END for f in fractions]
         )
-    return ListedColormap(colormaps[COLORMAP](np.linspace(0.0, _COLORMAP_END, 256)))
-
-
-def cycle_color(position: int) -> str:
-    """Get the colour of the colour cycle of matplotlib at a position, as a hex string.
-
-    It is the colour of a band without a colour, by its position among the
-    bands of its plot, in both backends.
-    """
-    return to_hex(f"C{position}")
+    )
 
 
 def point_linestyles(n: int) -> list[str]:
@@ -450,23 +445,28 @@ def point_labels(
     return [f"{target} = {format_value(value)} {unit}".rstrip() for value in values]
 
 
-def point_norm(values: np.ndarray) -> Normalize | None:
-    """Get the norm which maps the values of the points of a dimension onto a colour map.
+def point_scale(values: np.ndarray) -> tuple[float, float, bool] | None:
+    """Get the range which maps the values of the points of a dimension onto colours.
 
     Returns:
-        A logarithmic norm when all values are positive and the largest is
-        more than `LOG_RATIO` times the smallest, else a linear one from the
-        smallest to the largest value; `None` if the values do not span a
+        `(low, high, log)`, logarithmic when all values are positive and the
+        largest is more than `LOG_RATIO` times the smallest, else linear from
+        the smallest to the largest value; `None` if the values do not span a
         range (a single value, equal values or a value which is not finite).
     """
     if values.size == 0 or not np.all(np.isfinite(values)):
         return None
-    vmin, vmax = float(np.min(values)), float(np.max(values))
-    if vmax <= vmin:
+    low, high = float(np.min(values)), float(np.max(values))
+    if high <= low:
         return None
-    if vmin > 0.0 and vmax / vmin > LOG_RATIO:
-        return LogNorm(vmin, vmax)
-    return Normalize(vmin, vmax)
+    return low, high, low > 0.0 and high / low > LOG_RATIO
+
+
+def _fraction(value: float, low: float, high: float, log: bool) -> float:
+    """Get the position of a value in the range, 0 at its low and 1 at its high end."""
+    if log:
+        return math.log(value / low) / math.log(high / low)
+    return (value - low) / (high - low)
 
 
 def format_value(value: float) -> str:
@@ -483,14 +483,6 @@ def label_text(label: Any) -> str:
     if isinstance(label, float):
         return format_value(label)
     return str(label)
-
-
-def tick_positions(n: int) -> list[int]:
-    """Get the positions of the points of a discrete colour bar which get a tick.
-
-    Every point up to `MAX_TICKS` points, else every k-th from the first.
-    """
-    return list(range(0, n, max(1, math.ceil(n / MAX_TICKS))))
 
 
 def _positions(dimension: Dimension, labels: Sequence[Any]) -> list[int] | None:
@@ -511,6 +503,8 @@ def _broadcast(
         ValueError: if two arrays have different coordinates of a dimension.
     """
     given = [a for a in arrays if a is not None]
+    if _aligned(given):
+        return list(arrays), [str(d) for d in given[0].dims]
     try:
         aligned = xr.align(*given, join="exact")
     except ValueError as err:
@@ -522,6 +516,25 @@ def _broadcast(
     full = [None if a is None else next(broadcast) for a in arrays]
     template = next(a for a in full if a is not None)
     return full, [str(d) for d in template.dims]
+
+
+def _aligned(arrays: Sequence[xr.DataArray]) -> bool:
+    """Get whether arrays are broadcast and aligned already.
+
+    Arrays of the same dimensions in the same order and of the same shape,
+    whose indexes of a dimension have the same labels, are what `xr.align`
+    and `xr.broadcast` give back; these two are most of the cost of the
+    lines of a figure, whose curves are mostly of such arrays (a timecourse,
+    the column of a dataset and its errors).
+    """
+    first = arrays[0]
+    if any(a.dims != first.dims or a.shape != first.shape for a in arrays[1:]):
+        return False
+    for d in first.dims:
+        labels = [a.indexes[d] for a in arrays if d in a.indexes]
+        if any(not labels[0].equals(other) for other in labels[1:]):
+            return False
+    return True
 
 
 def _labels(
@@ -537,10 +550,46 @@ def _labels(
     }
 
 
+def _rgb(color: str) -> np.ndarray:
+    """Parse a colour, see `sbmlsim.plot.colors`, as floats of 0 to 1."""
+    hexed = normalize_color(color)
+    if hexed is None:
+        raise ValueError(f"the colour {color!r} is no colour")
+    return np.array([int(hexed[i : i + 2], 16) for i in (1, 3, 5)]) / 255.0
+
+
+def _hex(rgb: np.ndarray) -> str:
+    """Write floats of 0 to 1 as a hex colour."""
+    return "#" + "".join(f"{round(float(c) * 255):02x}" for c in rgb)
+
+
 def _shade(color: str, white: float) -> str:
     """Mix a colour with a part of white, as a hex string."""
-    rgb = np.asarray(to_rgb(color))
-    return to_hex(rgb + (1.0 - rgb) * white)
+    rgb = _rgb(color)
+    return _hex(rgb + (1.0 - rgb) * white)
+
+
+@dataclass(frozen=True)
+class ColorBarScale:
+    """The scale of the colour bar of a dimension.
+
+    Attributes:
+        low: the value at the low end of the colour bar, the smallest value
+            of the points, the position 0 of a categorical one.
+        high: the value at its high end, the largest value of the points, the
+            position `n - 1` of a categorical one.
+        log: whether the scale is logarithmic.
+        labels: the label of every point of a categorical colour bar, empty
+            for a colour bar of values.
+        categorical: whether it has a band per point, at the positions of the
+            points `0..n-1`.
+    """
+
+    low: float
+    high: float
+    log: bool
+    labels: list[str]
+    categorical: bool
 
 
 @dataclass(frozen=True)
@@ -555,11 +604,9 @@ class PointStyle:
         values: the values of the points of the first dimension, their
             positions without a single target.
         title: the label of the colour bar, `<target> [<unit>]` or the dimension.
-        norm: the norm of the colours and the colour bar: linear or logarithmic
-            over the values, a boundary per point over the positions.
-        colormap: the colour map the norm maps onto.
-        ticks: the tick labels of a discrete colour bar (the labels of the
-            points), `None` for a colour bar of values.
+        scale: the scale of the colour bar, `None` for no points.
+        middle: the colour of the middle of the colour range, of the legend
+            entry the lines of a colour bar share.
     """
 
     colors: list[str]
@@ -568,14 +615,44 @@ class PointStyle:
     colorbar: bool
     values: np.ndarray
     title: str
-    norm: Normalize
-    colormap: Colormap
-    ticks: list[str] | None
+    scale: ColorBarScale | None
+    middle: str
 
-    @property
-    def middle(self) -> str:
-        """Get the colour of the middle of the colour map, of the legend entry of a curve."""
-        return to_hex(self.colormap(0.5))
+
+def colorbar_arguments(styles: PointStyle) -> dict[str, Any] | None:
+    """Get the colour bar of points whose colours are of the colour scale `COLORMAP`.
+
+    The points take the first `_COLORMAP_END` of the colour scale, since its
+    light yellow end is hard to see on white, so the colour bar shows that part
+    of the scale over the range of the values of the points: the colour of the
+    bar at the value of a point is the colour of its line and the bar shows no
+    value no line has. A dimension which does not change one target gets a
+    categorical bar of a band per point, labelled by the labels of its points,
+    up to `MAX_BANDS` points, a bar of their positions above.
+
+    Args:
+        styles: the style of the points, see `point_styles`, of a curve
+            without a colour of its own.
+
+    Returns:
+        The keyword arguments of `ChartPlot.colorbar`, `None` for points which
+        span no range.
+    """
+    scale = styles.scale
+    if scale is None or scale.high <= scale.low:
+        return None
+    arguments: dict[str, Any] = {
+        "scale": COLORMAP,
+        "low": scale.low,
+        "high": scale.high,
+        "label": styles.title,
+        "log": scale.log,
+        "end": _COLORMAP_END,
+    }
+    if scale.categorical and len(scale.labels) <= MAX_BANDS:
+        arguments["tick_labels"] = list(scale.labels)
+        arguments["categorical"] = True
+    return arguments
 
 
 def point_styles(
@@ -612,20 +689,32 @@ def point_styles(
     ]
     n = len(labels_of[0])
     found = point_values(dimensions[0], units, labels_of[0])
-    norm = point_norm(found[1]) if found is not None else None
-    ticks: list[str] | None = None
-    if found is not None and norm is not None:
+    span = point_scale(found[1]) if found is not None else None
+    scale: ColorBarScale | None
+    if found is not None and span is not None:
         target, values, unit = found
+        low, high, log = span
         title = f"{target} [{unit}]" if unit else target
-        colormap = point_colormap(color)
-        colors = [to_hex(colormap(float(norm(value)))) for value in values]
+        fractions = np.array([_fraction(float(v), low, high, log) for v in values])
+        colors = _ramp(color, fractions)
+        scale = ColorBarScale(low, high, log, [], False)
+        (middle,) = _ramp(color, np.array([0.5]))
     else:
         values = np.arange(n, dtype=float)
         title = over[0]
         colors = point_colors(n, color)
-        colormap = ListedColormap(colors) if n else point_colormap(color)
-        norm = BoundaryNorm(np.arange(n + 1) - 0.5, n) if n else Normalize(0.0, 1.0)
-        ticks = [label_text(label) for label in labels_of[0]]
+        scale = (
+            ColorBarScale(
+                0.0,
+                float(n - 1),
+                False,
+                [label_text(label) for label in labels_of[0]],
+                True,
+            )
+            if n
+            else None
+        )
+        middle = colors[n // 2] if n else _ramp(color, np.array([0.5]))[0]
     return PointStyle(
         colors=colors,
         linestyles=point_linestyles(len(labels_of[1])) if len(over) == 2 else None,
@@ -633,7 +722,6 @@ def point_styles(
         colorbar=n >= COLORBAR_FROM,
         values=values,
         title=title,
-        norm=norm,
-        colormap=colormap,
-        ticks=ticks,
+        scale=scale,
+        middle=middle,
     )

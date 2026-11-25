@@ -65,7 +65,6 @@ from sbmlsim.fit.posterior import (
     posterior_laplace,
 )
 from sbmlsim.fit.provenance import create_provenance
-from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
@@ -73,6 +72,8 @@ from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimiza
 from sbmlsim.utils import paths_text
 
 if TYPE_CHECKING:
+    # the report and its figures are imported when a report is written
+    from sbmlsim.fit.report import FitReport
     from sbmlsim.project import Project
     from sbmlsim.uncertainty.covariance import Covariance
 
@@ -242,6 +243,8 @@ class FitRun:
         Returns:
             Path of the directory the report was written to.
         """
+        from sbmlsim.fit.report import FitReport
+
         report = FitReport.from_optimization_result(
             problem=self.problem, opt_result=self.result, **kwargs
         )
@@ -680,6 +683,8 @@ def report_from_records(
         parameter_sets = load_parameter_sets(parameters)
     # the problem is a definition, `FitReport` initializes a copy of its own
     # with the settings, so later fits and edits cannot change the report
+    from sbmlsim.fit.report import FitReport
+
     return FitReport(
         problem=problem_of_records(definition, records, opid=opid),
         settings=settings_of(definition, records),

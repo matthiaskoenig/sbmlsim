@@ -9,10 +9,8 @@ The examples use the HCTZ model of the [Tutorial](tutorial.md). [Simulations](si
 A `Dimension` has an id and maps a target, e.g. a parameter, to an array of values. Here the dissolution rate of the tablet takes four values:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
@@ -47,16 +45,17 @@ The result has the dimensions of the scan first and the time last, here `(dissol
 Each point is one curve. `isel` picks a point by its position, and `point.q[...]` gives its time and concentration as quantities:
 
 ```python
-fig, ax = plt.subplots(figsize=(6, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="µM"),
+)
 for k, ka in enumerate(res.q["Ka_dis_hctz"]):
     point = res.isel(dissolution=k)
-    hours = point.q["time"].to("hr")
-    ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=f"{ka:~gP}")
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend(title="dissolution rate")
+    plot.curve(point.q["time"], point.q["[Cve_hctz]"], label=f"{ka:~gP}")
 ```
 
-![Output figure](images/outputs/scans-02.png)
+![Output figure](images/outputs/scans-02.svg)
 
 A faster dissolving tablet gives an earlier and higher peak.
 
@@ -100,22 +99,22 @@ infusion = Simulation(
 rates = {"Ri_hctz": Q([10, 25], "mg/hr")}
 rate_labels = ["10 mg/hr", "25 mg/hr"]
 
-fig, axes = plt.subplots(1, 2, figsize=(9, 3.5), sharey=True)
-for ax, at in zip(axes, [None, 0]):
+chart = Chart(width=720, height=280, columns=2)
+for column, at in enumerate([None, 0]):
+    plot = chart.plot(
+        0,
+        column,
+        x=ChartAxis(label="time", unit="hr"),
+        y=ChartAxis(label="HCTZ plasma", unit="µM"),
+    )
     rate = Dimension("rate", values=rates, at=at, labels=rate_labels)
     res = simulator.run(model, Scan(infusion, [rate]))
     for label in res["rate"].values:
         point = res.sel(rate=label)
-        hours = point.q["time"].to("hr")
-        ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=label)
-    ax.set_title(f"at={at}")
-label_axes(axes[0], "time", "HCTZ plasma")
-label_axes(axes[1], "time")
-axes[1].legend(title="infusion rate")
-fig.tight_layout()
+        plot.curve(point.q["time"], point.q["[Cve_hctz]"], label=f"infusion {label}")
 ```
 
-![Output figure](images/outputs/scans-04.png)
+![Output figure](images/outputs/scans-04.svg)
 
 Without `at` the infusion runs for the whole simulation. With `at=0` it starts with the scanned rate and stops after one hour as the simulation says. A dose repeated with the same value does not warn.
 
@@ -176,20 +175,21 @@ regimens = Dimension(
 res = simulator.run(model, Scan(tablet, [regimens]))
 print(res)
 
-fig, ax = plt.subplots(figsize=(6, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="µM"),
+)
 for label in res["regimen"].values:
     point = res.sel(regimen=label)
-    hours = point.q["time"].to("hr")
-    ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=label)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+    plot.curve(point.q["time"], point.q["[Cve_hctz]"], label=label)
 ```
 
 ```text title="Output"
 ScanResult(regimen: 2, _point: 2635; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
-![Output figure](images/outputs/scans-06.png)
+![Output figure](images/outputs/scans-06.svg)
 
 The simulations of the dimension replace the simulation of the scan, here `tablet`. The same daily dose split into two gives lower peaks and higher troughs.
 
@@ -394,18 +394,19 @@ low, median, high = (
     summary.sel(statistic=s).q["[Cve_hctz]"].to("µM")
     for s in ("q0.05", "q0.5", "q0.95")
 )
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.fill_between(hours, low, high, alpha=0.3, label="5-95 %")
-ax.plot(hours, median, label="median")
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="µM"),
+)
+plot.band(hours, low, high, median=median, label="5-95 % and median")
 ```
 
 ```text title="Output"
 ScanResult(lhs: 50, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
-![Output figure](images/outputs/scans-13.png)
+![Output figure](images/outputs/scans-13.svg)
 
 A distribution without a location, like `LogNormal(cv=0.3)` or `Normal(sd=10)`, is centered on the reference of its target: the value the model has after the pre-initialization of the simulation. The dimension of a design is named after its method, here `lhs`, and the result records the design, so an analysis needs only the result.
 

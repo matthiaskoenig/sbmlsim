@@ -12,8 +12,10 @@ with its code. A command which runs under the profiler (`--profile`, see
 `sbmlsim.run.profiling`) records its exit code for the profiler, which exits
 with 0 whatever the command did: the code of the command line, the code of a
 `SystemExit`, `EXIT_INTERRUPTED` for Ctrl-C and 1 for any other error.
-`MPLBACKEND` is set to `Agg` unless set, so the workers of the pools draw with
-`Agg` as the process does (`matplotlib.use("Agg")`, #317). The messages are
+`MPLBACKEND` is set to `Agg` unless set, so the figures a user hook draws
+with matplotlib (`figures_mpl()`) draw with `Agg` in the process and in the
+workers of its pools (#317); every figure of the package, the fit report and
+the sensitivity figures included, is drawn by the renderer of sbmlsim-core. The messages are
 logged on stderr, so stdout carries only the output of `plan` and `list`.
 """
 
@@ -55,10 +57,6 @@ def _single_threaded() -> None:
 def main() -> None:
     """Run the command line and exit with its code."""
     _single_threaded()
-
-    import matplotlib
-
-    matplotlib.use("Agg")
 
     from rich.console import Console
 

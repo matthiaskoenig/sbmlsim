@@ -65,25 +65,19 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
             shown[name],
             title=f"{shown[name]}, {name}, {condition}",
             S1_0="reference",
-            path=Path(f"{name}.png"),
-            dpi=dpi,
-        )
+        ).save(Path(f"{name}.png"), dpi=dpi)
     sensitivity.plot_indices(
         results["sobol"],
         "S2_mean",
         title=f"S2_mean, Sobol, {condition}",
         S1_0="reference",
-        path=Path("sobol_S2_mean.png"),
-        dpi=dpi,
-    )
+    ).save(Path("sobol_S2_mean.png"), dpi=dpi)
     sensitivity.plot_morris(
         results["morris"],
         "S2_mean",
         title=f"S2_mean, Morris, {condition}",
         S1_0="reference",
-        path=Path("morris_S2_mean.png"),
-        dpi=dpi,
-    )
+    ).save(Path("morris_S2_mean.png"), dpi=dpi)
     for name, result in results.items():
         print(f"{name}: {shown[name]} at {condition}")
         print(result.index(shown[name]).sel(S1_0="reference").to_pandas().round(5))

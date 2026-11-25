@@ -88,13 +88,12 @@ dependencies = [
 	"pkpdutils>=1.7.1",
 	# the files of the PEtab test suite, the benchmark collection and the networks
 	"pyyaml>=6.0.3",
-	# plots and reports
-	"matplotlib>=3.11.2",
-	# not imported: the images of matplotlib; 13.0.0 fixes the advisories of
-	# 12.3.0, among them the critical GHSA-5x8w-8jj5-q52h, GHSA-332p-7hrc-92wf,
-	# GHSA-8g5g-8vmr-9782, GHSA-v9pv-5gc8-w2m6 and GHSA-w889-685w-c8fh
+	# reports (the figures are drawn by the renderer of sbmlsim-core)
+	# the images `python -m sbmlsim.run verify png` compares (imported by that
+	# command only); 13.0.0 fixes the advisories of 12.3.0, among them the
+	# critical GHSA-5x8w-8jj5-q52h, GHSA-332p-7hrc-92wf, GHSA-8g5g-8vmr-9782,
+	# GHSA-v9pv-5gc8-w2m6 and GHSA-w889-685w-c8fh
 	"pillow>=13.0.0",
-	"seaborn>=0.13.2",
 	"jinja2>=3.1.6",
 	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
 	# the runtime of its engine and the inline build of its JavaScript host;
@@ -109,7 +108,7 @@ dependencies = [
 	# parameter of a profile likelihood, which the analysis computes from the
 	# Fisher information of the optimum, so python and the engine walk the
 	# same points (#647)
-	"sbmlsim-core>=0.26.0",
+	"sbmlsim-core>=0.28.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
@@ -176,8 +175,9 @@ dev = [
 	"pytest-xdist>=3.8.0",
 	# the text of the PDF reports in the tests
 	"pypdf>=6.21.0",
-	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
-	"plotly>=7.1.0",
+	# the figures of a `figures_mpl()` hook, which sbmlsim saves with `savefig`,
+	# in the tests of that hook only; the package never imports it
+	"matplotlib>=3.11.2",
 ]
 
 # the kinds of `python -m sbmlsim.run` as task types of simrun

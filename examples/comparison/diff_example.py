@@ -62,7 +62,7 @@ def compare_examples(results: dict[str, xr.Dataset], output_path: Path) -> None:
             title=f"{key} (sbmlsim | jws)",
         )
         fig = comparison.report()
-        fig.savefig(output_path / f"{key}_diff.png", dpi=150, bbox_inches="tight")
+        fig.save(output_path / f"{key}_diff.png", dpi=150)
 
         report_path = output_path / f"{key}_diff.tsv"
         report_path.write_text(comparison.report_str(), encoding="utf-8")

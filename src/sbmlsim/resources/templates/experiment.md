@@ -29,9 +29,6 @@
 ![{{ fig_id }}]({{ fig.path }}.svg)
 
 {% endif %}
-{% if fig.interactive %}
-[{{ fig.path }}.html]({{ fig.path }}.html)
-{% endif %}
 {% endfor %}
 
 {% if code_path %}

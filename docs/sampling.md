@@ -59,7 +59,7 @@ bands = res.summary("lhs", quantiles=[0.05, 0.5, 0.95])
 fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
-![Output figure](images/outputs/sampling-02.png)
+![Output figure](images/outputs/sampling-02.svg)
 
 `cp` is the plasma concentration in ng/ml and `cmax` its peak, one value per draw. `max` reads the steps of the integrator, before the timecourse is interpolated onto the grid, so the grid does not cut the peak. `plot_distribution` draws the values of the draws as a histogram, and the summary has their statistics:
 
@@ -81,7 +81,7 @@ q0.95    191.5
 Name: cmax, dtype: float64
 ```
 
-![Output figure](images/outputs/sampling-03.png)
+![Output figure](images/outputs/sampling-03.svg)
 
 ## Combine with other dimensions
 
@@ -100,7 +100,7 @@ bands = res.summary("lhs", quantiles=[0.05, 0.5, 0.95])
 fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
-![Output figure](images/outputs/sampling-04.png)
+![Output figure](images/outputs/sampling-04.svg)
 
 `plot_bands` draws one band per label of the other dimensions of the summary, here the doses. It draws quantities, so `time_unit` and `unit` choose the units of the axes, and a band shares an axis with lines plotted from `res.q[...]`.
 

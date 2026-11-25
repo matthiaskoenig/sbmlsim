@@ -67,3 +67,16 @@ def test_the_fit_output_is_the_output_of_the_scripts() -> None:
     assert fit_display.key_values is display.key_values
     assert fit_display.link is display.link
     assert fit_display.ICON_REPORT == display.ICON_REPORT
+
+
+def test_section_icon_is_left_out_without_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stream which is not UTF-8 (cp1252 of a redirected windows stdout) gets no emoji."""
+    import io
+
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252")
+    console = Console(file=stream, width=40, legacy_windows=False)
+    monkeypatch.setattr(display, "console", console)
+    display.section("Report", icon=display.ICON_REPORT)
+    stream.flush()
+    assert b"Report" in raw.getvalue()

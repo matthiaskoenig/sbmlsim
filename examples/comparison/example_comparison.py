@@ -82,11 +82,7 @@ def compare_simulators(
                 title=f"{condition.sid}: {REFERENCE} | {key}",
             )
             fig = comparison.report()
-            fig.savefig(
-                results_dir / f"comparison_{condition.sid}_{key}.png",
-                dpi=150,
-                bbox_inches="tight",
-            )
+            fig.save(results_dir / f"comparison_{condition.sid}_{key}.png", dpi=150)
             comparisons[condition.sid][key] = comparison
 
     return comparisons

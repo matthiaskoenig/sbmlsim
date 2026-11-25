@@ -101,13 +101,10 @@ def test_unsorted_data_equals_sorted_data(method: str) -> None:
 def test_example() -> None:
     """Test the interpolation example."""
     pytest.importorskip("roadrunner")
-    from matplotlib import pyplot as plt
-
     from examples.interpolation.interpolation import interpolation_example
 
-    figure = interpolation_example()
-    assert figure
-    plt.close(figure)
+    chart = interpolation_example()
+    assert chart.svg().startswith("<svg")
 
 
 @pytest.mark.parametrize("method", ["constant", "linear", "cubic spline"])

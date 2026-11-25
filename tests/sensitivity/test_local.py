@@ -5,8 +5,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from matplotlib.axes import Axes
-from matplotlib.colors import to_rgba
 
 from sbmlsim import sensitivity
 from sbmlsim.domains import Domain, Values
@@ -200,13 +198,11 @@ def test_a_zero_parameter_has_no_sensitivity() -> None:
         assert np.isnan(s[f"y_max.{index}"].sel(parameter="a").item())
         assert np.isfinite(s[f"y_max.{index}"].sel(parameter="b").item())
     assert s.classify("y_max.normalized").values.tolist() == ["", "high"]
-    figure = sensitivity.plot_heatmap(s, "normalized")
-    (ax,) = [ax for ax in figure.axes if ax.get_label() == "heatmap"]
-    assert [t.get_text() for t in ax.get_yticklabels()] == ["a", "b"]
-    grey = [
-        p for p in ax.patches if np.allclose(p.get_facecolor(), to_rgba("lightgrey"))
-    ]
-    assert len(grey) == 1
+    chart = sensitivity.plot_heatmap(s, "normalized")
+    (heatmap,) = [e for e in chart.spec()["plots"][0]["elements"] if "rows" in e]
+    assert heatmap["rows"] == ["a", "b"]
+    # the undefined cell has no value, which the renderer draws light grey
+    assert [row[0] is None for row in heatmap["values"]] == [True, False]
 
 
 def test_observables_restrict_the_variables(model: RoadrunnerSBMLModel) -> None:
@@ -326,5 +322,5 @@ def test_an_infinite_value_gives_nan_indices_and_a_finite_heatmap_order() -> Non
     s = sensitivity.local(res)
     for index in ("raw", "normalized"):
         assert np.isnan(s[f"y_max.{index}"].values).all()
-    figure = sensitivity.plot_heatmap(s, "normalized")
-    assert isinstance(figure.axes[0], Axes)
+    chart = sensitivity.plot_heatmap(s, "normalized")
+    assert chart.svg().startswith("<svg")

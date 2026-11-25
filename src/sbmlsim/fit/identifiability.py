@@ -115,13 +115,11 @@ from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import scipy.optimize
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 from scipy.stats import chi2
 
 from sbmlsim.engine import Engine
@@ -146,6 +144,10 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.parameters import ParameterSet, dump_json, load_json
 from sbmlsim.progress import activity as progress_activity
+
+if TYPE_CHECKING:
+    # the chart is imported when a profile is drawn, not with the analysis
+    from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 
 logger = logging.getLogger(__name__)
 
@@ -1699,165 +1701,275 @@ def _x_limits(
     return lo - margin, hi + margin
 
 
-def _plot_profile_axis(
-    ax: Axes, result: IdentifiabilityResult, pid: str, title: bool = True
-) -> None:
-    """Draw the profile of a parameter on an axis, in the scale of the parameter."""
+def _profile_axes(
+    result: IdentifiabilityResult, pid: str
+) -> tuple[ChartAxis, ChartAxis]:
+    """Get the axes of the profile of a parameter, in the scale of the parameter.
+
+    The x axis spans the bounds with a margin, see `_x_limits`; the y axis the
+    costs of the converged points and the threshold.
+    """
+    from sbmlsim.plot.chart import ChartAxis
+
     profile = result.profiles[pid]
     p = result.parameter(pid)
     is_log = result.scale(pid).is_log
-    color = COLORS[profile.identifiability] if profile.identifiability else "tab:blue"
-    xlim = _x_limits(profile.values, p.lower_bound, p.upper_bound, is_log)
+    low, high = _x_limits(profile.values, p.lower_bound, p.upper_bound, is_log)
+    ymin, ymax = _y_limits(result, pid)
+    x = ChartAxis(
+        label=f"{pid} [{p.unit or 'model'}]",
+        scale="log" if is_log else "linear",
+        min=low,
+        max=high,
+        grid=True,
+    )
+    return x, ChartAxis(label="cost", min=ymin, max=ymax, grid=True)
 
-    # the confidence interval, an open side extends to the bound or the axis
+
+def _y_limits(result: IdentifiabilityResult, pid: str) -> tuple[float, float]:
+    """Get the limits of the cost of a profile: the minimal cost to the threshold."""
+    profile = result.profiles[pid]
+    costs = profile.costs[profile.converged]
+    ymax = max(result.threshold, float(np.max(costs)) if costs.size else 0.0)
+    span = max(ymax - result.cost_min, 1e-12)
+    return result.cost_min - 0.1 * span, ymax + 0.2 * span
+
+
+def _plot_profile_axis(
+    plot: ChartPlot, result: IdentifiabilityResult, pid: str
+) -> None:
+    """Draw the profile of a parameter into a plot of the axes of `_profile_axes`.
+
+    The confidence interval as a band of the color of the identifiability
+    (an open side extends to the bound or the axis), the threshold as a
+    dashed line and the minimal cost as a dotted one, the profile, its failed
+    points at the threshold, the optimum and the bounds.
+    """
+    from sbmlsim.plot.colors import normalize_color
+
+    profile = result.profiles[pid]
+    p = result.parameter(pid)
+    is_log = result.scale(pid).is_log
+    color = normalize_color(
+        COLORS[profile.identifiability] if profile.identifiability else "tab:blue"
+    )
+    xlim = _x_limits(profile.values, p.lower_bound, p.upper_bound, is_log)
+    ylim = _y_limits(result, pid)
+
     ci_lower = (
         max(p.lower_bound, xlim[0]) if profile.ci_lower is None else profile.ci_lower
     )
     ci_upper = (
         min(p.upper_bound, xlim[1]) if profile.ci_upper is None else profile.ci_upper
     )
-    ax.axvspan(ci_lower, ci_upper, color=color, alpha=0.12, linewidth=0)
-
-    ax.axhline(result.threshold, color="black", linestyle="--", label="threshold")
-    ax.axhline(result.cost_min, color="gray", linestyle=":", label="minimal cost")
+    plot.area(
+        [ci_lower, ci_upper],
+        [ylim[0], ylim[0]],
+        [ylim[1], ylim[1]],
+        color=color,
+        fill_opacity=0.12,
+    )
+    plot.rule(
+        result.threshold,
+        line="dashed",
+        width=1.5,
+        color="#000000",
+        label="threshold",
+        legend="threshold",
+    )
+    plot.rule(
+        result.cost_min,
+        line="dotted",
+        width=1.5,
+        color="#808080",
+        label="minimal cost",
+        legend="minimal cost",
+    )
     converged = profile.converged
-    ax.plot(
+    plot.curve(
         profile.values[converged],
         profile.costs[converged],
-        marker="o",
-        markersize=4,
+        marker="circle",
+        size=5,
+        width=1.5,
         color=color,
         label="profile",
+        legend="profile",
     )
     if np.any(~converged):
-        ax.plot(
+        plot.curve(
             profile.values[~converged],
             np.full(np.sum(~converged), result.threshold),
-            linestyle="",
-            marker="x",
-            color="black",
+            line="none",
+            marker="cross",
+            size=7,
+            color="#000000",
             label="failed",
+            legend="failed",
         )
-    ax.plot(
-        profile.value_optimum,
-        profile.cost_optimum,
-        marker="*",
-        markersize=12,
-        color="black",
-        linestyle="",
+    plot.curve(
+        [profile.value_optimum],
+        [profile.cost_optimum],
+        line="none",
+        marker="diamond",
+        size=11,
+        color="#000000",
         label="optimum",
+        legend="optimum",
     )
     for bound in (p.lower_bound, p.upper_bound):
-        if np.isfinite(bound):
-            ax.axvline(bound, color="gray", linewidth=0.8)
+        if np.isfinite(bound) and (bound > 0 or not is_log):
+            plot.rule(bound, orientation="vertical", width=0.8, color="#808080")
 
-    ax.set_xscale("log" if is_log else "linear")
-    ax.set_xlim(*xlim)
-    ymax = max(result.threshold, float(np.max(profile.costs[converged])))
-    span = max(ymax - result.cost_min, 1e-12)
-    ax.set_ylim(result.cost_min - 0.1 * span, ymax + 0.2 * span)
-    ax.set_xlabel(f"{pid} [{p.unit or 'model'}]")
-    ax.set_ylabel("cost")
-    ax.grid(alpha=0.3)
-    if title:
-        label = profile.identifiability.label if profile.identifiability else pid
-        ax.set_title(f"{pid}: {label}", fontsize="medium", color=color)
+
+def _profile_title(result: IdentifiabilityResult, pid: str) -> str:
+    """Get the title of the panel of a profile, the parameter and its identifiability."""
+    profile = result.profiles[pid]
+    label = profile.identifiability.label if profile.identifiability else pid
+    return f"{pid}: {label}"
 
 
 def plot_profiles(
     result: IdentifiabilityResult, path: Path | None = None, ncols: int = 3
-) -> Figure:
+) -> Chart:
     """Plot the profiles of all parameters, one panel per parameter.
 
     Args:
         result: result of the analysis.
-        path: file to save the figure to, the figure is returned otherwise.
+        path: file to save the figure to, `svg` or `png`, with its spec next
+            to it, see `sbmlsim.report.figures.save_figure`.
         ncols: number of panels per row.
 
     Returns:
-        The figure, which pyplot does not hold, so it depends on no backend
-        of pyplot (#317).
+        The figure, a chart of the renderer of sbmlsim-core.
     """
+    from sbmlsim.plot.chart import Chart
+
     pids = list(result.profiles)
     n = len(pids)
     ncols = max(1, min(ncols, n))
     nrows = int(np.ceil(n / ncols))
-    fig = Figure(figsize=(4.5 * ncols, 3.6 * nrows), layout="constrained")
-    axes = fig.subplots(nrows=nrows, ncols=ncols, squeeze=False)
-    for k, pid in enumerate(pids):
-        _plot_profile_axis(axes[k // ncols][k % ncols], result, pid)
-    for k in range(n, nrows * ncols):
-        axes[k // ncols][k % ncols].axis("off")
-    axes[0][0].legend(fontsize="x-small")
-    fig.suptitle(
-        f"Profile likelihood '{result.opid}' "
-        f"({result.settings.alpha:.0%}, threshold {result.threshold:.4g})"
+    chart = Chart(
+        330.0 * ncols,
+        270.0 * nrows,
+        title=(
+            f"Profile likelihood '{result.opid}' "
+            f"({result.settings.alpha:.0%}, threshold {result.threshold:.4g})"
+        ),
+        rows=nrows,
+        columns=ncols,
     )
+    for k, pid in enumerate(pids):
+        x, y = _profile_axes(result, pid)
+        plot = chart.plot(
+            k // ncols,
+            k % ncols,
+            title=_profile_title(result, pid),
+            x=x,
+            y=y,
+            legend=k == 0,
+        )
+        _plot_profile_axis(plot, result, pid)
     if path is not None:
-        fig.savefig(path)
-    return fig
+        _save(chart, path)
+    return chart
 
 
 def plot_profile(
     result: IdentifiabilityResult, pid: str, path: Path | None = None
-) -> Figure:
+) -> Chart:
     """Plot the profile of a parameter with the paths of the other parameters.
 
     The upper panel is the profile, the lower panel the other parameters along
     it, relative to their values at the optimum: `log10(parameter / optimum)`
     for a parameter on a logarithmic scale and `parameter - optimum` for one
-    on the linear scale. A parameter which changes along the profile is
-    coupled to the scanned one (Maiwald et al. 2016).
+    on the linear scale, the axis `log10(p / p_opt)` and `p - p_opt`. A
+    parameter which changes along the profile is coupled to the scanned one
+    (Maiwald et al. 2016).
 
     Args:
         result: result of the analysis.
         pid: id of the parameter.
-        path: file to save the figure to, the figure is returned otherwise.
+        path: file to save the figure to, see `plot_profiles`.
 
     Returns:
-        The figure, which pyplot does not hold, see `plot_profiles`.
+        The figure, a chart of the renderer of sbmlsim-core.
     """
+    from dataclasses import replace as replace_axis
+
+    from sbmlsim.plot.chart import Chart, ChartAxis
+
     profile = result.profiles[pid]
     index = result.pids.index(pid)
-    fig = Figure(figsize=(6.0, 7.0), layout="constrained")
-    ax_profile, ax_paths = fig.subplots(
-        nrows=2, ncols=1, sharex=True, height_ratios=[1.4, 1.0]
+    chart = Chart(432.0, 504.0, rows=5, columns=1, hspace=0.15)
+    x, y = _profile_axes(result, pid)
+    upper = chart.plot(
+        0,
+        0,
+        row_span=3,
+        title=_profile_title(result, pid),
+        x=replace_axis(x, label_visible=False),
+        y=y,
     )
-    _plot_profile_axis(ax_profile, result, pid)
-    ax_profile.legend(fontsize="x-small")
-    ax_profile.set_xlabel("")
+    _plot_profile_axis(upper, result, pid)
 
     converged = profile.converged
     optimum = profile.paths[profile.index_optimum]
     linear: list[str] = []
     logarithmic: list[str] = []
+    relatives: dict[str, np.ndarray] = {}
     for k, other in enumerate(result.pids):
         if k == index:
             continue
         along = profile.paths[converged, k]
         if result.scale(other).is_log:
             logarithmic.append(other)
-            relative = np.log10(along / optimum[k])
+            relatives[other] = np.log10(along / optimum[k])
         else:
             linear.append(other)
-            relative = along - optimum[k]
-        ax_paths.plot(profile.values[converged], relative, marker=".", label=other)
-    ax_paths.axhline(0.0, color="gray", linestyle=":")
-    ax_paths.axvline(profile.value_optimum, color="gray", linestyle=":")
-    p = result.parameter(pid)
-    ax_paths.set_xlabel(f"{pid} [{p.unit or 'model'}]")
+            relatives[other] = along - optimum[k]
+    # short labels, the label of the lower panel is no longer than its height
     labels = []
     if logarithmic or not linear:
-        labels.append("log10(parameter / optimum)")
+        labels.append("log10(p / p_opt)")
     if linear:
-        labels.append("parameter - optimum" + (" (linear)" if logarithmic else ""))
-    ax_paths.set_ylabel(", ".join(labels))
-    ax_paths.grid(alpha=0.3)
-    if len(result.pids) > 1:
-        ax_paths.legend(fontsize="x-small", title="other parameters")
+        labels.append("p - p_opt" + (" (linear)" if logarithmic else ""))
+    lower = chart.plot(
+        3,
+        0,
+        row_span=2,
+        x=x,
+        y=ChartAxis(label=", ".join(labels), grid=True),
+        legend=len(result.pids) > 1,
+    )
+    for other, relative in relatives.items():
+        lower.curve(
+            profile.values[converged],
+            relative,
+            marker="circle",
+            size=4,
+            width=1.5,
+            label=other,
+            legend=other,
+        )
+    lower.rule(0.0, line="dotted", width=1.0, color="#808080")
+    lower.rule(
+        profile.value_optimum,
+        orientation="vertical",
+        line="dotted",
+        width=1.0,
+        color="#808080",
+    )
     if path is not None:
-        fig.savefig(path)
-    return fig
+        _save(chart, path)
+    return chart
+
+
+def _save(chart: Chart, path: Path, png_dpi: float | str | None = None) -> None:
+    """Save a figure of the profiles with its spec, see `save_figure`."""
+    from sbmlsim.report.figures import save_figure
+
+    save_figure(chart, path, png_dpi=png_dpi)
 
 
 def plot_all(
@@ -1868,26 +1980,28 @@ def plot_all(
 ) -> list[Path]:
     """Write the overview figure and the figure of every profile.
 
+    Every figure is written with its spec, see
+    `sbmlsim.report.figures.save_figure`.
+
     Args:
         result: result of the analysis.
         output_dir: directory of the figures.
-        image_format: format of the figures.
+        image_format: format of the figures, `svg` or `png`.
         png_dpi: resolution of a PNG copy of the overview figure, which is
             written if the format is another one, e.g. for LaTeX, which
-            includes no SVG; no copy by default.
+            includes no SVG, and of the figures of the format `png`; no copy
+            by default; `"figure"` is the resolution of the figure itself.
 
     Returns:
-        The paths of the figures, the overview first; a PNG copy is not one
-        of them.
+        The paths of the figures, the overview first; a PNG copy and a spec
+        are not among them.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = [output_dir / f"profiles.{image_format}"]
-    fig = plot_profiles(result)
-    fig.savefig(paths[0])
-    if png_dpi is not None and image_format != "png":
-        fig.savefig(paths[0].with_suffix(".png"), dpi=png_dpi)
+    _save(plot_profiles(result), paths[0], png_dpi=png_dpi)
     for pid in result.profiles:
         path = output_dir / f"profile_{pid}.{image_format}"
-        plot_profile(result, pid, path=path)
+        figure = plot_profile(result, pid)
+        _save(figure, path, png_dpi=png_dpi if image_format == "png" else None)
         paths.append(path)
     return paths

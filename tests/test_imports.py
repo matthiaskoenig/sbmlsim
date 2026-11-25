@@ -340,3 +340,32 @@ def test_import_sbmlsim_does_not_import_sbmlsim_core() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "sbmlsim",
+        "sbmlsim.plot",
+        "sbmlsim.fit.report",
+        "sbmlsim.sensitivity",
+        "sbmlsim.comparison.diff",
+        "sbmlsim.experiment",
+    ],
+)
+def test_the_figures_import_no_plotting_library(module: str) -> None:
+    """Figures are drawn by the renderer of sbmlsim-core, not by matplotlib."""
+    code = (
+        f"import sys, {module}; "
+        "print(sorted(m for m in ('matplotlib', 'seaborn', 'plotly') "
+        "if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"

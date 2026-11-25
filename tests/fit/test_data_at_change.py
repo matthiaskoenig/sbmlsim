@@ -11,12 +11,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
-from matplotlib.figure import Figure
 
 from sbmlsim import Q
 from sbmlsim.data import DataSet
@@ -37,6 +35,7 @@ from sbmlsim.fit.petab_v2.gaps import gaps_of_problem, measurements_at_changes
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
 from sbmlsim.fit.report import FitReport
 from sbmlsim.model import AbstractModel
+from sbmlsim.plot import Chart
 from sbmlsim.simulation import PK, Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
@@ -621,11 +620,11 @@ def test_the_log_panel_of_a_curve_has_a_gap_at_zero(
     start of a dense output), the curve has a gap there; the linear panel
     keeps the jump to `0`.
     """
-    figures: dict[str, Figure] = {}
+    figures: dict[str, Chart] = {}
     monkeypatch.setattr(
         FitReport,
-        "_save_mpl_figure",
-        lambda self, fig, path: figures.__setitem__(path.stem, fig),
+        "_save_chart",
+        lambda self, chart, path: figures.__setitem__(path.stem, chart),
     )
     mappings = ["fm_urine", "fm_cmax"] if dense else ["fm_urine"]
     problem = _problem(mappings, tmp_path)
@@ -635,23 +634,18 @@ def test_the_log_panel_of_a_curve_has_a_gap_at_zero(
         ParameterSet(sid="true", values={"ke": TRUE_KE}),
     )
     report.plot_mapping(tmp_path)
-    try:
-        for name in ("UrineStudy_fm_urine",):
-            linear, log = figures[name].axes[:2]
-            assert log.get_yscale() == "log"
-            [curve] = [
-                line for line in linear.get_lines() if line.get_label() == "true"
-            ]
-            [masked] = [line for line in log.get_lines() if line.get_label() == "true"]
-            y = np.asarray(curve.get_ydata(), dtype=float)
-            y_log = np.asarray(masked.get_ydata(), dtype=float)
-            zero = y <= 0.0
-            assert zero.any()
-            assert np.isnan(y_log[zero]).all()
-            np.testing.assert_array_equal(y_log[~zero], y[~zero])
-    finally:
-        for fig in figures.values():
-            plt.close(fig)
+    linear, log = figures["UrineStudy_fm_urine"].spec()["plots"][:2]
+    assert log["y"]["scale"] == "log"
+
+    def curve_of(plot: dict[str, Any]) -> np.ndarray:
+        [curve] = [e for e in plot["elements"] if e.get("label") == "true"]
+        return np.array([np.nan if v is None else v for v in curve["y"]])
+
+    y, y_log = curve_of(linear), curve_of(log)
+    zero = y <= 0.0
+    assert zero.any()
+    assert np.isnan(y_log[zero]).all()
+    np.testing.assert_array_equal(y_log[~zero], y[~zero])
 
 
 def test_a_group_with_observables_sees_the_state_before(tmp_path: Path) -> None:

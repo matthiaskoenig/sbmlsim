@@ -41,9 +41,13 @@ def section(title: str, icon: str | None = None) -> None:
 
     Args:
         title: title of the section.
-        icon: emoji in front of the title, e.g. `ICON_REPORT`.
+        icon: emoji in front of the title, e.g. `ICON_REPORT`; left out when the
+            console does not write UTF-8.
     """
-    prefix = f"{icon} " if icon else ""
+    # an emoji cannot be written to a stream of another encoding, e.g. the
+    # cp1252 of a redirected stdout on windows, and would raise
+    can_encode = console.encoding.lower().replace("-", "").startswith("utf")
+    prefix = f"{icon} " if icon and can_encode else ""
     console.line()
     console.rule(f"{prefix}[bold]{title}", align="left", style="white")
 

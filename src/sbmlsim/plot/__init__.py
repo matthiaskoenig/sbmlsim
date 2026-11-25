@@ -1,8 +1,10 @@
-"""Plotting in sbmlsim."""
+"""Plotting in sbmlsim.
 
-from sbmlsim.units import setup_matplotlib
+The figures are drawn by the renderer of sbmlsim-core (`Chart`); importing
+the package imports no matplotlib.
+"""
 
-from .axes import label_axes
+from .chart import Chart, ChartAxis, ChartPlot
 from .plotting import (
     Axis,
     Band,
@@ -18,6 +20,9 @@ from .plotting import (
 __all__ = [
     "Axis",
     "Band",
+    "Chart",
+    "ChartAxis",
+    "ChartPlot",
     "ColorType",
     "Curve",
     "Figure",
@@ -25,8 +30,4 @@ __all__ = [
     "MarkerType",
     "Plot",
     "SubPlot",
-    "label_axes",
 ]
-
-# the quantities of the package plot with matplotlib in their units
-setup_matplotlib()

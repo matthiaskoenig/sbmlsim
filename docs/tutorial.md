@@ -5,17 +5,15 @@ This tutorial takes one model through the main features of `sbmlsim`. You simula
 The model describes hydrochlorothiazide (HCTZ), a diuretic used against high blood pressure, in the whole human body. An HCTZ tablet dissolves in the gut, the drug is absorbed into the blood, distributes into the organs and is excreted by the kidneys into the urine. The model ships with `sbmlsim`, so you only need `sbmlsim` itself (see [Installation](installation.md)).
 
 !!! tip "Running the code"
-    Run the blocks one after another in a Jupyter notebook, or paste them into one script. A script shows a figure with `plt.show()` or saves it with `fig.savefig("figure.png")`. Large runs, like the uncertainty analysis at the end, start worker processes, so a script needs its code under `if __name__ == "__main__":`.
+    Run the blocks one after another in a Jupyter notebook, or paste them into one script. A script saves a figure with `chart.save("figure.svg")`, a notebook shows a `Chart` as its last expression. Large runs, like the uncertainty analysis at the end, start worker processes, so a script needs its code under `if __name__ == "__main__":`.
 
 ## Load the model
 
 A `Simulator` loads and runs models. `load` reads the SBML file into [libroadrunner](https://libroadrunner.org) and reads the units of the model:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulator import Simulator
 
@@ -61,17 +59,20 @@ peak: 0.452 μM
 
 The result has every variable of the model at the time points the integrator chose: many where the curve changes fast, few where it is flat. `_point` counts them. `res.q[...]` gives a variable as a quantity, its values with their unit. `[Cve_hctz]` is the HCTZ concentration in the venous plasma, `Aurine_hctz` the amount excreted into the urine so far.
 
-Quantities plot directly with matplotlib: the first quantity on an axis sets its unit, and `label_axes` writes the name and the unit of each axis. `.to(...)` converts a quantity into the unit you want to see:
+A `Chart` of the renderer takes quantities directly: an axis with a unit converts the quantities on it, one without a unit takes the unit of the first quantity, and the label of an axis is its name with the unit. `.to(...)` converts a quantity into the unit you want to see:
 
 ```python
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
-ax1.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
-label_axes(ax1, "time", "HCTZ plasma")
-ax2.plot(res.q["time"].to("hr"), res.q["Aurine_hctz"].to("µmol"))
-label_axes(ax2, "time", "HCTZ urine")
+chart = Chart(width=720, height=280, columns=2)
+time = ChartAxis(label="time", unit="hr")
+chart.plot(0, 0, x=time, y=ChartAxis(label="HCTZ plasma", unit="µM")).curve(
+    res.q["time"], res.q["[Cve_hctz]"]
+)
+chart.plot(0, 1, x=time, y=ChartAxis(label="HCTZ urine", unit="µmol")).curve(
+    res.q["time"], res.q["Aurine_hctz"]
+)
 ```
 
-![Output figure](images/outputs/tutorial-03.png)
+![Output figure](images/outputs/tutorial-03.svg)
 
 ## Observables
 
@@ -120,16 +121,16 @@ def daily_dose(renal_function: float) -> Simulation:
     )
 
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
+chart = Chart(width=640, height=280, legend_position="outside")
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="day"), y=ChartAxis(label="HCTZ plasma")
+)
 for renal_function in [1.0, 0.3]:
     res = simulator.run(model, daily_dose(renal_function), observables)
-    label = f"renal function {renal_function}"
-    ax.plot(res.q["time"].to("day"), res.q["cp"], label=label)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+    plot.curve(res.q["time"], res.q["cp"], label=f"renal function {renal_function}")
 ```
 
-![Output figure](images/outputs/tutorial-05.png)
+![Output figure](images/outputs/tutorial-05.svg)
 
 The kidneys remove HCTZ from the body. With 30 % kidney function the drug accumulates over the week.
 
@@ -173,15 +174,16 @@ dose
 The values of the `dose` dimension replace the 25 mg of the `Change`. The peak concentration in ng/ml doubles with the dose, and it rises as the kidney function drops. Every simulation keeps its own time points, so `time` is a variable over `_point` and not one shared axis. `sel` selects points by their labels, here the curves of normal kidney function:
 
 ```python
-fig, ax = plt.subplots(figsize=(7, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="HCTZ plasma")
+)
 for label in res["dose"].values:
     point = res.sel(renal="normal", dose=label)
-    ax.plot(point.q["time"].to("hr"), point.q["cp"], label=label)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+    plot.curve(point.q["time"], point.q["cp"], label=label)
 ```
 
-![Output figure](images/outputs/tutorial-07.png)
+![Output figure](images/outputs/tutorial-07.svg)
 
 A scan with many points runs in parallel on all cores. [Parameter scans](scans.md) has the details.
 
@@ -335,15 +337,23 @@ time = Q(patel1984["time"].to_numpy(), "hr")
 cp = Q(patel1984["cp"].to_numpy(), "ng/ml")
 sd = Q(patel1984["cp_sd"].to_numpy(), "ng/ml")
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.plot(res.q["time"].to("hr"), res.q["cp"], label="fitted model")
-ax.vlines(time, cp - sd, cp + sd, color="black")
-ax.plot(time, cp, "o", color="black", label="Patel 1984 (mean ± SD)")
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="HCTZ plasma")
+)
+plot.curve(res.q["time"], res.q["cp"], label="fitted model")
+plot.curve(
+    time,
+    cp,
+    yerr=sd,
+    line="none",
+    marker="circle",
+    color="#000000",
+    label="Patel 1984 (mean ± SD)",
+)
 ```
 
-![Output figure](images/outputs/tutorial-12.png)
+![Output figure](images/outputs/tutorial-12.svg)
 
 A real fit combines many studies, with training and validation data, global optimizers and HTML reports. [Parameter fitting](fitting.md) explains these, and [Identifiability](identifiability.md) shows how well the data determine each parameter.
 
@@ -408,13 +418,14 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 ```python
 from sbmlsim.sensitivity.uncertainty import plot_bands
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for scenario, result in uncertainty.results.items():
-    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    plot_bands(bands, "cp", ax=ax, label=scenario, time_unit="hr", name="HCTZ plasma")
+bands = {
+    scenario: result.summary(quantiles=[0.05, 0.5, 0.95])
+    for scenario, result in uncertainty.results.items()
+}
+fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
-![Output figure](images/outputs/tutorial-15.png)
+![Output figure](images/outputs/tutorial-15.svg)
 
 Last, test a statement about the prediction: in at least 90 % of the patients, does impaired kidney function raise the AUC by more than half?
 

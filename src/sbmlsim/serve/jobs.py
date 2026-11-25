@@ -40,10 +40,9 @@ fill its disk with the reports of runs nobody reads any more.
 A run itself is serial: `n_workers=1` and `scan_workers=1`, so a job never
 starts a process pool from a thread of a server, where a pool would fork or
 spawn a copy of the whole service per worker and where its workers would
-outlive nothing but the request which started them. The experiments draw
-`matplotlib.figure.Figure` objects and never ones of pyplot (see the
-conventions of the package), which is what makes the run safe in a thread at
-all.
+outlive nothing but the request which started them. The figures of the
+experiments are drawn by the renderer of sbmlsim-core, which holds no state of
+a toolkit and is safe in a thread.
 
 A run writes into a directory of its own below the root of the store, which is
 created with the first job the store takes and readable by its owner alone, so

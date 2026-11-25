@@ -768,8 +768,8 @@ def test_the_engines_of_the_table_begin_with_the_engine_core() -> None:
 
 
 def test_the_command_line_draws_the_figure(tmp_path: Path) -> None:
-    """`--figure` writes a PNG per model and mode of the documentation."""
-    drawn = tmp_path / "figures" / "engines.png"
+    """`--figure` writes an SVG per model."""
+    drawn = tmp_path / "figures" / "engines.svg"
     code = main(
         [
             "--models",
@@ -789,16 +789,13 @@ def test_the_command_line_draws_the_figure(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    # the directory of the figure is created and every file is a PNG; the
-    # models have a figure each, written once per mode, and the file
-    # `--figure` names is itself never written, see `figure_paths`
+    # the directory of the figure is created and every file is an SVG; the
+    # models have a figure each and the file `--figure` names is itself never
+    # written, see `figure_paths`
     written = sorted(path.name for path in drawn.parent.iterdir())
-    assert written == [
-        "engines-repressilator-dark.png",
-        "engines-repressilator-light.png",
-    ]
+    assert written == ["engines-repressilator.svg"]
     for path in drawn.parent.iterdir():
-        assert path.read_bytes().startswith(b"\x89PNG\r\n")
+        assert "<svg" in path.read_text(encoding="utf-8")
     assert not drawn.exists()
 
 
@@ -815,4 +812,4 @@ def test_a_figure_of_nothing_which_was_measured_is_refused(tmp_path: Path) -> No
         workers=1,
     )
     with pytest.raises(ValueError, match="no cell to draw"):
-        figure(empty, tmp_path / "engines.png")
+        figure(empty, tmp_path / "engines.svg")

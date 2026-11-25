@@ -13,10 +13,9 @@ Observables are evaluated on the full solution of every simulation, before the r
 A `Formula` uses the math of PEtab. It reads the variables of the model (`S` is the amount of a species, `[S]` its concentration, plus `time`, parameters and reactions) and other observables by their id. Here the repressilator runs for six values of the Hill coefficient `n`, a scan with one dimension, see [Parameter scans](scans.md):
 
 ```python
-import matplotlib.pyplot as plt
 import numpy as np
 
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
@@ -46,16 +45,14 @@ print(res["px_rel"].dims)
 `px_max` has one value per point of the scan, the number of `PX` molecules at the peak. `px_rel` divides a timecourse by a value per simulation, so every simulation is normalized to its own maximum. Every simulation has its own time points, the steps of the integrator, so `px_rel` is over `_point` and `res.sel(hill=k)` selects the timecourse of one point:
 
 ```python
-fig, ax = plt.subplots(figsize=(7, 3.5))
+chart = Chart(width=640, height=280, legend_position="outside")
+plot = chart.plot(x=ChartAxis(label="time"), y=ChartAxis(label="PX / max(PX)"))
 for k, n in enumerate(res["n"].values):
     point = res.sel(hill=k)
-    ax.plot(point.q["time"], point.q["px_rel"], label=f"n = {n:.1f}")
-label_axes(ax, "time", "PX / max(PX)")
-ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
-fig.tight_layout()
+    plot.curve(point.q["time"], point.q["px_rel"], label=f"n = {n:.1f}")
 ```
 
-![Output figure](images/outputs/observables-02.png)
+![Output figure](images/outputs/observables-02.svg)
 
 A reduction turns the timecourse of each simulation into one value:
 
@@ -135,16 +132,23 @@ A formula reads a PK parameter by its name: `auc_per_cmax` divides two of them a
 The peak of every curve is at (`pk.tmax`, `pk.cmax`):
 
 ```python
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for label in res["dose"].values:
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="midazolam plasma")
+)
+for label, color in zip(res["dose"].values, ["#1f77b4", "#ff7f0e", "#2ca02c"]):
     point = res.sel(dose=label)
-    (line,) = ax.plot(point.q["time"].to("hr"), point.q["mid"], label=label)
-    ax.plot(point.q["pk.tmax"], point.q["pk.cmax"], "o", color=line.get_color())
-label_axes(ax, "time", "midazolam plasma")
-ax.legend()
+    plot.curve(point.q["time"], point.q["mid"], label=label, color=color)
+    plot.curve(
+        point.q["pk.tmax"],
+        point.q["pk.cmax"],
+        line="none",
+        marker="circle",
+        color=color,
+    )
 ```
 
-![Output figure](images/outputs/observables-05.png)
+![Output figure](images/outputs/observables-05.svg)
 
 `res.nca("pk")` returns the `NCAResult` of pkpdutils and `res.to_timecourses("mid")` its `Timecourses`, for further analysis with pkpdutils.
 

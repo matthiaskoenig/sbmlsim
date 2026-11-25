@@ -30,7 +30,6 @@
   /* the figures of an experiment are thumbnails of one height, a click opens
      a figure in full size */
   #experiments figure img { height: 220px; object-fit: contain; }
-  #experiments figure a.interactive { display: flex; align-items: center; justify-content: center; height: 220px; border: 1px dashed var(--line); border-radius: 8px; }
   .chip[data-kind="passed"][aria-pressed="true"] { background: var(--training); }
   .chip[data-kind="failed"][aria-pressed="true"] { background: var(--outlier); }
 </style>
@@ -58,8 +57,8 @@
       <figure>
         {% if fig.static %}
         <img loading="lazy" src="{{ exp_id }}/{{ fig.path }}.svg" alt="{{ fig_id }}">
-        {% elif fig.interactive %}
-        <a class="interactive" href="{{ exp_id }}/{{ fig.path }}.html">interactive figure</a>
+        {% elif fig.png %}
+        <img loading="lazy" src="{{ exp_id }}/{{ fig.path }}.png" alt="{{ fig_id }}">
         {% endif %}
         <figcaption>{{ fig_id }}</figcaption>
       </figure>

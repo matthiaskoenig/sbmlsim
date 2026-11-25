@@ -18,8 +18,6 @@ The models and the figure are written into the current working directory.
 import logging
 from pathlib import Path
 
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import Axes, Figure
 from sbmlutils.comp import flatten_sbml
 from sbmlutils.factory import (
     Compartment,
@@ -32,6 +30,8 @@ from sbmlutils.factory import (
 from sbmlutils.validation import ValidationOptions
 
 from sbmlsim.interpolation import Interpolation
+from sbmlsim.plot import Chart, ChartAxis
+from sbmlsim.plot.chart import LineType
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 
@@ -61,14 +61,14 @@ model = Model(
 )
 
 
-def driving_example(directory: Path) -> Figure:
+def driving_example(directory: Path) -> Chart:
     """Drive the uptake model with the measured glucose, in place and via comp.
 
     Args:
         directory: where the models are written
 
     Returns:
-        The figure of the data and both simulations; nothing is shown, so
+        The chart of the data and both simulations; nothing is shown, so
         that the example does not open a window when it runs unattended.
     """
     model_path = directory / "uptake.xml"
@@ -91,35 +91,42 @@ def driving_example(directory: Path) -> Figure:
 
     simulator = Simulator(n_workers=1)
     data = interpolation.data
-    f: Figure
-    ax: Axes
-    f, ax = plt.subplots(nrows=1, ncols=1)
-    ax.plot(data["time"], data["glc_ext"], "o", color="black", label="glc_ext data")
+    chart = Chart(
+        width=640, height=400, title="Glucose uptake driven by measured plasma glucose"
+    )
+    ax = chart.plot(
+        x=ChartAxis(label="time", unit="min"), y=ChartAxis(label="glucose", unit="mM")
+    )
+    ax.curve(
+        data["time"].to_numpy(),
+        data["glc_ext"].to_numpy(),
+        line="none",
+        marker="circle",
+        color="#000000",
+        label="glc_ext data",
+    )
     # the elements of the original are prefixed with the submodel after
     # flattening; in place is drawn wide and light, comp dashed on top of it,
     # so that both are visible where they agree
-    for path, glc, label, linewidth, alpha, linestyle in [
-        (in_place, "[glc]", "in place", 4.0, 0.35, "-"),
-        (flat, "[uptake__glc]", "comp", 1.5, 1.0, "--"),
-    ]:
+    drawn: list[tuple[Path, str, str, float, float, LineType]] = [
+        (in_place, "[glc]", "in place", 4.0, 0.35, "solid"),
+        (flat, "[uptake__glc]", "comp", 1.5, 1.0, "dashed"),
+    ]
+    for path, glc, label, linewidth, alpha, line in drawn:
         loaded = simulator.load(path)
         loaded.set_selections(["time", "[glc_ext]", glc])
         s = simulator.simulate(loaded, Simulation(end=240, steps=240))
-        for sid, color in [("[glc_ext]", "tab:blue"), (glc, "tab:red")]:
-            ax.plot(
+        for sid, color in [("[glc_ext]", "#1f77b4"), (glc, "#d62728")]:
+            ax.curve(
                 s["time"],
                 s[sid],
                 color=color,
-                linewidth=linewidth,
-                alpha=alpha,
-                linestyle=linestyle,
+                width=linewidth,
+                opacity=alpha,
+                line=line,
                 label=f"{sid.strip('[]').removeprefix('uptake__')} {label}",
             )
-    ax.set_xlabel("time [min]")
-    ax.set_ylabel("glucose [mM]")
-    ax.set_title("Glucose uptake driven by measured plasma glucose")
-    ax.legend()
-    return f
+    return chart
 
 
 if __name__ == "__main__":
@@ -127,7 +134,5 @@ if __name__ == "__main__":
 
     log.enable_rich_logging()
 
-    figure = driving_example(Path.cwd())
-    figure_path = Path.cwd() / "driving.png"
-    figure.savefig(figure_path, bbox_inches="tight", dpi=150)
+    figure_path = driving_example(Path.cwd()).save(Path.cwd() / "driving.svg")
     logger.info("Figure written to '%s'", figure_path)

@@ -5,44 +5,60 @@ parameters, see `sbmlsim.simulation.sampling` (`random`, `lhs`,
 `fit_parameters`, `profile_parameters`, `fit_repeats`, `population`), run by
 `Simulator.run`, and its summary over the dimension of the draws,
 `ScanResult.summary(dim, quantiles=[0.05, 0.5, 0.95])`. The functions here
-draw it: `plot_bands` a timecourse as a median and a band per label of the
-other dimensions, `plot_distribution` a value per simulation as a histogram
-or a box per label. They return the figure and never show it; called once per
-scenario with one `ax` and a `label` each, they draw the scenarios into one
-plot with one legend.
+draw it as a `sbmlsim.plot.Chart`: `plot_bands` a timecourse as a median and
+a band per label of the other dimensions, `plot_distribution` a value per
+simulation as a histogram, a box or a violin per label. Given a mapping of
+scenarios to their results instead of one result, they draw the scenarios
+into one plot with one legend, labelled by their keys.
 
-`plot_bands` draws quantities, `ScanResult.q`: the axes have the units of the
-first quantities drawn into them and convert every other one, so a band
-shares an axis with the lines of `ax.plot(res.q["time"], res.q["cp"])`, and
-`time_unit` and `unit` choose the units, e.g. `time_unit="hr"`. The axes are
-labelled with `sbmlsim.plot.label_axes`, the units in their short form, e.g.
-`ng/ml`; `plot_distribution` converts into `unit` and labels the same way.
+The values are quantities, `ScanResult.quantity`: the axes have the units of
+the first quantities drawn into them and convert every other one, and
+`time_unit` and `unit` choose the units, e.g. `time_unit="hr"`. The renderer
+labels an axis with its name and the short form of its unit, e.g.
+`cp [ng/ml]`.
 """
 
 from __future__ import annotations
 
 import itertools
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, Final
 
 import numpy as np
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 
-from sbmlsim.plot.axes import label_axes
+from sbmlsim.plot.chart import Chart, ChartAxis
 from sbmlsim.result.scan import STATISTIC, TIME, ScanResult
-from sbmlsim.sensitivity.plots import draw_boxes
-from sbmlsim.units import setup_matplotlib, unit_label
+from sbmlsim.sensitivity.plots import density, draw_boxes
+
+#: the results of the scenarios of a plot: one result, or results by the
+#: labels of their scenarios
+type Results = ScanResult | Mapping[str, ScanResult]
+
+#: the kinds of a plot of a distribution
+DISTRIBUTION_KINDS: Final = ("hist", "box", "violin")
+
+#: the size of a chart in pixels (6 x 4 inches)
+SIZE: Final = (432.0, 288.0)
+
+#: the opacity of the bins of a histogram, through which the others show
+HISTOGRAM_OPACITY: Final = 0.5
 
 
-def _figure(ax: Axes | None) -> tuple[Figure, Axes]:
-    """Get the figure and the axes to draw into."""
-    if ax is not None:
-        figure = ax.get_figure()
-        if not isinstance(figure, Figure):
-            raise ValueError("The axes of a plot must belong to a figure.")
-        return figure, ax
-    figure = Figure(figsize=(6, 4), layout="constrained")
-    return figure, figure.add_subplot()
+def _scenarios(
+    results: Results, label: str | None
+) -> list[tuple[str | None, ScanResult]]:
+    """Get the results with the labels of their scenarios.
+
+    Args:
+        results: one result or results by the labels of their scenarios.
+        label: the label of one result.
+
+    Returns:
+        The label and the result of every scenario.
+    """
+    if isinstance(results, Mapping):
+        return [(str(name), result) for name, result in results.items()]
+    return [(label, results)]
 
 
 def _labels(data: Any, skip: set[str]) -> list[dict[str, Any]]:
@@ -68,164 +84,194 @@ def _text(selection: dict[str, Any], label: str | None, key: str) -> str:
     return f"{label}: {labels}" if labels else label
 
 
-def _legend(axes: Axes, label: str | None) -> None:
-    """Draw the legend of every labelled curve of the axes, also of earlier calls.
+def _text(selection: dict[str, Any], label: str | None, key: str) -> str:
+    """Get the label of a curve.
 
-    A legend needs two curves, or one with the label of a call.
+    Args:
+        selection: the labels of the other dimensions of the curve.
+        label: the label of the call, a prefix of the labels of the dimensions.
+        key: the variable, the label of a curve without labels.
     """
-    handles, _ = axes.get_legend_handles_labels()
-    if len(handles) > 1 or (handles and label is not None):
-        axes.legend()
+    labels = ", ".join(f"{d}={v}" for d, v in selection.items())
+    if label is None:
+        return labels or key
+    return f"{label}: {labels}" if labels else label
 
 
 def plot_bands(
-    summary: ScanResult,
+    summary: Results,
     key: str,
     *,
     lower: str = "q0.05",
     center: str = "q0.5",
     upper: str = "q0.95",
-    ax: Axes | None = None,
-    alpha: float = 0.3,
     label: str | None = None,
     time_unit: str | None = None,
     unit: str | None = None,
     name: str | None = None,
-) -> Figure:
+) -> Chart:
     """Draw a timecourse of a summary as a center line and a band per label.
 
-    Every line is labelled with the labels of the other dimensions, e.g.
+    Every band is labelled with the labels of the other dimensions, e.g.
     `dose=1`, or with the key for a summary without other dimensions. A
-    `label` is the label of the line of a summary without other dimensions
-    and the prefix of the labels of the lines otherwise, e.g. `mid: dose=1`,
-    so the summaries of several scenarios drawn into one `ax` are told apart
-    in its legend, which every call draws again with every line of the axes.
+    `label` is the label of a summary without other dimensions and the
+    prefix of the labels otherwise, e.g. `mid: dose=1`; the summaries of a
+    mapping take their keys as their labels, so the scenarios are told apart
+    in the legend. A legend is drawn for more than one band or a label.
 
     Args:
-        summary: a summary of a scan, `ScanResult.summary(..., quantiles=...)`.
+        summary: a summary of a scan, `ScanResult.summary(..., quantiles=...)`,
+            or summaries by the labels of their scenarios.
         key: the timecourse.
         lower: the statistic of the lower bound of the band.
         center: the statistic of the line.
         upper: the statistic of the upper bound of the band.
-        ax: the axes to draw into, a new figure without.
-        alpha: the opacity of the band.
-        label: the label of the lines, see above.
-        time_unit: the unit of the time, e.g. `hr`, the one of the summary by
-            default; an axis which has a unit keeps it.
-        unit: the unit of the values, e.g. `ng/ml`, the one of the summary
-            by default; an axis which has a unit keeps it.
+        label: the label of the bands of one summary, see above.
+        time_unit: the unit of the time, e.g. `hr`, the one of the first
+            summary by default.
+        unit: the unit of the values, e.g. `ng/ml`, the one of the first
+            summary by default.
         name: the name of the values on their axis, the key by default.
 
     Returns:
-        The figure.
+        The chart.
 
     Raises:
         ValueError: if the variable is no timecourse of a summary or a
             statistic is missing.
     """
-    data = summary[key]
-    if STATISTIC not in data.dims or TIME not in data.dims:
-        raise ValueError(
-            f"'{key}' is no timecourse of a summary; summarize a scan first."
-        )
-    missing = [
-        s for s in (lower, center, upper) if s not in data[STATISTIC].values.tolist()
+    scenarios = _scenarios(summary, label)
+    for _, result in scenarios:
+        data = result[key]
+        if STATISTIC not in data.dims or TIME not in data.dims:
+            raise ValueError(
+                f"'{key}' is no timecourse of a summary; summarize a scan first."
+            )
+        statistics = data[STATISTIC].values.tolist()
+        missing = [s for s in (lower, center, upper) if s not in statistics]
+        if missing:
+            raise ValueError(
+                f"The summary has not the statistics {missing}, add their quantiles."
+            )
+    bands = [
+        (prefix, result, selection)
+        for prefix, result in scenarios
+        for selection in _labels(result[key], {STATISTIC, TIME})
     ]
-    if missing:
-        raise ValueError(
-            f"The summary has not the statistics {missing}, add their quantiles."
-        )
-    setup_matplotlib()
-    figure, axes = _figure(ax)
-    time: Any = summary.q[TIME]
-    if time_unit is not None:
-        time = time.to(time_unit)
-    for selection in _labels(data, {STATISTIC, TIME}):
-        curve = summary.sel(**selection)
-        # quantities, which the stubs of matplotlib do not know as data
-        bounds: list[Any] = [
-            curve.sel(**{STATISTIC: statistic}).q[key]
+    chart = Chart(*SIZE)
+    plot = chart.plot(
+        x=ChartAxis(label="time", unit=time_unit),
+        y=ChartAxis(label=name or key, unit=unit),
+        legend=len(bands) > 1 or any(prefix is not None for prefix, _ in scenarios),
+    )
+    for prefix, result, selection in bands:
+        curve = result.sel(**selection)
+        low, middle, high = (
+            curve.sel(**{STATISTIC: statistic}).quantity(key)
             for statistic in (lower, center, upper)
-        ]
-        if unit is not None:
-            bounds = [q.to(unit) for q in bounds]
-        low, middle, high = bounds
-        lines = axes.plot(time, middle, label=_text(selection, label, key))
-        axes.fill_between(
-            time, low, high, color=lines[0].get_color(), alpha=alpha, linewidth=0
         )
-    label_axes(axes, "time", name or key)
-    _legend(axes, label)
-    return figure
+        plot.band(
+            result.quantity(TIME),
+            low,
+            high,
+            median=middle,
+            label=_text(selection, prefix, key),
+        )
+    return chart
 
 
 def plot_distribution(
-    result: ScanResult,
+    result: Results,
     key: str,
     *,
     dim: str,
     kind: str = "hist",
-    ax: Axes | None = None,
     bins: int = 30,
     label: str | None = None,
     unit: str | None = None,
     name: str | None = None,
-) -> Figure:
-    """Draw a value per simulation over the draws as a histogram or a box per label.
+) -> Chart:
+    """Draw a value per simulation over the draws as a histogram, a box or a violin per label.
 
-    The histograms and boxes are labelled as the lines of `plot_bands`: with
-    the labels of the other dimensions, the key without them, and a `label`
-    is the label of a result without other dimensions and the prefix of the
-    labels otherwise. Histograms of several calls into one `ax` share one
-    legend; the bins are the ones of a call.
+    The distributions are labelled as the bands of `plot_bands`: with the
+    labels of the other dimensions, the key without them, and a `label` is
+    the label of a result without other dimensions and the prefix of the
+    labels otherwise; the results of a mapping take their keys as their
+    labels. The histograms share their bins and a legend; the boxes and
+    violins are side by side, labelled on the axis. A violin is the density
+    of `sbmlsim.sensitivity.plots.density`, a kernel density between the
+    smallest and the largest value; a sample of fewer than two distinct
+    values has no violin.
 
     Args:
-        result: the result of a scan over draws.
+        result: the result of a scan over draws, or results by the labels of
+            their scenarios.
         key: a value per simulation, e.g. the parameter of a PK observable.
         dim: the dimension of the draws.
-        kind: `hist` or `box`.
-        ax: the axes to draw into, a new figure without.
+        kind: `hist`, `box` or `violin`.
         bins: the number of bins of a histogram, shared by every label.
-        label: the label of the distributions, see above.
-        unit: the unit of the values, e.g. `ng/ml`, the one of the result by
-            default.
+        label: the label of the distributions of one result, see above.
+        unit: the unit of the values, e.g. `ng/ml`, the one of the first
+            result by default.
         name: the name of the values on their axis, the key by default.
 
     Returns:
-        The figure.
+        The chart.
 
     Raises:
         ValueError: if the variable is a timecourse, the dimension is not one
             of it, or the kind is unknown.
     """
-    if kind not in ("hist", "box"):
+    if kind not in DISTRIBUTION_KINDS:
         raise ValueError(
-            f"The kind of a distribution plot is 'hist' or 'box', not '{kind}'."
+            f"The kind of a distribution plot is one of {list(DISTRIBUTION_KINDS)}, "
+            f"not '{kind}'."
         )
-    data = result[key]
-    if TIME in data.dims or "_point" in data.dims:
-        raise ValueError(
-            f"'{key}' is a timecourse; draw a value per simulation, e.g. at(x, t)."
-        )
-    if dim not in data.dims:
-        raise ValueError(f"'{dim}' is no dimension of '{key}': {list(data.dims)}.")
-    figure, axes = _figure(ax)
-    selections = _labels(data, {dim})
-    quantities = [result.sel(**s).q[key] for s in selections]
-    if unit is not None:
-        quantities = [q.to(unit) for q in quantities]
-    samples = [np.asarray(q.magnitude, dtype=float).ravel() for q in quantities]
+    names: list[str] = []
+    quantities: list[Any] = []
+    scenarios = _scenarios(result, label)
+    for prefix, scenario in scenarios:
+        data = scenario[key]
+        if TIME in data.dims or "_point" in data.dims:
+            raise ValueError(
+                f"'{key}' is a timecourse; draw a value per simulation, e.g. at(x, t)."
+            )
+        if dim not in data.dims:
+            raise ValueError(f"'{dim}' is no dimension of '{key}': {list(data.dims)}.")
+        for selection in _labels(data, {dim}):
+            names.append(_text(selection, prefix, key))
+            quantities.append(scenario.sel(**selection).quantity(key))
+    # every sample in one unit: the one asked for, else the one of the first
+    target = unit if unit is not None else str(quantities[0].units)
+    samples = [
+        np.asarray(q.to(target).magnitude, dtype=float).ravel() for q in quantities
+    ]
     samples = [s[np.isfinite(s)] for s in samples]
-    names = [_text(s, label, key) for s in selections]
-    text = unit_label(name or key, unit or result.units.get(key))
+    values = ChartAxis(label=name or key, unit=target)
+    chart = Chart(*SIZE)
     if kind == "hist":
-        edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins).tolist()
-        for values, sample_name in zip(samples, names, strict=True):
-            axes.hist(values, bins=edges, alpha=0.5, label=sample_name)
-        axes.set_xlabel(text)
-        axes.set_ylabel("count")
-        _legend(axes, label)
-    else:
-        draw_boxes(axes, samples, labels=names)
-        axes.set_ylabel(text)
-    return figure
+        plot = chart.plot(
+            x=values,
+            y=ChartAxis(label="count"),
+            legend=len(samples) > 1 or any(p is not None for p, _ in scenarios),
+        )
+        edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins)
+        for sample, sample_name in zip(samples, names, strict=True):
+            counts, _ = np.histogram(sample, bins=edges)
+            plot.histogram(
+                edges, counts, fill_opacity=HISTOGRAM_OPACITY, label=sample_name
+            )
+        return chart
+    plot = chart.plot(
+        x=ChartAxis(scale="category", categories=names), y=values, legend=False
+    )
+    if kind == "box":
+        draw_boxes(plot, samples, names)
+        return chart
+    spread = [k for k, s in enumerate(samples) if np.unique(s).size > 1]
+    if spread:
+        plot.violin(
+            [names[k] for k in spread],
+            [density(samples[k]) for k in spread],
+        )
+    return chart
