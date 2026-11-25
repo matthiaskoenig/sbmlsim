@@ -10,13 +10,17 @@ import xarray as xr
 
 from sbmlsim.engine import import_core
 from sbmlsim.plot.chart import Chart
-from sbmlsim.plot.text import text_width
 from sbmlsim.sensitivity import local, plot_heatmap, plot_indices, plot_morris, plots
 from sbmlsim.sensitivity.plots import box_stats, color_scale, draw_boxes
 from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
 from sbmlsim.simulation import Change, Formula, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
 from tests.simulator.models import sbml
+
+
+def text_width(text: str) -> float:
+    """The width of a text at the size of the ticks, as the renderer measures it."""
+    return float(import_core().text_width(text, plots.TEXT_SIZE))
 
 
 def _sobol() -> SensitivityResult:

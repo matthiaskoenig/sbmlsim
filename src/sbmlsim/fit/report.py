@@ -97,7 +97,6 @@ from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 from sbmlsim.plot.colors import normalize_color
-from sbmlsim.plot.text import text_width
 from sbmlsim.progress import activity as progress_activity
 from sbmlsim.report.document import Document
 from sbmlsim.report.figures import IMAGE_FORMATS, inline_figure, save_figure
@@ -296,24 +295,24 @@ POINT_SIZE: float = 9.0
 POINT_OPACITY: float = 0.7
 
 #: the box with the key metrics of a panel, see `FitReport._metrics_boxes`:
-#: its edge, fill and opacity, the distance of its lines of the text of the
-#: renderer (11 pixels, measured by `sbmlsim.plot.text.text_width`), its
+#: its edge, fill and opacity, the font size of a text element of the
+#: renderer (the size of the x tick labels, 11 pixels by default) and the
+#: distance of the lines of a text of several lines, 1.2 font sizes, its
 #: padding and its distance from the corner of the panel in pixels
 METRICS_BOX: dict[str, Any] = {
     "edge": "#999999",
     "fill": "#ffffff",
     "fill_opacity": 0.9,
 }
-BOX_LINE: float = 14.0
+TEXT_SIZE: float = 11.0
+BOX_LINE: float = 1.2 * TEXT_SIZE
 BOX_PAD: float = 5.0
 BOX_MARGIN: float = 8.0
 
 #: the font size of the title of a figure in pixels, the one of the renderer,
-#: and the factor of its bold letters over the regular ones `text_width`
-#: measures, which the width of the figure of a fit mapping makes room for,
-#: see `_title_width`
+#: which draws it bold; the width of the figure of a fit mapping makes room
+#: for it, see `_title_width`
 TITLE_SIZE: float = 16.0
-TITLE_BOLD: float = 1.08
 
 #: the labels of the axes of the agreement figures
 GOF_X_LABEL: str = "Experiment y"
@@ -2259,11 +2258,11 @@ class FitReport:
         """Draw boxes of key metrics into the upper left corner of plots.
 
         The renderer places a text at values of the axes, so a box is placed
-        by the geometry of the chart as it is drawn: its lines `BOX_LINE`
-        pixels apart below the top of the panel, on a white box as wide as
-        the renderer measures the longest line and no wider than the panel. The plots of the boxes are drawn
-        before the boxes, and a box changes neither their axes nor their
-        legends.
+        by the geometry of the chart as it is drawn: one text of its lines,
+        `BOX_LINE` pixels apart, below the top of the panel on a white box as
+        wide as the renderer measures the longest line and no wider than the
+        panel. The plots of the boxes are drawn before the boxes, and a box
+        changes neither their axes nor their legends.
 
         Args:
             chart: the chart, with every other element drawn.
@@ -2273,15 +2272,16 @@ class FitReport:
         boxes = [(plot, text) for plot, text in boxes if text]
         if not boxes:
             return
-        geometry = import_core().figure_geometry(chart.to_json())
+        core = import_core()
+        geometry = core.figure_geometry(chart.to_json())
         drawn = {plot["id"]: plot for plot in geometry["plots"]}
         for plot, text in boxes:
             panel = drawn[plot.id]
             lines = text.splitlines()
-            # as wide as the renderer measures the text, never wider than the
-            # panel
+            # as wide as the renderer measures the widest line, never wider
+            # than the panel
             width = min(
-                text_width(text) + 2 * BOX_PAD,
+                core.text_width(text, TEXT_SIZE) + 2 * BOX_PAD,
                 panel["rect"]["width"] - 2 * BOX_MARGIN,
             )
             height = BOX_LINE * len(lines) + 2 * BOX_PAD
@@ -2301,11 +2301,9 @@ class FitReport:
                 fill=METRICS_BOX["fill"],
                 fill_opacity=METRICS_BOX["fill_opacity"],
             )
-            for index, line in enumerate(lines):
-                x, y = _panel_point(
-                    panel, left + BOX_PAD, top + BOX_PAD + BOX_LINE * (index + 0.5)
-                )
-                plot.text(x, y, line, color="#000000")
+            # the lines of a text are centred on its position
+            x, y = _panel_point(panel, left + BOX_PAD, top + height / 2)
+            plot.text(x, y, "\n".join(lines), color="#000000")
 
     @staticmethod
     def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:
@@ -2360,7 +2358,8 @@ class FitReport:
         """Get the width of a chart so that its title fits, at least `width`."""
         if not title:
             return width
-        return max(width, TITLE_BOLD * text_width(title, TITLE_SIZE) + 2 * BOX_MARGIN)
+        measured = import_core().text_width(title, TITLE_SIZE, bold=True)
+        return max(width, measured + 2 * BOX_MARGIN)
 
     def _is_scalar(self, k: int) -> bool:
         """Whether mapping `k` compares one value per simulation."""

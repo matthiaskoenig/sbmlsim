@@ -1318,3 +1318,22 @@ print("matplotlib" in sys.modules, "seaborn" in sys.modules)
     )
     assert done.returncode == 0, done.stderr[-3000:]
     assert done.stdout.strip().splitlines()[-1] == "False False", done.stdout[-2000:]
+
+
+def test_the_figures_of_the_groups_have_bold_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The labels and tick labels of the sampling figures are bold, as in sbmlsim 0.8.5."""
+    saved: list[Chart] = []
+    monkeypatch.setattr(module, "_save", lambda chart, path: saved.append(chart))
+    groups = [
+        SensitivityGroup(uid="a", name="A", simulation=Simulation(end=1.0)),
+        SensitivityGroup(uid="b", name="B", simulation=Simulation(end=1.0)),
+    ]
+    values = [np.array([1.0, 2.0, 3.0]), np.array([2.0, 3.0, 4.0])]
+    module._plot_groups([("auc", values)], groups, tmp_path / "groups.png", seed=1)
+    (chart,) = saved
+    fonts = chart.spec()["fonts"]
+    assert fonts["label_weight"] == fonts["tick_weight"] == "bold"
+    assert fonts["label"] == 13.0
+    chart.svg()

@@ -1808,6 +1808,21 @@ def test_a_box_of_metrics_stays_in_its_panel() -> None:
     assert [_texts(plot) for plot in _plots(chart)] == [["x" * 400], ["n = 4"]]
 
 
+def test_a_box_of_several_lines_is_one_text() -> None:
+    """The lines of a box are one text of several lines, the box their height."""
+    pytest.importorskip("sbmlsim_core")
+    chart = Chart(400, 300)
+    plot = chart.plot(x=ChartAxis(min=0.0, max=1.0), y=ChartAxis(min=0, max=1))
+    FitReport._metrics_boxes(chart, [(plot, "GMFE = 1.2\nn = 4\n2 SD = 80 %")])
+    (spec,) = _plots(chart)
+    assert _texts(spec) == ["GMFE = 1.2\nn = 4\n2 SD = 80 %"]
+    (box,) = _of_kind(spec, "polygon")
+    ys = [y for _x, y in box["paths"][0]]
+    (text,) = _of_kind(spec, "text")
+    # the text is centred in its box
+    assert text["y"] == pytest.approx((min(ys) + max(ys)) / 2)
+
+
 def _initialized_report(
     problem: OptimizationProblem, settings: FitSettings, **kwargs: Any
 ) -> FitReport:

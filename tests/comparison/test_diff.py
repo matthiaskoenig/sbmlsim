@@ -285,6 +285,8 @@ def test_the_figure_of_a_comparison_is_a_chart(tmp_path: Path) -> None:
     assert isinstance(chart, Chart)
     spec = chart.spec()
     assert spec["title"] == "reference | different"
+    # the labels of the axes are bold, as matplotlib drew them
+    assert spec["fonts"]["label_weight"] == "bold"
     heat, tolerance, absolute, relative = spec["plots"]
     assert (heat["row"], heat["column"]) == (0, 1)
     (heatmap,) = _elements(heat, "heatmap")

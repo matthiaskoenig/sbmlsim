@@ -27,9 +27,9 @@ from scipy.cluster.hierarchy import leaves_list, linkage
 from scipy.spatial.distance import pdist
 from scipy.stats import gaussian_kde
 
+from sbmlsim.engine import import_core
 from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 from sbmlsim.plot.colors import normalize_color
-from sbmlsim.plot.text import TEXT_SIZE, text_width
 from sbmlsim.sensitivity.result import (
     DIMENSIONLESS_INDICES,
     PARAMETER,
@@ -82,6 +82,9 @@ TICK_PAD = 10.0
 
 EDGE = 8.0
 """The pixels between a text and the edge of a chart."""
+
+TEXT_SIZE = 11.0
+"""The font size of the tick labels and the texts of the renderer in pixels."""
 
 ROTATED = 45.0
 """The rotation of the tick labels which do not fit side by side, in degrees."""
@@ -317,9 +320,14 @@ def _order(values: np.ndarray, cluster: bool) -> np.ndarray:
     return leaves_list(linkage(pdist(finite), method="single"))
 
 
+def _text_width(text: str) -> float:
+    """Get the width of a text at the size of the ticks in pixels, as the renderer measures it."""
+    return float(import_core().text_width(text, TEXT_SIZE))
+
+
 def _widest(texts: Sequence[str]) -> float:
     """Get the width of the widest of the texts at the size of the ticks in pixels."""
-    return max((text_width(t) for t in texts), default=0.0)
+    return max((_text_width(t) for t in texts), default=0.0)
 
 
 def _rotation(labels: Sequence[str], room: float, left: float) -> float:
@@ -328,7 +336,7 @@ def _rotation(labels: Sequence[str], room: float, left: float) -> float:
     The labels are horizontal when they fit side by side, rotated by
     `ROTATED` (ending at their tick) when they do not, and vertical when the
     first rotated label would reach further left than the room left of the
-    plot, which the renderer does not widen for it.
+    plot, which the renderer (sbmlsim-core 0.28) does not widen for it.
 
     Args:
         labels: the tick labels.
@@ -771,7 +779,7 @@ def plot_morris(
     # must fit into
     panel_width, panel_height = width - 110.0, height - 100.0
     note = f"not shown, undefined (NaN): {', '.join(undefined)}" if undefined else None
-    x_end = _end(xs, [text_width(n) + 8.0 for n in names], panel_width)
+    x_end = _end(xs, [_text_width(n) + 8.0 for n in names], panel_width)
     lines = 2 if note else 1
     y_end = _end(ys, [lines * TEXT_SIZE * 1.4] * len(names), panel_height)
     if note:

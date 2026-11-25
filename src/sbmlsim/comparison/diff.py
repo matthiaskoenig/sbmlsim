@@ -501,9 +501,13 @@ class DataSetsComparison:
             title=self.title,
             rows=2,
             columns=2,
-            fonts={"legend": 8},
+            # the labels of the axes are bold, as matplotlib drew them
+            fonts={"legend": 8, "label_weight": "bold"},
         )
         title = f"equal = {str(self.is_equal()).upper()}"
+        # the heatmap is in the right column: the label of its colour bar
+        # would crowd the y label of a plot right of it, which the renderer
+        # (sbmlsim-core 0.28) does not move apart
         if df_diff.empty:
             # every value is within the tolerances, there is nothing to map
             empty = ChartAxis(min=0.0, max=1.0, ticks_visible=False)

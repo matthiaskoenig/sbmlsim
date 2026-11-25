@@ -529,6 +529,8 @@ def _plot_groups(
         columns=ncols,
         wspace=0.4,
         hspace=0.4,
+        # the bold labels and tick labels of sbmlsim 0.8.5
+        fonts={"label": 13, "label_weight": "bold", "tick_weight": "bold"},
     )
     colors = [normalize_color(g.color or f"C{k}") or "" for k, g in enumerate(groups)]
     names = [g.uid for g in groups]
