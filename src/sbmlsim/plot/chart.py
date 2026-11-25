@@ -1227,10 +1227,11 @@ def _color_scale(
 
 
 def _with_resolution(png: bytes, dpi: float) -> bytes:
-    """Get a PNG with its resolution, a `pHYs` chunk after its header.
+    """Get a PNG with its resolution, one `pHYs` chunk after its header.
 
     The renderer writes no resolution; a reader such as LaTeX sizes an image
-    by it, and takes 72 dpi without it.
+    by it, and takes 72 dpi without it. A `pHYs` chunk the PNG has is
+    replaced, a PNG has at most one.
 
     Args:
         png: the PNG, its first chunk the header `IHDR`.
@@ -1239,11 +1240,18 @@ def _with_resolution(png: bytes, dpi: float) -> bytes:
     Returns:
         The PNG with a `pHYs` chunk of the resolution in pixels per meter.
     """
-    end_of_header = 8 + 4 + 4 + 13 + 4
+    chunks: list[bytes] = []
+    position = 8
+    while position < len(png):
+        (length,) = struct.unpack(">I", png[position : position + 4])
+        end = position + 12 + length
+        if png[position + 4 : position + 8] != b"pHYs":
+            chunks.append(png[position:end])
+        position = end
     per_meter = round(float(dpi) / 0.0254)
     data = b"pHYs" + struct.pack(">IIB", per_meter, per_meter, 1)
-    chunk = struct.pack(">I", 9) + data + struct.pack(">I", zlib.crc32(data))
-    return png[:end_of_header] + chunk + png[end_of_header:]
+    phys = struct.pack(">I", 9) + data + struct.pack(">I", zlib.crc32(data))
+    return png[:8] + chunks[0] + phys + b"".join(chunks[1:])
 
 
 class Chart:

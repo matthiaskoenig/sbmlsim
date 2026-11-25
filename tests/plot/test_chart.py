@@ -152,6 +152,14 @@ def test_a_png_states_its_resolution() -> None:
     for dpi in (72.0, 300.0):
         with Image.open(io.BytesIO(chart.png(dpi=dpi))) as image:
             assert image.info["dpi"] == pytest.approx((dpi, dpi), abs=0.1)
+    # a resolution the PNG has is replaced, not doubled
+    from sbmlsim.plot.chart import _with_resolution
+
+    png = _with_resolution(_with_resolution(chart.png(dpi=72.0), 150.0), 300.0)
+    assert png.count(b"pHYs") == 1
+    with Image.open(io.BytesIO(png)) as image:
+        image.load()
+        assert image.info["dpi"] == pytest.approx((300, 300), abs=0.1)
 
 
 def test_save_by_suffix(tmp_path: Path) -> None:
