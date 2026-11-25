@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import shutil
 import sys
 import webbrowser
@@ -17,6 +16,7 @@ from urllib.parse import quote
 
 from sbmlsim import __version__, display
 from sbmlsim.model import AbstractModel
+from sbmlsim.report.figures import inline_svg, script_json
 from sbmlsim.report.templates import TEMPLATE_DIR, template_environment
 
 if TYPE_CHECKING:
@@ -64,36 +64,6 @@ def _link(path: PurePath) -> str:
             "file://" + ("" if posix.startswith("/") else "/") + quote(posix, safe="/:")
         )
     return path.as_posix()
-
-
-_XML_DECLARATION = re.compile(r"^\s*<\?xml[^>]*\?>\s*", re.IGNORECASE)
-_DOCTYPE = re.compile(r"<!DOCTYPE[^>]*>\s*", re.IGNORECASE)
-
-
-def inline_svg(text: str) -> str:
-    """Get the text of an SVG file as markup of an HTML page.
-
-    Args:
-        text: the SVG file.
-
-    Returns:
-        The SVG without the XML declaration and the DOCTYPE, which an HTML
-        page must not carry inside its body.
-    """
-    return _DOCTYPE.sub("", _XML_DECLARATION.sub("", text, count=1), count=1).strip()
-
-
-def script_json(text: str) -> str:
-    r"""Get JSON text which can sit in a script element of an HTML page.
-
-    Args:
-        text: the JSON text.
-
-    Returns:
-        The text with `</` as `<\/` (a JSON parser reads it back unchanged),
-        so `</script>` and `<!--` in a label cannot end the script.
-    """
-    return text.replace("</", "<\\/").replace("<!--", "<\\u0021--")
 
 
 def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any]:
