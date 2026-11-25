@@ -108,7 +108,7 @@ dependencies = [
 	# parameter of a profile likelihood, which the analysis computes from the
 	# Fisher information of the optimum, so python and the engine walk the
 	# same points (#647)
-	"sbmlsim-core>=0.27.0",
+	"sbmlsim-core>=0.28.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
