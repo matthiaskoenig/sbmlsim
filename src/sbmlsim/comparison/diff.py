@@ -11,15 +11,23 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import xarray as xr
-from matplotlib.figure import Figure
 
 from sbmlsim.console import console
+from sbmlsim.plot.chart import Chart, ChartAxis
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
+
+#: the diverging color scale of the differences to the tolerances
+DIFF_SCALE = "coolwarm"
+
+#: the lower end of the logarithmic axes of the differences
+LOG_BOTTOM = 1e-10
+
+#: the most rows of the results whose tick labels the heatmap shows
+MAX_HEATMAP_TICKS = 30
 
 
 def within_tolerance(
@@ -450,104 +458,117 @@ class DataSetsComparison:
         return "\n".join([str(item) for item in lines])
 
     @timeit
-    def report(self):
-        """Report."""
+    def report(self) -> Chart:
+        """Log the report and draw the figure of the differences, see `plot_diff`."""
         console.log(self.report_str())
-
-        # plot figure
         return self.plot_diff()
 
     @timeit
-    def plot_diff(self):
-        """Plot lines for entries which are above epsilon treshold."""
-        # filter data
+    def plot_diff(self) -> Chart:
+        """Draw the differences of the results.
+
+        Four panels: of the columns whose absolute difference reaches
+        `eps_plot`, the differences to the tolerances over the rows of the
+        results, the differences above the tolerances as a heatmap of the
+        columns over the rows, on a diverging scale centered at 0 (a value
+        within the tolerances has no color) with its colorbar at the right
+        edge, and the absolute and relative differences over the rows on a
+        logarithmic axis with the absolute tolerance.
+
+        Returns:
+            The chart, drawn by the renderer of sbmlsim-core.
+        """
         diff_abs = self.diff_abs.copy()
         diff_rel = self.diff_rel.copy()
         diff_tol = self.diff_tol.copy()
         diff_tol[diff_tol < 0] = np.nan  # remove the identical tolerance
-        diff_max = diff_abs.max()
-        column_index = diff_max >= DataSetsComparison.eps_plot
+        plotted = [
+            cid
+            for cid, top in diff_abs.max().items()
+            if top >= DataSetsComparison.eps_plot
+        ]
+        labelled = len(plotted) > 0
 
-        # console.log(column_index)
-        diff_abs = diff_abs.transpose()
-        diff_abs = diff_abs[column_index]
-        diff_abs = diff_abs.transpose()
-
-        # plot all overview
-        # a figure which pyplot does not hold, so it depends on no backend of
-        # pyplot (#317)
-        f1 = Figure(figsize=(12, 12), dpi=300)
-        (ax1, ax2), (ax3, ax4) = f1.subplots(2, 2)
-        f1.subplots_adjust(wspace=0.35)
-        f1.suptitle(self.title, fontsize=14, fontweight="bold")
-
-        # Filter by different columns to remove clutter
+        # the columns with a difference above the tolerances
         df_diff_bool: pd.DataFrame = self.diff_tol_bool.copy()
-
-        col_drops = []
-        for col in df_diff_bool.columns:
-            if df_diff_bool[col].sum() == 0:
-                col_drops.append(col)
-
-        df_diff_bool = df_diff_bool.drop(labels=col_drops, axis=1)
-
-        # absolute difference
-        df_diff: pd.DataFrame = self.diff_tol.copy()
-        df_diff = df_diff.drop(labels=col_drops, axis=1)
+        col_drops = [c for c in df_diff_bool.columns if df_diff_bool[c].sum() == 0]
+        df_diff: pd.DataFrame = self.diff_tol.copy().drop(labels=col_drops, axis=1)
         df_diff[df_diff < 0] = np.nan
 
+        chart = Chart(
+            864,
+            864,
+            title=self.title,
+            rows=2,
+            columns=2,
+            fonts={"legend": 8},
+        )
+        title = f"equal = {str(self.is_equal()).upper()}"
         if df_diff.empty:
             # every value is within the tolerances, there is nothing to map
-            ax1.text(
-                0.5,
-                0.5,
-                "every value within the tolerances",
-                ha="center",
-                va="center",
-                transform=ax1.transAxes,
-            )
-            ax1.set_xticks([])
-            ax1.set_yticks([])
+            empty = ChartAxis(min=0.0, max=1.0, ticks_visible=False)
+            heat = chart.plot(0, 1, title=title, x=empty, y=empty, legend=False)
+            heat.text(0.5, 0.5, "every value within the tolerances", anchor="middle")
         else:
-            vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
-            sns.heatmap(
-                data=df_diff.T,
-                cmap="seismic",
-                linewidths=0.2,
-                linecolor="black",
-                vmin=-vmax,
-                vmax=vmax,
-                ax=ax1,
-                cbar=True,
+            # the rows of a long result are too many for their tick labels
+            heat = chart.plot(
+                0,
+                1,
+                title=title,
+                x=ChartAxis(
+                    label="time index",
+                    ticks_visible=len(df_diff.index) <= MAX_HEATMAP_TICKS,
+                ),
+                legend=False,
             )
-        ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
-        ax1.set_ylabel("Tolerance difference", fontweight="bold")
-
-        for cid in diff_abs.columns:
-            ax2.plot(diff_tol[cid], label=cid)
-            ax3.plot(diff_abs[cid], label=cid)
-            ax4.plot(diff_rel[cid], label=cid)
-        # a legend only of the columns which differ above the epsilon
-        labelled = len(diff_abs.columns) > 0
-
-        ax2.set_ylabel("Tolerance difference", fontweight="bold")
-        if labelled:
-            ax2.legend(prop={"size": 6})
-        ax3.set_ylabel("Absolute difference", fontweight="bold")
-        ax4.set_ylabel("Relative difference", fontweight="bold")
-
-        for ax in (ax3, ax4):
-            ax.set_xlabel("time index", fontweight="bold")
-            ax.set_yscale("log")
-            ax.set_ylim(bottom=1e-10)
-            if labelled:
-                ax.legend(prop={"size": 6})
-
-            if ax.get_ylim()[1] < 10 * DataSetsComparison.tol_abs:
-                ax.set_ylim(top=10 * DataSetsComparison.tol_abs)
-
-        ax2.axhline(0.0, color="black", linestyle="--")
-        for ax in (ax3, ax4):
-            ax.axhline(DataSetsComparison.tol_abs, color="black", linestyle="--")
-
-        return f1
+            values = np.abs(df_diff.to_numpy(dtype=float))
+            finite = values[np.isfinite(values)]
+            vmax = float(finite.max()) if finite.size and finite.max() > 0 else 1.0
+            heat.heatmap(
+                [str(c) for c in df_diff.columns],
+                [str(i) for i in df_diff.index],
+                df_diff.T.to_numpy(dtype=float),
+                scale=DIFF_SCALE,
+                low=-vmax,
+                high=vmax,
+                center=0.0,
+            )
+            heat.colorbar(
+                DIFF_SCALE, -vmax, vmax, label="Tolerance difference", center=0.0
+            )
+        index = ChartAxis(label="time index")
+        tolerance = chart.plot(
+            0,
+            0,
+            x=index,
+            y=ChartAxis(label="Tolerance difference"),
+            legend=labelled,
+        )
+        bottom = DataSetsComparison.tol_abs
+        # the axes end at the decade above the differences and the tolerance
+        largest = [
+            float(np.nanmax(df[plotted].to_numpy(dtype=float), initial=0.0))
+            for df in (diff_abs, diff_rel)
+        ]
+        tops = [10.0 ** np.ceil(np.log10(max(10 * bottom, v))) for v in largest]
+        logs = [
+            chart.plot(
+                1,
+                column,
+                x=index,
+                y=ChartAxis(label=label, scale="log", min=LOG_BOTTOM, max=top),
+                legend=labelled,
+            )
+            for column, (label, top) in enumerate(
+                zip(["Absolute difference", "Relative difference"], tops, strict=True)
+            )
+        ]
+        x = np.asarray(diff_abs.index, dtype=float)
+        for cid in plotted:
+            tolerance.curve(x, diff_tol[cid].to_numpy(dtype=float), label=str(cid))
+            logs[0].curve(x, diff_abs[cid].to_numpy(dtype=float), label=str(cid))
+            logs[1].curve(x, diff_rel[cid].to_numpy(dtype=float), label=str(cid))
+        tolerance.rule(0.0, line="dashed", width=1.0, color="#000000")
+        for plot in logs:
+            plot.rule(bottom, line="dashed", width=1.0, color="#000000")
+        return chart
