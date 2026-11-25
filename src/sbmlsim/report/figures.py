@@ -24,6 +24,10 @@ IMAGE_FORMATS: tuple[str, ...] = ("svg", "png")
 
 _XML_DECLARATION = re.compile(r"^\s*<\?xml[^>]*\?>\s*", re.IGNORECASE)
 _DOCTYPE = re.compile(r"<!DOCTYPE[^>]*>\s*", re.IGNORECASE)
+#: the namespaces of an SVG file, which an HTML page gives inline SVG itself
+_NAMESPACES = re.compile(
+    r'\s+xmlns(?::xlink)?="http://www\.w3\.org/(?:2000/svg|1999/xlink)"'
+)
 
 
 def inline_svg(text: str) -> str:
@@ -34,9 +38,13 @@ def inline_svg(text: str) -> str:
 
     Returns:
         The SVG without the XML declaration and the DOCTYPE, which an HTML
-        page must not carry inside its body.
+        page must not carry inside its body, and without the namespaces of
+        its root, which the HTML parser gives an inline SVG, so a page which
+        needs no network names no URL.
     """
-    return _DOCTYPE.sub("", _XML_DECLARATION.sub("", text, count=1), count=1).strip()
+    text = _DOCTYPE.sub("", _XML_DECLARATION.sub("", text, count=1), count=1).strip()
+    root = text.find(">")
+    return _NAMESPACES.sub("", text[:root]) + text[root:]
 
 
 def script_json(text: str) -> str:

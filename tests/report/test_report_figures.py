@@ -19,7 +19,8 @@ def test_a_figure_is_saved_with_its_spec(tmp_path: Path) -> None:
     pytest.importorskip("sbmlsim_core")
     written = save_figure(_chart(), tmp_path / "f.svg")
     assert written == [tmp_path / "f.svg", tmp_path / "f.json"]
-    assert json.loads((tmp_path / "f.json").read_text())["contract"] == "figure/1"
+    spec = json.loads((tmp_path / "f.json").read_text(encoding="utf-8"))
+    assert spec["contract"] == "figure/1"
     assert not (tmp_path / "f.png").exists()
 
 
@@ -41,6 +42,8 @@ def test_an_inline_figure_is_its_svg_and_its_spec(tmp_path: Path) -> None:
     save_figure(_chart(), tmp_path / "f.svg", png_dpi=72.0)
     inline = inline_figure(tmp_path / "f.svg")
     assert inline["svg"].startswith("<svg")
+    # the page gives inline SVG its namespace, it names no URL
+    assert "http" not in inline["svg"]
     assert "</script>" not in inline["spec_text"]
     assert json.loads(inline["spec_text"].replace("<\\/", "</"))["title"]
     # a PNG and a figure without its spec are shown as images
