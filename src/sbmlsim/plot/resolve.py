@@ -11,29 +11,34 @@ the spec `figure/1` which the renderer of sbmlsim-core draws:
 - a curve of points is a curve with its error bars, a curve over the points
   of a scan a curve per point in the colours, line styles and legend labels
   of `sbmlsim.plot.points.point_styles`, from `COLORBAR_FROM` points with a
-  colour bar of its first dimension; a bar curve is a bar element, stacked
-  bars are refused;
+  colour bar of its first dimension over the range of its values (a band per
+  point of a dimension of labels, `colorbar_arguments`) and one legend entry
+  whose swatch is the middle colour of the points; a bar curve is a bar
+  element, outlined by the line of its style, stacked bars are refused;
 - a `Band` is a band of its quantiles with its median, a `ShadedArea` an area;
 - the `FigureSettings` are the size (`PX_PER_INCH` pixels per inch), the
-  resolution of the PNG (`fig_dpi`), the fonts (a point is a pixel), the
-  spacing of the grid and the place and scope of the legends.
+  resolution of the PNG (`fig_dpi`), the fonts (a point is a pixel; the sizes
+  of the x and y tick labels and the weights of the titles and the axis
+  labels, `normal` or `bold`), the spacing of the grid and the place and
+  scope of the legends.
 
 A legend entry is a legend group of the chart: elements of one label and one
 look share their group, so the renderer shows them once, also in the legend
 of a row (`legend_scope="row"`).
 
-The renderer has no font weights, no colour of a panel or of the figure, no
-style of an axis line, no location of a legend inside a plot and no line
-breaks in labels; these settings of the figure model are not drawn. It has
-one size of the tick labels, the larger of `xtick_labelsize` and
-`ytick_labelsize`, and one switch of the ticks of an axis, so an axis whose
-`ticks_visible` is false shows neither the labels nor the marks of its ticks
-(matplotlib kept the marks). The grid of a plot is the one of its x axis and
-of its left y axis, the right y axis draws none, as in matplotlib. A plot
-has one colour bar, of its first curve or band which has one. The lines over
-`COLORBAR_FROM` points or more share one legend entry, whose swatch the
-renderer draws in its neutral colour, since its lines differ in colour; the
-entry still toggles all of them.
+The renderer has two font weights (a weight of matplotlib of 600 or more,
+or its names of them, is bold; the figure title and the plot titles share
+one, bold when either is), no colour of a panel or of the figure, no style of
+an axis line and no location of a legend inside a plot; these settings of
+the figure model are not drawn. An axis whose `ticks_visible` is false hides
+the labels of its ticks and keeps their marks, as matplotlib did. The grid of
+a plot is the one of its x axis and of its left y axis, the right y axis
+draws none, as in matplotlib. A plot shows the colour bar of every curve or
+band which has one, stacked in their order, the same bar once. The points of
+a curve of a colour of its own are shades of that colour, which no colour
+scale of the renderer has, so they get no colour bar. The lines over
+`COLORBAR_FROM` points or more share one legend entry, which toggles all of
+them.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 import numpy as np
 from pint.errors import PintError
 
-from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
+from sbmlsim.plot.chart import Chart, ChartAxis
 from sbmlsim.plot.colors import color_alpha, normalize_color
 from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
@@ -66,13 +71,12 @@ from sbmlsim.plot.plotting import (
     YAxisPosition,
 )
 from sbmlsim.plot.points import (
-    COLORMAP,
     BandLine,
     Line,
     PointStyle,
     band_label,
     band_lines,
-    colorbar_range,
+    colorbar_arguments,
     curve_lines,
     point_styles,
 )
@@ -127,9 +131,13 @@ POINT_LINE_TYPES: Final[Mapping[str, str]] = {
 #: the colour of the legend entries of the line styles of a second dimension
 NEUTRAL: Final = "#666666"
 
-#: the colour of a marker without fill: the renderer fills every marker, the
-#: background of a plot is white
-HOLLOW: Final = "#ffffff"
+#: the fill of a marker without fill, a hollow marker
+HOLLOW: Final = "none"
+
+#: the font weights of matplotlib by name which the renderer draws bold
+BOLD_WEIGHTS: Final = frozenset(
+    {"semibold", "demibold", "demi", "bold", "heavy", "extra bold", "black"}
+)
 
 #: the curve types the renderer draws as bars, with whether they are horizontal
 BAR_TYPES: Final[Mapping[CurveType, bool]] = {
@@ -183,9 +191,14 @@ def figure_chart(
         fonts={
             "title": resolved.fig_titlesize,
             "label": resolved.axes_labelsize,
-            # figure/1 has one size of the tick labels of every axis
-            "tick": max(resolved.xtick_labelsize, resolved.ytick_labelsize),
+            "tick": resolved.xtick_labelsize,
+            "tick_y": resolved.ytick_labelsize,
             "legend": resolved.legend_fontsize,
+            # the figure title and the plot titles share one weight
+            "title_weight": _weight(
+                resolved.fig_titleweight, resolved.axes_titleweight
+            ),
+            "label_weight": _weight(resolved.axes_labelweight),
         },
         legend_scope=resolved.legend_scope,
         legend_position=resolved.legend_position,
@@ -211,35 +224,34 @@ def figure_chart(
             y=builder.axis("y", plot.yaxis),
             y2=builder.axis("y2", y2) if y2 is not None else None,
             legend=plot.legend,
+            legend_swatches=builder.swatches or None,
         )
         for mark in builder.marks:
             getattr(chart_plot, mark.method)(**mark.arguments)
-        if builder.colorbar is not None:
-            _colorbar(chart_plot, builder.colorbar)
+        for colorbar in builder.colorbars:
+            chart_plot.colorbar(**colorbar)
     return chart
 
 
-def _colorbar(plot: ChartPlot, styles: PointStyle) -> None:
-    """Give a plot the colour bar of the points of a curve or band.
+def _weight(*weights: str | float) -> Literal["normal", "bold"]:
+    """Get the font weight of the renderer of weights of matplotlib, bold if one is."""
+    for weight in weights:
+        if isinstance(weight, int | float) and not isinstance(weight, bool):
+            if weight >= 600:
+                return "bold"
+        elif str(weight).strip().lower() in BOLD_WEIGHTS:
+            return "bold"
+    return "normal"
 
-    The colour bar of `figure/1` is a named colour scale between two values,
-    whose ticks the renderer chooses; the style of the points carries the
-    ramp of their colours and the ticks and labels of their bar as well
-    (`PointStyle.ramp`, `PointStyle.scale`), which a colour bar of colour
-    stops and tick labels will take, see `colorbar_range`.
+
+def _text(text: str | None) -> str | None:
+    r"""Get a text of a label without its outer whitespace, `None` for no text.
+
+    A `\n` inside the text breaks its lines.
     """
-    span = colorbar_range(styles)
-    if span is None:
-        return
-    low, high, log = span
-    plot.colorbar(COLORMAP, low, high, label=styles.title, log=log)
-
-
-def _one_line(text: str | None) -> str | None:
-    """Get a text as one line, `None` for no text: the renderer breaks no lines."""
     if text is None:
         return None
-    return " ".join(text.split()) or None
+    return text.strip() or None
 
 
 @dataclass(frozen=True)
@@ -416,8 +428,10 @@ class _PlotBuilder:
         units: the unit of every axis.
         marks: the elements, in the order they are drawn.
         names: the axes which get names of categories.
-        colorbar: the style of the points whose colour bar the plot shows,
-            `None` without.
+        colorbars: the colour bars the plot shows, the keyword arguments of
+            `ChartPlot.colorbar`, in the order of their curves.
+        swatches: the swatch of a legend group whose elements differ in
+            colour, the style keywords of `Chart.plot`.
     """
 
     experiment: SimulationExperiment
@@ -426,7 +440,8 @@ class _PlotBuilder:
     units: dict[str, _Unit] = field(default_factory=dict)
     marks: list[_Mark] = field(default_factory=list)
     names: set[str] = field(default_factory=set)
-    colorbar: PointStyle | None = None
+    colorbars: list[dict[str, Any]] = field(default_factory=list)
+    swatches: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def resolve(
         self, xaxis: Axis | None, yaxis: Axis | None, right: Axis | None, plot: Any
@@ -485,9 +500,9 @@ class _PlotBuilder:
             return ChartAxis(label_visible=False, ticks_visible=False)
         override = axis.name_override
         if override is not None:
-            label, unit = _one_line(override), None
+            label, unit = _text(override), None
         else:
-            label, unit = _one_line(axis.label), self.units[key].shown
+            label, unit = _text(axis.label), self.units[key].shown
         log = axis.scale == AxisScale.LOG10
         scale: Literal["linear", "log", "category"] = "log" if log else "linear"
         if key in self.names:
@@ -532,6 +547,8 @@ class _PlotBuilder:
             grid=axis.grid and key != "y2",
             label_visible=axis.label_visible,
             ticks_visible=axis.ticks_visible,
+            # matplotlib keeps the marks of the ticks whose labels it hides
+            tick_marks_visible=None if axis.ticks_visible else True,
         )
 
     def _data(self, curve: AbstractCurve, data: Any, axis: AxisKey) -> Any:
@@ -587,27 +604,20 @@ class _PlotBuilder:
         """Give the plot the colour bar of the points of a curve or band.
 
         The points of a colour of their own are its shades, which no colour
-        scale of the renderer has; they get no colour bar. A plot has one
-        colour bar, the one of its first curve which has one.
+        scale of the renderer has; they get no colour bar. A bar which the
+        plot shows already, of another curve over the same points, is shown
+        once.
         """
-        span = colorbar_range(styles) if color is None else None
-        if span is None:
+        arguments = colorbar_arguments(styles) if color is None else None
+        if arguments is None:
             logger.debug(
                 "The points of '%s' in the plot '%s' get no colour bar.",
                 styles.title,
                 self.sid,
             )
             return
-        if self.colorbar is not None:
-            logger.warning(
-                "The plot '%s' shows the colour bar of '%s'; the colour bar of "
-                "'%s' is not drawn, a plot has one colour bar.",
-                self.sid,
-                self.colorbar.title,
-                styles.title,
-            )
-            return
-        self.colorbar = styles
+        if arguments not in self.colorbars:
+            self.colorbars.append(arguments)
 
     def _scan(self, curve: Curve | Band, over: Sequence[str]) -> tuple[list[Any], Any]:
         """Get the dimensions of a scan of `over` and the units of the model of a curve."""
@@ -713,7 +723,7 @@ class _PlotBuilder:
                 **style,
                 "color": styles.colors[i],
             }
-            if "marker_fill" in arguments:
+            if arguments.get("marker_fill", HOLLOW) != HOLLOW:
                 arguments["marker_fill"] = styles.colors[i]
             if two and styles.linestyles is not None:
                 arguments["line"] = POINT_LINE_TYPES[styles.linestyles[line.index[1]]]
@@ -738,7 +748,7 @@ class _PlotBuilder:
                         "color": styles.colors[i],
                         "line": "solid",
                     }
-                    if "marker_fill" in arguments:
+                    if arguments.get("marker_fill", HOLLOW) != HOLLOW:
                         arguments["marker_fill"] = styles.colors[i]
                     self._add("curve", arguments, f"{prefix}{text}", colors.get(i))
             for linestyle, text in zip(
@@ -752,9 +762,17 @@ class _PlotBuilder:
                     "color": NEUTRAL,
                     "line": POINT_LINE_TYPES[linestyle],
                 }
-                if "marker_fill" in arguments:
+                if arguments.get("marker_fill", HOLLOW) != HOLLOW:
                     arguments["marker_fill"] = NEUTRAL
                 self._add("curve", arguments, text)
+        if shared is not None:
+            swatch = {**style, "color": styles.middle}
+            if swatch.get("marker_fill", HOLLOW) != HOLLOW:
+                swatch["marker_fill"] = styles.middle
+            if two:
+                # the line styles are the entries of the second dimension
+                swatch["line"] = "solid"
+            self.swatches[shared] = swatch
         if styles.colorbar:
             self._set_colorbar(styles, color)
 
@@ -808,6 +826,11 @@ class _PlotBuilder:
                 else band.name
             )
             self._add("band", arguments, band_label(name, band.quantiles))
+        if shared is not None and styles is not None:
+            self.swatches[shared] = {
+                "color": styles.middle,
+                "fill_opacity": band.alpha,
+            }
         if styles is not None and styles.colorbar:
             self._set_colorbar(styles, color)
 

@@ -13,6 +13,7 @@ from sbmlsim.plot.points import (
     Line,
     band_label,
     band_lines,
+    colorbar_arguments,
     curve_lines,
     format_value,
     nan_quantile,
@@ -365,18 +366,18 @@ def test_point_colours_are_the_colour_scale_at_their_values() -> None:
     assert (style.scale.low, style.scale.high) == (1.0, 1000.0)
     fractions = np.log10(values) / 3 * 0.85
     assert style.colors == _viridis(*fractions)
-    assert style.scale.ticks == [1.0, 10.0, 100.0, 1000.0]
-    assert style.scale.labels == ["1", "10", "100", "1000"]
+    assert style.scale.labels == []
     assert not style.scale.categorical
+    assert style.middle == _viridis(0.425)[0]
 
     decreasing = Dimension("dose", values={"PODOSE": Q(np.linspace(120, 10, 12), "mg")})
     style = point_styles(_lines(decreasing), ["dose"], "#d62728", [decreasing], {})
     assert style.scale is not None and not style.scale.log
     assert (style.scale.low, style.scale.high) == (10.0, 120.0)
     assert style.colors[0] == "#d62728"
-    assert style.ramp[-1] == "#d62728" and len(style.ramp) == 256
-    assert style.ramp[0] == point_colors(2, "#d62728")[0]
-    assert style.colors[-1] == style.ramp[0]
+    assert style.colors[-1] == point_colors(2, "#d62728")[0]
+    # the middle shade, between the lightest and the colour
+    assert style.middle not in (style.colors[0], style.colors[-1])
 
 
 def test_point_styles_without_a_target_are_discrete_with_the_labels() -> None:
@@ -388,10 +389,10 @@ def test_point_styles_without_a_target_are_discrete_with_the_labels() -> None:
     style = point_styles(_lines(cond), ["cond"], None, [cond], {})
     assert style.title == "cond"
     assert style.scale is not None and style.scale.categorical
-    assert (style.scale.low, style.scale.high) == (-0.5, 2.5)
-    assert style.scale.ticks == [0.0, 1.0, 2.0]
+    assert (style.scale.low, style.scale.high) == (0.0, 2.0)
     assert style.scale.labels == ["0", "10", "20"]
-    assert style.colors == point_colors(3, None) == style.ramp
+    assert style.colors == point_colors(3, None)
+    assert style.middle == style.colors[1]
     assert style.labels[0] == ["cond = 0", "cond = 10", "cond = 20"]
 
 
@@ -445,4 +446,36 @@ def test_no_matplotlib_import() -> None:
 
 def test_point_styles_without_points() -> None:
     style = point_styles([], ["a"], None, [None], {})
-    assert style.scale is None and len(style.ramp) == 256 and style.colors == []
+    assert style.scale is None and style.colors == []
+    assert style.middle == _viridis(0.425)[0]
+
+
+def test_colorbar_arguments_span_the_values_of_the_points() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q(np.linspace(10.0, 120.0, 12), "mg")})
+    style = point_styles(_lines(dose), ["dose"], None, [dose], {})
+    assert colorbar_arguments(style) == {
+        "scale": "viridis",
+        "low": 10.0,
+        "high": 120.0,
+        "label": "PODOSE [mg]",
+        "log": False,
+        "end": 0.85,
+    }
+
+
+def test_colorbar_arguments_of_labels_are_categorical_up_to_max_bands() -> None:
+    def labelled(n: int) -> dict | None:
+        cond = Dimension(
+            "cond", values={"a": np.arange(n), "b": np.arange(n)}, labels=list(range(n))
+        )
+        return colorbar_arguments(
+            point_styles(_lines(cond), ["cond"], None, [cond], {})
+        )
+
+    few = labelled(3)
+    assert few is not None and few["categorical"] is True
+    assert few["tick_labels"] == ["0", "1", "2"]
+    assert (few["low"], few["high"]) == (0.0, 2.0)
+    many = labelled(300)
+    assert many is not None and "categorical" not in many and many["high"] == 299.0
+    assert labelled(1) is None

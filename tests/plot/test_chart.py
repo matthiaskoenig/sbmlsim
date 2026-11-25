@@ -520,8 +520,138 @@ def test_colour_names_are_normalized_and_alpha_is_an_opacity() -> None:
     styles = [e["style"] for e in chart.spec()["plots"][0]["elements"]]
     assert styles[0]["color"] == "#ff0000"
     assert styles[0]["opacity"] == pytest.approx(0.5 * 128 / 255)
-    assert styles[0]["marker"]["fill"] == "#ffffff"
+    assert styles[0]["marker"]["fill"] == "none"
     assert styles[0]["marker"]["edge"] == "#d62728"
     assert styles[1]["color"] == "#1f77b4"
     assert styles[2]["color"] == "#000000"
     assert styles[3]["fill"] == {"color": "#d62728", "opacity": 0.5}
+
+
+def test_colorbar_part_ticks_and_labels() -> None:
+    """A color bar takes the part of the map, its ticks and their labels."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.colorbar(
+        "viridis",
+        10.0,
+        120.0,
+        label="dose [mg]",
+        start=0.0,
+        end=0.85,
+        ticks=[10.0, 60.0, 120.0],
+        tick_labels=["10", "60", "120"],
+    )
+
+    bar = chart.spec()["plots"][0]["colorbar"]
+    assert bar == {
+        "scale": {
+            "name": "viridis",
+            "low": 10.0,
+            "high": 120.0,
+            "log": False,
+            "end": 0.85,
+        },
+        "label": "dose [mg]",
+        "ticks": [10.0, 60.0, 120.0],
+        "tick_labels": ["10", "60", "120"],
+    }
+    assert "colorbars" not in chart.spec()["plots"][0]
+    chart.svg()
+
+
+def test_categorical_colorbar() -> None:
+    """A categorical color bar has one band per integer and its labels."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.colorbar(
+        "viridis", 0, 2, end=0.85, tick_labels=["a", "b", "c"], categorical=True
+    )
+
+    bar = chart.spec()["plots"][0]["colorbar"]
+    assert bar["categorical"] is True
+    assert bar["tick_labels"] == ["a", "b", "c"]
+    assert "ticks" not in bar
+    svg = chart.svg()
+    assert svg.count(">b<") == 1
+
+
+def test_several_colorbars_stack() -> None:
+    """Every call of `colorbar` adds a color bar, which the renderer stacks.
+
+    One bar is the field `colorbar` of the plot, several are `colorbars`.
+    """
+    chart = Chart()
+    plot = chart.plot()
+    plot.colorbar("viridis", 0.0, 1.0, label="first")
+    plot.colorbar("magma", 1.0, 100.0, label="second", log=True)
+
+    spec = chart.spec()["plots"][0]
+    assert "colorbar" not in spec
+    bars = spec["colorbars"]
+    assert [b["label"] for b in bars] == ["first", "second"]
+    svg = chart.svg()
+    assert '-p0-colorbar"' in svg
+    assert '-p0-colorbar-1"' in svg
+
+
+def test_tick_marks_visible() -> None:
+    """An axis shows its tick marks independent of its labels."""
+    chart = Chart()
+    plot = chart.plot(x=ChartAxis(ticks_visible=False, tick_marks_visible=True))
+    plot.curve([0, 1], [0, 1])
+
+    spec = chart.spec()["plots"][0]
+    assert spec["x"]["ticks_visible"] is False
+    assert spec["x"]["tick_marks_visible"] is True
+    assert "tick_marks_visible" not in spec["y"]
+
+
+def test_font_weights_and_tick_y() -> None:
+    """The fonts take the weights of the texts and the size of the y tick labels."""
+    chart = Chart(fonts={"tick": 10, "tick_y": 12, "label_weight": "bold"})
+    chart.plot().curve([0, 1], [0, 1])
+
+    assert chart.spec()["fonts"] == {
+        "tick": 10.0,
+        "tick_y": 12.0,
+        "label_weight": "bold",
+    }
+    chart.svg()
+
+
+def test_legend_swatches() -> None:
+    """A legend group is shown with the style of its swatch."""
+    chart = Chart()
+    plot = chart.plot(legend_swatches={"scan": {"color": "#21918c", "line": "dashed"}})
+    plot.curve([0, 1], [0, 1], color="#440154", label="scan", legend="scan")
+    plot.curve([0, 1], [1, 2], color="#fde725", legend="scan")
+
+    spec = chart.spec()["plots"][0]
+    assert spec["legend_swatches"] == {
+        "scan": {
+            "color": "#21918c",
+            "opacity": 1.0,
+            "line": {"type": "dashed", "width": 2.0},
+        }
+    }
+    assert "#21918c" in chart.svg()
+
+
+def test_hollow_marker() -> None:
+    """A marker fill `none` is a hollow marker."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve([0], [0], marker="circle", marker_fill="none", color="#ff0000")
+
+    (curve,) = chart.spec()["plots"][0]["elements"]
+    assert curve["style"]["marker"]["fill"] == "none"
+    chart.svg()
+
+
+def test_bar_outline_is_drawn() -> None:
+    """The renderer draws the outline of a bar which has a line."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.bar([0], [1], line="solid", width=1.5, color="#123456", fill="#ffffff")
+
+    assert 'stroke="#123456"' in chart.svg()

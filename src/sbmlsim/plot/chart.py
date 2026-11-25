@@ -111,6 +111,8 @@ class ChartAxis:
         grid: whether the plot draws grid lines of the axis.
         label_visible: whether the label is shown.
         ticks_visible: whether the ticks are shown.
+        tick_marks_visible: whether the tick marks are shown independent of
+            the labels, `None` for marks which follow `ticks_visible`.
         tick_rotation: the rotation of the tick labels in degrees.
         max_decades: the decades of a log axis below its largest value,
             `None` for the default of the renderer.
@@ -128,6 +130,7 @@ class ChartAxis:
     grid: bool = False
     label_visible: bool = True
     ticks_visible: bool = True
+    tick_marks_visible: bool | None = None
     tick_rotation: float = 0.0
     max_decades: float | None = None
     frame: tuple[float, float] | None = None
@@ -218,6 +221,8 @@ class _AxisState:
             ticks_visible=bool(a.ticks_visible),
             tick_rotation=float(a.tick_rotation),
         )
+        if a.tick_marks_visible is not None:
+            spec["tick_marks_visible"] = bool(a.tick_marks_visible)
         return spec
 
 
@@ -265,14 +270,13 @@ def _magnitude(data: Values) -> np.ndarray:
 
 
 def _marker_color(color: str) -> str:
-    """Get the color of a marker as `#rrggbb`, a hollow marker (`none`) as white.
+    """Get the color of a marker as `#rrggbb`, `none` for a hollow marker.
 
-    sbmlsim-core 0.28 takes `none` for `Marker.fill`, which draws a hollow
-    marker; 0.27 does not, so it is white, as the figure model draws it. The
-    markers have no opacity, the alpha of a color is dropped.
+    A fill `none` (or a color without opacity) draws the marker as its edge
+    alone. The markers have no opacity, the alpha of a color is dropped.
     """
-    normalized, _ = color_alpha(color)
-    return normalized if normalized is not None else "#ffffff"
+    normalized, alpha = color_alpha(color)
+    return normalized if normalized is not None and alpha > 0.0 else "none"
 
 
 @dataclass(frozen=True)
@@ -334,6 +338,28 @@ class _Style:
         return style
 
 
+#: the style keywords of a legend swatch, see `Chart.plot`
+_SWATCH_KEYWORDS: Final = frozenset(
+    {"color", "opacity", "line", "width", "marker", "size", "marker_fill"}
+    | {"marker_edge", "marker_edge_width", "fill", "fill_opacity"}
+)
+
+
+def _swatch_keywords(group: str, keywords: Mapping[str, Any]) -> dict[str, Any]:
+    """Get the style keywords of the swatch of a legend group.
+
+    Raises:
+        ValueError: for a keyword which is no style keyword of a swatch.
+    """
+    unknown = sorted(set(keywords) - _SWATCH_KEYWORDS)
+    if unknown:
+        raise ValueError(
+            f"The swatch of the legend group '{group}' has the keywords {unknown}, "
+            f"which are no style keywords: {sorted(_SWATCH_KEYWORDS)}."
+        )
+    return dict(keywords)
+
+
 class ChartPlot:
     """A plot of a chart, which its methods add elements to.
 
@@ -365,6 +391,7 @@ class ChartPlot:
         legend: bool,
         legend_order: Sequence[str] | None,
         declared_legends: Sequence[Sequence[str]] | None,
+        legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
@@ -388,7 +415,15 @@ class ChartPlot:
         if y2 is not None:
             self._axes["y2"] = _AxisState("y2", id, y2)
         self._elements: list[dict[str, Any]] = []
-        self._colorbar: dict[str, Any] | None = None
+        self._colorbars: list[dict[str, Any]] = []
+        self.legend_swatches = (
+            None
+            if legend_swatches is None
+            else {
+                group: _Style(**_swatch_keywords(group, keywords)).spec()
+                for group, keywords in legend_swatches.items()
+            }
+        )
 
     def _state(self, axis: AxisName) -> _AxisState:
         """Get an axis of the plot."""
@@ -697,9 +732,8 @@ class ChartPlot:
             horizontal: whether the bars are horizontal.
             bar_width: the width of a bar in units of the axis of the
                 positions, the default of the renderer for `None`.
-            line: the type of the outline, in the color of the bars; no
-                outline is written without `line` and `width`, and the
-                renderer of sbmlsim-core 0.27.0 draws bars without one.
+            line: the type of the outline, in the color of the bars; a bar
+                has no outline without `line` and `width`.
             width: the width of the outline in pixels.
             fill: the fill color, the color by default.
             fill_opacity: the opacity of the fill, 1 by default.
@@ -1166,8 +1200,16 @@ class ChartPlot:
         label: str | None = None,
         center: float | None = None,
         log: bool = False,
+        start: float = 0.0,
+        end: float = 1.0,
+        ticks: Sequence[float] | None = None,
+        tick_labels: Sequence[str] | None = None,
+        categorical: bool = False,
     ) -> None:
-        """Give the plot a color bar, which is a field of the plot and no element.
+        """Add a color bar to the plot, a field of the plot and no element.
+
+        A plot of several color bars shows them stacked right of its panel in
+        the order they were added.
 
         Args:
             scale: the name of the color scale.
@@ -1176,13 +1218,30 @@ class ChartPlot:
             label: the label of the color bar.
             center: the value at the middle of a diverging scale.
             log: whether the scale is logarithmic.
+            start: the part of the color map `low` takes, from 0 to 1.
+            end: the part of the color map `high` takes, above `start`, so the
+                values `low..high` show the part `start..end` of the map.
+            ticks: the values of the ticks, chosen by the renderer without.
+            tick_labels: the label of every tick, the numbers of the ticks
+                without; a categorical bar takes one per band without `ticks`.
+            categorical: whether the bar is one band of one color per integer
+                from `low` to `high`, e.g. of the lines over named values.
         """
-        colorbar: dict[str, Any] = {
-            "scale": _color_scale(scale, low, high, center, log, [])
-        }
+        color_scale = _color_scale(scale, low, high, center, log, [])
+        if start != 0.0:
+            color_scale["start"] = float(start)
+        if end != 1.0:
+            color_scale["end"] = float(end)
+        colorbar: dict[str, Any] = {"scale": color_scale}
         if label is not None:
             colorbar["label"] = label
-        self._colorbar = colorbar
+        if ticks is not None:
+            colorbar["ticks"] = [float(t) for t in ticks]
+        if tick_labels is not None:
+            colorbar["tick_labels"] = [str(t) for t in tick_labels]
+        if categorical:
+            colorbar["categorical"] = True
+        self._colorbars.append(colorbar)
 
     def spec(self) -> dict[str, Any]:
         """Get the plot as a dictionary of `figure/1`."""
@@ -1200,8 +1259,12 @@ class ChartPlot:
         if "y2" in self._axes:
             spec["y2"] = self._axes["y2"].spec()
         spec["legend"] = self.legend
-        if self._colorbar is not None:
-            spec["colorbar"] = self._colorbar
+        if len(self._colorbars) == 1:
+            spec["colorbar"] = self._colorbars[0]
+        elif self._colorbars:
+            spec["colorbars"] = self._colorbars
+        if self.legend_swatches is not None:
+            spec["legend_swatches"] = self.legend_swatches
         if self.declared_legends is not None:
             spec["declared_legends"] = self.declared_legends
         if self.legend_order is not None:
@@ -1256,6 +1319,17 @@ def _color_scale(
     return scale
 
 
+#: the fields of the fonts of a chart which are weights, the others sizes
+_FONT_WEIGHTS: Final = frozenset(
+    {"title_weight", "label_weight", "tick_weight", "legend_weight"}
+)
+
+
+def _fonts(fonts: Mapping[str, float | str]) -> dict[str, float | str]:
+    """Get the fonts of a chart, the sizes as numbers and the weights as texts."""
+    return {k: str(v) if k in _FONT_WEIGHTS else float(v) for k, v in fonts.items()}
+
+
 def _with_resolution(png: bytes, dpi: float) -> bytes:
     """Get a PNG with its resolution, one `pHYs` chunk after its header.
 
@@ -1301,7 +1375,7 @@ class Chart:
         columns: int = 1,
         wspace: float = 0.3,
         hspace: float = 0.3,
-        fonts: Mapping[str, float] | None = None,
+        fonts: Mapping[str, float | str] | None = None,
         legend_scope: str = "plot",
         legend_position: str = "inside",
         dpi: float | None = None,
@@ -1316,8 +1390,11 @@ class Chart:
             columns: the columns of the grid.
             wspace: the space between the columns as a fraction of a plot.
             hspace: the space between the rows as a fraction of a plot.
-            fonts: the font sizes in points by `title`, `label`, `tick` and
-                `legend`, the defaults of the renderer for the others.
+            fonts: the font sizes in points by `title`, `label`, `tick`,
+                `tick_y` (the tick labels of the y axes and the color bars,
+                `tick` without) and `legend`, and the weights `normal` or
+                `bold` by `title_weight`, `label_weight`, `tick_weight` and
+                `legend_weight`; the defaults of the renderer for the others.
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
             legend_position: `inside` or `outside`, right of the plot.
             dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
@@ -1330,7 +1407,7 @@ class Chart:
         self.columns = int(columns)
         self.wspace = float(wspace)
         self.hspace = float(hspace)
-        self.fonts = None if fonts is None else {k: float(v) for k, v in fonts.items()}
+        self.fonts = None if fonts is None else _fonts(fonts)
         self.legend_scope = legend_scope
         self.legend_position = legend_position
         self.dpi = None if dpi is None else float(dpi)
@@ -1352,6 +1429,7 @@ class Chart:
         legend: bool = True,
         legend_order: Sequence[str] | None = None,
         declared_legends: Sequence[Sequence[str]] | None = None,
+        legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> ChartPlot:
         """Add a plot at a cell of the grid.
 
@@ -1372,6 +1450,13 @@ class Chart:
             declared_legends: the legends the plot may show in some state of
                 a page, each a list of entry labels, whose largest takes the
                 room of the legend.
+            legend_swatches: the swatch of a legend group by group, the style
+                keywords of `ChartPlot.curve` (`color`, `opacity`, `line`,
+                `width`, `marker`, `size`, `marker_fill`, `marker_edge`,
+                `marker_edge_width`, `fill` and `fill_opacity`) it is drawn
+                with instead of the style of its element, e.g. the lines of a
+                scan in one group shown in the middle colour of their map; a
+                swatch without `color` takes the colour of its entry.
 
         Returns:
             The plot, which its methods add elements to.
@@ -1390,6 +1475,7 @@ class Chart:
             legend=legend,
             legend_order=legend_order,
             declared_legends=declared_legends,
+            legend_swatches=legend_swatches,
         )
         self.plots.append(plot)
         return plot

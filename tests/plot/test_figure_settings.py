@@ -117,7 +117,7 @@ def _legend_fontsize(result: ExperimentResult, settings: Any = None) -> float:
     charts = result.experiment.create_figures(figure_settings=settings)
     fonts = charts["fig"].fonts
     assert fonts is not None
-    return fonts["legend"]
+    return float(fonts["legend"])
 
 
 def _pixels(path: Path) -> tuple[int, int]:

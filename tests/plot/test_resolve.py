@@ -72,6 +72,22 @@ def _legend(svg: str) -> list[str]:
     ]
 
 
+def _bar_colors(colorbar: dict, values: Any) -> list[str]:
+    """The colours of a colour bar at values, with the part of its map."""
+    scale = colorbar["scale"]
+    return list(
+        import_core().color_scale(
+            scale["name"],
+            scale["low"],
+            scale["high"],
+            list(values),
+            log=scale["log"],
+            start=scale.get("start", 0.0),
+            end=scale.get("end", 1.0),
+        )
+    )
+
+
 def _doses(plot: Plot, task: str = "task_doses", **kwargs: Any) -> None:
     plot.curve(
         x=Data("time", task=task), y=Data("[C]", task=task), over="dose", **kwargs
@@ -105,14 +121,14 @@ def test_axis_units_and_labels(experiment: SimulationExperiment) -> None:
             over="dose",
         ),
         xaxis=Axis("time", unit="min"),
-        yaxis=Axis("HCTZ urine\n", unit="mg/l", scale="log"),
+        yaxis=Axis("HCTZ\nurine\n", unit="mg/l", scale="log"),
     )
     assert spec["x"]["label"] == "time"
     assert spec["x"]["unit"] == "min"
     # the data is converted to the unit of the axis: 24 hr are 1440 min
     assert max(spec["elements"][0]["x"]) == pytest.approx(1440.0)
-    # a label is one line of text, the renderer has no line breaks
-    assert spec["y"]["label"] == "HCTZ urine"
+    # a line break inside a label is kept, the one at its end is not
+    assert spec["y"]["label"] == "HCTZ\nurine"
     assert spec["y"]["unit"] == "mg/l"
     assert spec["y"]["scale"] == "log"
 
@@ -154,6 +170,7 @@ def test_a_plot_without_axes_hides_them(experiment: SimulationExperiment) -> Non
     for axis in ("x", "y"):
         assert spec[axis]["label_visible"] is False
         assert spec[axis]["ticks_visible"] is False
+        assert "tick_marks_visible" not in spec[axis]
 
 
 def test_axis_bounds_reverse_and_grid(experiment: SimulationExperiment) -> None:
@@ -172,6 +189,9 @@ def test_axis_bounds_reverse_and_grid(experiment: SimulationExperiment) -> None:
     assert "min" not in spec["y"]
     assert spec["y"]["max"] == 5.0
     assert spec["y"]["ticks_visible"] is False
+    # matplotlib kept the marks of the ticks whose labels it hid
+    assert spec["y"]["tick_marks_visible"] is True
+    assert "tick_marks_visible" not in spec["x"]
 
 
 def test_curve_with_errors(experiment: SimulationExperiment) -> None:
@@ -305,13 +325,22 @@ def test_colorbar_from_11_points(experiment: SimulationExperiment) -> None:
     scale = colorbar["scale"]
     assert scale["name"] == "viridis"
     assert scale["log"] is False
+    # the bar spans the data and no value which no line has, in the part of
+    # the map the lines take
     assert scale["low"] == pytest.approx(10.0)
+    assert scale["high"] == pytest.approx(120.0)
+    assert "start" not in scale
+    assert scale["end"] == 0.85
+    assert "categorical" not in colorbar
     # the colours of the lines are the colours of the bar at their values
     values = np.linspace(10.0, 120.0, 12)
-    colors = import_core().color_scale(
-        "viridis", scale["low"], scale["high"], values.tolist()
-    )
-    assert [e["style"]["color"] for e in elements] == list(colors)
+    assert [e["style"]["color"] for e in elements] == _bar_colors(colorbar, values)
+    # the swatch of the shared entry is the middle colour of the bar
+    (group,) = {e["legend"] for e in elements}
+    (middle,) = import_core().color_scale("viridis", 0.0, 1.0, [0.425])
+    assert spec["legend_swatches"][group]["color"] == middle
+    svg = chart.svg()
+    assert "139" not in svg
 
 
 def test_a_logarithmic_colorbar_of_geometric_doses(
@@ -320,14 +349,9 @@ def test_a_logarithmic_colorbar_of_geometric_doses(
     spec = _plot(experiment, lambda p: _doses(p, task="task_geom"))
     scale = spec["colorbar"]["scale"]
     assert scale["log"] is True
-    colors = import_core().color_scale(
-        "viridis",
-        scale["low"],
-        scale["high"],
-        np.geomspace(1, 1000, 12).tolist(),
-        log=True,
-    )
-    assert [e["style"]["color"] for e in spec["elements"]] == list(colors)
+    assert (scale["low"], scale["high"]) == pytest.approx((1.0, 1000.0))
+    colors = _bar_colors(spec["colorbar"], np.geomspace(1, 1000, 12))
+    assert [e["style"]["color"] for e in spec["elements"]] == colors
     # the lines share the legend entry of the curve
     assert len({e["legend"] for e in spec["elements"]}) == 1
     assert sum("label" in e for e in spec["elements"]) == 1
@@ -478,7 +502,10 @@ def test_settings_map(experiment: SimulationExperiment) -> None:
         "title": defaults.fig_titlesize,
         "label": defaults.axes_labelsize,
         "tick": defaults.xtick_labelsize,
+        "tick_y": defaults.ytick_labelsize,
         "legend": defaults.legend_fontsize,
+        "title_weight": "bold",
+        "label_weight": "bold",
     }
     assert spec["grid"]["wspace"] == defaults.fig_subplots_wspace
     assert spec["legend"] == {"scope": "plot", "position": "inside"}
@@ -594,27 +621,82 @@ def test_a_colorbar_of_a_dimension_of_labels(experiment: SimulationExperiment) -
     )
     colorbar = spec["colorbar"]
     assert colorbar["label"] == "cond"
+    # a band per point, labelled by its label
+    assert colorbar["categorical"] is True
+    assert colorbar["tick_labels"] == [str(10 * k) for k in range(12)]
     scale = colorbar["scale"]
-    assert scale["low"] == 0.0
-    colors = import_core().color_scale(
-        "viridis", scale["low"], scale["high"], list(range(12))
-    )
-    assert [e["style"]["color"] for e in spec["elements"]] == list(colors)
+    assert (scale["low"], scale["high"]) == (0.0, 11.0)
+    colors = _bar_colors(colorbar, range(12))
+    assert [e["style"]["color"] for e in spec["elements"]] == colors
 
 
-def test_a_curve_of_its_own_colour_gets_no_colorbar(
+def test_a_curve_of_its_own_colour_shares_the_middle_shade(
     experiment: SimulationExperiment,
 ) -> None:
-    spec = _plot(experiment, lambda p: _doses(p, task="task_many", color="tab:red"))
+    spec = _plot(
+        experiment, lambda p: _doses(p, task="task_many", color="tab:red", label="C")
+    )
+    # no colour map of the renderer has the shades of a colour
     assert "colorbar" not in spec
     assert len(spec["elements"]) == 12
+    colors = [e["style"]["color"] for e in spec["elements"]]
+    (swatch,) = spec["legend_swatches"].values()
+    assert swatch["color"] not in ("#d62728", colors[0])
 
 
-def test_the_ticks_take_the_larger_size_of_x_and_y(
+def test_every_colour_bar_of_a_plot_is_kept(experiment: SimulationExperiment) -> None:
+    def draw(plot: Plot) -> None:
+        _doses(plot, task="task_many", label="linear")
+        _doses(plot, task="task_many", label="again", linestyle="--")
+        _doses(plot, task="task_geom", label="geometric")
+
+    chart, spec = _chart_of(experiment, draw)
+    assert "colorbar" not in spec
+    # the same bar of two curves is shown once
+    bars = spec["colorbars"]
+    assert [b["scale"]["log"] for b in bars] == [False, True]
+    assert all(b["label"] == "PODOSE [mg]" for b in bars)
+    chart.svg()
+
+
+def test_the_ticks_of_x_and_y_take_their_own_sizes(
     experiment: SimulationExperiment,
 ) -> None:
     figure = _figure(experiment, _doses, xtick_labelsize=12, ytick_labelsize=17)
-    assert figure_chart(experiment, figure).spec()["fonts"]["tick"] == 17.0
+    fonts = figure_chart(experiment, figure).spec()["fonts"]
+    assert (fonts["tick"], fonts["tick_y"]) == (12.0, 17.0)
+
+
+@pytest.mark.parametrize(
+    ("weights", "expected"),
+    [
+        ({}, {"title_weight": "bold", "label_weight": "bold"}),
+        (
+            {
+                "fig_titleweight": "normal",
+                "axes_titleweight": "normal",
+                "axes_labelweight": "normal",
+            },
+            # written, since the title of the renderer is bold without
+            {"title_weight": "normal", "label_weight": "normal"},
+        ),
+        (
+            {"fig_titleweight": "normal", "axes_labelweight": 700},
+            {"title_weight": "bold", "label_weight": "bold"},
+        ),
+        ({"axes_titleweight": "light", "fig_titleweight": "semibold"}, None),
+    ],
+)
+def test_the_font_weights(
+    experiment: SimulationExperiment, weights: dict, expected: dict | None
+) -> None:
+    figure = _figure(experiment, _doses, **weights)
+    fonts = figure_chart(experiment, figure).spec()["fonts"]
+    found = {k: v for k, v in fonts.items() if k.endswith("_weight")}
+    if expected is not None:
+        assert found == expected
+    else:
+        assert found == {"title_weight": "bold", "label_weight": "bold"}
 
 
 def test_the_right_axis_draws_no_grid(experiment: SimulationExperiment) -> None:
@@ -733,12 +815,9 @@ def test_decreasing_doses_keep_line_and_bar_consistent(
     spec = _plot(experiment, lambda p: _doses(p, task="task_decreasing"))
     scale = spec["colorbar"]["scale"]
     assert scale["log"] is False
-    assert scale["low"] == pytest.approx(10.0)
-    values = np.linspace(120.0, 10.0, 12)
-    colors = import_core().color_scale(
-        "viridis", scale["low"], scale["high"], values.tolist()
-    )
-    assert [e["style"]["color"] for e in spec["elements"]] == list(colors)
+    assert (scale["low"], scale["high"]) == pytest.approx((10.0, 120.0))
+    colors = _bar_colors(spec["colorbar"], np.linspace(120.0, 10.0, 12))
+    assert [e["style"]["color"] for e in spec["elements"]] == colors
 
 
 def test_a_named_band_with_a_colour_bar_keeps_its_legend_entry(

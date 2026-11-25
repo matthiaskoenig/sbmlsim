@@ -1411,7 +1411,7 @@ def test_the_figure_of_a_mapping_has_the_curve_and_the_agreement(
     hollow = [
         e
         for e in _of_kind(curve, "curve")
-        if e["style"]["marker"].get("fill") == "#ffffff"
+        if e["style"]["marker"].get("fill") == "none"
     ]
     assert hollow and all(e["legend"] == report.reference_set.sid for e in hollow)
     # the agreement has its identity and twofold

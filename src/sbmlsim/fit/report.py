@@ -2805,7 +2805,7 @@ class FitReport:
                     line="none",
                     marker=marker,
                     size=7,
-                    marker_fill="#ffffff",
+                    marker_fill="none",
                     marker_edge_width=1.5,
                     color=color,
                     legend=pset.sid,

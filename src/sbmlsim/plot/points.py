@@ -56,15 +56,13 @@ COLORMAP = "viridis"
 #: colours and its colour bar follow a logarithmic norm, if all are positive
 LOG_RATIO = 100.0
 
-#: the most tick labels of a discrete colour bar, every k-th label above
-MAX_TICKS = 12
-
 #: the part of the colour map the points use: its light yellow end is hard to
 #: see on white
 _COLORMAP_END = 0.85
 
-#: the number of colours of the ramp of a colour bar
-RAMP_SIZE = 256
+#: the most points of a categorical colour bar, a band per point; a dimension
+#: of more points gets a colour bar of their positions
+MAX_BANDS = 256
 
 #: how much white the lightest shade of a colour has
 _LIGHTEST = 0.65
@@ -356,11 +354,6 @@ def point_colors(n: int, color: str | None) -> list[str]:
     return _ramp(color, np.linspace(0.0, 1.0, n))
 
 
-def point_ramp(color: str | None) -> list[str]:
-    """Get the `RAMP_SIZE` colours of the colour bar of a dimension, see `point_colors`."""
-    return _ramp(color, np.linspace(0.0, 1.0, RAMP_SIZE))
-
-
 def _ramp(color: str | None, fractions: np.ndarray) -> list[str]:
     """Get the colours at fractions of the colour range of the points.
 
@@ -476,17 +469,6 @@ def _fraction(value: float, low: float, high: float, log: bool) -> float:
     return (value - low) / (high - low)
 
 
-def _value_ticks(low: float, high: float, log: bool) -> list[float]:
-    """Get the ticks of a colour bar of values: the decades of a log range, else five."""
-    if log:
-        decades = [
-            10.0**k
-            for k in range(math.ceil(math.log10(low)), math.floor(math.log10(high)) + 1)
-        ]
-        return decades if len(decades) >= 2 else [low, high]
-    return [float(t) for t in np.linspace(low, high, 5)]
-
-
 def format_value(value: float) -> str:
     """Format a value of a dimension: six significant digits, a short exponent."""
     text = f"{value:.6g}"
@@ -501,14 +483,6 @@ def label_text(label: Any) -> str:
     if isinstance(label, float):
         return format_value(label)
     return str(label)
-
-
-def tick_positions(n: int) -> list[int]:
-    """Get the positions of the points of a discrete colour bar which get a tick.
-
-    Every point up to `MAX_TICKS` points, else every k-th from the first.
-    """
-    return list(range(0, n, max(1, math.ceil(n / MAX_TICKS))))
 
 
 def _positions(dimension: Dimension, labels: Sequence[Any]) -> list[int] | None:
@@ -600,21 +574,20 @@ class ColorBarScale:
     """The scale of the colour bar of a dimension.
 
     Attributes:
-        low: the value at the low end of the colour bar.
-        high: the value at its high end.
+        low: the value at the low end of the colour bar, the smallest value
+            of the points, the position 0 of a categorical one.
+        high: the value at its high end, the largest value of the points, the
+            position `n - 1` of a categorical one.
         log: whether the scale is logarithmic.
-        ticks: the values which get a tick.
-        labels: the label of every tick.
-        categorical: whether it has a step per point, the ticks being the
-            positions of the points `0..n-1` (the range is half a step wider
-            on both sides) and the labels their labels, of which a renderer
-            shows `tick_positions`.
+        labels: the label of every point of a categorical colour bar, empty
+            for a colour bar of values.
+        categorical: whether it has a band per point, at the positions of the
+            points `0..n-1`.
     """
 
     low: float
     high: float
     log: bool
-    ticks: list[float]
     labels: list[str]
     categorical: bool
 
@@ -632,8 +605,8 @@ class PointStyle:
             positions without a single target.
         title: the label of the colour bar, `<target> [<unit>]` or the dimension.
         scale: the scale of the colour bar, `None` for no points.
-        ramp: the colours of the colour bar from its low to its high end.
-        middle: the colour of the middle of the ramp, of the legend entry of a curve.
+        middle: the colour of the middle of the colour range, of the legend
+            entry the lines of a colour bar share.
     """
 
     colors: list[str]
@@ -643,42 +616,43 @@ class PointStyle:
     values: np.ndarray
     title: str
     scale: ColorBarScale | None
-    ramp: list[str]
     middle: str
 
 
-def colorbar_range(styles: PointStyle) -> tuple[float, float, bool] | None:
-    """Get the range of the colour scale `COLORMAP` whose colours the points have.
+def colorbar_arguments(styles: PointStyle) -> dict[str, Any] | None:
+    """Get the colour bar of points whose colours are of the colour scale `COLORMAP`.
 
     The points take the first `_COLORMAP_END` of the colour scale, since its
-    light yellow end is hard to see on white, while the colour bar of
-    `figure/1` (sbmlsim-core 0.27) shows the whole of a named scale between
-    two values. The range is therefore widened beyond the values of the
-    points, so the colour of the bar at the value of a point is the colour
-    of its line (a categorical dimension at the position of its point, from
-    0), and the end of the bar past the largest value has no line. A colour
-    bar which takes the part of the scale (a fraction) or colour stops with
-    tick labels, which `PointStyle.ramp` and `PointStyle.scale` hold, is
-    planned for sbmlsim-core 0.28 and replaces the widening then.
+    light yellow end is hard to see on white, so the colour bar shows that part
+    of the scale over the range of the values of the points: the colour of the
+    bar at the value of a point is the colour of its line and the bar shows no
+    value no line has. A dimension which does not change one target gets a
+    categorical bar of a band per point, labelled by the labels of its points,
+    up to `MAX_BANDS` points, a bar of their positions above.
 
     Args:
         styles: the style of the points, see `point_styles`, of a curve
             without a colour of its own.
 
     Returns:
-        `(low, high, log)` of the colour scale, `None` for points which span no
-        range.
+        The keyword arguments of `ChartPlot.colorbar`, `None` for points which
+        span no range.
     """
     scale = styles.scale
-    if scale is None:
+    if scale is None or scale.high <= scale.low:
         return None
-    if scale.categorical:
-        n = len(styles.colors)
-        return (0.0, (n - 1) / _COLORMAP_END, False) if n > 1 else None
-    if scale.log:
-        ratio = (scale.high / scale.low) ** (1 / _COLORMAP_END)
-        return scale.low, scale.low * ratio, True
-    return scale.low, scale.low + (scale.high - scale.low) / _COLORMAP_END, False
+    arguments: dict[str, Any] = {
+        "scale": COLORMAP,
+        "low": scale.low,
+        "high": scale.high,
+        "label": styles.title,
+        "log": scale.log,
+        "end": _COLORMAP_END,
+    }
+    if scale.categorical and len(scale.labels) <= MAX_BANDS:
+        arguments["tick_labels"] = list(scale.labels)
+        arguments["categorical"] = True
+    return arguments
 
 
 def point_styles(
@@ -723,28 +697,24 @@ def point_styles(
         title = f"{target} [{unit}]" if unit else target
         fractions = np.array([_fraction(float(v), low, high, log) for v in values])
         colors = _ramp(color, fractions)
-        ramp = point_ramp(color)
-        ticks = _value_ticks(low, high, log)
-        scale = ColorBarScale(
-            low, high, log, ticks, [format_value(t) for t in ticks], False
-        )
+        scale = ColorBarScale(low, high, log, [], False)
+        (middle,) = _ramp(color, np.array([0.5]))
     else:
         values = np.arange(n, dtype=float)
         title = over[0]
         colors = point_colors(n, color)
-        ramp = colors if n else point_ramp(color)
         scale = (
             ColorBarScale(
-                -0.5,
-                n - 0.5,
+                0.0,
+                float(n - 1),
                 False,
-                [float(k) for k in range(n)],
                 [label_text(label) for label in labels_of[0]],
                 True,
             )
             if n
             else None
         )
+        middle = colors[n // 2] if n else _ramp(color, np.array([0.5]))[0]
     return PointStyle(
         colors=colors,
         linestyles=point_linestyles(len(labels_of[1])) if len(over) == 2 else None,
@@ -753,8 +723,5 @@ def point_styles(
         values=values,
         title=title,
         scale=scale,
-        ramp=ramp,
-        middle=colors[int(0.5 * n)]
-        if scale is not None and scale.categorical
-        else ramp[RAMP_SIZE // 2],
+        middle=middle,
     )
