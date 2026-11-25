@@ -433,7 +433,7 @@ def test_no_matplotlib_import() -> None:
 
     import sbmlsim.plot.points as points
 
-    tree = ast.parse(Path(points.__file__).read_text())
+    tree = ast.parse(Path(points.__file__).read_text(encoding="utf-8"))
     modules = [
         node.module if isinstance(node, ast.ImportFrom) else alias.name
         for node in ast.walk(tree)

@@ -152,7 +152,7 @@ def test_save_by_suffix(tmp_path: Path) -> None:
     png = chart.save(str(tmp_path / "chart.png"), dpi=72.0)
     assert png.read_bytes().startswith(PNG_SIGNATURE)
     spec = chart.save(tmp_path / "chart.json")
-    assert json.loads(spec.read_text()) == chart.spec()
+    assert json.loads(spec.read_text(encoding="utf-8")) == chart.spec()
     with pytest.raises(ValueError, match=r"\.pdf"):
         chart.save(tmp_path / "chart.pdf")
 

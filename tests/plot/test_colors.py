@@ -103,7 +103,7 @@ def test_plotting_imports_no_matplotlib() -> None:
 
     import sbmlsim.plot.plotting as plotting
 
-    tree = ast.parse(Path(plotting.__file__).read_text())
+    tree = ast.parse(Path(plotting.__file__).read_text(encoding="utf-8"))
     imported = [
         node.module if isinstance(node, ast.ImportFrom) else alias.name
         for node in ast.walk(tree)
