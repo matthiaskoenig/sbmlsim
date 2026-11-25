@@ -317,14 +317,15 @@ def test_marker_edge_width() -> None:
     """The markers of a curve and of the outliers of a box take an edge width."""
     chart = Chart()
     plot = chart.plot()
-    plot.curve([0], [0], marker="circle", edge="#000000", edge_width=0.5)
+    plot.curve([0], [0], marker="circle", marker_edge="#000000", marker_edge_width=0.5)
     stats = {"low_whisker": 0, "q1": 1, "median": 2, "q3": 3, "high_whisker": 4}
-    plot.box([0], [stats], marker="x", edge_width=2.0)
+    plot.box([0], [stats], marker="x", marker_fill="#ffffff", marker_edge_width=2.0)
 
     curve, box = chart.spec()["plots"][0]["elements"]
     assert curve["style"]["marker"]["edge_width"] == 0.5
     assert curve["style"]["marker"]["edge"] == "#000000"
     assert box["style"]["marker"]["edge_width"] == 2.0
+    assert box["style"]["marker"]["fill"] == "#ffffff"
 
 
 def test_quantity_polygon() -> None:
@@ -332,15 +333,29 @@ def test_quantity_polygon() -> None:
     chart = Chart()
     plot = chart.plot(x=ChartAxis(unit="hr"))
     plot.polygon([Q([[0, 0], [60, 0], [0, 60]], "min")])
-    plot.polygon([(Q([0, 120, 0], "min"), Q([0, 0, 1], "hr"))])
+    # a tuple of three points is three points
+    plot.polygon([((0, 0), (2, 0), (0, 30))])
 
     spec = chart.spec()["plots"][0]
     first, second = spec["elements"]
     assert first["paths"] == [[[0.0, 0.0], [1.0, 0.0], [0.0, 60.0]]]
-    assert second["paths"] == [[[0.0, 0.0], [2.0, 0.0], [0.0, 60.0]]]
+    assert second["paths"] == [[[0.0, 0.0], [2.0, 0.0], [0.0, 30.0]]]
     assert spec["y"]["unit"] == "min"
-    with pytest.raises(pint.DimensionalityError, match="axis y"):
-        chart.plots[0].polygon([(Q([0, 1, 0], "hr"), Q([0, 0, 1], "mM"))])
+    with pytest.raises(pint.DimensionalityError, match="axis x"):
+        chart.plots[0].polygon([Q([[0, 0], [1, 0], [0, 1]], "mM")])
+    with pytest.raises(ValueError, match=r"paths\[0\].*\(n, 2\)"):
+        chart.plots[0].polygon([[0, 1, 2, 3]])
+
+
+def test_polygon_of_two_points_refused() -> None:
+    """A ring of fewer than 3 points is refused by the renderer."""
+    pytest.importorskip("sbmlsim_core")
+    chart = Chart()
+    chart.plot().polygon([((0, 0), (1, 1))])
+    with pytest.raises(
+        ValueError, match=r"paths\[0\]: 2 points, a ring needs at least 3"
+    ):
+        chart.svg()
 
 
 def test_categories() -> None:

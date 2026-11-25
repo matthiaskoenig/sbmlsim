@@ -99,7 +99,9 @@ class ChartAxis:
         scale: `linear`, `log` or `category`.
         categories: the names of the categories of a category axis, which
             are at the positions 0, 1, ...; `None` collects the names placed
-            on the axis in the order of their first use.
+            on the axis in the order of their first use, which depends on
+            the order the elements are added in, so give the categories for
+            an order which is reproducible.
         min: the lower end of the axis.
         max: the upper end of the axis.
         reverse: whether the axis is reversed.
@@ -270,8 +272,8 @@ class _Style:
     marker: str | None = None
     size: float | None = None
     marker_fill: str | None = None
-    edge: str | None = None
-    edge_width: float | None = None
+    marker_edge: str | None = None
+    marker_edge_width: float | None = None
     fill: str | None = None
     fill_opacity: float | None = None
     default_fill_opacity: float = 1.0
@@ -293,10 +295,10 @@ class _Style:
                 marker["size"] = float(self.size)
             if self.marker_fill is not None:
                 marker["fill"] = self.marker_fill
-            if self.edge is not None:
-                marker["edge"] = self.edge
-            if self.edge_width is not None:
-                marker["edge_width"] = float(self.edge_width)
+            if self.marker_edge is not None:
+                marker["edge"] = self.marker_edge
+            if self.marker_edge_width is not None:
+                marker["edge_width"] = float(self.marker_edge_width)
             style["marker"] = marker
         if self.fill is not None or self.fill_opacity is not None:
             fill: dict[str, Any] = {}
@@ -321,8 +323,9 @@ class ChartPlot:
     `fill` and `fill_opacity` the fill (of a band, an area, a bar, a box, a
     violin, a histogram and a polygon; a band, an area, a box, a violin and a
     polygon are filled with their color at `BAND_OPACITY` without them) and
-    `marker`, `size`, `edge` and `edge_width` the markers of a curve and the
-    outliers of a box.
+    `marker`, `size`, `marker_fill`, `marker_edge` and `marker_edge_width`
+    the markers of a curve and of the outliers of a box, so `fill` is the
+    fill of a shape and never the one of a marker.
     """
 
     def __init__(
@@ -474,9 +477,9 @@ class ChartPlot:
         width: float = 2.0,
         marker: str = "none",
         size: float = 6.0,
-        fill: str | None = None,
-        edge: str | None = None,
-        edge_width: float = 1.0,
+        marker_fill: str | None = None,
+        marker_edge: str | None = None,
+        marker_edge_width: float = 1.0,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -497,9 +500,9 @@ class ChartPlot:
             marker: the type of the markers, `none`, `circle`, `square`,
                 `triangle`, `diamond`, `cross`, `plus` or `x`.
             size: the size of the markers in pixels.
-            fill: the fill color of the markers.
-            edge: the edge color of the markers.
-            edge_width: the width of the edge of the markers in pixels.
+            marker_fill: the fill color of the markers, the color by default.
+            marker_edge: the edge color of the markers, the color by default.
+            marker_edge_width: the width of the edge of the markers in pixels.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -525,9 +528,9 @@ class ChartPlot:
             width=width,
             marker=marker,
             size=size,
-            marker_fill=fill,
-            edge=edge,
-            edge_width=edge_width,
+            marker_fill=marker_fill,
+            marker_edge=marker_edge,
+            marker_edge_width=marker_edge_width,
         )
         return self._add(
             "curve", data, style, label=label, legend=legend, id=id, axis=axis
@@ -719,8 +722,9 @@ class ChartPlot:
         fill_opacity: float | None = None,
         marker: str = "none",
         size: float = 6.0,
-        edge: str | None = None,
-        edge_width: float = 1.0,
+        marker_fill: str | None = None,
+        marker_edge: str | None = None,
+        marker_edge_width: float = 1.0,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -744,8 +748,11 @@ class ChartPlot:
             marker: the marker of the outliers, `none` for the open circles
                 of the renderer.
             size: the size of the markers of the outliers in pixels.
-            edge: the edge color of the markers of the outliers.
-            edge_width: the width of the edge of the markers in pixels.
+            marker_fill: the fill color of the markers of the outliers,
+                none by default.
+            marker_edge: the edge color of the markers of the outliers, the
+                color by default.
+            marker_edge_width: the width of the edge of the markers in pixels.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -779,8 +786,9 @@ class ChartPlot:
             default_fill_opacity=BAND_OPACITY,
             marker=marker,
             size=size,
-            edge=edge,
-            edge_width=edge_width,
+            marker_fill=marker_fill,
+            marker_edge=marker_edge,
+            marker_edge_width=marker_edge_width,
         )
         return self._add(
             "box", data, style, label=label, legend=legend, id=id, axis=axis
@@ -1066,10 +1074,11 @@ class ChartPlot:
         """Add filled polygons.
 
         Args:
-            paths: the rings, each of at least 3 points: `[x, y]` pairs, an
-                array or a quantity of the shape `(n, 2)`, or a tuple
-                `(x, y)` of the coordinates; the x coordinates are values of
-                the x axis and the y coordinates of the y axis.
+            paths: the rings, each of at least 3 points: a sequence of
+                `(x, y)` points, an array of the shape `(n, 2)` or a quantity
+                of that shape, whose one unit both coordinates have; the x
+                coordinates are values of the x axis and the y coordinates of
+                the y axis.
             line: the type of the outline, `none` for none.
             width: the width of the outline in pixels.
             fill: the fill color, the color by default.
@@ -1085,8 +1094,8 @@ class ChartPlot:
             The id of the element.
         """
         rings: list[list[list[float | None]]] = []
-        for path in paths:
-            xs, ys = _columns(path)
+        for k, path in enumerate(paths):
+            xs, ys = _columns(path, f"paths[{k}]")
             rings.append(
                 [
                     [px, py]
@@ -1176,14 +1185,21 @@ def _rows(values: Values) -> list[Any]:
     return list(values)
 
 
-def _columns(path: Values) -> tuple[Values, Values]:
-    """Get the x and y coordinates of a ring of a polygon."""
-    if isinstance(path, tuple) and len(path) == 2:
-        return path
+def _columns(path: Values, name: str) -> tuple[Values, Values]:
+    """Get the x and y coordinates of a ring of a polygon, its points of shape `(n, 2)`.
+
+    Raises:
+        ValueError: for points which are no pairs.
+    """
+    values = path.magnitude if isinstance(path, Quantity) else path
+    points = np.asarray(values, dtype=float)
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError(
+            f"The {name} of a polygon are points of the shape (n, 2), "
+            f"not of the shape {points.shape}."
+        )
     if isinstance(path, Quantity):
-        points = np.asarray(path.magnitude, dtype=float).reshape(-1, 2)
         return points[:, 0] * path.units, points[:, 1] * path.units
-    points = np.asarray(path, dtype=float).reshape(-1, 2)
     return points[:, 0], points[:, 1]
 
 
@@ -1284,6 +1300,9 @@ class Chart:
             x: the x axis.
             y: the left y axis.
             y2: the right y axis, which elements select with `axis="y2"`.
+                A category axis is best given its `categories`, so their
+                order is reproducible; without them the categories follow
+                the order of their first use in the data.
             legend: whether the plot has a legend.
             legend_order: the legend groups listed first, in this order.
             declared_legends: the legends the plot may show in some state of
