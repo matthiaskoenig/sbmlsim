@@ -234,8 +234,10 @@ class SimulateSpec(Spec):
         uncertainty: run the experiments over draws of the fitted parameters
             of the default variant of the model, their curves as bands; once
             without.
-        figure_formats: the formats of the figures, e.g. `["svg", "html"]`,
-            the ones of the project (`FigureOutputs.formats`) without.
+        figure_formats: the formats of the figures, `svg` and `png` (see
+            `sbmlsim.figure_formats`), e.g. `["svg", "png"]`, the ones of the
+            project (`FigureOutputs.formats`) without; the spec of a figure
+            (`json`) is written beside it in any case.
     """
 
     project: str
@@ -1150,10 +1152,10 @@ def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:
     The figure formats are written in lower case.
 
     Raises:
-        ConfigurationError: for unknown experiments, empty figure formats
-            and, with `uncertainty`, a
-            default variant of the model without a parameter with a
-            distribution.
+        ConfigurationError: for unknown experiments, empty figure formats,
+            a format which is no figure format (e.g. `html`) and, with
+            `uncertainty`, a default variant of the model without a parameter
+            with a distribution.
     """
     project, experiments = _experiments(spec)
     update: dict[str, Any] = {"experiments": [cls.__name__ for cls in experiments]}
@@ -1168,6 +1170,12 @@ def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:
                 "The figure formats of a run of experiments are not empty, "
                 "the formats of the project without."
             )
+        from sbmlsim.figure_formats import figure_formats_of
+
+        try:
+            figure_formats_of(formats)
+        except ValueError as err:
+            raise ConfigurationError(str(err)) from err
         update["figure_formats"] = formats
     draws = spec.uncertainty
     if draws is not None:

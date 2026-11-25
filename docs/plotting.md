@@ -243,7 +243,7 @@ The quantiles are computed when the figure is drawn, so you need no summary of t
 
 ## Log axes
 
-By default a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept, as `log.yaxis.min = 1` in the band figure above.
+By default a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept, as `log.yaxis.min = 1` in the band figure above. For your own matplotlib figures, `limit_log_axes(figure)` from `sbmlsim.plot.axes` does the same, and the runner applies it to the matplotlib figures of `figures_mpl()`.
 
 ## Styles
 
@@ -334,9 +334,7 @@ Older code set the settings on the class, `Figure.fig_dpi = 300`, which changed 
 By default each plot has its legend inside, at the best place matplotlib finds. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
 
 ```python
-fig_row = figure_chart(
-    experiment, bands, settings={"legend_scope": "row"}
-)
+fig_row = figure_chart(experiment, bands, settings={"legend_scope": "row"})
 ```
 
 ![Output figure](images/outputs/plotting-07.png)
@@ -349,7 +347,7 @@ The renderer of sbmlsim-core draws every figure. The figure formats of a run are
 
 ## Your own matplotlib figures
 
-For a figure the description cannot express, override `figures_mpl()` and return figures by key: a `Chart` is drawn by the renderer like the other figures, and any other object, e.g. a matplotlib figure, is saved with its own `savefig` in every image format of the run and is warned about once per experiment class, since it is slow. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
+For a figure the description cannot express, override `figures_mpl()` and return figures by key: a `Chart` is drawn by the renderer like the other figures, and any other object, e.g. a matplotlib figure, is saved with its own `savefig(path, bbox_inches="tight")` in every image format of the run, at the resolution of the run or else its own, and is warned about once per experiment class, since it is slow. Such a figure has no spec, so a run whose only format is `json` writes no file of it. A figure of pyplot is closed after it was saved. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
 
 ## Reports
 

@@ -52,16 +52,28 @@ class SavedFigure(Protocol):
     """A figure of another library which saves itself, e.g. one of matplotlib.
 
     The objects of `SimulationExperiment.figures_mpl()` which are no `Chart`
-    are saved with their `savefig`, once per image format of the run.
+    are saved with their `savefig`, once per image format of the run, with
+    the keywords `bbox_inches="tight"` and `dpi` of matplotlib.
     """
 
-    def savefig(self, path: Path, /) -> Any:
+    def savefig(self, fname: Any, **kwargs: Any) -> Any:
         """Save the figure, its format the suffix of the path."""
         ...
 
 
 #: the experiment classes whose `figures_mpl()` was warned about in this process
 _WARNED_HOOKS: set[str] = set()
+
+
+def _close_figures(figures: Mapping[str, Any]) -> None:
+    """Close the figures of pyplot among figures, none when pyplot is not imported."""
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is None:
+        return
+    kind = sys.modules["matplotlib.figure"].Figure
+    for figure in figures.values():
+        if isinstance(figure, kind):
+            pyplot.close(figure)
 
 
 def _pyplot_figures() -> set[int]:
@@ -685,7 +697,8 @@ class SimulationExperiment:
             output_path: directory of the outputs (the datasets in its folder
                 `DATASETS_DIR`, results, figures and the serialization), none
                 are written without it.
-            show_figures: show the figures in a notebook.
+            show_figures: show the figures in a notebook, those of
+                `figures_mpl()` included, also without an output path.
             save_results: write the results of the tasks into the output path.
             figure_formats: formats of the figures, see
                 `sbmlsim.figure_formats.figure_formats_of`; the spec of a
@@ -723,7 +736,8 @@ class SimulationExperiment:
         failed_figures: dict[str, str] = {}
         # the formats this run wrote of every figure
         written: dict[str, list[str]] = {}
-        # the keys of the figures of `figures_mpl()`, known once it returned
+        # the figures of `figures_mpl()` and their keys, known once it returned
+        hook: dict[str, SavedFigure | Chart] = {}
         hook_keys: list[str] = []
         error: str | None = None
         completed = False
@@ -771,8 +785,10 @@ class SimulationExperiment:
                         failed=failed_figures,
                         figure_settings=settings,
                     )
+                    hook = self.hook_figures(on_error=on_error, failed=failed_figures)
+                hook_keys = list(hook)
                 if show_figures:
-                    self._show_figures(charts)
+                    self._show_figures({**charts, **hook})
                 if output_path is not None:
                     with clock.phase(Phase.FIGURES, "writing figures", len(charts)):
                         saved = self.save_figures(
@@ -789,12 +805,15 @@ class SimulationExperiment:
                             on_error=on_error,
                             failed=failed_figures,
                             dpi=png_dpi,
+                            figures=hook,
                         )
-                    hook_keys = list(hooked)
                     for key, paths in {**saved, **hooked}.items():
                         written[key] = [path.suffix[1:] for path in paths]
-                # a chart holds the data of its figure
+                # a chart holds the data of its figure, a figure of pyplot is
+                # closed
                 del charts
+                _close_figures(hook)
+                hook = {}
 
             # only perform serialization after data evaluation (to access units)
             if output_path:
@@ -809,6 +828,8 @@ class SimulationExperiment:
             error = f"{type(err).__name__}: {err}"
 
         finally:
+            # also after an error: a figure of the hook may be one of pyplot
+            _close_figures(hook)
             if not keep_results:
                 # every output is written, the report needs no results
                 self._results = {}
@@ -1395,39 +1416,28 @@ class SimulationExperiment:
             return err
         return paths
 
-    def save_hook_figures(
+    def hook_figures(
         self,
-        results_path: Path,
-        formats: Sequence[str] | None = None,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
-        dpi: float | None = None,
-    ) -> dict[str, list[Path]]:
-        """Write the figures of `figures_mpl()`.
+    ) -> dict[str, SavedFigure | Chart]:
+        """Get the figures of `figures_mpl()`.
 
-        A `Chart` is drawn by the renderer, as `save_figures` does. Any other
-        object is saved with its `savefig(path)` once per image format, without
-        a spec; one warning per experiment class names them. A failing
-        `figures_mpl()` fails all of its figures under the key
-        `figures_mpl()`, which is no valid figure key.
+        A failing `figures_mpl()` fails all of its figures under the key
+        `figures_mpl()`, which is no valid figure key, and the figures of
+        pyplot it opened before its error are closed.
 
         Args:
-            results_path: directory of the files.
-            formats: formats of the files, see `figure_formats_of`.
-            on_error: `"raise"` raises the error of a figure, `"log"` logs it
-                and goes on with the next figure.
-            failed: collects the failed figures as `{key: error}`.
-            dpi: the resolution of the PNG of a chart, see `save_figures`.
+            on_error: `"raise"` raises the error, `"log"` logs it.
+            failed: collects the failure as `{key: error}`.
 
         Returns:
-            The files of every figure which was written, by its key.
+            The figures by their keys, none after an error.
         """
-        formats = figure_formats_of(formats)
         open_before = _pyplot_figures()
         try:
-            figures = self.figures_mpl()
+            return dict(self.figures_mpl())
         except Exception as err:
-            # the figures of pyplot the hook opened before its error are closed;
             # pyplot is imported only by the code of the hook
             pyplot = sys.modules.get("matplotlib.pyplot")
             if pyplot is not None:
@@ -1435,6 +1445,60 @@ class SimulationExperiment:
                     pyplot.close(number)
             self._figure_failed("figures_mpl()", err, on_error, failed)
             return {}
+
+    def save_hook_figures(
+        self,
+        results_path: Path,
+        formats: Sequence[str] | None = None,
+        on_error: Literal["raise", "log"] = "raise",
+        failed: dict[str, str] | None = None,
+        dpi: float | None = None,
+        figures: Mapping[str, SavedFigure | Chart] | None = None,
+    ) -> dict[str, list[Path]]:
+        """Write the figures of `figures_mpl()`.
+
+        A `Chart` is drawn by the renderer, as `save_figures` does. Any other
+        object is saved with `savefig(path, bbox_inches="tight")` (and `dpi`
+        when it is given, else at its own resolution) once per image format
+        of the run, without a spec; a run whose only format is the spec
+        (`json`) writes no file of it, which is logged. A figure of matplotlib
+        gets its automatic log axes limited first
+        (`sbmlsim.plot.axes.limit_log_axes`). One warning per experiment class
+        names these figures. Every figure of pyplot is closed afterwards, also
+        when a figure raised.
+
+        Args:
+            results_path: directory of the files.
+            formats: formats of the files, see `figure_formats_of`.
+            on_error: `"raise"` raises the error of a figure, `"log"` logs it
+                and goes on with the next figure.
+            failed: collects the failed figures as `{key: error}`.
+            dpi: the resolution of a PNG, the one of each figure without.
+            figures: the figures, `hook_figures()` without.
+
+        Returns:
+            The files of every figure which was written, by its key.
+        """
+        formats = figure_formats_of(formats)
+        if figures is None:
+            figures = self.hook_figures(on_error=on_error, failed=failed)
+        try:
+            return self._save_hook_figures(
+                results_path, figures, formats, on_error, failed, dpi
+            )
+        finally:
+            _close_figures(figures)
+
+    def _save_hook_figures(
+        self,
+        results_path: Path,
+        figures: Mapping[str, SavedFigure | Chart],
+        formats: Sequence[str],
+        on_error: Literal["raise", "log"],
+        failed: dict[str, str] | None,
+        dpi: float | None,
+    ) -> dict[str, list[Path]]:
+        """Write the figures of the hook, see `save_hook_figures`."""
         if not figures:
             return {}
         results_path.mkdir(parents=True, exist_ok=True)
@@ -1453,12 +1517,22 @@ class SimulationExperiment:
                 len(others),
                 ", ".join(others),
             )
+        images = [f for f in formats if f != SPEC_FORMAT]
+        if others and not images:
+            logger.debug(
+                "The figures %s of '%s' have no spec and the run writes no image "
+                "format, so they are not written",
+                others,
+                self.sid,
+            )
         written: dict[str, list[Path]] = {}
         for key, figure in figures.items():
             if isinstance(figure, Chart):
                 paths = self._save_chart(results_path, key, figure, formats, dpi)
+            elif images:
+                paths = self._save_other(results_path, key, figure, images, dpi)
             else:
-                paths = self._save_other(results_path, key, figure, formats)
+                continue
             if isinstance(paths, Exception):
                 self._figure_failed(key, paths, on_error, failed)
             else:
@@ -1471,36 +1545,33 @@ class SimulationExperiment:
         key: str,
         figure: SavedFigure,
         formats: Sequence[str],
+        dpi: float | None,
     ) -> list[Path] | Exception:
-        """Save a figure of another library in the image formats, or return the error.
-
-        A figure of pyplot is closed after it was saved, when pyplot is
-        imported, which only the code of the figure does.
-        """
+        """Save a figure of another library in the image formats, or return the error."""
+        options: dict[str, Any] = {"bbox_inches": "tight"}
+        if dpi is not None:
+            options["dpi"] = dpi
         paths: list[Path] = []
         try:
+            module = sys.modules.get("matplotlib.figure")
+            if module is not None and isinstance(figure, module.Figure):
+                from sbmlsim.plot.axes import limit_log_axes
+
+                limit_log_axes(figure)
             for fig_format in formats:
-                if fig_format == SPEC_FORMAT:
-                    continue
                 path = self._figure_path(results_path, key, fig_format)
                 paths.append(path)
-                figure.savefig(path)
+                figure.savefig(path, **options)
         except Exception as err:
             for path in paths:
                 path.unlink(missing_ok=True)
             return err
-        finally:
-            pyplot = sys.modules.get("matplotlib.pyplot")
-            if pyplot is not None and isinstance(
-                figure, sys.modules["matplotlib.figure"].Figure
-            ):
-                pyplot.close(figure)
         return paths
 
-    def _show_figures(self, charts: Mapping[str, Chart]) -> None:
-        """Show the charts in a notebook, where they display as SVG.
+    def _show_figures(self, figures: Mapping[str, Any]) -> None:
+        """Show the figures in a notebook: the charts as SVG, the others as they display.
 
-        Outside of a notebook nothing shows a chart, which is logged.
+        Outside of a notebook nothing shows a figure, which is logged.
         """
         ipython = sys.modules.get("IPython")
         shell = ipython.get_ipython() if ipython is not None else None
@@ -1512,8 +1583,8 @@ class SimulationExperiment:
             )
             return
         display = importlib.import_module("IPython.display").display
-        for chart in charts.values():
-            display(chart)
+        for figure in figures.values():
+            display(figure)
             progress.advance()
 
     def _figure_failed(

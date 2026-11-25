@@ -8,6 +8,10 @@ and adds their units:
     fig, ax = plt.subplots()
     ax.plot(res.q["time"].to("hr"), res.q["cp"])
     label_axes(ax, "time", "HCTZ plasma")  # "time [h]", "HCTZ plasma [ng/ml]"
+
+`limit_log_axes` limits the automatic log axes of a figure of matplotlib to
+the decades a figure of the figure model shows. None of these functions
+imports matplotlib, they act on its objects.
 """
 
 from __future__ import annotations
@@ -15,12 +19,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sbmlsim.plot.chart import axis_label as _axis_label
+from sbmlsim.plot.plotting import log_limits
 from sbmlsim.units import ureg
 
 if TYPE_CHECKING:
     # matplotlib is imported by the code which draws, not by sbmlsim
     from matplotlib.axes import Axes
     from matplotlib.axis import Axis
+    from matplotlib.figure import Figure
 
 
 def axis_label(name: str, axis: Axis) -> str:
@@ -56,3 +62,52 @@ def label_axes(ax: Axes, x: str | None = None, y: str | None = None) -> None:
         ax.set_xlabel(axis_label(x, ax.xaxis))
     if y is not None:
         ax.set_ylabel(axis_label(y, ax.yaxis))
+
+
+def limit_log_axis(
+    ax: Axes,
+    axis: str = "y",
+    low: float | None = None,
+    high: float | None = None,
+) -> None:
+    """Limit a log axis of matplotlib to `LOG_DECADES` below its largest value.
+
+    The limits of the data drawn so far, see `sbmlsim.plot.plotting.log_limits`;
+    for a figure drawn with matplotlib itself, after its data and
+    `set_yscale("log")`, so the tiny first steps of the integrator do not
+    stretch the axis over dozens of decades.
+
+    Args:
+        ax: the axes.
+        axis: `"x"` or `"y"`.
+        low: the lower limit set on the axis, `None` without.
+        high: the upper limit set on the axis, `None` without.
+    """
+    data = ax.dataLim
+    smallest, largest = (
+        (data.minposx, data.x1) if axis == "x" else (data.minposy, data.y1)
+    )
+    limits = log_limits(smallest, largest, low, high)
+    if limits is None:
+        return
+    if axis == "x":
+        ax.set_xlim(*limits)
+    else:
+        ax.set_ylim(*limits)
+
+
+def limit_log_axes(figure: Figure) -> None:
+    """Limit every automatic log axis of a figure of matplotlib, see `limit_log_axis`.
+
+    The figures of `SimulationExperiment.figures_mpl()` get it before they are
+    saved; a log axis whose limits the figure set itself (autoscale off) is
+    kept.
+
+    Args:
+        figure: the figure.
+    """
+    for ax in figure.axes:
+        if ax.get_xscale() == "log" and ax.get_autoscalex_on():
+            limit_log_axis(ax, "x")
+        if ax.get_yscale() == "log" and ax.get_autoscaley_on():
+            limit_log_axis(ax, "y")
