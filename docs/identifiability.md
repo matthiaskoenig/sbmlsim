@@ -107,7 +107,7 @@ fig.savefig("profiles.png")
 
 `problem`, `settings` and `parameter_sets` are the `OptimizationProblem`, the `FitSettings` and the fitted `ParameterSets` of [Parameter fitting](fitting.md).
 
-The result is an `IdentifiabilityResult`: `summary_df()` is the table of the parameters with their intervals and classification, `report()` the same as text, and `to_json`/`from_json` store and load it. It holds a `ParameterProfile` per parameter with the values, the costs, the paths of all other parameters and the confidence interval. `plot_profiles` draws all profiles, `plot_profile(result, pid)` one profile with the paths of the other parameters along it. Both return a `matplotlib.figure.Figure` and save it when you pass `path=`. The figure is not attached to pyplot, so save it with `fig.savefig(...)` rather than calling `plt.show()`.
+The result is an `IdentifiabilityResult`: `summary_df()` is the table of the parameters with their intervals and classification, `report()` the same as text, and `to_json`/`from_json` store and load it. It holds a `ParameterProfile` per parameter with the values, the costs, the paths of all other parameters and the confidence interval. `plot_profiles` draws all profiles, `plot_profile(result, pid)` one profile with the paths of the other parameters along it. Both return a `sbmlsim.plot.Chart` of the renderer of sbmlsim-core and save it when you pass `path=` (`.svg` or `.png`), with its spec as `.json` next to it; a chart is saved later with `chart.save(path)` and shows itself in a notebook. The threshold is the dashed line, the confidence interval the band in the colour of the identifiability.
 
 How the scans work:
 
