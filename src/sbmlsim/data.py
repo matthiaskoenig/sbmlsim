@@ -728,6 +728,20 @@ def _own_units[T: DataSet | DataSeries](result: T) -> T:
     return result
 
 
+def _column_units(column: pd.Series) -> tuple[object, ...]:
+    """Get the distinct units of a unit column, in the order they appear.
+
+    Args:
+        column: the unit column of a data frame.
+
+    Returns:
+        The distinct values of the rows which carry a unit, empty if no row
+        carries one.
+    """
+    values = column.to_numpy()
+    return tuple(dict.fromkeys(values[~pd.isna(values)].tolist()))
+
+
 def _unify_units(
     df: pd.DataFrame,
     value_keys: Sequence[str],
@@ -748,11 +762,31 @@ def _unify_units(
     of such a unit are multiplied by it, and if the unit of the first row has one,
     the column gets the unit without the factor.
 
+    A column whose rows carry one unit is answered from the unit column alone
+    and no row of it is converted, so it needs none of the masks of the values
+    and of the errors below: the data of a model is thousands of frames of a
+    few rows each, where those masks are most of the cost of reading it (#653).
+
     :raises ValueError: naming the column `name` and its units, if a unit cannot be
         read (no string, undefined, a factor which is no positive number) or
         converted into the first unit by a factor, or if a column which is
         converted has values which are no numbers
     """
+    present = _column_units(df[unit_key])
+    if not present:
+        # no row carries a unit: the rows below are the rows which do, so they
+        # would give no unit of the column whichever of the three masks selects
+        # them
+        return None
+    if len(present) == 1:
+        # one unit for every row which carries one, so it is the target unit
+        # whichever mask selects the rows and no row is converted into it. The
+        # unit is read here as well, so one the registry does not define raises
+        # where the data is read and not where it is used, and a unit with a
+        # numeric factor, which multiplies the values, takes the full path.
+        factor, _ = _parse_unit(name, present[0], present, ureg)
+        if factor == 1.0:
+            return str(present[0])
     value_keys = [key for key in value_keys if key in df.columns]
     has_unit = df[unit_key].notna()
     values = pd.Series(False, index=df.index)
