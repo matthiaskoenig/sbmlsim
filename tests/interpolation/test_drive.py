@@ -104,7 +104,7 @@ def test_drive_document_in_place(tmp_path: Path) -> None:
 def test_drive_sbml_string(tmp_path: Path) -> None:
     """An SBML string is read."""
     path = write_model(uptake_model(), tmp_path / "uptake.xml")
-    doc = _interpolation("f").drive(path.read_text())
+    doc = _interpolation("f").drive(path.read_text(encoding="utf-8"))
     assert doc.getModel().getAssignmentRuleByVariable("f") is not None
 
 

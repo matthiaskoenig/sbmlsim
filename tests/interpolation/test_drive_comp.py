@@ -86,7 +86,11 @@ def test_absolute_reference_without_filepath(tmp_path: Path) -> None:
 def test_embed(tmp_path: Path) -> None:
     """`embed=True` copies the original in, also from a string or a document."""
     path = write_model(uptake_model(), tmp_path / "uptake.xml")
-    for source in (path, path.read_text(), libsbml.readSBMLFromFile(str(path))):
+    for source in (
+        path,
+        path.read_text(encoding="utf-8"),
+        libsbml.readSBMLFromFile(str(path)),
+    ):
         doc = _interpolation("f").drive_comp(source, embed=True)
         plugin = doc.getPlugin("comp")
         assert plugin.getNumExternalModelDefinitions() == 0
@@ -98,7 +102,7 @@ def test_string_without_embed_raises(tmp_path: Path) -> None:
     """A string or a document has no file to reference."""
     path = write_model(uptake_model(), tmp_path / "uptake.xml")
     with pytest.raises(ValueError, match="embed=True"):
-        _interpolation("f").drive_comp(path.read_text())
+        _interpolation("f").drive_comp(path.read_text(encoding="utf-8"))
 
 
 def test_species_target_placeholders(tmp_path: Path) -> None:
