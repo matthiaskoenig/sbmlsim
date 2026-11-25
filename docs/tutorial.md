@@ -408,10 +408,11 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 ```python
 from sbmlsim.sensitivity.uncertainty import plot_bands
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for scenario, result in uncertainty.results.items():
-    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    plot_bands(bands, "cp", ax=ax, label=scenario, time_unit="hr", name="HCTZ plasma")
+bands = {
+    scenario: result.summary(quantiles=[0.05, 0.5, 0.95])
+    for scenario, result in uncertainty.results.items()
+}
+fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/tutorial-15.png)

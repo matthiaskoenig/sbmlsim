@@ -130,8 +130,10 @@ def test_a_whole_run_writes_the_files_of_the_runner(tmp_path: Path) -> None:
     assert sorted(p.name for p in (out / "local").iterdir()) == [
         PLAN_MARKER,
         "local_d0.01_nvar3_00_control.png",
+        "local_d0.01_nvar3_00_control.svg",
         "local_d0.01_nvar3_00_control.tsv",
         "local_d0.01_nvar3_01_slow.png",
+        "local_d0.01_nvar3_01_slow.svg",
         "local_d0.01_nvar3_01_slow.tsv",
     ]
     assert (out / "sampling" / "sampling_N8.tsv").is_file()

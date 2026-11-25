@@ -1,13 +1,12 @@
-"""The uncertainty analysis: bands and distributions."""
+"""The uncertainty analysis: bands and distributions, charts of the renderer."""
+
+from typing import Any
 
 import numpy as np
 import pytest
-from matplotlib.axes import Axes
-from matplotlib.colors import to_rgba
-from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
 from scipy import stats
 
+from sbmlsim.plot.chart import Chart
 from sbmlsim.result.scan import ScanResult
 from sbmlsim.sensitivity.uncertainty import plot_bands, plot_distribution
 from sbmlsim.simulation import Change, Dimension, Formula, Scan, Simulation
@@ -39,36 +38,79 @@ def test_the_bands_of_a_lognormal_parameter_are_its_quantiles(
     )
 
 
+def _plot(chart: Chart) -> dict[str, Any]:
+    (plot,) = chart.spec()["plots"]
+    return plot
+
+
+def _elements(chart: Chart, kind: str) -> list[dict[str, Any]]:
+    return [e for e in _plot(chart)["elements"] if e["kind"] == kind]
+
+
+def _labels(chart: Chart) -> list[str]:
+    assert _plot(chart)["legend"]
+    return [e["label"] for e in _plot(chart)["elements"] if "label" in e]
+
+
 def test_plot_bands_draws_a_band_per_label(result: ScanResult) -> None:
     summary = result.summary("random", quantiles=[0.05, 0.5, 0.95])
-    figure = plot_bands(summary, "rate")
-    assert isinstance(figure, Figure)
-    (ax,) = figure.axes
-    assert len(ax.collections) == 2 and len(ax.lines) == 2
-    assert ax.get_xlabel().startswith("time")
+    chart = plot_bands(summary, "rate")
+    assert isinstance(chart, Chart)
+    bands = _elements(chart, "band")
+    assert len(bands) == 2 and all("median" in b for b in bands)
+    band = summary["rate"].isel(a=1)
+    np.testing.assert_allclose(bands[1]["low"], band.sel(statistic="q0.05").values)
+    np.testing.assert_allclose(bands[1]["median"], band.sel(statistic="q0.5").values)
+    assert _plot(chart)["x"]["label"] == "time"
+    chart.svg()
 
 
-@pytest.mark.usefixtures("no_pyplot")
 def test_plot_distribution_per_label(result: ScanResult) -> None:
-    figure = plot_distribution(result, "k", dim="random")
-    assert isinstance(figure, Figure)
-    patches = figure.axes[0].patches
-    assert len(patches) > 0
-    # the labels share the bin edges, so every bar has one width
-    widths = [p.get_width() for p in patches if isinstance(p, Rectangle)]
-    assert len(widths) == len(patches) and np.allclose(widths, widths[0])
-    box = plot_distribution(result, "k", dim="random", kind="box")
-    assert isinstance(box, Figure)
-    # a box per label at 1, ..., n, drawn without resolving the backend
-    ax = box.axes[0]
-    n = len(ax.get_xticks())
-    assert n >= 1
-    np.testing.assert_array_equal(ax.get_xticks(), np.arange(1, n + 1))
-    assert all(t.get_text() for t in ax.get_xticklabels())
+    chart = plot_distribution(result, "k", dim="random")
+    assert isinstance(chart, Chart)
+    histograms = _elements(chart, "histogram")
+    # the labels share the bin edges
+    assert len(histograms) == 2 and len(histograms[0]["edges"]) == 31
+    assert histograms[0]["edges"] == histograms[1]["edges"]
+    assert sum(histograms[0]["counts"]) == 2000
+    chart.svg()
+    chart = plot_distribution(result, "k", dim="random", kind="box")
+    # a box per label on a category axis of the labels
+    (box,) = _elements(chart, "box")
+    assert _plot(chart)["x"]["categories"] == ["a=0", "a=1"]
+    assert box["positions"] == [0.0, 1.0]
+    sample = result["k"].isel(a=0).values
+    assert box["stats"][0]["median"] == pytest.approx(np.median(sample))
+    chart.svg()
+    chart = plot_distribution(result, "k", dim="random", kind="violin")
+    (violin,) = _elements(chart, "violin")
+    density = violin["densities"][0]
+    assert len(density["values"]) == len(density["density"]) == 128
+    assert density["values"][0] == pytest.approx(sample.min())
+    assert density["values"][-1] == pytest.approx(sample.max())
+    kde = stats.gaussian_kde(sample)
+    np.testing.assert_allclose(density["density"], kde(density["values"]))
+    chart.svg()
     with pytest.raises(ValueError, match="kind"):
-        plot_distribution(result, "k", dim="random", kind="violin")
+        plot_distribution(result, "k", dim="random", kind="strip")
     with pytest.raises(ValueError, match="time"):
         plot_distribution(result, "rate", dim="random")
+
+
+def test_a_violin_needs_a_spread(volumes: dict[str, ScanResult]) -> None:
+    """A sample of one value has no density and no violin, the others have one."""
+    result = volumes["small"]
+    constant = result.ds.assign(cmax=result.ds["cmax"] * 0 + 1.0)
+    chart = plot_distribution(
+        {"varied": result, "constant": ScanResult(constant)},
+        "cmax",
+        dim="random",
+        kind="violin",
+    )
+    (violin,) = _elements(chart, "violin")
+    assert violin["positions"] == [0.0]
+    assert _plot(chart)["x"]["categories"] == ["varied", "constant"]
+    chart.svg()
 
 
 @pytest.fixture(scope="module")
@@ -115,60 +157,63 @@ def test_a_unit_is_written_in_its_short_form() -> None:
 
 def test_the_axes_have_the_short_units(volumes: dict[str, ScanResult]) -> None:
     summary = volumes["small"].summary("random", quantiles=[0.05, 0.5, 0.95])
-    (ax,) = plot_bands(summary, "cp").axes
-    assert ax.get_ylabel() == "cp [ng/ml]" and ax.get_xlabel() == "time [h]"
-    (ax,) = plot_distribution(volumes["small"], "cmax", dim="random").axes
-    assert ax.get_xlabel() == "cmax [ng/ml]"
-    (ax,) = plot_distribution(volumes["small"], "cmax", dim="random", kind="box").axes
-    assert ax.get_ylabel() == "cmax [ng/ml]"
+    plot = _plot(plot_bands(summary, "cp"))
+    assert (plot["y"]["label"], plot["y"]["unit"]) == ("cp", "ng/ml")
+    assert (plot["x"]["label"], plot["x"]["unit"]) == ("time", "h")
+    plot = _plot(plot_distribution(volumes["small"], "cmax", dim="random"))
+    assert (plot["x"]["label"], plot["x"]["unit"]) == ("cmax", "ng/ml")
+    assert plot["y"]["label"] == "count"
+    for kind in ("box", "violin"):
+        plot = _plot(
+            plot_distribution(volumes["small"], "cmax", dim="random", kind=kind)
+        )
+        assert (plot["y"]["label"], plot["y"]["unit"]) == ("cmax", "ng/ml")
 
 
-def _legend(ax: Axes) -> list[str]:
-    legend = ax.get_legend()
-    assert legend is not None
-    return [t.get_text() for t in legend.get_texts()]
-
-
-def test_plot_bands_labels_a_summary_per_call(volumes: dict[str, ScanResult]) -> None:
-    """Every call on one axes adds its line with its label to the legend."""
-    figure = Figure()
-    ax = figure.add_subplot()
-    for name, result in volumes.items():
-        summary = result.summary("random", quantiles=[0.05, 0.5, 0.95])
-        plot_bands(summary, "cp", ax=ax, label=name)
-    assert _legend(ax) == ["small", "large"]
-    # the color of a band is the one of its line
-    for line, band in zip(ax.lines, ax.collections, strict=True):
-        face = np.asarray(band.get_facecolor(), dtype=float).reshape(-1, 4)[0]
-        assert np.allclose(to_rgba(line.get_color())[:3], face[:3])
-    # a single call with a label has its legend
-    summary = volumes["small"].summary("random", quantiles=[0.05, 0.5, 0.95])
-    (ax,) = plot_bands(summary, "cp", label="small").axes
-    assert _legend(ax) == ["small"]
+def test_plot_bands_labels_a_summary_per_scenario(
+    volumes: dict[str, ScanResult],
+) -> None:
+    """The summaries of a mapping are labelled by their keys in one legend."""
+    summaries = {
+        name: result.summary("random", quantiles=[0.05, 0.5, 0.95])
+        for name, result in volumes.items()
+    }
+    chart = plot_bands(summaries, "cp")
+    assert _labels(chart) == ["small", "large"]
+    # a band is one element with its median, so it has the color of its line
+    assert all("median" in band for band in _elements(chart, "band"))
+    chart.svg()
+    # a single summary with a label has its legend, one without none
+    assert _labels(plot_bands(summaries["small"], "cp", label="small")) == ["small"]
+    assert not _plot(plot_bands(summaries["small"], "cp"))["legend"]
 
 
 def test_plot_bands_prefixes_the_labels_of_other_dimensions(
     result: ScanResult,
 ) -> None:
     summary = result.summary("random", quantiles=[0.05, 0.5, 0.95])
-    (ax,) = plot_bands(summary, "rate", label="mid").axes
-    assert _legend(ax) == ["mid: a=0", "mid: a=1"]
-    (ax,) = plot_bands(summary, "rate").axes
-    assert _legend(ax) == ["a=0", "a=1"]
+    assert _labels(plot_bands(summary, "rate", label="mid")) == [
+        "mid: a=0",
+        "mid: a=1",
+    ]
+    assert _labels(plot_bands({"mid": summary}, "rate")) == ["mid: a=0", "mid: a=1"]
+    assert _labels(plot_bands(summary, "rate")) == ["a=0", "a=1"]
 
 
-def test_plot_distribution_labels_a_result_per_call(
+def test_plot_distribution_labels_a_result_per_scenario(
     volumes: dict[str, ScanResult],
 ) -> None:
-    figure = Figure()
-    ax = figure.add_subplot()
-    for name, result in volumes.items():
-        plot_distribution(result, "cmax", dim="random", ax=ax, label=name)
-    assert _legend(ax) == ["small", "large"]
-    (ax,) = plot_distribution(
+    chart = plot_distribution(volumes, "cmax", dim="random")
+    assert _labels(chart) == ["small", "large"]
+    histograms = _elements(chart, "histogram")
+    assert histograms[0]["edges"] == histograms[1]["edges"]
+    chart = plot_distribution(
         volumes["small"], "cmax", dim="random", kind="box", label="small"
-    ).axes
-    assert [t.get_text() for t in ax.get_xticklabels()] == ["small"]
+    )
+    assert _plot(chart)["x"]["categories"] == ["small"]
+    chart = plot_distribution(volumes, "cmax", dim="random", kind="box")
+    assert _plot(chart)["x"]["categories"] == ["small", "large"]
+    assert len(_elements(chart, "box")[0]["stats"]) == 2
 
 
 def test_plot_bands_draws_quantities_in_the_units_of_the_axes(
@@ -176,28 +221,31 @@ def test_plot_bands_draws_quantities_in_the_units_of_the_axes(
 ) -> None:
     """A band converts into the units of an axis, its own or the ones asked for."""
     summary = volumes["small"].summary("random", quantiles=[0.05, 0.5, 0.95])
-    figure = plot_bands(summary, "cp", time_unit="min", unit="µg/l", name="C")
-    (ax,) = figure.axes
+    chart = plot_bands(summary, "cp", time_unit="min", unit="µg/l", name="C")
+    plot = _plot(chart)
     # pint writes micro as the greek letter mu
-    assert (ax.get_xlabel(), ax.get_ylabel()) == ("time [min]", "C [\u03bcg/l]")
-    hours = summary.q["time"].to("hr").magnitude
-    np.testing.assert_allclose(np.asarray(ax.lines[0].get_xydata())[:, 0], 60 * hours)
-    # a second band on the axes is converted into their units
+    assert (plot["x"]["unit"], plot["y"]["unit"]) == ("min", "\u03bcg/l")
+    assert plot["y"]["label"] == "C"
+    hours = summary.quantity("time").to("hr").magnitude
+    (band,) = _elements(chart, "band")
+    np.testing.assert_allclose(band["x"], 60 * hours)
+    cp = summary.sel(statistic="q0.5").quantity("cp").to("µg/l").magnitude
+    np.testing.assert_allclose(band["median"], cp)
+    # a second band is converted into the units of the axes
     other = volumes["large"].summary("random", quantiles=[0.05, 0.5, 0.95])
-    plot_bands(other, "cp", ax=ax, label="large")
-    np.testing.assert_allclose(
-        np.asarray(ax.lines[1].get_xydata())[:, 0], 60 * hours, rtol=1e-12
-    )
-    assert ax.get_ylabel() == "cp [\u03bcg/l]"
+    chart = plot_bands({"small": summary, "large": other}, "cp", time_unit="min")
+    _, second = _elements(chart, "band")
+    np.testing.assert_allclose(second["x"], 60 * hours, rtol=1e-12)
+    assert _plot(chart)["y"]["unit"] == "ng/ml"
 
 
 def test_plot_distribution_converts_into_a_unit(
     volumes: dict[str, ScanResult],
 ) -> None:
     """The values of a distribution are drawn in the unit asked for."""
-    figure = plot_distribution(volumes["small"], "cmax", dim="random", unit="µg/ml")
-    ax = figure.axes[0]
-    assert ax.get_xlabel() == "cmax [\u03bcg/ml]"
-    cmax = volumes["small"].q["cmax"].to("µg/ml").magnitude
-    edges = [p.get_x() for p in ax.patches if isinstance(p, Rectangle)]
-    assert min(edges) == pytest.approx(np.nanmin(cmax))
+    chart = plot_distribution(volumes["small"], "cmax", dim="random", unit="µg/ml")
+    plot = _plot(chart)
+    assert (plot["x"]["label"], plot["x"]["unit"]) == ("cmax", "\u03bcg/ml")
+    cmax = volumes["small"].quantity("cmax").to("µg/ml").magnitude
+    (histogram,) = _elements(chart, "histogram")
+    assert min(histogram["edges"]) == pytest.approx(np.nanmin(cmax))

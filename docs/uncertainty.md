@@ -143,14 +143,13 @@ The inhibitor triples the mean AUC (in ng/ml × min). The PK parameters are comp
 `res.results` holds the result of each scenario, a scan over the dimension `draw`. The quantiles of its summary over the draws are bands of the prediction, which `plot_bands` draws as a median line and a band from the 5 % to the 95 % quantile, in the units you ask for:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim.sensitivity.uncertainty import plot_bands
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for scenario, result in res.results.items():
-    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    plot_bands(bands, "mid", ax=ax, label=scenario, time_unit="hr", name="midazolam")
+bands = {
+    scenario: result.summary(quantiles=[0.05, 0.5, 0.95])
+    for scenario, result in res.results.items()
+}
+fig = plot_bands(bands, "mid", time_unit="hr", name="midazolam")
 ```
 
 ![Output figure](images/outputs/uncertainty-05.png)
@@ -170,6 +169,8 @@ How the draws are made:
 A question about a prediction is a probability over the draws. For example: is the probability that the inhibitor raises the AUC by more than 25 % at least 90 %, and how likely is it to more than triple the AUC? The paired ratio of the AUCs over the draws shows the answers:
 
 ```python
+import matplotlib.pyplot as plt
+
 ratio = res.contrast("pk.auc_last", "inhibitor", "control")
 fig, ax = plt.subplots(figsize=(7, 3.5))
 ax.hist(ratio, bins=30, alpha=0.6)

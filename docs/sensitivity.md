@@ -326,7 +326,7 @@ An output that does not vary, e.g. a saturated or conserved value or a steady st
 
 ## Plots
 
-The plots return a matplotlib figure. `path=` saves it as well, at `dpi=` (300 by default). Labels of other dimensions of the scan are selected by keyword, e.g. `leak="high"`.
+The plots return a `sbmlsim.plot.Chart`, which `fig.save("heatmap.svg")` or `fig.save("heatmap.png", dpi=300)` writes. Labels of other dimensions of the scan are selected by keyword, e.g. `leak="high"`.
 
 | plot | shows |
 | --- | --- |
@@ -334,7 +334,7 @@ The plots return a matplotlib figure. `path=` saves it as well, at `dpi=` (300 b
 | `plot_indices(result, observable)` | the bars of `S1` and `ST` of a Sobol or FAST analysis with their intervals |
 | `plot_morris(result, observable)` | `mu_star` against `sigma`, one point per parameter; a note names a parameter with undefined effects |
 
-The heatmap leaves out parameters whose values are all below `cutoff`, in the unit of the index. The default is `0.1` for the dimensionless indices (`normalized`, `S1`, `ST`) and no cutoff for indices with a unit; `cutoff=0` keeps every parameter. A heatmap in which no parameter reaches the cutoff raises and names the largest value. Undefined values are never left out. All outputs of a heatmap share one color scale, so for an index with a unit the outputs with the largest values dominate; use `normalized` to compare outputs with different units.
+The heatmap draws `cmap` with the color scales of the renderer (`viridis`, `magma`, `rdbu`, `coolwarm`, `greys`; `seismic` is drawn as `coolwarm`). It leaves out parameters whose values are all below `cutoff`, in the unit of the index. The default is `0.1` for the dimensionless indices (`normalized`, `S1`, `ST`) and no cutoff for indices with a unit; `cutoff=0` keeps every parameter. A heatmap in which no parameter reaches the cutoff raises and names the largest value. Undefined values are never left out. All outputs of a heatmap share one color scale, so for an index with a unit the outputs with the largest values dominate; use `normalized` to compare outputs with different units.
 
 For the spread of outputs over random draws, see `plot_bands` and `plot_distribution` in [Sampling](sampling.md#draw-parameter-values) and [Uncertainty](uncertainty.md).
 
@@ -392,12 +392,12 @@ The project lists the runner in `sensitivities`, as an object or a reference, an
 
 A group runs a variant of the model of the project (`variant`, the default variant without) and may prepare the scan of every design (`prepare`, e.g. an equilibration). An analysis varies the parameters of the table which no simulation of its groups sets (`free_parameters`); a global design is drawn once and a group of another variant samples it relative to the values of its variant (`design_factors`, `relative_design`), so e.g. a group of women varies the body weight around the female one by the same factors. The designs and indices are the ones above with the seed `1234`; the environment variable `SBMLSIM_SENSITIVITY_N` replaces the numbers of samples for a quick run.
 
-The files are the ones of sbmlsim 0.8.5, which manuscripts read:
+The files are the ones of sbmlsim 0.8.5, which manuscripts read; every figure is the PNG of sbmlsim 0.8.5 at 300 dpi and an SVG of the same name:
 
 | analysis | files |
 | --- | --- |
 | every run | `parameters.tsv` and `parameters.tex`, the table of the parameters with the values of the other variants of the groups, `value_<variant>` |
-| `LocalAnalysis` | `local/local_d<delta>_nvar<n_var>_<k>_<group>.tsv`: the normalized sensitivity `Sij`, the mean over `n_var` steps up to `delta`, with its class, and the heatmap `.png` |
+| `LocalAnalysis` | `local/local_d<delta>_nvar<n_var>_<k>_<group>.tsv`: the normalized sensitivity `Sij`, the mean over `n_var` steps up to `delta`, with its class, and the heatmap `.png` and `.svg` |
 | `SamplingAnalysis` | a Latin hypercube: `sampling/<group>/samples.tsv`, `sampling/sampling_N<n>.tsv` with the statistics of `ScanResult.summary` per group and output (`mean`, `median`, `std` the sample standard deviation, `cv`, `min`, `q005`, `q095`, `max`, the uncertainty `U = (P97.5 - P2.5) / P50` and its class), `_compact.tsv`, `.tex` and the figures of the samples and the outputs per group |
 | `FastAnalysis`, `SobolAnalysis`, `ChaosAnalysis` | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, the heatmaps of `S1` and `ST` and the bars of `plot_indices` per output |
 | `ChaosAnalysis` | and `chaos/<group>/quality.tsv`, a row per output with the `loo`, the `degree` of its basis and the `mean` and `sd` of its expansion, plus `<output>.S2.tsv` with `second_order=True` |
