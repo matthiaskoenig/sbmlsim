@@ -63,6 +63,8 @@ chart.save("hctz.json")
 
 ![Output figure](images/outputs/plotting-01.svg)
 
+A plot can have several colour bars: every `plot.colorbar(scale, low, high, label=...)` adds one, stacked right of the panel. A bar takes the part of its colour map it shows (`start`, `end`, from 0 to 1), its `ticks` and their `tick_labels`, and `categorical=True` draws one band per integer from `low` to `high`, labelled by `tick_labels`. `chart.plot(legend_swatches={group: {...}})` draws the swatch of a legend group in a style of its own, the style keywords of `curve`, e.g. the middle colour of lines which differ in colour. A text, a title or a label breaks its lines at `\n`; a tick label stays one line. The fonts of a chart take the sizes `title`, `label`, `tick`, `tick_y` (the y axes and the colour bars) and `legend` and the weights `title_weight`, `label_weight`, `tick_weight` and `legend_weight`, `normal` or `bold`: `Chart(fonts={"label": 13, "label_weight": "bold"})`.
+
 A chart shows itself in a notebook, where its SVG is the last expression of a cell. The SVG is the default format of the package, the PNG takes a `dpi` (the resolution is stored in the PNG), and the JSON is the spec of the contract `figure/1`, `chart.spec()` as a dictionary, which the renderer of sbmlsim-core, in Python or in the browser, draws again. A value which is not finite is a gap in a curve, `null` in the JSON.
 
 ## An experiment to plot
@@ -257,7 +259,7 @@ fig_doses = figure_chart(experiment, fig)
 ![Output figure](images/outputs/plotting-04.svg)
 
 
-The lines get the colours of the viridis colour map at the value the dimension sets, and the legend says what that value is. With `color=` they get shades of that colour instead. The colour scale is logarithmic when all values are positive and the largest is more than 100 times the smallest. From eleven points on, a colour bar replaces the legend entries.
+The lines get the colours of the viridis colour map at the value the dimension sets, and the legend says what that value is. With `color=` they get shades of that colour instead. The colour scale is logarithmic when all values are positive and the largest is more than 100 times the smallest. From eleven points on, a colour bar replaces the legend entries: it spans the values of the points, from the smallest to the largest, in the part of the colour map the lines take, so the colour of the bar at a value is the colour of its line, and the lines share one legend entry drawn in their middle colour. A dimension which does not set one target gets a bar of one band per point, labelled by the labels of the points. The shades of a colour of its own are no colour map of the renderer, so such lines get no colour bar. A plot of several curves with colour bars shows all of them, the same bar once.
 
 The right panel plots a value per simulation, `pk.cmax`, over the values of the dimension, `dose.PODOSE_hctz`. The x data is the coordinate `<dimension>.<target>` that every array of the task has.
 
@@ -356,7 +358,7 @@ Colours are `ColorType` objects, made from matplotlib colour names or hex string
 
 ## Figure settings
 
-Sizes, fonts and legends are set with `FigureSettings`: `fig_dpi`, `panel_width`, `panel_height`, the font sizes and weights of titles, labels, ticks and legends, `legend_position`, `legend_loc` and `legend_scope`, among others. The settings come in four levels, and the more specific level wins:
+Sizes, fonts and legends are set with `FigureSettings`: `fig_dpi`, `panel_width`, `panel_height`, the font sizes and weights of titles, labels, ticks and legends, `legend_position`, `legend_loc` and `legend_scope`, among others. The renderer has two weights, `normal` and `bold`: a weight of 600 or more, or `semibold`, `bold`, `heavy` and `black`, is bold, and the title of the figure and the titles of its plots share one weight, bold when either is. `xtick_labelsize` and `ytick_labelsize` are the sizes of the tick labels of the x and the y axes, and an axis with `ticks_visible=False` hides its tick labels and keeps the tick marks. The settings come in four levels, and the more specific level wins:
 
 1. the defaults of `FigureSettings`,
 2. the run: `run_experiments(..., figure_settings={"fig_dpi": 300})`,
@@ -392,13 +394,13 @@ print(fig.size(settings))
 
 The experiment overrides the legend font size of the run, and the figure overrides the label size of the experiment. A figure without an explicit `width` and `height` is `num_cols * panel_width` by `num_rows * panel_height` inches. To extend the settings of a base experiment, write `MappingProxyType({**Base.figure_settings, "fig_dpi": 300})`. An unknown setting raises a `ValueError` that lists the valid ones.
 
-`fig_dpi` is the resolution of the static images. The interactive pages always have 72 pixels per inch, whatever `fig_dpi` is.
+`fig_dpi` is the resolution of a PNG. An SVG, and so an interactive figure of a report, has 72 pixels per inch, whatever `fig_dpi` is.
 
 Older code set the settings on the class, `Figure.fig_dpi = 300`, which changed every later figure of the process. That now raises an `AttributeError` that tells you where the setting goes.
 
 ### Legends
 
-By default each plot has its legend inside, at the best place matplotlib finds. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
+By default each plot has its legend inside, in the corner of the panel which covers the least of the data; a legend which covers too much of the data in every corner goes right of the plot. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
 
 ```python
 fig_row = figure_chart(experiment, bands, settings={"legend_scope": "row"})
@@ -415,11 +417,11 @@ The renderer of sbmlsim-core draws every figure. The figure formats of a run are
 
 ## Interactivity
 
-The spec is the whole figure. The HTML reports of the experiments and of a fit carry the spec of every figure next to its inline SVG, so the page needs nothing from the network to show it. Interactive figures (hovering a curve, toggling a legend entry, zooming) come from `hydrateFigures` of sbmlsim-core 0.28, a script which draws the spec again in the browser; sbmlsim's next step adds it to the reports, so for now a report shows the static SVG.
+The spec is the whole figure. The HTML reports of the experiments and of a fit carry the spec of every figure next to its inline SVG, and the script `figures.js`, written once beside the pages of a report (`sbmlsim.report.figures.write_figure_script`, the script `figure_script` of sbmlsim-core), draws every figure again from its spec in the browser and makes it interactive: a click on a legend entry hides or shows its group, a click on a curve selects it and dims the others (a click on it again or Escape clears it), and the point under the pointer is read out with the units of the axes. A double click enlarges an interactive figure. The script loads nothing from the network and works from `file://`; a page without it shows the static SVG.
 
 ## Colours
 
-The chart builder and the figure model take the colour names of matplotlib: a CSS name (`dimgrey`), a base colour of one letter (`k`), a tableau name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle (`C0` to `C9`), hex (`#rgb`, `#rrggbb`, with an alpha `#rrggbbaa`), a grey level as a text (`"0.4"`) and a tuple of floats. The spec holds `#rrggbb`: `sbmlsim.plot.colors.normalize_color` converts a name, and an alpha of the colour is multiplied into the opacity of the element or of its fill. `marker_fill="none"` draws a hollow marker (white with sbmlsim-core 0.27, which has no hollow markers; 0.28 takes `none`).
+The chart builder and the figure model take the colour names of matplotlib: a CSS name (`dimgrey`), a base colour of one letter (`k`), a tableau name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle (`C0` to `C9`), hex (`#rgb`, `#rrggbb`, with an alpha `#rrggbbaa`), a grey level as a text (`"0.4"`) and a tuple of floats. The spec holds `#rrggbb`: `sbmlsim.plot.colors.normalize_color` converts a name, and an alpha of the colour is multiplied into the opacity of the element or of its fill. `marker_fill="none"` draws a hollow marker, its edge alone.
 
 ```python
 from sbmlsim.plot.colors import color_alpha, normalize_color

@@ -50,7 +50,7 @@ Core:
 - [Units](units.md): give values in the units you have; `sbmlsim` converts them into the units of the model.
 - [Simulation experiments](experiments.md): models, data, simulations and figures of one study in one reproducible python class.
 - [Data](data.md): simulation results and experimental datasets, side by side in matching units.
-- [Plots and reports](plotting.md): figures as images or interactive HTML pages, and reports of experiments.
+- [Plots and reports](plotting.md): figures as SVG and PNG images, made interactive in the reports of experiments and fits.
 
 Sensitivity and uncertainty:
 

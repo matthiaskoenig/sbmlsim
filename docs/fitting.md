@@ -69,7 +69,7 @@ runs                4
 workers             1 (threads of the engine, one fit)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.1 s
+optimizer time      0.0 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
 0    1  0.049603     0.304811      0.005028
 1    0  0.049603     0.304812      0.005028
@@ -470,7 +470,7 @@ report = FitReport(problem, settings, ParameterSets.from_json(Path("parameters.j
 
 `FitReport.from_optimization_result(problem, fit)` is the shortcut for a finished fit: it takes the settings from the result and adds the figures of the runs. `with_model=True` adds the values of the model as a reference set, so the report shows what the fit changed. `report.create(output_dir, name)` writes a folder with:
 
-- `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data and sortable tables. It works offline and can be archived or sent as it is.
+- `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data, sortable tables and figures whose legend entries toggle their curves and whose points are read out under the pointer (the script `figures.js` beside it). It works offline and can be archived or sent with `figures.js`; without it the figures are static.
 - `report.pdf` with its sources `report.typ` and LaTeX (`report.tex` for `\input` in a manuscript, `report_standalone.tex`), and `references.bib`. Typst compiles the PDF, no LaTeX installation is needed; if it fails, the page says why and everything else is written.
 - the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic. Every figure is a chart of the renderer of sbmlsim-core, saved as `svg` (or `png` with `image_format="png"`) with its spec as `json` beside it, and `index.html` shows the SVG inline with its spec; the figures of the report document are written as `png` as well, which LaTeX includes, at `create(png_dpi=300)`.
 - `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `fisher.tsv`, `identifiability.json`, `posterior.json`, `posterior.tsv`) where the report has them.
@@ -598,7 +598,7 @@ runs                2
 workers             1 (threads of the engine, one fit)
 converged           2/2 runs
 best cost           1.09898
-optimizer time      0.2 s
+optimizer time      0.1 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy, sbmlsim-core
 checksums of 10 files
