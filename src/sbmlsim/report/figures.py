@@ -83,7 +83,13 @@ def script_json(text: str) -> str:
     return text.replace("</", "<\\/").replace("<!--", "<\\u0021--")
 
 
-def save_figure(chart: Chart, path: Path, png_dpi: float | None = None) -> list[Path]:
+#: the resolution of a PNG which is the one of the figure itself
+FIGURE_DPI: Final = "figure"
+
+
+def save_figure(
+    chart: Chart, path: Path, png_dpi: float | str | None = None
+) -> list[Path]:
     """Save a figure as its image and its spec.
 
     Args:
@@ -92,7 +98,8 @@ def save_figure(chart: Chart, path: Path, png_dpi: float | None = None) -> list[
             next to it with the suffix `.json`.
         png_dpi: the resolution of a PNG: of the image of a `.png` path, the
             default of the chart without, and of a PNG copy of an SVG, which
-            is written only with it, e.g. for LaTeX, which includes no SVG.
+            is written only with it, e.g. for LaTeX, which includes no SVG;
+            `"figure"` is the resolution of the figure itself.
 
     Returns:
         The files written, the image first.
@@ -106,9 +113,12 @@ def save_figure(chart: Chart, path: Path, png_dpi: float | None = None) -> list[
             f"A figure of a report is saved as {' or '.join(IMAGE_FORMATS)}, "
             f"not as '{path.suffix}': '{path}'."
         )
-    written = [chart.save(path, dpi=png_dpi), chart.save(path.with_suffix(".json"))]
+    dpi = None if png_dpi == FIGURE_DPI else png_dpi
+    if isinstance(dpi, str):
+        raise ValueError(f"The resolution of a PNG is a number or '{FIGURE_DPI}'.")
+    written = [chart.save(path, dpi=dpi), chart.save(path.with_suffix(".json"))]
     if suffix != "png" and png_dpi is not None:
-        written.append(chart.save(path.with_suffix(".png"), dpi=png_dpi))
+        written.append(chart.save(path.with_suffix(".png"), dpi=dpi))
     return written
 
 

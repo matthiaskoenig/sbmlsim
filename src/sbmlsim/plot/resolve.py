@@ -135,6 +135,10 @@ NEUTRAL: Final = "#666666"
 HOLLOW: Final = "none"
 
 #: the font weights of matplotlib by name which the renderer draws bold
+#: the defaults of the settings the renderer cannot carry
+DEFAULT_FACECOLOR: Final = "white"
+DEFAULT_LEGEND_LOC: Final = "best"
+
 BOLD_WEIGHTS: Final = frozenset(
     {"semibold", "demibold", "demi", "bold", "heavy", "extra bold", "black"}
 )
@@ -180,6 +184,8 @@ def figure_chart(
     """
     resolved = figure.resolved_settings(experiment, run=settings)
     width, height = figure.size(resolved)
+    _warn_unsupported(figure, resolved)
+    title_size = _title_size(figure, resolved)
     chart = Chart(
         width * PX_PER_INCH,
         height * PX_PER_INCH,
@@ -189,7 +195,7 @@ def figure_chart(
         wspace=resolved.fig_subplots_wspace,
         hspace=resolved.fig_subplots_hspace,
         fonts={
-            "title": resolved.fig_titlesize,
+            "title": title_size,
             "label": resolved.axes_labelsize,
             "tick": resolved.xtick_labelsize,
             "tick_y": resolved.ytick_labelsize,
@@ -239,9 +245,54 @@ def _weight(*weights: str | float) -> Literal["normal", "bold"]:
         if isinstance(weight, int | float) and not isinstance(weight, bool):
             if weight >= 600:
                 return "bold"
-        elif str(weight).strip().lower() in BOLD_WEIGHTS:
-            return "bold"
+        else:
+            text = str(weight).strip().lower()
+            if text in BOLD_WEIGHTS:
+                return "bold"
+            try:
+                if float(text) >= 600:
+                    return "bold"
+            except ValueError:
+                pass
     return "normal"
+
+
+def _warn_unsupported(figure: Figure, resolved: FigureSettings) -> None:
+    """Warn once per figure of the settings figure/1 cannot carry."""
+    if resolved.fig_facecolor != DEFAULT_FACECOLOR:
+        logger.warning(
+            "The figure '%s' sets fig_facecolor, which the renderer does not "
+            "support: it has no background colour, the theme comes from CSS.",
+            figure.sid,
+        )
+    if resolved.legend_loc != DEFAULT_LEGEND_LOC:
+        logger.warning(
+            "The figure '%s' sets legend_loc, which the renderer does not "
+            "support: it places the legend itself.",
+            figure.sid,
+        )
+
+
+def _title_size(figure: Figure, resolved: FigureSettings) -> float:
+    """Get the one title size of the renderer from the two sizes of the settings.
+
+    The size of the plot titles for a figure with plot titles and no figure
+    title, else the size of the figure title; with both, the plot titles take
+    the size of the figure title, which is logged.
+    """
+    has_figure_title = bool(figure.name)
+    has_plot_titles = any(
+        subplot.plot.name and subplot.plot.title_visible for subplot in figure.subplots
+    )
+    if has_plot_titles and not has_figure_title:
+        return resolved.axes_titlesize
+    if has_plot_titles and has_figure_title:
+        logger.warning(
+            "The figure '%s' has a title and plot titles: the renderer has one "
+            "title size, the plot titles take fig_titlesize.",
+            figure.sid,
+        )
+    return resolved.fig_titlesize
 
 
 def _text(text: str | None) -> str | None:

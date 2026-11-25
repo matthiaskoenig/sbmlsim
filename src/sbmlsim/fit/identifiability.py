@@ -1965,7 +1965,7 @@ def plot_profile(
     return chart
 
 
-def _save(chart: Chart, path: Path, png_dpi: float | None = None) -> None:
+def _save(chart: Chart, path: Path, png_dpi: float | str | None = None) -> None:
     """Save a figure of the profiles with its spec, see `save_figure`."""
     from sbmlsim.report.figures import save_figure
 
@@ -1976,7 +1976,7 @@ def plot_all(
     result: IdentifiabilityResult,
     output_dir: Path,
     image_format: str = "svg",
-    png_dpi: float | None = None,
+    png_dpi: float | str | None = None,
 ) -> list[Path]:
     """Write the overview figure and the figure of every profile.
 
@@ -1990,7 +1990,7 @@ def plot_all(
         png_dpi: resolution of a PNG copy of the overview figure, which is
             written if the format is another one, e.g. for LaTeX, which
             includes no SVG, and of the figures of the format `png`; no copy
-            by default.
+            by default; `"figure"` is the resolution of the figure itself.
 
     Returns:
         The paths of the figures, the overview first; a PNG copy and a spec

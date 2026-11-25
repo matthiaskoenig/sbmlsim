@@ -887,8 +887,7 @@ class Project(BaseModel):
             or a reference is an action without a description.
         simulator: the settings of the simulator of the analyses.
         figure_settings: the settings of the rendering of the figures of a run.
-        figures: the formats of the figures of a run and the parameters of
-            matplotlib while they are drawn.
+        figures: the formats of the figures of a run and their resolution.
         checks: the known exceptions of the checks of the model.
         release: the release metadata, `None` for a project which is not
             released.

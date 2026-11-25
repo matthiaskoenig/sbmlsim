@@ -941,3 +941,78 @@ def test_the_legend_entries_of_two_dimensions_carry_the_markers(
         ),
     )
     assert {e["style"]["marker"]["type"] for e in spec["elements"]} == {"circle"}
+
+
+@pytest.mark.parametrize(
+    ("weights", "expected"),
+    [
+        ((700,), "bold"),
+        ((600.0,), "bold"),
+        ((599,), "normal"),
+        ((400,), "normal"),
+        (("normal",), "normal"),
+        (("bold",), "bold"),
+        (("semibold",), "bold"),
+        (("Heavy",), "bold"),
+        (("700",), "bold"),
+        ((" 600 ",), "bold"),
+        (("500",), "normal"),
+        ((400, "bold"), "bold"),
+    ],
+)
+def test_weight_maps_to_bold_from_600(weights: tuple, expected: str) -> None:
+    """A weight of matplotlib is bold from 600 on, as a number, text or name."""
+    from sbmlsim.plot.resolve import _weight
+
+    assert _weight(*weights) == expected
+
+
+def _title_figure(
+    experiment: SimulationExperiment, figure_title: bool, plot_title: bool, **settings
+) -> Figure:
+    figure = _figure(
+        experiment, _doses, axes_titlesize=11.0, fig_titlesize=22.0, **settings
+    )
+    figure.name = "Figure" if figure_title else ""
+    figure.subplots[0].plot.name = "Plot" if plot_title else ""
+    return figure
+
+
+@pytest.mark.parametrize(
+    ("figure_title", "plot_title", "size", "warned"),
+    [
+        (False, True, 11.0, False),
+        (True, False, 22.0, False),
+        (True, True, 22.0, True),
+        (False, False, 22.0, False),
+    ],
+)
+def test_the_one_title_size(
+    experiment: SimulationExperiment,
+    caplog: pytest.LogCaptureFixture,
+    figure_title: bool,
+    plot_title: bool,
+    size: float,
+    warned: bool,
+) -> None:
+    """The renderer has one title size, chosen by which titles the figure has."""
+    figure = _title_figure(experiment, figure_title, plot_title)
+    with caplog.at_level("WARNING"):
+        spec = figure_chart(experiment, figure).spec()
+    assert spec["fonts"]["title"] == size
+    assert any("one title size" in r.getMessage() for r in caplog.records) is warned
+
+
+def test_unsupported_settings_warn(
+    experiment: SimulationExperiment, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A background colour and a legend location are warned about per figure."""
+    with caplog.at_level("WARNING"):
+        figure_chart(experiment, _figure(experiment, _doses))
+    assert not caplog.records
+    figure = _figure(experiment, _doses, fig_facecolor="black", legend_loc="upper left")
+    with caplog.at_level("WARNING"):
+        figure_chart(experiment, figure)
+    messages = [r.getMessage() for r in caplog.records]
+    assert sum("fig_facecolor" in m for m in messages) == 1
+    assert sum("legend_loc" in m for m in messages) == 1

@@ -423,3 +423,70 @@ def test_latex_report_uses_png(report_dir: Path) -> None:
     tex = (report_dir / "index.tex").read_text(encoding="utf-8")
     assert ".png}" in tex
     assert ".svg" not in tex
+
+
+HOOK_EXPERIMENT = """
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.model import AbstractModel
+from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.simulation import Simulation
+from sbmlsim.task import Task
+
+
+class _Saved:
+    def savefig(self, path, **kwargs):
+        path.write_text("figure", encoding="utf-8")
+
+
+class Hooked(SimulationExperiment):
+    def models(self):
+        return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
+
+    def simulations(self):
+        return {"sim": Simulation(end=20, steps=20)}
+
+    def tasks(self):
+        return {"task": Task(model="m", simulation="sim")}
+
+    def figures_mpl(self):
+        return {"custom": _Saved()}
+"""
+
+
+def _hooked_page(tmp_path: Path, formats: list[str]) -> str:
+    """Run an experiment with a figure of the hook and read its page."""
+    namespace: dict[str, object] = {}
+    exec(HOOK_EXPERIMENT, namespace)
+    experiment_class = namespace["Hooked"]
+    assert isinstance(experiment_class, type)
+    assert issubclass(experiment_class, SimulationExperiment)
+    runner = ExperimentRunner(experiment_class, simulator=Simulator(), on_error="raise")
+    results = runner.run_experiments(
+        output_path=tmp_path, save_results=False, figure_formats=formats
+    )
+    ExperimentReport(results).create_report(
+        tmp_path, report_type=ExperimentReport.ReportType.HTML
+    )
+    return _html(tmp_path / "Hooked" / "Hooked.html")
+
+
+def test_a_png_only_figure_is_an_image(tmp_path: Path) -> None:
+    """A figure written as PNG only has no SVG to inline and shows the PNG."""
+    html = _hooked_page(tmp_path, ["png"])
+    block = re.search(r"<figure>(.*?)</figure>", html, re.DOTALL)
+    assert block
+    assert re.search(r'<img [^>]*src="Hooked_custom\.png"', block.group(1))
+    assert "data-figure" not in html
+    assert "<svg" not in block.group(1)
+    assert "svg</a>" not in html
+
+
+def test_a_hook_figure_is_an_image_without_a_spec(tmp_path: Path) -> None:
+    """A figure of the hook has no spec: its SVG is an image and it has no spec link."""
+    html = _hooked_page(tmp_path, ["svg", "png"])
+    block = re.search(r"<figure>(.*?)</figure>", html, re.DOTALL)
+    assert block
+    assert re.search(r'<img [^>]*src="Hooked_custom\.svg"', block.group(1))
+    assert "data-figure-spec" not in html
+    assert "spec</a>" not in html
+    assert 'href="Hooked_custom.png"' in html
