@@ -60,16 +60,26 @@ A formula **at a change** is folded by the executor as well, but by
 simulating the segment which ends at the change and reading the state there
 (`executor_core._Fold`), so the number it folds into is the one of the point
 the request was built at. A formula which reads a constant of the simulation
-folds into the same number at every point of the search; one which reads
-anything the simulation moves, e.g. the `-0.5 * Aurine` of a collection
-which is halved, would be held where the fit started while the optimizer
-moves the state it reads. A plan whose formulas at a change are all linear
-forms over the entities of the model gives them to the engine as forms
-(`executor_core.is_formed`, the field `forms` of a change of sbmlsim-core
-`CHANGE_FORMS_VERSION`), which it evaluates from its own state; any other
-formula which reads more than constants is the gap `change_value`
+folds into the same number at every point of the search, `time` among those
+constants, which the executor folds into the time of the change; one which
+reads anything the simulation moves, e.g. the `-0.5 * Aurine` of a
+collection which is halved, would be held where the fit started while the
+optimizer moves the state it reads. A plan whose formulas at a change are
+all linear forms over the entities of the model gives them to the engine as
+forms (`executor_core.is_formed`, the field `forms` of a change of
+sbmlsim-core `CHANGE_FORMS_VERSION`), which it evaluates from its own state;
+any other formula which reads more than constants is the gap `change_value`
 (`_gaps_at_the_folds`), so such a problem is fitted in python instead of
-answering the residuals of another problem.
+answering the residuals of another problem. A term of `time` is no term of a
+form either: the time at a change is known where the request is built, so
+its factor is folded into the constant of the form (#650).
+
+A change of a formed plan is also where a value may read a parameter of the
+fit: the engine sets the parameters of a request on the model before the
+simulation and evaluates a form from its own state, so the term of the
+entity a parameter writes is the value the optimizer is at and the gap
+`parameter_value` is reported for the pre-initialization of a steady state
+and for a plan which folds alone (`_gaps_of_the_values`, `PlaceKind`).
 
 The times of a curve are the output times of its condition and not the times
 of the data: `Plan.time_shift` is applied to the time of a result on the way
@@ -154,7 +164,7 @@ from sbmlsim.fit.priors import prior_median, prior_support, untruncated_log_dens
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
-from sbmlsim.simulator.plan import PREINIT
+from sbmlsim.simulator.plan import PlaceKind
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.optimize import OptimizeResult
@@ -2473,9 +2483,14 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
 
     A value of the pre-initialization which is a linear form over the
     parameters is carried by the condition instead (`_derived_of`), so it
-    follows them; every other value which reads a parameter of the fit is a
-    gap, and so is one of a steady state or of a change, which a condition
-    carries no derived value for.
+    follows them, and so is a value at a change of a plan whose formulas the
+    request writes as forms (`executor_core.is_formed`): the engine sets the
+    parameters of the request on the model before the simulation and
+    evaluates a form from its own state at the change, so the term of the
+    entity a parameter writes is the value the optimizer is at (#650). Every
+    other value which reads a parameter of the fit is a gap, the
+    pre-initialization of a steady state among them, which is folded and
+    which a condition carries no derived value for.
 
     The value the fit itself writes is a gap in the same places: the engine
     sets the parameters of a request on the model before every simulation,
@@ -2494,7 +2509,10 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
         carried as a derived value, and one per parameter whose target such a
         value holds.
     """
+    from sbmlsim.simulator.executor_core import is_formed
+
     carries = reads_derived(_loaded_of(problem))
+    forms = reads_change_forms(_loaded_of(problem))
     targets = _parameter_targets(problem)
     of_the_groups = _models_of_the_groups(problem)
     x = np.asarray(problem.xmodel, dtype=float)
@@ -2507,6 +2525,9 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
         if not any(problem.mapping_kinds[k] is MappingKind.TRAINING for k in mappings):
             continue
         plan = problem.evaluated_plan(group, x, [])
+        # the forms of a plan are written all or nothing, so one formula
+        # which is no form folds the forms of its plan as well
+        formed = forms and is_formed(plan, of_the_groups[group])
         for assignment, where in _held_values(plan):
             if assignment.target not in targets:
                 continue
@@ -2514,7 +2535,7 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
             held[assignment.target] = (
                 (seen[0], seen[1], seen[2] + 1) if seen else (group, where, 1)
             )
-        for assignment, where, derivable in _plan_formulas(plan):
+        for assignment, where, kind in _plan_formulas(plan):
             if assignment.formula is None:
                 continue
             read = sorted(
@@ -2524,8 +2545,10 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
             )
             if not read:
                 continue
+            if kind is PlaceKind.CHANGE and formed:
+                continue
             if (
-                derivable
+                kind is PlaceKind.PREINIT
                 and carries
                 and linear_form(
                     str(assignment.formula),
@@ -2579,9 +2602,10 @@ def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
 
     The places come from `Plan.places`, which `_plan_formulas` reads as well,
     so the two walkers cannot drift apart over a place a later change gives a
-    `Plan`: a new place is held, which is the conservative answer, until it
-    is given one of its own (#629). `PREINIT` is the one place a parameter of
-    the condition overrides.
+    `Plan`: a new place is `PlaceKind.OTHER` and is held, which is the
+    conservative answer, until it is given a kind of its own (#629).
+    `PlaceKind.PREINIT` is the one place a parameter of the condition
+    overrides.
 
     Args:
         plan: the plan of the condition.
@@ -2593,7 +2617,7 @@ def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
     return [
         (assignment, place.where)
         for place in plan.places
-        if place.path != PREINIT
+        if place.kind is not PlaceKind.PREINIT
         for assignment in place.assignments
     ]
 
@@ -2721,6 +2745,11 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
     condition moves it with the search (`_derived_of`), while one it sets to a
     number holds that number through the simulation.
 
+    `time` is one as well: the executor folds it into the time of the change
+    (`executor_core._change_values`), which is a number of the plan and moves
+    with no parameter, so a formula of it and of constants folds correctly
+    whether or not the plan is written as forms (#650).
+
     Args:
         plan: the plan of the condition.
         model: the model of the fit.
@@ -2728,6 +2757,8 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
     Returns:
         The symbols a formula at a change may read.
     """
+    from sbmlsim.simulator.executor_core import TIME
+
     assigned = {
         assignment.target for event in plan.events for assignment in event.assignments
     }
@@ -2737,7 +2768,7 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
         if assignment.formula is not None
     }
     symbols = model.symbols
-    return {
+    return {TIME} | {
         parameter
         for parameter in symbols.parameters
         if parameter not in assigned
@@ -2748,7 +2779,7 @@ def _constant_at_the_changes(plan: Plan, model: CoreSBMLModel) -> set[str]:
     }
 
 
-def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, bool]]:
+def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, PlaceKind]]:
     """Get every assignment of a plan which carries a formula.
 
     The places come from `Plan.places`, the enumeration `_held_values` reads
@@ -2758,12 +2789,13 @@ def _plan_formulas(plan: Plan) -> list[tuple[Assignment, str, bool]]:
         plan: the plan of a condition.
 
     Returns:
-        The assignment, where it is, and whether the condition can carry it
-        as a derived value, which only the pre-initialization of the plan
-        itself can be (`_derived_of`).
+        The assignment, where it is and what its place is, which decides what
+        carries it with the search: the condition carries the
+        pre-initialization of the plan itself as a derived value
+        (`_derived_of`) and a request carries a change as a form.
     """
     return [
-        (assignment, place.where, place.path == PREINIT)
+        (assignment, place.where, place.kind)
         for place in plan.places
         for assignment in place.assignments
     ]

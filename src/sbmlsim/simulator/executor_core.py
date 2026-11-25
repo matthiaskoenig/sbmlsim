@@ -1289,14 +1289,16 @@ def is_formed(plan: Plan, model: CoreSBMLModel) -> bool:
         Whether the request of the plan writes its formulas as forms.
     """
     return all(
-        form_of(a, model) is not None
+        form_of(a, model, event.time) is not None
         for event in plan.events
         for a in event.assignments
         if a.value is None
     )
 
 
-def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | None:
+def form_of(
+    assignment: Assignment, model: CoreSBMLModel, time: float
+) -> dict[str, Any] | None:
     """Get the form of the contract of an assignment whose formula is a linear form.
 
     A form is `constant + Σ factor * entity` which the engine evaluates from
@@ -1306,15 +1308,21 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
     only be readable. This is the one place which tells a linear form from
     any other formula, so the request and the gap of a fit cannot disagree.
 
+    A term of `time` is no term of the form: the time at a change is known
+    where the request is built, so its factor is folded into the constant of
+    the form (#650).
+
     Args:
         assignment: the assignment.
         model: the model, whose entities the terms may read; a symbol which is
-            none of them, `time` included, leaves the formula without a form.
+            none of them and is not `time` leaves the formula without a form.
+        time: the time of the change, which a term of `time` is read at.
 
     Returns:
         The `target`, `constant` and `terms`, the `[id, factor]` pairs, or
         `None` for a value and for a formula which is no linear form over the
-        entities of the model; a formula of no symbol is a form of no terms.
+        entities of the model and `time`; a formula of no symbol is a form of
+        no terms.
     """
     if assignment.value is not None or assignment.formula is None:
         return None
@@ -1344,10 +1352,10 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
     found = _form_terms(assignment.formula, entities)
     if found is None:
         return None
-    constant, terms = found
+    constant, terms, per_time = found
     return {
         "target": assignment.target,
-        "constant": constant,
+        "constant": constant + per_time * time,
         "terms": [[entity, factor] for entity, factor in terms],
     }
 
@@ -1355,7 +1363,7 @@ def form_of(assignment: Assignment, model: CoreSBMLModel) -> dict[str, Any] | No
 @functools.lru_cache(maxsize=FORM_CACHE)
 def _form_terms(
     formula: str, entities: tuple[str, ...]
-) -> tuple[float, tuple[tuple[str, float], ...]] | None:
+) -> tuple[float, tuple[tuple[str, float], ...], float] | None:
     """Read the linear form of a formula over the entities a caller names, cached.
 
     `linear_form` parses the formula and reads its coefficients with sympy,
@@ -1369,17 +1377,28 @@ def _form_terms(
     keeps a process which serves many models from growing without one. The
     terms are a tuple, so a caller cannot change what the cache holds.
 
+    `time` is read as a term here and its factor is handed back on its own,
+    which `form_of` folds into the constant at the time of the change: the
+    time is no part of the key, so the doses of a protocol, which carry one
+    formula at many times, stay the one entry they were (#650).
+
     Args:
         formula: the formula of the assignment, as it is written.
         entities: the symbols of the formula which are entities of the model,
             in the order of the symbols of the compiled formula.
 
     Returns:
-        The constant and the `(id, factor)` pairs of the terms, or `None` for
-        a formula which is no linear form over those entities alone.
+        The constant, the `(id, factor)` pairs of the terms and the factor of
+        the term of `time`, 0 for a formula which does not read it, or `None`
+        for a formula which is no linear form over those entities and `time`.
     """
+    at_time = len(entities)
+    targets = {s: i for i, s in enumerate(entities)}
+    # a formula which does not read it gets no term of it, so the time is a
+    # target of every call and its position is free
+    targets[TIME] = at_time
     try:
-        found = linear_form(formula, {s: i for i, s in enumerate(entities)})
+        found = linear_form(formula, targets)
     except ValueError:
         # a formula which is no math of PEtab at all, which the compiled
         # formula of the caller has already refused: such a formula folds
@@ -1387,7 +1406,12 @@ def _form_terms(
     if found is None:
         return None
     constant, terms = found
-    return constant, tuple((entities[i], factor) for i, factor in terms)
+    per_time = next((factor for i, factor in terms if i == at_time), 0.0)
+    return (
+        constant,
+        tuple((entities[i], factor) for i, factor in terms if i != at_time),
+        per_time,
+    )
 
 
 def _change_of(
@@ -1409,7 +1433,9 @@ def _change_of(
         "values": _change_values(event, state, skip_formulas=forms),
     }
     if forms:
-        written = [form_of(a, model) for a in event.assignments if a.value is None]
+        written = [
+            form_of(a, model, event.time) for a in event.assignments if a.value is None
+        ]
         if written:
             change["forms"] = written
     return change

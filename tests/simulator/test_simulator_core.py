@@ -1436,6 +1436,56 @@ def test_a_form_simulates_as_the_fold_it_replaces() -> None:
     assert np.array_equal(a.values, b.values)
 
 
+def test_a_form_of_the_time_simulates_as_the_fold_it_replaces() -> None:
+    """A term of the time is the constant of the form, which is the folded number.
+
+    The fold evaluates `0.5 * Aurine + time` with the time of the change, and
+    the form carries `10 + 0.5 * Aurine` at the change at 10: the same sum
+    over the same doubles, so the two requests agree bitwise (#650).
+    """
+    model, plan = _urine_plan({10.0: "0.5 * Aurine + time"}, dose=True)
+    columns = ["time", "Aurine", "Aelim", "[C]"]
+    folded = request_of(plan, model, columns)
+    formed = request_of(plan, model, columns, forms=True)
+
+    assert formed["changes"][1]["forms"] == [
+        {"target": "Aurine", "constant": 10.0, "terms": [["Aurine", 0.5]]}
+    ]
+    assert not folded["changes"][1].get("forms")
+    # the fold reads the collection the dose filled, so the change is not the
+    # time alone
+    assert folded["changes"][1]["values"][0][1] > 10.0
+
+    a = model.instance().simulate(folded)
+    b = model.instance().simulate(formed)
+    assert list(a.columns) == list(b.columns)
+    assert np.array_equal(a.values, b.values)
+
+
+def test_one_formula_at_many_times_is_one_entry_of_the_cache_of_the_forms() -> None:
+    """The time is no part of the key of `_form_terms` (#650).
+
+    A protocol carries one formula at every one of its doses, and the forms of
+    a plan are read three times each, so the time belongs outside the cached
+    call: it is folded into the constant by `form_of` instead.
+    """
+    from sbmlsim.simulator.executor_core import _form_terms
+
+    model, _ = _urine_plan({})
+    assignment = Assignment(
+        "Aurine", TargetKind.SPECIES_AMOUNT, formula="0.5 * Aurine + 2 * time"
+    )
+    _form_terms.cache_clear()
+
+    forms = [form_of(assignment, model, t) for t in range(8)]
+    assert all(form is not None for form in forms)
+    constants = [form["constant"] for form in forms if form is not None]
+
+    assert constants == [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0]
+    assert _form_terms.cache_info().misses == 1
+    assert _form_terms.cache_info().hits == 7
+
+
 def test_a_change_of_a_concentration_formula_is_a_form_of_the_request() -> None:
     """A formula which reads the concentration of a species is a form (#630).
 
@@ -1505,29 +1555,57 @@ def test_a_form_of_no_symbol_is_the_number_of_the_formula() -> None:
     model, _ = _urine_plan({})
     assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 + 3")
 
-    assert form_of(assignment, model) == {
+    assert form_of(assignment, model, 0.0) == {
         "target": "Aurine",
         "constant": 5.0,
         "terms": [],
     }
 
 
-def test_a_formula_of_the_time_is_no_form() -> None:
-    """`time` is the time of the change and no entity the engine reads as a term."""
+def test_a_term_of_the_time_folds_into_the_constant_of_a_form() -> None:
+    """The time at a change is known where the request is built (#650).
+
+    `time` is no term of a form, which the engine evaluates from its own
+    state: it is the time of the change, so its factor is the constant of the
+    form at that time and the formula keeps the plan in the engine.
+    """
     model, _ = _urine_plan({})
     assignment = Assignment("Aurine", TargetKind.SPECIES_AMOUNT, formula="2 * time")
 
-    assert form_of(assignment, model) is None
+    assert form_of(assignment, model, 3.0) == {
+        "target": "Aurine",
+        "constant": 6.0,
+        "terms": [],
+    }
+    assert form_of(assignment, model, 5.0) == {
+        "target": "Aurine",
+        "constant": 10.0,
+        "terms": [],
+    }
 
 
-def test_a_formula_of_an_entity_named_time_is_no_form_and_folds() -> None:
+def test_a_form_of_the_time_and_of_an_entity_carries_both() -> None:
+    """The time is the constant and the entity the term of one form."""
+    model, _ = _urine_plan({})
+    assignment = Assignment(
+        "Aurine", TargetKind.SPECIES_AMOUNT, formula="0.5 * Aurine + time + 1"
+    )
+
+    assert form_of(assignment, model, 4.0) == {
+        "target": "Aurine",
+        "constant": 5.0,
+        "terms": [["Aurine", 0.5]],
+    }
+
+
+def test_a_formula_of_an_entity_named_time_reads_the_clock_of_the_change() -> None:
     """`time` of a formula is the clock of the change, not an entity of that name.
 
     A model may declare an entity named `time` (case 01820), and
     `apply_changes` of `sbmlsim.simulator.changes` reads `time` of a formula
-    as the time of the change whatever the model: the fold of `2 * time` at
-    the time 2 is 4, where a form over that entity would read its value, 10.
-    So such a formula is no form and folds, as the docstring of `form_of`,
+    as the time of the change whatever the model: `2 * time` at the time 2 is
+    4, where a form over that entity would read its value, 10. So the form
+    carries it as the constant 4 and no term, as the docstring of `form_of`,
     `docs/fitting.md` and `CLAUDE.md` say.
     """
     source = sbml(ENTITY_TIME).replace('id="tt"', 'id="time"')
@@ -1539,13 +1617,19 @@ def test_a_formula_of_an_entity_named_time_is_no_form_and_folds() -> None:
     plan = compile_simulation(simulation, model.symbols, model.uinfo)
     assignment = plan.events[0].assignments[0]
 
-    assert form_of(assignment, model) is None
+    assert form_of(assignment, model, 2.0) == {
+        "target": "A",
+        "constant": 4.0,
+        "terms": [],
+    }
 
     request = request_of(plan, model, ["time", "A"], forms=True)
 
-    assert "forms" not in request["changes"][0]
     # twice the time of the change, not twice the value 10 of the entity
-    assert request["changes"][0]["values"] == [["A", 4.0]]
+    assert request["changes"][0]["forms"] == [
+        {"target": "A", "constant": 4.0, "terms": []}
+    ]
+    assert request["changes"][0]["values"] == []
 
 
 @pytest.mark.parametrize(
