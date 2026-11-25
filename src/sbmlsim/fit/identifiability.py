@@ -39,11 +39,19 @@ The shape of the profile classifies the parameter (Raue et al. 2009):
   range, the parameter is compensated by the other parameters and the data
   carries no information about it.
 
-The scans run in logarithmic parameter space, as the optimization does. The
-step along a profile is adaptive (Schälte et al. 2023): a step which raises the
-cost by more than a fraction of the threshold is halved and repeated, a step
-which raises it by little is enlarged, so the profile is resolved where it
-changes. The other parameters start from the previous point of the profile
+The scans run in logarithmic parameter space, as the optimization does. Every
+scan starts at the scale of its parameter, `sqrt(2 max_rise)` times the
+standard error of the Fisher information of the optimum (`first_steps`), so
+the first step is the one the profile allows and not one step for every
+parameter. The step along a profile is adaptive (Schälte et al. 2023): a step
+which raises the cost by more than a fraction of the threshold is reduced and
+repeated, a step which raises it by little is enlarged by `step_factor`, so
+the profile is resolved where it changes. A step is reduced by the curvature
+its own rise gives, `step * sqrt(max_rise / (2 rise))`, which is the step of
+half the allowed rise where the profile is quadratic: the correction reaches
+the scale of the profile at once, where a fixed factor needs several
+corrections and discards the re-optimization which measured each of them
+(#647). The other parameters start from the previous point of the profile
 (Simpson & Maclaren 2023) and their paths are stored, so a parameter which is
 coupled to the scanned one is seen in its path (Maiwald et al. 2016). A scan
 stops when the profile crosses the threshold, at the bound of the parameter or
@@ -99,6 +107,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
@@ -119,6 +128,7 @@ from sbmlsim.engine import Engine
 from sbmlsim.events import emit
 from sbmlsim.fit import display, fit_core, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import (
     FitTimeout,
@@ -193,10 +203,15 @@ class ProfileSettings:
         degrees_of_freedom: degrees of freedom of the chi-square threshold,
             `1` for pointwise confidence intervals of single parameters, the
             number of parameters for simultaneous intervals.
-        initial_step: first step of a scan in decades of the parameter.
-        min_step: smallest step in decades, a step is not halved below it.
+        initial_step: first step of a scan in decades of the parameter, where
+            the analysis has no scale of it: a scan starts at the scale of its
+            parameter where the Fisher information of the optimum gives one,
+            see `first_steps`.
+        min_step: smallest step in decades, a step is not reduced below it.
         max_step: largest step in decades.
-        step_factor: factor a step is reduced or enlarged by.
+        step_factor: factor a step which rises slowly is enlarged by; a step
+            which rises too fast is reduced by the curvature of the profile,
+            see `_scan_direction`.
         max_cost_fraction: largest increase of the cost a single step may
             cause, as a fraction of the distance between the minimal cost and
             the threshold. A step with a larger increase is reduced and
@@ -1026,16 +1041,17 @@ def _scan_direction(
     index: int,
     direction: int,
     settings: ProfileSettings,
+    first_step: float | None = None,
     jacobian: ResidualsEvaluator | None = None,
 ) -> list[ProfilePoint]:
     """Scan a parameter from the optimum in one direction.
 
     The step is adaptive: a step which raises the cost by more than
-    `max_cost_fraction` of the distance to the threshold is reduced and
-    repeated, a step which raises it by little is enlarged. The other
-    parameters start from the previous point. The scan ends when the cost
-    crosses the threshold, at the bound of the parameter, after `max_points`
-    or when an evaluation fails.
+    `max_cost_fraction` of the distance to the threshold is reduced by the
+    curvature its own rise gives and repeated, a step which raises it by
+    little is enlarged by `step_factor`. The other parameters start from the
+    previous point. The scan ends when the cost crosses the threshold, at the
+    bound of the parameter, after `max_points` or when an evaluation fails.
 
     Args:
         problem: initialized optimization problem.
@@ -1044,6 +1060,9 @@ def _scan_direction(
         index: index of the scanned parameter.
         direction: `-1` towards the lower bound, `+1` towards the upper bound.
         settings: settings of the analysis.
+        first_step: the step the scan starts at, the scale of the parameter
+            where the analysis knows it (`first_steps`); `initial_step` of the
+            settings without.
         jacobian: evaluates the jacobian of every point on the workers of the
             fit, see `_evaluate_point`.
 
@@ -1065,7 +1084,7 @@ def _scan_direction(
 
         points: list[ProfilePoint] = []
         theta_prev, cost_prev = np.array(theta_optimum, dtype=float), cost_optimum
-        step = settings.initial_step
+        step = settings.initial_step if first_step is None else first_step
 
         while len(points) < settings.max_points:
             if abs(theta_prev[index] - bound) <= BOUND_TOLERANCE:
@@ -1085,8 +1104,19 @@ def _scan_direction(
                 )
                 rise = cost - cost_prev
                 if converged and rise > max_rise and step > settings.min_step:
-                    # the profile changes fast here, resolve it
-                    step = max(step / settings.step_factor, settings.min_step)
+                    # the rise of a step which is walked again is the curvature
+                    # of the profile there, which is locally quadratic in the
+                    # step: the step whose rise is half of what a step may
+                    # raise the cost by is `step * sqrt(max_rise / (2 rise))`,
+                    # which reaches the scale of the profile in one correction
+                    # where a fixed factor needs several and discards the
+                    # re-optimization which measured each of them (#647).
+                    # `rise > max_rise` keeps the factor below `1 / sqrt(2)`,
+                    # so the step always shrinks, and a rise which is not
+                    # finite takes it to `min_step` at once
+                    step = max(
+                        step * math.sqrt(max_rise / (2.0 * rise)), settings.min_step
+                    )
                     continue
                 break
 
@@ -1115,6 +1145,7 @@ def _scan_task(
         index=int(task["index"]),
         direction=int(task["direction"]),
         settings=task["settings"],
+        first_step=task.get("first_step"),
         jacobian=jacobian,
     )
 
@@ -1162,6 +1193,74 @@ def _assemble_profile(
         converged=np.array([converged for _, _, converged in points], dtype=bool),
         index_optimum=len(lower),
     )
+
+
+def first_steps(
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    parameter_set: ParameterSet,
+    profile_settings: ProfileSettings,
+    pids: Sequence[str],
+    n_cores: int = 1,
+) -> list[float]:
+    """Get the first step of the scan of every parameter from its scale.
+
+    A profile is quadratic around the optimum, the cost rising by
+    `d² / (2 s²)` over a distance `d` with `s` the standard error of the
+    parameter in the space the scans run in, so the step which raises the cost
+    by the most a step may raise it, `max_cost_fraction` of the distance to
+    the threshold, is `sqrt(2 max_rise) s`. A scan which starts there walks
+    the profile at its scale from its first point, where one which starts at
+    `initial_step` corrects that step down to the scale and discards the
+    re-optimization which measured every correction (#647).
+
+    The standard errors are the ones of the Fisher information of the optimum
+    (`sbmlsim.fit.fisher.fisher_information`), whose jacobian is the forward
+    sensitivities of the engine where the problem has them and the central
+    differences of python otherwise, so the step of a parameter costs a
+    fraction of the point it saves. A direction the data does not constrain
+    has no standard error and keeps `initial_step`, and an information which
+    cannot be computed leaves every parameter with it: a first step is where a
+    scan starts and not a result of the analysis, so a failure of it is
+    reported and the analysis runs.
+
+    Args:
+        problem: optimization problem, initialized with the settings.
+        settings: settings of the fit, which define the cost.
+        parameter_set: the optimum the profiles are walked around.
+        profile_settings: settings of the analysis.
+        pids: the parameters to profile, in the order of the profiles.
+        n_cores: the workers of the jacobian of the information, which is the
+            threads of its batch in the engine.
+
+    Returns:
+        The first step of every parameter of `pids`, in its order, in the
+        space the scans run in and within `[min_step, max_step]`.
+    """
+    max_rise = profile_settings.max_cost_fraction * profile_settings.delta / 2.0
+    steps = [profile_settings.initial_step] * len(pids)
+    try:
+        information = fisher_information(
+            problem, settings, parameter_set, n_cores=n_cores
+        )
+    except Exception as err:
+        logger.warning(
+            "'%s': the scans start at the step '%s' of the settings, the Fisher "
+            "information of the optimum, which gives the scale of a parameter, "
+            "could not be computed (%s).",
+            problem.opid,
+            profile_settings.initial_step,
+            err,
+        )
+        return steps
+    errors = dict(zip(information.pids, information.standard_errors, strict=True))
+    for i, pid in enumerate(pids):
+        step = math.sqrt(2.0 * max_rise) * float(errors.get(pid, float("nan")))
+        if math.isfinite(step) and step > 0.0:
+            steps[i] = min(
+                max(step, profile_settings.min_step), profile_settings.max_step
+            )
+    return steps
 
 
 def profile_likelihood(
@@ -1300,6 +1399,13 @@ def profile_likelihood(
 
     ts = time.time()
     cost_optimum = problem.cost_least_square(theta_optimum)
+    threads = 1 if serial else runner.resolve_n_cores(n_cores)
+    # every scan starts at the scale of its parameter, the same step in python
+    # and in the engine, so no scan corrects `initial_step` down to that scale
+    # and discards a re-optimization at every correction (#647)
+    steps = first_steps(
+        problem, settings, parameter_set, profile_settings, pids, n_cores=threads
+    )
     tasks: list[dict[str, Any]] = [
         {
             "index": problem.pids.index(pid),
@@ -1307,8 +1413,9 @@ def profile_likelihood(
             "theta_optimum": theta_optimum,
             "cost_optimum": cost_optimum,
             "settings": profile_settings,
+            "first_step": step,
         }
-        for pid in pids
+        for pid, step in zip(pids, steps, strict=True)
         for direction in (-1, +1)
     ]
     # a worker cannot start workers of its own, so the workers go either to the
@@ -1325,7 +1432,6 @@ def profile_likelihood(
     )
     parallel = scan_workers > 1
     parallel_jacobian = jacobian_workers > 1
-    threads = 1 if serial else runner.resolve_n_cores(n_cores)
 
     # the engine walks the sides of every profile next to each other on the
     # threads of one batch, where the scans in python are a process each
@@ -1458,6 +1564,7 @@ def profile_likelihood(
                 profile_settings,
                 theta_optimum,
                 pids,
+                steps,
                 threads=threads,
             )
             for pid, (below, above) in walked.items():

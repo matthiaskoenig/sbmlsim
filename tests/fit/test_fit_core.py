@@ -37,6 +37,7 @@ from sbmlsim.fit import (
     FitParameter,
     FitSettings,
     fit_core,
+    identifiability,
 )
 from sbmlsim.fit.fit_core import (
     CONVERGED,
@@ -439,6 +440,70 @@ def test_a_scan_which_holds_the_other_parameters_is_a_gap_of_the_profiles(
     gaps = gaps_of_the_profiles(problem, ProfileSettings(reoptimize=False))
 
     assert [gap.code for gap in gaps] == ["reoptimize"]
+
+
+def test_bindings_which_do_not_read_the_first_steps_are_a_gap_of_the_profiles(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The engine walks every parameter from the step the analysis gives it.
+
+    Bindings which deny that field would walk every profile from one step,
+    where the analysis of python walks each from the step of its parameter,
+    so the two would not answer the same points (#647).
+    """
+    problem = on_core(op_hctz_iv, fit_settings)
+    assert gaps_of_the_profiles(problem, ProfileSettings()) == []
+
+    monkeypatch.setattr(fit_core, "reads_profile_steps", lambda _: False)
+    gaps = gaps_of_the_profiles(problem, ProfileSettings())
+
+    assert [gap.code for gap in gaps] == ["bindings"]
+    assert fit_core.PROFILE_STEPS_VERSION in gaps[0].message
+
+
+def test_an_analysis_walks_one_first_step_per_parameter(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A walk of other than one first step per parameter is refused."""
+    problem = on_core(op_hctz_iv, fit_settings)
+    at = problem.to_scale(problem.parameter_set_model().x(problem.pids))
+
+    with pytest.raises(ValueError, match="3 parameters with 2 first steps"):
+        fit_core.profile_points(
+            problem, ProfileSettings(), at, problem.pids, [0.1, 0.2]
+        )
+
+
+def test_the_request_of_an_analysis_carries_the_first_step_of_every_parameter(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The walk of the engine starts at the steps the analysis computed."""
+    problem = on_core(op_hctz_iv, fit_settings)
+    computed = [0.11, 0.22, 0.33]
+    monkeypatch.setattr(
+        identifiability, "first_steps", lambda *args, **kwargs: computed
+    )
+    spy = spy_on(problem, monkeypatch)
+
+    profile_likelihood(
+        problem,
+        fit_settings,
+        problem.parameter_set_model(),
+        ProfileSettings(max_points=1),
+        show_progress=False,
+        engine_profiles=True,
+    )
+
+    (request,) = spy.requests
+    analysis = request["identifiability"]
+    assert analysis["parameters"] == problem.pids
+    assert analysis["steps"] == computed
+    # the walk keeps the one step of the settings, which no parameter takes
+    assert analysis["walk"]["step"] == ProfileSettings().initial_step
 
 
 def test_the_profiles_of_the_engine_are_the_profiles_of_python(
