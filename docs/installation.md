@@ -126,7 +126,7 @@ pip installs these packages together with `sbmlsim`:
 | [packaging](https://packaging.pypa.io) | the check of the installed libroadrunner at the import |
 | [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | PEtab problems and global sensitivity analysis |
 | [pkpdutils](https://github.com/matthiaskoenig/pkpdutils) | non-compartmental pharmacokinetic analysis |
-| [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | figures, reports and console output |
+| [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | reports and console output (the figures are drawn by the renderer of sbmlsim-core) |
 | [certifi](https://github.com/certifi/python-certifi) | the certificates with which sbmlutils and pymetadata reach the network |
 
 ## Logging
