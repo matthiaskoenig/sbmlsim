@@ -763,8 +763,9 @@ def _jacobian_of(
                 )
             except ValueError as err:
                 # a condition which carries no forward sensitivities (an event
-                # of the model, a change of the request, a steady state) is
-                # refused by the engine, and the differences answer instead
+                # of the model, a delay; the changes and the steady state of a
+                # request since sbmlsim-core 0.29.0) is refused by the engine,
+                # and the differences answer instead
                 if engine:
                     raise
                 reason = f"sensitivities: {err}"
