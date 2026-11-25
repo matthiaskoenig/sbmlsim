@@ -25,9 +25,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import numpy as np
-from matplotlib.colors import to_hex, to_rgba
 
 from sbmlsim.data import Data
+from sbmlsim.plot.colors import color_alpha
 from sbmlsim.units import short_unit
 
 if TYPE_CHECKING:
@@ -126,7 +126,8 @@ class ColorType:
         """Parse given color and add alpha information.
 
         Args:
-            color: Color as matplotlib color string or hex color.
+            color: a colour as matplotlib accepts it, see `sbmlsim.plot.colors`,
+                or hex.
             alpha: Alpha value in [0, 1].
 
         Returns:
@@ -158,8 +159,12 @@ class ColorType:
                 raise ValueError(f"Incorrect hex color: '{color}'")
 
         else:
-            rgba = to_rgba(color, alpha)
-            color_hex = to_hex(rgba, keep_alpha=True)
+            # the alpha replaces the one of the colour, as `to_rgba` of
+            # matplotlib does; `none` is transparent black
+            hexed, _ = color_alpha(color)
+            if hexed is None:
+                hexed, alpha = "#000000", 0.0
+            color_hex = f"{hexed}{round(alpha * 255):02x}"
 
         return ColorType(color_hex)
 

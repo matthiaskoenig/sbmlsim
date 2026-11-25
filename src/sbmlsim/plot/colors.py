@@ -1,9 +1,11 @@
 """Normalize the colours of a style to `#rrggbb`, without matplotlib.
 
 The colours of a curve, band or area are given as matplotlib accepts them: a
-CSS name (`dimgrey`), a tableau name (`tab:red`), a colour of the default cycle
-(`C0` to `C9`), hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`), `none` or a tuple
-of floats from 0 to 1. The spec of `figure/1` takes `#rrggbb` only, so its
+CSS name (`dimgrey`), a base colour of one letter (`k`, `r`, ...), a tableau
+name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle
+(`C0` to `C9`), hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`), a grey level as
+a text of a number from 0 to 1 (`"0.4"`), `none` or a tuple of floats from 0
+to 1. The spec of `figure/1` takes `#rrggbb` only, so its
 writer (the chart builder of Task 3) calls `normalize_color` for the colour and
 `color_alpha` for an opacity which the colour carries, and `points` uses it for
 the shades of a curve.
@@ -11,7 +13,22 @@ the shades of a curve.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
+
+from sbmlsim.plot._xkcd_colors import XKCD
+
+#: the base colours of one letter of matplotlib
+BASE = {
+    "b": "#0000ff",
+    "g": "#008000",
+    "r": "#ff0000",
+    "c": "#00bfbf",
+    "m": "#bf00bf",
+    "y": "#bfbf00",
+    "k": "#000000",
+    "w": "#ffffff",
+}
 
 #: the CSS4 (X11) colour names
 CSS4 = {
@@ -203,6 +220,17 @@ def _expand(digits: str, color: str) -> str:
     return digits
 
 
+def _grey(text: str) -> str | None:
+    """Get a grey level, a text of a number from 0 to 1, as `#rrggbb`, else `None`."""
+    try:
+        level = float(text)
+    except ValueError:
+        return None
+    if not (math.isfinite(level) and 0.0 <= level <= 1.0):
+        return None
+    return "#" + f"{round(level * 255):02x}" * 3
+
+
 def _parse(color: str | Sequence[float]) -> tuple[str | None, float]:
     """Parse a colour into `(#rrggbb or None, alpha)`."""
     if isinstance(color, str):
@@ -213,10 +241,17 @@ def _parse(color: str | Sequence[float]) -> tuple[str | None, float]:
             text = TABLEAU[text[4:]]
         elif len(text) == 2 and text[0] == "c" and text[1].isdigit():
             text = CYCLE[int(text[1])]
+        elif text.startswith("xkcd:") and text[5:] in XKCD:
+            text = XKCD[text[5:]]
+        elif text in BASE:
+            text = BASE[text]
         elif text in CSS4:
             text = CSS4[text]
         if not text.startswith("#"):
-            raise ValueError(f"unknown colour {color!r}")
+            grey = _grey(text)
+            if grey is None:
+                raise ValueError(f"unknown colour {color!r}")
+            text = grey
         digits = _expand(text[1:], color)
         alpha = int(digits[6:], 16) / 255.0 if len(digits) == 8 else 1.0
         return "#" + digits[:6], alpha

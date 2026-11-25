@@ -650,11 +650,16 @@ class PointStyle:
 def colorbar_range(styles: PointStyle) -> tuple[float, float, bool] | None:
     """Get the range of the colour scale `COLORMAP` whose colours the points have.
 
-    The points take the first `_COLORMAP_END` of the colour scale, so the
-    range of a colour bar of the whole scale reaches beyond the values of
-    the points: the colour of the scale at the value of a point is the
-    colour of the point (a categorical dimension at the position of its
-    point, from 0).
+    The points take the first `_COLORMAP_END` of the colour scale, since its
+    light yellow end is hard to see on white, while the colour bar of
+    `figure/1` (sbmlsim-core 0.27) shows the whole of a named scale between
+    two values. The range is therefore widened beyond the values of the
+    points, so the colour of the bar at the value of a point is the colour
+    of its line (a categorical dimension at the position of its point, from
+    0), and the end of the bar past the largest value has no line. A colour
+    bar which takes the part of the scale (a fraction) or colour stops with
+    tick labels, which `PointStyle.ramp` and `PointStyle.scale` hold, is
+    planned for sbmlsim-core 0.28 and replaces the widening then.
 
     Args:
         styles: the style of the points, see `point_styles`, of a curve

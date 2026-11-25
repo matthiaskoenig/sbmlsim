@@ -24,7 +24,16 @@ of a row (`legend_scope="row"`).
 
 The renderer has no font weights, no colour of a panel or of the figure, no
 style of an axis line, no location of a legend inside a plot and no line
-breaks in labels; these settings of the figure model are not drawn.
+breaks in labels; these settings of the figure model are not drawn. It has
+one size of the tick labels, the larger of `xtick_labelsize` and
+`ytick_labelsize`, and one switch of the ticks of an axis, so an axis whose
+`ticks_visible` is false shows neither the labels nor the marks of its ticks
+(matplotlib kept the marks). The grid of a plot is the one of its x axis and
+of its left y axis, the right y axis draws none, as in matplotlib. A plot
+has one colour bar, of its first curve or band which has one. The lines over
+`COLORBAR_FROM` points or more share one legend entry, whose swatch the
+renderer draws in its neutral colour, since its lines differ in colour; the
+entry still toggles all of them.
 """
 
 from __future__ import annotations
@@ -38,7 +47,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 import numpy as np
 from pint.errors import PintError
 
-from sbmlsim.plot.chart import Chart, ChartAxis
+from sbmlsim.plot.chart import Chart, ChartAxis, ChartPlot
 from sbmlsim.plot.colors import color_alpha, normalize_color
 from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
@@ -128,8 +137,12 @@ BAR_TYPES: Final[Mapping[CurveType, bool]] = {
     CurveType.HORIZONTALBAR: True,
 }
 
-#: the errors of pint for a unit it does not know
-_UNIT_ERRORS: Final = (PintError, ValueError, TypeError, AttributeError, TokenError)
+#: the errors of `SimulationExperiment.Q` for a unit it cannot resolve: pint
+#: for a unit it does not know or cannot parse (`UndefinedUnitError` and the
+#: syntax errors are `PintError`s, the tokenizer of a text which is no
+#: expression a `TokenError`), a `ValueError` for a unit id which the models
+#: of the experiment define differently
+_UNIT_ERRORS: Final = (PintError, ValueError, TokenError)
 
 type AxisKey = Literal["x", "y", "y2"]
 
@@ -170,7 +183,8 @@ def figure_chart(
         fonts={
             "title": resolved.fig_titlesize,
             "label": resolved.axes_labelsize,
-            "tick": resolved.xtick_labelsize,
+            # figure/1 has one size of the tick labels of every axis
+            "tick": max(resolved.xtick_labelsize, resolved.ytick_labelsize),
             "legend": resolved.legend_fontsize,
         },
         legend_scope=resolved.legend_scope,
@@ -200,9 +214,24 @@ def figure_chart(
         for mark in builder.marks:
             getattr(chart_plot, mark.method)(**mark.arguments)
         if builder.colorbar is not None:
-            (low, high, log), title = builder.colorbar
-            chart_plot.colorbar(COLORMAP, low, high, label=title, log=log)
+            _colorbar(chart_plot, builder.colorbar)
     return chart
+
+
+def _colorbar(plot: ChartPlot, styles: PointStyle) -> None:
+    """Give a plot the colour bar of the points of a curve or band.
+
+    The colour bar of `figure/1` is a named colour scale between two values,
+    whose ticks the renderer chooses; the style of the points carries the
+    ramp of their colours and the ticks and labels of their bar as well
+    (`PointStyle.ramp`, `PointStyle.scale`), which a colour bar of colour
+    stops and tick labels will take, see `colorbar_range`.
+    """
+    span = colorbar_range(styles)
+    if span is None:
+        return
+    low, high, log = span
+    plot.colorbar(COLORMAP, low, high, label=styles.title, log=log)
 
 
 def _one_line(text: str | None) -> str | None:
@@ -386,8 +415,8 @@ class _PlotBuilder:
         units: the unit of every axis.
         marks: the elements, in the order they are drawn.
         names: the axes which get names of categories.
-        colorbar: the range of the colour scale and the label of the colour
-            bar of the plot, `None` without.
+        colorbar: the style of the points whose colour bar the plot shows,
+            `None` without.
     """
 
     experiment: SimulationExperiment
@@ -396,7 +425,7 @@ class _PlotBuilder:
     units: dict[str, _Unit] = field(default_factory=dict)
     marks: list[_Mark] = field(default_factory=list)
     names: set[str] = field(default_factory=set)
-    colorbar: tuple[tuple[float, float, bool], str] | None = None
+    colorbar: PointStyle | None = None
 
     def resolve(
         self, xaxis: Axis | None, yaxis: Axis | None, right: Axis | None, plot: Any
@@ -497,7 +526,9 @@ class _PlotBuilder:
             min=low,
             max=high,
             reverse=reverse,
-            grid=axis.grid,
+            # the grid of a plot is the one of its left y axis, as matplotlib
+            # drew it
+            grid=axis.grid and key != "y2",
             label_visible=axis.label_visible,
             ticks_visible=axis.ticks_visible,
         )
@@ -571,11 +602,11 @@ class _PlotBuilder:
                 "The plot '%s' shows the colour bar of '%s'; the colour bar of "
                 "'%s' is not drawn, a plot has one colour bar.",
                 self.sid,
-                self.colorbar[1],
+                self.colorbar.title,
                 styles.title,
             )
             return
-        self.colorbar = (span, styles.title)
+        self.colorbar = styles
 
     def _scan(self, curve: Curve | Band, over: Sequence[str]) -> tuple[list[Any], Any]:
         """Get the dimensions of a scan of `over` and the units of the model of a curve."""

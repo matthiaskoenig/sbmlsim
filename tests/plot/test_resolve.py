@@ -441,6 +441,8 @@ def test_log_axis_with_zero_data(experiment: SimulationExperiment) -> None:
     # the first value of every timecourse is 0, which a log axis cannot show
     assert chart.spec()["plots"][0]["elements"][0]["y"][0] == 0.0
     ET.fromstring(chart.svg())
+    geometry = import_core().figure_geometry(chart.to_json())
+    assert geometry["plots"][0]["y"]["low"] > 0.0
 
 
 def test_ragged_scan_nan_padding_renders(experiment: SimulationExperiment) -> None:
@@ -606,3 +608,24 @@ def test_a_curve_of_its_own_colour_gets_no_colorbar(
     spec = _plot(experiment, lambda p: _doses(p, task="task_many", color="tab:red"))
     assert "colorbar" not in spec
     assert len(spec["elements"]) == 12
+
+
+def test_the_ticks_take_the_larger_size_of_x_and_y(
+    experiment: SimulationExperiment,
+) -> None:
+    figure = _figure(experiment, _doses, xtick_labelsize=12, ytick_labelsize=17)
+    assert figure_chart(experiment, figure).spec()["fonts"]["tick"] == 17.0
+
+
+def test_the_right_axis_draws_no_grid(experiment: SimulationExperiment) -> None:
+    def draw(plot: Plot) -> None:
+        plot.set_yaxis_right("C", unit="g/l", grid=True)
+        plot.curve(
+            x=Data("time", task="task_doses", sel={"dose": 0}),
+            y=Data("[C]", task="task_doses", sel={"dose": 0}),
+            yaxis_position=YAxisPosition.RIGHT,
+        )
+
+    spec = _plot(experiment, draw, yaxis=Axis("C", unit="mg/l", grid=True))
+    assert spec["y"]["grid"] is True
+    assert spec["y2"]["grid"] is False
