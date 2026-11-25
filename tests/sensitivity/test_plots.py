@@ -72,7 +72,7 @@ def test_plot_heatmap(tmp_path: Path) -> None:
     assert isinstance(chart, Chart)
     chart.save(tmp_path / "h.svg")
     chart.save(tmp_path / "h.png", dpi=300)
-    assert (tmp_path / "h.svg").read_text().startswith("<svg")
+    assert (tmp_path / "h.svg").read_text(encoding="utf-8").startswith("<svg")
     assert (tmp_path / "h.png").read_bytes()[:4] == b"\x89PNG"
 
 
