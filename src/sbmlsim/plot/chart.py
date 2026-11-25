@@ -31,6 +31,8 @@ from __future__ import annotations
 import copy
 import json
 import math
+import struct
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1224,6 +1226,26 @@ def _color_scale(
     return scale
 
 
+def _with_resolution(png: bytes, dpi: float) -> bytes:
+    """Get a PNG with its resolution, a `pHYs` chunk after its header.
+
+    The renderer writes no resolution; a reader such as LaTeX sizes an image
+    by it, and takes 72 dpi without it.
+
+    Args:
+        png: the PNG, its first chunk the header `IHDR`.
+        dpi: the resolution in dots per inch.
+
+    Returns:
+        The PNG with a `pHYs` chunk of the resolution in pixels per meter.
+    """
+    end_of_header = 8 + 4 + 4 + 13 + 4
+    per_meter = round(float(dpi) / 0.0254)
+    data = b"pHYs" + struct.pack(">IIB", per_meter, per_meter, 1)
+    chunk = struct.pack(">I", 9) + data + struct.pack(">I", zlib.crc32(data))
+    return png[:end_of_header] + chunk + png[end_of_header:]
+
+
 class Chart:
     """A figure of plots in a grid, the spec `figure/1` of sbmlsim-core.
 
@@ -1418,7 +1440,9 @@ class Chart:
 
         if dpi is None:
             dpi = DEFAULT_DPI if self.dpi is None else self.dpi
-        return bytes(import_core().render_png(self.to_json(), dpi=float(dpi)))
+        return _with_resolution(
+            bytes(import_core().render_png(self.to_json(), dpi=float(dpi))), dpi
+        )
 
     def save(self, path: Path | str, dpi: float | None = None) -> Path:
         """Save the chart as SVG, PNG or JSON by the suffix of the path.

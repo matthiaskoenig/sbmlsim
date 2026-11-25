@@ -140,6 +140,20 @@ def test_svg_and_png() -> None:
     assert len(chart.png(dpi=72.0)) < len(chart.png(dpi=288.0))
 
 
+def test_a_png_states_its_resolution() -> None:
+    """A PNG carries its dpi, which LaTeX sizes an included image by."""
+    pytest.importorskip("sbmlsim_core")
+    import io
+
+    from PIL import Image
+
+    chart = Chart()
+    chart.plot().curve([0, 1], [0, 1])
+    for dpi in (72.0, 300.0):
+        with Image.open(io.BytesIO(chart.png(dpi=dpi))) as image:
+            assert image.info["dpi"] == pytest.approx((dpi, dpi), abs=0.1)
+
+
 def test_save_by_suffix(tmp_path: Path) -> None:
     """A chart is saved as SVG, PNG or JSON by the suffix of its path."""
     pytest.importorskip("sbmlsim_core")
