@@ -27,6 +27,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB, the hormones drawn as observables over the glucose dimension |
+| `examples/interpolation/` | three interpolation methods, glucose uptake driven by measured plasma glucose, and an ATP/ADP dose response driven by glucose |
 | `examples/demo/` | the demo model with scans and sensitivity simulations as a simulation experiment, with the initial values drawn as curves with a colour bar |
 | `examples/repressilator/` | the repressilator as a simulation experiment, with post processing functions and scans |
 | `examples/hctz_fitting/` | hydrochlorothiazide pharmacokinetics: a whole body model, simulation experiments against the data of Beermann 1976 and Patel 1984 (with the cmax and AUC of HCTZ over the dose) and the parameter fitting problems built on them (`examples/hctz_fitting/fitting/`) |

@@ -9,6 +9,7 @@ The top level modules: data, units and the shared output.
 | module | description |
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
+| [interpolation](interpolation.md) | build SBML assignment rules from data and use them to drive a model |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [distrib](distrib.md) | the grammar of the distrib formulas of the fitted parameters (`normal`, `lognormal`, `uniform`, truncated), without a simulator |
 | [licenses](licenses.md) | the license texts of a model (CC BY-SA 4.0, MIT) and `write_license`, which writes them byte for byte |

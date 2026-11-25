@@ -23,6 +23,7 @@ nav = [
     { "Units" = "units.md" },
     { "Simulation experiments" = "experiments.md" },
     { "Data" = "data.md" },
+    { "Interpolation" = "interpolation.md" },
     { "Plots and reports" = "plotting.md" },
   ] },
   { "Sensitivity & uncertainty" = [
@@ -61,6 +62,7 @@ nav = [
     { "Overview" = "api/index.md" },
     { "sbmlsim" = [
       { "data" = "api/data.md" },
+      { "interpolation" = "api/interpolation.md" },
       { "units" = "api/units.md" },
       { "distrib" = "api/distrib.md" },
       { "domains" = "api/domains.md" },
