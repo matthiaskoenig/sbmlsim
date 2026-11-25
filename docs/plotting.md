@@ -1,6 +1,69 @@
 # Plots
 
-The figures of a simulation experiment are descriptions of what to draw. A `Figure` holds a grid of `Plot` panels, and each plot has axes and curves that read `Data`. When the experiment runs, the runner draws every figure with the renderer of sbmlsim-core as an image (SVG by default). Because a figure only names its data, it is stored in the JSON file of the experiment.
+Every figure of `sbmlsim` is drawn by the renderer of sbmlsim-core. There are two ways to describe one. The chart builder, `Chart`, is the direct way: you hand it numbers or quantities and it draws them, which is what you use for a quick look at a result in a notebook or a script. The figure model, `Figure`, is the description of what a simulation experiment draws: its curves name `Data` of the tasks and datasets instead of holding numbers, so the figure is stored in the JSON file of the experiment and the runner draws it after the run. The figure model resolves into a `Chart`, so both end in the same picture.
+
+## The chart builder
+
+A `Chart` is a grid of plots, `chart.plot(row, column, x=..., y=...)` adds one, and the methods of a plot add elements: `curve` (lines, markers and error bars), `band`, `area`, `bar`, `box`, `violin`, `histogram`, `heatmap`, `text`, `rule`, `polygon` and `colorbar`. Each returns the id of its element. The data are sequences, numpy arrays, pint quantities or xarray arrays. An axis, `ChartAxis(label=..., unit=...)`, converts the quantities on it to its unit, takes the unit of the first quantity when it has none and takes the `name` of an xarray array as its label, and the renderer shows it as `<label> [<unit>]`. This chart plots the HCTZ simulation of a 25 mg tablet next to the data of Patel et al. (1984), a band of two simulations next to it, and saves it three ways:
+
+```python
+import numpy as np
+
+from sbmlsim import Q
+from sbmlsim.plot import Chart, ChartAxis
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.simulation import Change, Dimension, Formula, Scan, Simulation
+from sbmlsim.simulator import Simulator
+
+simulator = Simulator()
+cp = Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml")
+dose = Simulation(
+    time_unit="hr", end=36, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
+)
+res = simulator.run(HCTZ_SBML, dose, [cp])
+data_time = Q([0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24, 36], "hr")
+data = Q([22.8, 71.6, 97.9, 107, 115, 92.6, 54.2, 39.3, 23.3, 9.0, 4.6], "ng/ml")
+sd = Q([21.9, 32.4, 39.1, 36.0, 29.0, 21.1, 11.6, 9.5, 11.9, 6.3, 5.2], "ng/ml")
+
+chart = Chart(width=720, height=300, columns=2, title="HCTZ 25 mg")
+plasma = chart.plot(
+    0,
+    0,
+    title="simulation and data",
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="ng/ml"),
+)
+plasma.curve(res.q["time"], res.q["cp"], label="simulation")
+plasma.curve(
+    data_time,
+    data,
+    yerr=sd,
+    line="none",
+    marker="circle",
+    color="#000000",
+    label="Patel 1984",
+)
+
+doses = Dimension("dose", values={"PODOSE_hctz": Q([12.5, 50], "mg")})
+grid = Q(np.linspace(0, 36, 73), "hr")
+scan = simulator.run(HCTZ_SBML, Scan(dose, [doses]), [cp], time=grid)
+band = chart.plot(
+    0,
+    1,
+    title="12.5 mg to 50 mg",
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="ng/ml"),
+)
+band.band(scan.q["time"], scan.q["cp"][0], scan.q["cp"][1], label="range of the doses")
+
+chart.save("hctz.svg")
+chart.save("hctz.png", dpi=200)
+chart.save("hctz.json")
+```
+
+![Output figure](images/outputs/plotting-01.svg)
+
+A chart shows itself in a notebook, where its SVG is the last expression of a cell. The SVG is the default format of the package, the PNG takes a `dpi` (the resolution is stored in the PNG), and the JSON is the spec of the contract `figure/1`, `chart.spec()` as a dictionary, which the renderer of sbmlsim-core, in Python or in the browser, draws again. A value which is not finite is a gap in a curve, `null` in the JSON.
 
 ## An experiment to plot
 
@@ -149,7 +212,8 @@ urine.add_data(task="task_po25", xid="time", yid="Aurine_hctz", label="simulatio
 fig_po25 = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-02.png)
+![Output figure](images/outputs/plotting-03.svg)
+
 
 `Figure.add_subplot(plot, row, col, row_span=2)` places a plot that spans several panels instead.
 
@@ -190,7 +254,8 @@ peak.curve(
 fig_doses = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-03.png)
+![Output figure](images/outputs/plotting-04.svg)
+
 
 The lines get the colours of the viridis colour map at the value the dimension sets, and the legend says what that value is. With `color=` they get shades of that colour instead. The colour scale is logarithmic when all values are positive and the largest is more than 100 times the smallest. From eleven points on, a colour bar replaces the legend entries.
 
@@ -235,7 +300,8 @@ for plot in [linear, log]:
 fig_patients = figure_chart(experiment, bands)
 ```
 
-![Output figure](images/outputs/plotting-04.png)
+![Output figure](images/outputs/plotting-05.svg)
+
 
 The default quantiles are 5 % and 95 %; `quantiles=(0.25, 0.75)` changes them and `median=False` leaves out the median. `over=` draws one band per point of one other dimension. A band takes `color=` and `alpha=`; without a colour it takes the next colour of the colour cycle. Bands are drawn below the curves.
 
@@ -283,7 +349,8 @@ plot.curve(
 fig_style = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-05.png)
+![Output figure](images/outputs/plotting-06.svg)
+
 
 Colours are `ColorType` objects, made from matplotlib colour names or hex strings.
 
@@ -337,17 +404,42 @@ By default each plot has its legend inside, at the best place matplotlib finds. 
 fig_row = figure_chart(experiment, bands, settings={"legend_scope": "row"})
 ```
 
-![Output figure](images/outputs/plotting-07.png)
+![Output figure](images/outputs/plotting-08.svg)
+
 
 The `legend` flag of a plot decides whether its entries go into the legend of the row.
 
-## Images
+## Formats
 
-The renderer of sbmlsim-core draws every figure. The figure formats of a run are `svg` (the default) and `png`, e.g. `run_experiments(output_path, figure_formats=["svg", "png"])`, and the spec of the chart, `json`, is written beside every figure. A PNG has the resolution `fig_dpi` of the settings of its figure, which `FigureOutputs.savefig_dpi` of a project replaces. The format `html` of the interactive pages of plotly is gone and raises a `ValueError`.
+The renderer of sbmlsim-core draws every figure. The figure formats of a run are `svg` (the default) and `png`, e.g. `run_experiments(output_path, figure_formats=["svg", "png"])`, and the spec of the chart, `json`, is written beside every figure. A PNG has the resolution `fig_dpi` of the settings of its figure, which `FigureOutputs.savefig_dpi` of a project replaces; an SVG has no resolution. The format `html` of the interactive pages of plotly is gone and raises a `ValueError`. A `Chart` you build yourself is saved by the suffix of its path: `chart.save("figure.svg")`, `.png` (with `dpi=`) or `.json`.
 
-## Your own matplotlib figures
+## Interactivity
 
-For a figure the description cannot express, override `figures_mpl()` and return figures by key: a `Chart` is drawn by the renderer like the other figures, and any other object, e.g. a matplotlib figure, is saved with its own `savefig(path, bbox_inches="tight")` in every image format of the run, at the resolution of the run or else its own, and is warned about once per experiment class, since it is slow. Such a figure has no spec, so a run whose only format is `json` writes no file of it. A figure of pyplot is closed after it was saved. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
+The spec is the whole figure. The HTML reports of the experiments and of a fit carry the spec of every figure next to its inline SVG, so the page needs nothing from the network to show it. Interactive figures (hovering a curve, toggling a legend entry, zooming) come from `hydrateFigures` of sbmlsim-core 0.28, a script which draws the spec again in the browser; sbmlsim's next step adds it to the reports, so for now a report shows the static SVG.
+
+## Colours
+
+A figure of the figure model takes the colour names of matplotlib: a CSS name (`dimgrey`), a base colour of one letter (`k`), a tableau name (`tab:red`), an xkcd name (`xkcd:sky blue`), a colour of the default cycle (`C0` to `C9`), hex (`#rgb`, `#rrggbb`, with an alpha `#rrggbbaa`), a grey level as a text (`"0.4"`) and a tuple of floats. `sbmlsim.plot.colors.normalize_color` turns each into the `#rrggbb` the spec holds, and `color_alpha` returns the opacity a colour carries. The chart builder takes `#rrggbb` as the spec does, so pass a name through `normalize_color` there:
+
+```python
+from sbmlsim.plot.colors import color_alpha, normalize_color
+
+print(normalize_color("tab:green"), normalize_color("C3"), normalize_color("0.4"))
+print(color_alpha("#ff000080"))
+```
+
+```text title="Output"
+#2ca02c #d62728 #666666
+('#ff0000', 0.5019607843137255)
+```
+
+## Your own figures
+
+For a figure the description cannot express, override `figures_mpl()` and return figures by key. A `Chart` is drawn by the renderer like the other figures, and is the better choice: it has a spec, it is stored with the run and the reports show it. Any other object, e.g. a matplotlib figure, is saved with its own `savefig(path, bbox_inches="tight")` in every image format of the run, at the resolution of the run or else its own. This is slow, so the runner warns about it once per experiment class, and the figure has no spec, so a run whose only format is `json` writes no file of it. A figure of pyplot is closed after it was saved. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. `limit_log_axis(ax)` from `sbmlsim.plot.axes` limits a log axis of such a figure to the decades the figure model shows. A variable of a result as a quantity, `res.q["cp"]`, is a pint quantity, which matplotlib plots in its unit once `ureg.setup_matplotlib(True)` of `sbmlsim.units.ureg` was called.
+
+## Changed from matplotlib
+
+Before the renderer every figure was drawn with matplotlib, and `label_axes(ax, "time", "HCTZ plasma")` of `sbmlsim.plot` wrote the units into the labels of its axes. The plot functions of the package, `plot_bands`, `plot_distribution`, `plot_heatmap`, `plot_indices`, `plot_morris`, `plot_profile`, `plot_profiles`, `plot_diff` and the figures of the fit report, now return a `Chart` and take no `ax=`: to put two of them side by side, build a `Chart` with a grid and add their elements, or save them apart. The units come from the quantities, and the axis label is `<name> [<unit>]` on its own. The figure keywords of matplotlib of the figure model (`linestyle`, `markersize`, `alpha`, ...) are still read, `fig_dpi` still sets the resolution of a PNG, and a matplotlib figure of `figures_mpl()` keeps working with its warning. matplotlib is no longer imported by `import sbmlsim.plot`.
 
 ## Reports
 

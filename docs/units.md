@@ -110,19 +110,19 @@ mmol/litre
 cmax = 134.6 ng/ml
 ```
 
-Quantities plot directly with matplotlib. The first quantity on an axis sets its unit and later ones are converted into it. `label_axes` from `sbmlsim.plot` labels each axis with a name and the unit it shows:
+A `Chart` takes quantities directly. An axis with a unit converts the quantities on it, an axis without one takes the unit of the first quantity and converts later ones into it, and the renderer labels each axis with its name and the unit it shows:
 
 ```python
-import matplotlib.pyplot as plt
+from sbmlsim.plot import Chart, ChartAxis
 
-from sbmlsim.plot import label_axes
-
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(res.q["time"].to("hr"), plasma)
-label_axes(ax, "time", "HCTZ plasma")
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="HCTZ plasma")
+)
+plot.curve(res.q["time"], plasma)
 ```
 
-![Output figure](images/outputs/units-07.png)
+![Output figure](images/outputs/units-07.svg)
 
 `res.to(...)` converts whole variables and coordinates of a result and keeps their labels, so a converted result selects, tabulates and plots as before. Converting `time` converts the times of the changes as well:
 

@@ -250,32 +250,32 @@ print(one.dims, two.dims, two["dose.PODOSE_hctz"].values)
 
 The labels of a dimension are `0, 1, 2, ...` unless the `Dimension` sets `labels=`. A dimension of the scan that the data does not have is skipped, so the same `sel` works for the time and the values of a curve. A dimension or label that does not exist raises an error when the experiment is initialized. For a dataset, `sel={"group": "b"}` keeps the rows whose column `group` is `b`.
 
-In a scan every simulation keeps its own time points, so `time` is data over `(dose, _point)` like `cp`, padded with `NaN` where a simulation has fewer points. `to_quantity` turns the arrays into quantities, which plot with matplotlib in their units, and `label_axes` labels the axes with them:
+In a scan every simulation keeps its own time points, so `time` is data over `(dose, _point)` like `cp`, padded with `NaN` where a simulation has fewer points. `to_quantity` turns the arrays into quantities, which a `Chart` plots in the unit of its axes:
 
 ```python
-import matplotlib.pyplot as plt
-
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 
 time = to_quantity(Data("time", task="task_doses").get_data(experiment))
 cp = Data("cp", task="task_doses").get_data(experiment)
 
-fig, ax = plt.subplots(figsize=(7, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="HCTZ plasma")
+)
 for k, mg in enumerate(cp["dose.PODOSE_hctz"].values):
-    ax.plot(time[k].to("hr"), to_quantity(cp[k]), label=f"{mg:g} mg")
+    plot.curve(time[k], to_quantity(cp[k]), label=f"{mg:g} mg")
 data_time = to_quantity(Data("time", dataset="patel1984").get_data(experiment))
-ax.plot(
+plot.curve(
     data_time,
     to_quantity(measured),
-    "o",
-    color="black",
+    line="none",
+    marker="circle",
+    color="#000000",
     label="Patel 1984 (25 mg)",
 )
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
 ```
 
-![Output figure](images/outputs/data-08.png)
+![Output figure](images/outputs/data-08.svg)
 
 For figures that are part of an experiment, see [Plots](plotting.md): a curve with `over="dose"` draws one line per dose.
 

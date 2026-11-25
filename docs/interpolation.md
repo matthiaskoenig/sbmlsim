@@ -56,8 +56,7 @@ Simulate the linear model written in the first example and compare the curves to
 ```python
 from pathlib import Path
 
-from matplotlib import pyplot as plt
-
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 
@@ -66,15 +65,20 @@ loaded = simulator.load(Path("interpolation.xml"))
 loaded.set_selections(["time", "y", "z"])
 s = simulator.simulate(loaded, Simulation(end=5, steps=50))
 
-fig, ax = plt.subplots()
-for column, color in [("y", "tab:blue"), ("z", "tab:orange")]:
-    ax.plot(s["time"], s[column], color=color, label=column)
-    ax.scatter(data["time"], data[column], color=color)
-ax.set(xlabel="Time", ylabel="Value")
-ax.legend()
+chart = Chart(width=560, height=280)
+plot = chart.plot(x=ChartAxis(label="Time"), y=ChartAxis(label="Value"))
+for column, color in [("y", "#1f77b4"), ("z", "#ff7f0e")]:
+    plot.curve(s["time"], s[column], color=color, label=column)
+    plot.curve(
+        data["time"].to_numpy(),
+        data[column].to_numpy(),
+        line="none",
+        marker="circle",
+        color=color,
+    )
 ```
 
-![Output figure](images/outputs/interpolation-03.png)
+![Output figure](images/outputs/interpolation-03.svg)
 
 ## Driving a model in place
 

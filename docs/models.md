@@ -153,10 +153,8 @@ print(model.loaded_value("BW"), model.loaded_value("[Cve_hctz]"))
 `changes` set values of the model before every simulation of it. They are applied before the model is initialized, so initial assignments that depend on them follow. Here the patient weighs 100 kg instead of the 75 kg of the model, and both get the same 25 mg tablet:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.simulation import Change, Simulation
 
 heavy = RoadrunnerSBMLModel(source=HCTZ_SBML, changes={"BW": Q(100, "kg")})
@@ -164,15 +162,17 @@ heavy = RoadrunnerSBMLModel(source=HCTZ_SBML, changes={"BW": Q(100, "kg")})
 dose = Simulation(
     time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
 )
-fig, ax = plt.subplots(figsize=(6, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="µM"),
+)
 for m, label in [(model, "75 kg"), (heavy, "100 kg")]:
     res = simulator.run(m, dose)
-    ax.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"), label=label)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend(title="body weight")
+    plot.curve(res.q["time"], res.q["[Cve_hctz]"], label=f"body weight {label}")
 ```
 
-![Output figure](images/outputs/models-06.png)
+![Output figure](images/outputs/models-06.svg)
 
 The heavier patient has a larger body, so the same dose gives a lower concentration in the plasma.
 

@@ -13,10 +13,8 @@
 `sbmlsim` ships a whole body model of midazolam, a sedative which the liver turns into 1-hydroxymidazolam. This simulation gives a 7.5 mg tablet every 8 hours and follows both substances in the blood for a day:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
@@ -29,16 +27,17 @@ simulation = Simulation(
 )
 res = simulator.run(MIDAZOLAM_SBML, simulation)
 
-fig, ax = plt.subplots(figsize=(8, 3.5))
+chart = Chart(width=640, height=280, legend_position="outside")
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="venous blood", unit="nM")
+)
 for sid, name in [("[Cve_mid]", "midazolam"), ("[Cve_mid1oh]", "1-hydroxymidazolam")]:
-    ax.plot(res.q["time"].to("hr"), res.q[sid].to("nM"), label=name)
-label_axes(ax, "time", "venous blood")
-ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+    plot.curve(res.q["time"], res.q[sid], label=name)
 ```
 
-![Output figure](images/outputs/index-01.png)
+![Output figure](images/outputs/index-01.svg)
 
-The times are in hours and `sbmlsim` converts them into the minutes of the model. `res` is a `ScanResult` with every variable of the model at the time points the integrator chose. `res.q[...]` gives a variable as a quantity, its values with their unit, so `.to("nM")` converts the concentrations from the mmol/l of the model. Quantities plot directly with matplotlib, and `label_axes` writes the units of the axes into their labels. The [Tutorial](tutorial.md) starts from here and goes step by step through the features with a model of another drug.
+The times are in hours and `sbmlsim` converts them into the minutes of the model. `res` is a `ScanResult` with every variable of the model at the time points the integrator chose. `res.q[...]` gives a variable as a quantity, its values with their unit, so a `Chart` axis in `nM` converts the concentrations from the mmol/l of the model: an axis with a unit converts the quantities on it and shows the unit in its label. The [Tutorial](tutorial.md) starts from here and goes step by step through the features with a model of another drug.
 
 ## Features
 

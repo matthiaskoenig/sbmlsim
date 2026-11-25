@@ -113,10 +113,8 @@ The metrics are computed separately for the training data and the validation dat
 `report.points` is the table behind the figures of the report: one row per data point with its time `x`, the data `DV`, its standard deviation `DV_SD` and the prediction `IPRED`, all in the units of the model, which the columns `x_unit` and `unit` give. To draw the fitted curves against the data, simulate the doses with the fitted values and turn both into quantities:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
@@ -128,8 +126,14 @@ points = report.points(fitted)
 simulator = Simulator()
 model = simulator.load(HCTZ_SBML)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
-for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
+chart = Chart(width=720, height=300, columns=2)
+time_axis = ChartAxis(label="time", unit="hr")
+ax1 = chart.plot(0, 0, x=time_axis, y=ChartAxis(label="HCTZ plasma", unit="µM"))
+ax2 = chart.plot(0, 1, x=time_axis, y=ChartAxis(label="HCTZ urine", unit="µmol"))
+for dose, kind, marker, color in [
+    (25, "training", "circle", "#1f77b4"),
+    (50, "validation", "square", "#ff7f0e"),
+]:
     tablet = Simulation(
         time_unit="hr",
         end=48,
@@ -141,37 +145,46 @@ for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
         (ax2, f"fm_{dose}_tab_urine", "Aurine_hctz", "µmol"),
     ]:
         label = f"{dose} mg ({kind})"
-        (line,) = ax.plot(res.q["time"].to("hr"), res.q[yid].to(unit), label=label)
+        ax.curve(res.q["time"], res.q[yid], label=label, color=color)
         data = points[points.mapping == key]
         time = Q(data.x.to_numpy(), data.x_unit.iloc[0])
         dv = Q(data.DV.to_numpy(), data.unit.iloc[0])
         sd = Q(data.DV_SD.to_numpy(), data.unit.iloc[0])
-        ax.vlines(time, dv - sd, dv + sd, color=line.get_color())
-        ax.plot(time, dv, marker, color=line.get_color())
-label_axes(ax1, "time", "HCTZ plasma")
-label_axes(ax2, "time", "HCTZ urine")
-ax1.legend()
+        ax.curve(time, dv, yerr=sd, line="none", marker=marker, color=color)
 ```
 
-![Output figure](images/outputs/fitting-04.png)
+![Output figure](images/outputs/fitting-04.svg)
 
 The fitted model follows the 25 mg data, although in the urine it rises faster than the data between 12 and 36 hours. For the 50 mg tablet, which the fit has not seen, it predicts about 10 % more HCTZ in the urine than was measured. The goodness of fit plots every prediction against its measurement on logarithmic axes, so plasma and urine fit into one plot. Points on the diagonal are perfect predictions, and the dotted lines mark a factor of two:
 
 ```python
-fig, ax = plt.subplots(figsize=(4.5, 4.5))
 positive = points[(points.DV > 0) & (points.IPRED > 0)]
-for kind, data in positive.groupby("kind"):
-    ax.loglog(data.DV, data.IPRED, "o", alpha=0.7, label=kind)
 limits = [positive[["DV", "IPRED"]].min().min() / 2, positive.DV.max() * 2]
-ax.plot(limits, limits, color="black", linewidth=1)
+chart = Chart(width=420, height=420)
+plot = chart.plot(
+    x=ChartAxis(
+        label="measurement [model units]", scale="log", min=limits[0], max=limits[1]
+    ),
+    y=ChartAxis(
+        label="prediction [model units]", scale="log", min=limits[0], max=limits[1]
+    ),
+)
+for (kind, data), color in zip(positive.groupby("kind"), ["#1f77b4", "#ff7f0e"]):
+    plot.curve(
+        data.DV.to_numpy(),
+        data.IPRED.to_numpy(),
+        line="none",
+        marker="circle",
+        opacity=0.7,
+        color=color,
+        label=kind,
+    )
+plot.curve(limits, limits, color="#000000", width=1)
 for factor in [2, 0.5]:
-    ax.plot(limits, [factor * v for v in limits], ":", color="darkred")
-ax.set(xlabel="measurement [model units]", ylabel="prediction [model units]")
-ax.set(xlim=limits, ylim=limits)
-ax.legend()
+    plot.curve(limits, [factor * v for v in limits], line="dotted", color="#8b0000")
 ```
 
-![Output figure](images/outputs/fitting-05.png)
+![Output figure](images/outputs/fitting-05.svg)
 
 The report draws this figure and a Bland-Altman plot with a panel per kind of data, see [Report of a fit](#report-of-a-fit).
 

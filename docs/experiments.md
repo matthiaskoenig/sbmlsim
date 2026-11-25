@@ -132,6 +132,8 @@ experiment = results[0].experiment
 chart = experiment.create_figures()["fig_cp"]
 ```
 
+![Output figure](images/outputs/experiments-03.svg)
+
 ![Output figure](images/outputs/experiments-03.png)
 
 ## The parts of an experiment

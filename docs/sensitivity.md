@@ -55,6 +55,8 @@ There are two indices:
 fig = sensitivity.plot_heatmap(local, "normalized")
 ```
 
+![Output figure](images/outputs/sensitivity-03.svg)
+
 ![Output figure](images/outputs/sensitivity-03.png)
 
 A normalized index is `NaN` when the output is zero at the reference. A parameter whose reference is zero is not moved by the design, so both of its indices are `NaN`: undefined rather than insensitive. Its row in the heatmap stays, in grey.
@@ -117,6 +119,8 @@ ps_a         0.033    0.033
 fig = sensitivity.plot_indices(sobol, "px_max")
 ```
 
+![Output figure](images/outputs/sensitivity-06.svg)
+
 ![Output figure](images/outputs/sensitivity-06.png)
 
 The Hill coefficient `n` explains almost all of the variance of the peak. The small negative `S1` values and the wide intervals are the noise of a small design; more base points (the second argument of `sampling.sobol`) narrow them.
@@ -170,6 +174,8 @@ ps_a         269.6     55.8
 ```python
 fig = sensitivity.plot_morris(morris, "px_max")
 ```
+
+![Output figure](images/outputs/sensitivity-08.svg)
 
 ![Output figure](images/outputs/sensitivity-08.png)
 
@@ -275,6 +281,8 @@ fig = sensitivity.plot_heatmap(
     by_condition, "normalized", leak="high", title="high leak"
 )
 ```
+
+![Output figure](images/outputs/sensitivity-11.svg)
 
 ![Output figure](images/outputs/sensitivity-11.png)
 

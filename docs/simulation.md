@@ -9,10 +9,8 @@ The examples use the HCTZ model of the [Tutorial](tutorial.md), a whole-body mod
 Load the model with a `Simulator` and give the simulation an end time. `time_unit` is the unit of the times you write, here hours. The `Change` at time 0 gives a 25 mg tablet:
 
 ```python
-import matplotlib.pyplot as plt
-
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
+from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
@@ -31,15 +29,18 @@ ScanResult(_point: 841; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma
 time unit of the result: min
 ```
 
-You read a variable by its roadrunner name: `S` is the amount of a species and `[S]` its concentration. `[Cve_hctz]` is the HCTZ concentration in the venous plasma. The result is in the units of the model, so the time is in minutes even though the simulation was written in hours, and the concentration is in mmol/l. `res.q[...]` gives a variable as a quantity, its values with their unit, and `.to(...)` converts it. Quantities plot directly with matplotlib, and `label_axes` writes the name and the unit of each axis:
+You read a variable by its roadrunner name: `S` is the amount of a species and `[S]` its concentration. `[Cve_hctz]` is the HCTZ concentration in the venous plasma. The result is in the units of the model, so the time is in minutes even though the simulation was written in hours, and the concentration is in mmol/l. `res.q[...]` gives a variable as a quantity, its values with their unit, and `.to(...)` converts it. A `Chart` takes quantities directly and labels each axis with its name and unit:
 
 ```python
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
-label_axes(ax, "time", "HCTZ plasma")
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="HCTZ plasma", unit="µM"),
+)
+plot.curve(res.q["time"], res.q["[Cve_hctz]"])
 ```
 
-![Output figure](images/outputs/simulation-02.png)
+![Output figure](images/outputs/simulation-02.svg)
 
 Without further settings you get the steps the integrator took. They are dense where the curve changes fast and sparse where it is flat, and every change and event of the model is in the output at its exact time. This is the recommended output. Every simulation has its own number of steps, so the result has the dimension `_point` instead of `time`, and `time` is a variable.
 
@@ -123,23 +124,28 @@ every_8h = Simulation(
     changes=[Change([0, 8, 16], {"PODOSE_hctz": Q(25, "mg")})],
 )
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
+chart = Chart(width=720, height=280, columns=2)
+hours = ChartAxis(label="time", unit="hr")
+plasma = ChartAxis(label="HCTZ plasma", unit="µM")
+left = chart.plot(0, 0, title="1 hour infusion", x=hours, y=plasma)
 res = simulator.run(model, infusion)
-ax1.axvspan(Q(0, "hr"), Q(1, "hr"), color="tab:orange", alpha=0.2, label="infusion")
-ax1.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
-ax1.set_title("1 hour infusion")
-label_axes(ax1, "time", "HCTZ plasma")
-ax1.legend()
+cp = res.q["[Cve_hctz]"].to("µM")
+left.band(
+    Q([0, 1], "hr"),
+    Q([0, 0], "µM"),
+    cp.max() * [1, 1],
+    color="#f58518",
+    label="infusion",
+)
+left.curve(res.q["time"], cp, color="#4c78a8")
+right = chart.plot(0, 1, title="a tablet every 8 hours", x=hours, y=plasma)
 res = simulator.run(model, every_8h)
 for t in Q([0, 8, 16], "hr"):
-    ax2.axvline(t, color="gray", linestyle=":")
-ax2.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
-ax2.set_title("a tablet every 8 hours")
-label_axes(ax2, "time", "HCTZ plasma")
-fig.tight_layout()
+    right.rule(t, orientation="vertical", line="dotted", color="#888888")
+right.curve(res.q["time"], res.q["[Cve_hctz]"], color="#4c78a8")
 ```
 
-![Output figure](images/outputs/simulation-06.png)
+![Output figure](images/outputs/simulation-06.svg)
 
 The plasma concentration rises while the infusion runs and falls as soon as it stops. With a tablet every 8 hours (dotted lines) the drug accumulates a little from dose to dose.
 
@@ -158,12 +164,15 @@ step_up = Simulation(
 )
 res = simulator.run(model, step_up)
 
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(res.q["time"].to("hr"), res.q["Ri_hctz"].to("mg/hr"))
-label_axes(ax, "time", "infusion rate")
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"),
+    y=ChartAxis(label="infusion rate", unit="mg/hr"),
+)
+plot.curve(res.q["time"], res.q["Ri_hctz"])
 ```
 
-![Output figure](images/outputs/simulation-07.png)
+![Output figure](images/outputs/simulation-07.svg)
 
 The rate of the model is in `mg/min`, so the formula adds 5 mg/hr as `5/60` mg/min.
 
@@ -203,7 +212,10 @@ Since a time can appear twice, xarray methods which need unique times, such as `
 ```python
 from sbmlsim.simulation import SteadyState
 
-fig, ax = plt.subplots(figsize=(6, 3.5))
+chart = Chart(width=560, height=280)
+plot = chart.plot(
+    x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="extracellular fluid")
+)
 cases = {"no pre-equilibration": None, "SteadyState()": SteadyState()}
 for label, presimulation in cases.items():
     res = simulator.run(
@@ -215,12 +227,10 @@ for label, presimulation in cases.items():
             presimulation=presimulation,
         ),
     )
-    ax.plot(res.q["time"].to("hr"), res.q["ECF"], label=label)
-label_axes(ax, "time", "extracellular fluid")
-ax.legend()
+    plot.curve(res.q["time"], res.q["ECF"], label=label)
 ```
 
-![Output figure](images/outputs/simulation-09.png)
+![Output figure](images/outputs/simulation-09.svg)
 
 The model is initialized once, with the `preinit_changes` of the simulation and of the `SteadyState` together, and a target may be in only one of them. A value that should differ after the steady state is a `Change` at the start. The steady state is reached when every rate of change is small, `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|`, with the tolerances of the `SteadyState`. A model which does not get there within `SteadyState(max_time=...)` raises a `SteadyStateError`.
 
@@ -514,7 +524,7 @@ copasi
 equal: True
              copasi    core
 time        0.0e+00 0.0e+00
-Aurine_hctz 4.4e-10 2.2e-11
+Aurine_hctz 4.7e-10 2.2e-11
 Ri_hctz     0.0e+00 0.0e+00
 [Cve_hctz]  7.4e-09 6.2e-11
 ```
