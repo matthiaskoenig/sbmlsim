@@ -672,7 +672,7 @@ def point_styles(
         values = np.arange(n, dtype=float)
         title = over[0]
         colors = point_colors(n, color)
-        ramp = colors
+        ramp = colors if n else point_ramp(color)
         scale = (
             ColorBarScale(
                 -0.5,

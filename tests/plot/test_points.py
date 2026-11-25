@@ -441,3 +441,8 @@ def test_no_matplotlib_import() -> None:
         for alias in getattr(node, "names", [])
     ]
     assert not [m for m in modules if m and m.split(".")[0] == "matplotlib"]
+
+
+def test_point_styles_without_points() -> None:
+    style = point_styles([], ["a"], None, [None], {})
+    assert style.scale is None and len(style.ramp) == 256 and style.colors == []
