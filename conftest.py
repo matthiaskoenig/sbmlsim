@@ -2,10 +2,11 @@
 
 Three things are set up for the whole test session:
 
-- **matplotlib never opens a window.** The `Agg` backend is selected before
-  pyplot is imported anywhere, so a figure created by an example or by a test
-  is rendered into a buffer instead of into a window. Without it a test which
-  plots blocks on a machine with a display and fails on one without.
+- **matplotlib never opens a window.** sbmlsim draws with the renderer of
+  sbmlsim-core and imports no matplotlib, which only the tests of the
+  `figures_mpl()` hook and the benchmark script use. The `Agg` backend is
+  selected before pyplot is imported anywhere, so such a figure is rendered
+  into a buffer instead of into a window.
 - **the examples are importable.** They are not part of the package, they live
   in `examples/` at the root of the repository, see `examples/README.md`.
   pytest puts the directory of this file on `sys.path`, so that the tests can

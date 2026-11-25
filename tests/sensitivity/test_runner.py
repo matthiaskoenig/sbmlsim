@@ -908,9 +908,8 @@ def test_an_undefined_or_negative_index_is_classified(tmp_path: Path) -> None:
     assert df.loc["A_negative", "U"] == pytest.approx(-df.loc["A_thalf", "U"])
 
 
-@pytest.mark.usefixtures("no_pyplot")
 @pytest.mark.parametrize("name", ["local", "sampling", "fast", "sobol"])
-def test_the_figures_of_an_analysis_do_not_use_pyplot(
+def test_the_figures_of_an_analysis_are_written_as_png_and_svg(
     tmp_path: Path, name: str
 ) -> None:
     path = runner(tmp_path).run([name], workers=1)
