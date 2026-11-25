@@ -252,12 +252,17 @@ def _select(
         ValueError: if a dimension is not one of the source, or a label is not
             one of its dimension, see `check_sel`.
     """
+    # the labels of the dimensions the selection names: every dimension of
+    # the source has its name, the time of a long result thousands of labels,
+    # which a selection of a scan point does not need (sbmlsim#664)
     check_sel(
         data,
         sel,
         {
             str(dim): (
-                source[dim].values.tolist()
+                None
+                if dim not in sel
+                else source[dim].values.tolist()
                 if dim in source.coords
                 else list(range(size))
             )
@@ -642,9 +647,11 @@ class Data:
                 f"the result."
             )
         array = _select(array, self.sel, self, result.ds)
-        return xr.DataArray(
+        out = xr.DataArray(
             array.values, dims=array.dims, coords=array.coords, attrs={"units": unit}
-        ).rename({p: q for p, q in values.items() if p in array.coords})
+        )
+        renamed = {p: q for p, q in values.items() if p in array.coords}
+        return out.rename(renamed) if renamed else out
 
     def _qualified_name(self, result: ScanResult, values: Mapping[str, str]) -> str:
         """Get the name in the result of the data, resolving `<dimension>.<target>`.

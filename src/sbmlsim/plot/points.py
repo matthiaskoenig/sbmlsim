@@ -158,12 +158,14 @@ def curve_lines(
         return [Line(point=(), index=(), x=lx, y=ly, xerr=lxerr, yerr=lyerr)]
     ordered = [None if a is None else a.transpose(*over, *axis) for a in full]
     labels = _labels(ordered, over)
+    # the values are read once and a line is a numpy index of them: the `isel`
+    # of an array per line and array built a DataArray for every line, which
+    # was most of the time of the figures of a scan over draws (sbmlsim#664)
+    data = [None if a is None else np.asarray(a.values) for a in ordered]
     lines: list[Line] = []
     for index in itertools.product(*(range(len(labels[d])) for d in over)):
         position = dict(zip(over, index, strict=True))
-        values = [
-            None if a is None else np.asarray(a.isel(position).values) for a in ordered
-        ]
+        values = [None if a is None else a[index] for a in data]
         lx, ly, lxerr, lyerr = without_padding(*values)
         lines.append(
             Line(
