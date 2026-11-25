@@ -4,6 +4,7 @@ import json
 import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pint
@@ -11,7 +12,7 @@ import pytest
 import xarray as xr
 
 from sbmlsim.plot import Chart, ChartAxis
-from sbmlsim.plot.chart import axis_label
+from sbmlsim.plot.chart import BAND_OPACITY, axis_label
 from sbmlsim.units import Q
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -66,6 +67,7 @@ def test_axis_label() -> None:
 
 def test_quantities_set_unit_and_label() -> None:
     """A quantity on an axis without a unit gives the axis its unit."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart()
     plot = chart.plot(x=ChartAxis(label="time"))
     plot.curve(Q([1, 2], "hr"), [3.0, 4.0])
@@ -125,6 +127,7 @@ def test_dataarray_units() -> None:
 
 def test_svg_and_png() -> None:
     """A chart renders as SVG and as PNG."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart()
     chart.plot(x=ChartAxis(label="x"), y=ChartAxis(label="y")).curve(
         [0, 1, 2], [0, 1, 4], marker="circle"
@@ -139,6 +142,7 @@ def test_svg_and_png() -> None:
 
 def test_save_by_suffix(tmp_path: Path) -> None:
     """A chart is saved as SVG, PNG or JSON by the suffix of its path."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart()
     chart.plot().curve([0, 1], [0, 1])
 
@@ -169,6 +173,7 @@ def test_duplicate_id_refused() -> None:
 
 def test_every_kind() -> None:
     """Every kind of element builds and renders."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart(900, 900, rows=4, columns=4)
     plots = iter(chart.plot(i // 4, i % 4) for i in range(16))
 
@@ -232,6 +237,7 @@ def test_every_kind() -> None:
 
 def test_grid_and_spans() -> None:
     """Plots are placed in the grid of the chart with their spans."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart(rows=2, columns=3, wspace=0.1, hspace=0.2, legend_scope="row")
     chart.plot(0, 0, column_span=3, title="top", legend_order=["b", "a"])
     chart.plot(
@@ -255,7 +261,204 @@ def test_grid_and_spans() -> None:
 
 def test_invalid_spec_message() -> None:
     """A spec the renderer refuses raises its `ValueError` with the path."""
+    pytest.importorskip("sbmlsim_core")
     chart = Chart()
     chart.plot().heatmap(["a", "b"], ["c", "d"], [[0, 1]])
     with pytest.raises(ValueError, match=r"plots\[0\]\.elements\[0\]"):
         chart.svg()
+
+
+def test_dashed_rule() -> None:
+    """A rule takes the type and width of its line."""
+    chart = Chart()
+    chart.plot().rule(1.0, line="dashed", width=1.5, color="#ff0000")
+
+    (rule,) = chart.spec()["plots"][0]["elements"]
+    assert rule["style"]["line"] == {"type": "dashed", "width": 1.5}
+    assert rule["style"]["color"] == "#ff0000"
+    pytest.importorskip("sbmlsim_core")
+    assert "stroke-dasharray" in chart.svg()
+
+
+def test_band_fill_and_median_style() -> None:
+    """A band takes the fill and the line of its median."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.band([0, 1], [0, 1], [2, 3], median=[1, 2], line="dotted", width=1.0)
+    plot.band([0, 1], [0, 1], [2, 3], fill="#00ff00")
+    plot.band([0, 1], [0, 1], [2, 3], fill_opacity=0.5)
+
+    dotted, colored, translucent = chart.spec()["plots"][0]["elements"]
+    assert dotted["style"]["line"] == {"type": "dotted", "width": 1.0}
+    assert "fill" not in dotted["style"]
+    # a fill color keeps the opacity of a band of the renderer
+    assert colored["style"]["fill"] == {"color": "#00ff00", "opacity": BAND_OPACITY}
+    assert translucent["style"]["fill"] == {"opacity": 0.5}
+
+
+def test_bar_outline() -> None:
+    """A bar takes the line of its outline and its fill."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.bar([0, 1], [1, 2], line="solid", width=1.0, fill="#ffffff", color="#000000")
+    plot.bar([0, 1], [1, 2])
+
+    outlined, plain = chart.spec()["plots"][0]["elements"]
+    assert outlined["style"] == {
+        "color": "#000000",
+        "opacity": 1.0,
+        "line": {"type": "solid", "width": 1.0},
+        "fill": {"color": "#ffffff", "opacity": 1.0},
+    }
+    assert plain["style"] == {"opacity": 1.0}
+
+
+def test_marker_edge_width() -> None:
+    """The markers of a curve and of the outliers of a box take an edge width."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve([0], [0], marker="circle", edge="#000000", edge_width=0.5)
+    stats = {"low_whisker": 0, "q1": 1, "median": 2, "q3": 3, "high_whisker": 4}
+    plot.box([0], [stats], marker="x", edge_width=2.0)
+
+    curve, box = chart.spec()["plots"][0]["elements"]
+    assert curve["style"]["marker"]["edge_width"] == 0.5
+    assert curve["style"]["marker"]["edge"] == "#000000"
+    assert box["style"]["marker"]["edge_width"] == 2.0
+
+
+def test_quantity_polygon() -> None:
+    """The coordinates of a polygon are values of the axes."""
+    chart = Chart()
+    plot = chart.plot(x=ChartAxis(unit="hr"))
+    plot.polygon([Q([[0, 0], [60, 0], [0, 60]], "min")])
+    plot.polygon([(Q([0, 120, 0], "min"), Q([0, 0, 1], "hr"))])
+
+    spec = chart.spec()["plots"][0]
+    first, second = spec["elements"]
+    assert first["paths"] == [[[0.0, 0.0], [1.0, 0.0], [0.0, 60.0]]]
+    assert second["paths"] == [[[0.0, 0.0], [2.0, 0.0], [0.0, 60.0]]]
+    assert spec["y"]["unit"] == "min"
+    with pytest.raises(pint.DimensionalityError, match="axis y"):
+        chart.plots[0].polygon([(Q([0, 1, 0], "hr"), Q([0, 0, 1], "mM"))])
+
+
+def test_categories() -> None:
+    """Names on a category axis are the indices of their categories."""
+    chart = Chart()
+    given = chart.plot(x=ChartAxis(scale="category", categories=["a", "b", "c"]))
+    given.bar(["c", "a"], [1, 2])
+    given.text("b", 1.0, "middle")
+    with pytest.raises(ValueError, match=r"'d'.*axis x"):
+        given.bar(["d"], [1])
+
+    collected = chart.plot(x=ChartAxis(scale="category"))
+    collected.box(["x", "y"], [_box(), _box()])
+    collected.violin(["y", "z"], [_violin(), _violin()])
+    collected.curve(["z", "x"], [1, 2])
+
+    numeric = chart.plot()
+    with pytest.raises(ValueError, match="no category axis"):
+        numeric.bar(["a"], [1])
+
+    first, second, third = chart.spec()["plots"]
+    assert first["x"]["categories"] == ["a", "b", "c"]
+    assert first["elements"][0]["x"] == [2.0, 0.0]
+    assert first["elements"][1]["x"] == 1.0
+    assert second["x"]["categories"] == ["x", "y", "z"]
+    assert second["elements"][0]["positions"] == [0.0, 1.0]
+    assert second["elements"][1]["positions"] == [1.0, 2.0]
+    assert second["elements"][2]["x"] == [2.0, 0.0]
+    assert "categories" not in third["x"]
+
+
+def _box() -> dict[str, float]:
+    return {"low_whisker": 0, "q1": 1, "median": 2, "q3": 3, "high_whisker": 4}
+
+
+def _violin() -> dict[str, list[float]]:
+    return {"values": [0, 1, 2], "density": [0.1, 0.5, 0.1]}
+
+
+def test_not_finite_positions_refused() -> None:
+    """A statistic of a box, a text and a rule must be finite numbers."""
+    plot = Chart().plot()
+    with pytest.raises(ValueError, match=r"stats\[0\]\.median"):
+        plot.box([0], [{**_box(), "median": math.nan}])
+    with pytest.raises(ValueError, match="x of a text"):
+        plot.text(math.inf, 0, "t")
+    with pytest.raises(ValueError, match="value of a rule"):
+        plot.rule(math.nan)
+    # an outlier which is not finite is left out
+    plot.box([0], [{**_box(), "outliers": [7.0, math.nan]}])
+    assert plot.spec()["elements"][0]["stats"][0]["outliers"] == [7.0]
+
+
+def test_numpy_scalars_serialize() -> None:
+    """Numbers of numpy are written as numbers of JSON."""
+    # numpy scalars where the signatures say int and float, as callers pass them
+    sizes: dict[str, Any] = {"width": np.float64(400), "height": np.int64(300)}
+    grid: dict[str, Any] = {
+        "rows": np.int64(1),
+        "columns": np.int64(1),
+        "wspace": np.float32(0.1),
+    }
+    chart = Chart(**sizes, **grid, fonts={"tick": np.float64(9)})
+    cell: dict[str, Any] = {
+        "row": np.int64(0),
+        "column": np.int64(0),
+        "row_span": np.int64(1),
+    }
+    chart.plot(**cell).curve([0], [0])
+    spec = json.loads(chart.to_json())
+    assert spec["fonts"] == {"tick": 9.0}
+    assert spec["plots"][0]["row_span"] == 1
+
+
+def test_frame_and_declared_legends() -> None:
+    """An axis takes a frame and a plot its declared legends."""
+    chart = Chart()
+    chart.plot(y=ChartAxis(frame=(0, 10)), declared_legends=[["a"], ["a", "b"]]).curve(
+        [0], [0]
+    )
+
+    plot = chart.spec()["plots"][0]
+    assert plot["y"]["frame"] == {"low": 0.0, "high": 10.0}
+    assert plot["declared_legends"] == [["a"], ["a", "b"]]
+
+
+def test_dataarray_name_labels_axis() -> None:
+    """A data array names an axis without a label."""
+    chart = Chart()
+    plot = chart.plot(y=ChartAxis(label="given"))
+    time = xr.DataArray(np.array([0.0, 1.0]), name="time", attrs={"units": "hr"})
+    cp = xr.DataArray(np.array([1.0, 2.0]), name="cp")
+    plot.curve(time, cp)
+
+    spec = chart.spec()["plots"][0]
+    assert spec["x"]["label"] == "time"
+    assert spec["y"]["label"] == "given"
+
+
+def test_bad_units_name_the_axis() -> None:
+    """Units which cannot be read or converted name the axis."""
+    plot = Chart().plot()
+    bad = xr.DataArray(np.array([1.0]), attrs={"units": "no_such_unit"})
+    with pytest.raises(ValueError, match="axis x"):
+        plot.curve(bad, [1.0])
+
+    registry = pint.UnitRegistry()
+    plot = Chart().plot(x=ChartAxis(unit="hr"))
+    plot.curve(registry.Quantity([60.0], "min"), [1.0])
+    assert plot.spec()["elements"][0]["x"] == [1.0]
+    with pytest.raises(pint.DimensionalityError, match="axis x"):
+        plot.curve(registry.Quantity([1.0], "mM"), [1.0])
+
+
+def test_spec_is_a_copy() -> None:
+    """Changing a spec does not change the chart."""
+    chart = Chart()
+    chart.plot().curve([0, 1], [0, 1])
+    spec = chart.spec()
+    spec["plots"][0]["elements"][0]["y"][0] = 5.0
+    assert chart.spec()["plots"][0]["elements"][0]["y"][0] == 0.0

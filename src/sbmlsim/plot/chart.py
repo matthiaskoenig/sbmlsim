@@ -8,12 +8,17 @@ element. The data of an element are sequences, numpy arrays, pint quantities
 or xarray data arrays (`attrs["units"]` their unit): an axis with a unit
 converts every quantity on it to that unit and takes plain values as values
 in it, an axis without a unit takes the unit of the first quantity placed on
-it, and the renderer shows the axis as `<label> [<unit>]`:
+it, an axis without a label takes the `name` of the first data array placed
+on it, and the renderer shows the axis as `<label> [<unit>]`:
 
     chart = Chart(title="HCTZ")
     plot = chart.plot(x=ChartAxis(label="time", unit="hr"), y=ChartAxis(label="cp"))
     plot.curve(res.q["time"], res.q["cp"], label="plasma")
     chart.save("hctz.svg")
+
+A category axis (`scale="category"`) takes names, which are placed at the
+index of their category: the categories of the axis, or, for an axis without
+them, the names in the order of their first use.
 
 `Chart.spec` is the spec as a dictionary of the snake case fields of
 `figure/1`, `Chart.to_json` its JSON, in which a value which is not finite is
@@ -23,10 +28,11 @@ only when a chart is drawn.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tokenize import TokenError
 from typing import Any, Final, Literal
@@ -49,11 +55,21 @@ SAVE_SUFFIXES: Final = (".svg", ".png", ".json")
 #: The dpi of a PNG which is saved without one.
 DEFAULT_DPI: Final = 144.0
 
+#: The opacity the renderer fills a band, an area, a box, a violin and a
+#: polygon with when their style has no fill; a fill color given without an
+#: opacity keeps it.
+BAND_OPACITY: Final = 0.18
+
+#: The errors of pint parsing a unit it does not know.
+_UNIT_ERRORS: Final = (PintError, ValueError, TypeError, AttributeError, TokenError)
+
 #: The data of an element: a sequence, a numpy array, a pint quantity or an
 #: xarray data array.
 type Values = Any
 
 type AxisName = Literal["x", "y", "y2"]
+
+type LineType = Literal["solid", "dashed", "dotted", "dashdot", "none"]
 
 
 def axis_label(name: str, unit: Any) -> str:
@@ -76,12 +92,14 @@ class ChartAxis:
     """An axis of a plot of a chart, the `Axis` of `figure/1`.
 
     Attributes:
-        label: the label, which the renderer shows with the unit.
+        label: the label, which the renderer shows with the unit; `None`
+            takes the `name` of the first data array on the axis.
         unit: the unit, which the quantities on the axis are converted to;
             `None` takes the unit of the first quantity on the axis.
         scale: `linear`, `log` or `category`.
         categories: the names of the categories of a category axis, which
-            are at the positions 0, 1, ...
+            are at the positions 0, 1, ...; `None` collects the names placed
+            on the axis in the order of their first use.
         min: the lower end of the axis.
         max: the upper end of the axis.
         reverse: whether the axis is reversed.
@@ -91,6 +109,8 @@ class ChartAxis:
         tick_rotation: the rotation of the tick labels in degrees.
         max_decades: the decades of a log axis below its largest value,
             `None` for the default of the renderer.
+        frame: the values `(low, high)` the axis must hold with its margins,
+            in contrast to `min` and `max`, which are the ends themselves.
     """
 
     label: str | None = None
@@ -105,87 +125,204 @@ class ChartAxis:
     ticks_visible: bool = True
     tick_rotation: float = 0.0
     max_decades: float | None = None
+    frame: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
-        """Keep the categories as a tuple."""
+        """Keep the categories and the frame as tuples."""
         if self.categories is not None:
             object.__setattr__(self, "categories", tuple(self.categories))
+        if self.frame is not None:
+            low, high = self.frame
+            object.__setattr__(self, "frame", (float(low), float(high)))
 
 
 @dataclass
 class _AxisState:
-    """An axis of a plot with the unit its values are in."""
+    """An axis of a plot with the unit, label and categories it collected."""
 
     name: AxisName
+    plot: str
     axis: ChartAxis
     unit: Any = None
+    label: str | None = None
+    categories: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Parse the unit of the axis; one pint does not parse is shown as given."""
+        self.label = self.axis.label
+        if self.axis.categories is not None:
+            self.categories = list(self.axis.categories)
         if self.axis.unit:
             try:
                 self.unit = ureg.Unit(self.axis.unit)
-            except PintError, ValueError, TypeError, AttributeError, TokenError:
+            except _UNIT_ERRORS:
                 self.unit = None
+
+    @property
+    def where(self) -> str:
+        """Get the axis in the words of a message."""
+        return f"the axis {self.name} of the plot '{self.plot}'"
+
+    def index(self, names: list[str]) -> np.ndarray:
+        """Get the positions of names on the category axis.
+
+        Raises:
+            ValueError: for an axis which is no category axis and for a name
+                which is no category of an axis with given categories.
+        """
+        if self.axis.scale != "category":
+            raise ValueError(
+                f"{self.where} is no category axis and takes no names: {names[:3]}."
+            )
+        positions: list[float] = []
+        for name in names:
+            if name not in self.categories:
+                if self.axis.categories is not None:
+                    raise ValueError(
+                        f"'{name}' is no category of {self.where}, "
+                        f"which has {list(self.axis.categories)}."
+                    )
+                self.categories.append(name)
+            positions.append(float(self.categories.index(name)))
+        return np.asarray(positions, dtype=float)
 
     def spec(self) -> dict[str, Any]:
         """Get the axis as a dictionary of `figure/1`."""
         a = self.axis
         unit = short_unit(str(self.unit)) if self.unit is not None else a.unit
         spec: dict[str, Any] = {}
-        if a.label is not None:
-            spec["label"] = a.label
+        if self.label is not None:
+            spec["label"] = self.label
         if unit:
             spec["unit"] = unit
         spec["scale"] = a.scale
-        if a.categories is not None:
-            spec["categories"] = list(a.categories)
+        if a.scale == "category" or a.categories is not None:
+            spec["categories"] = list(self.categories)
         if a.min is not None:
             spec["min"] = float(a.min)
         if a.max is not None:
             spec["max"] = float(a.max)
+        if a.frame is not None:
+            spec["frame"] = {"low": a.frame[0], "high": a.frame[1]}
         if a.max_decades is not None:
             spec["max_decades"] = float(a.max_decades)
         spec.update(
-            reverse=a.reverse,
-            grid=a.grid,
-            label_visible=a.label_visible,
-            ticks_visible=a.ticks_visible,
+            reverse=bool(a.reverse),
+            grid=bool(a.grid),
+            label_visible=bool(a.label_visible),
+            ticks_visible=bool(a.ticks_visible),
             tick_rotation=float(a.tick_rotation),
         )
         return spec
 
 
-def _numbers(values: np.ndarray) -> list[float | None]:
+def _numbers(values: Values) -> list[float | None]:
     """Get the numbers of an array as a list, a value which is not finite `None`."""
     flat = np.asarray(values, dtype=float).ravel()
     return [float(v) if math.isfinite(v) else None for v in flat.tolist()]
 
 
-def _as_quantity(data: Values) -> Any:
-    """Get data as a pint quantity, or as an array without a unit."""
+def _finite(value: Values, name: str) -> float:
+    """Get a number which must be finite.
+
+    Raises:
+        ValueError: for a value which is not finite, naming the field.
+    """
+    number = float(np.asarray(value, dtype=float).ravel()[0])
+    if not math.isfinite(number):
+        raise ValueError(f"The {name} must be a finite number, not {number}.")
+    return number
+
+
+def _names(data: Values) -> list[str] | None:
+    """Get data as names of categories, `None` for data which are no names."""
+    if isinstance(data, str):
+        return [data]
     if isinstance(data, Quantity):
-        return data
-    if isinstance(data, xr.DataArray):
-        units = data.attrs.get("units")
-        values = np.asarray(data.values, dtype=float)
-        return ureg.Quantity(values, units) if units else values
-    return np.asarray(data, dtype=float)
+        return None
+    values = data.values if isinstance(data, xr.DataArray) else data
+    try:
+        flat = np.asarray(values, dtype=object).ravel().tolist()
+    except ValueError:
+        return None
+    if flat and all(isinstance(v, str) for v in flat):
+        return flat
+    return None
 
 
 def _magnitude(data: Values) -> np.ndarray:
     """Get the numbers of data in its own unit, for values on no axis."""
-    data = _as_quantity(data)
     if isinstance(data, Quantity):
         return np.asarray(data.magnitude, dtype=float)
-    return data
+    if isinstance(data, xr.DataArray):
+        return np.asarray(data.values, dtype=float)
+    return np.asarray(data, dtype=float)
+
+
+@dataclass(frozen=True)
+class _Style:
+    """The style keywords of an element; `None` leaves a part to the renderer."""
+
+    color: str | None = None
+    opacity: float = 1.0
+    line: LineType | None = None
+    width: float | None = None
+    marker: str | None = None
+    size: float | None = None
+    marker_fill: str | None = None
+    edge: str | None = None
+    edge_width: float | None = None
+    fill: str | None = None
+    fill_opacity: float | None = None
+    default_fill_opacity: float = 1.0
+
+    def spec(self) -> dict[str, Any]:
+        """Get the style as a dictionary of `figure/1`."""
+        style: dict[str, Any] = {}
+        if self.color is not None:
+            style["color"] = self.color
+        style["opacity"] = float(self.opacity)
+        if self.line is not None or self.width is not None:
+            style["line"] = {
+                "type": self.line if self.line is not None else "solid",
+                "width": float(self.width) if self.width is not None else 2.0,
+            }
+        if self.marker is not None:
+            marker: dict[str, Any] = {"type": self.marker}
+            if self.size is not None:
+                marker["size"] = float(self.size)
+            if self.marker_fill is not None:
+                marker["fill"] = self.marker_fill
+            if self.edge is not None:
+                marker["edge"] = self.edge
+            if self.edge_width is not None:
+                marker["edge_width"] = float(self.edge_width)
+            style["marker"] = marker
+        if self.fill is not None or self.fill_opacity is not None:
+            fill: dict[str, Any] = {}
+            if self.fill is not None:
+                fill["color"] = self.fill
+            fill["opacity"] = float(
+                self.fill_opacity
+                if self.fill_opacity is not None
+                else self.default_fill_opacity
+            )
+            style["fill"] = fill
+        return style
 
 
 class ChartPlot:
     """A plot of a chart, which its methods add elements to.
 
     A plot is created by `Chart.plot`; every method adds one element and
-    returns its id.
+    returns its id. The style keywords of a method are the ones the renderer
+    reads for its kind: `line` and `width` the line (of a curve, a rule, the
+    median of a band and the outline of a box, a violin and a polygon),
+    `fill` and `fill_opacity` the fill (of a band, an area, a bar, a box, a
+    violin, a histogram and a polygon; a band, an area, a box, a violin and a
+    polygon are filled with their color at `BAND_OPACITY` without them) and
+    `marker`, `size`, `edge` and `edge_width` the markers of a curve and the
+    outliers of a box.
     """
 
     def __init__(
@@ -203,23 +340,29 @@ class ChartPlot:
         y2: ChartAxis | None,
         legend: bool,
         legend_order: Sequence[str] | None,
+        declared_legends: Sequence[Sequence[str]] | None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
         self.id = id
-        self.row = row
-        self.column = column
-        self.row_span = row_span
-        self.column_span = column_span
+        self.row = int(row)
+        self.column = int(column)
+        self.row_span = int(row_span)
+        self.column_span = int(column_span)
         self.title = title
-        self.legend = legend
+        self.legend = bool(legend)
         self.legend_order = None if legend_order is None else list(legend_order)
+        self.declared_legends = (
+            None
+            if declared_legends is None
+            else [list(entries) for entries in declared_legends]
+        )
         self._axes: dict[str, _AxisState] = {
-            "x": _AxisState("x", x),
-            "y": _AxisState("y", y),
+            "x": _AxisState("x", id, x),
+            "y": _AxisState("y", id, y),
         }
         if y2 is not None:
-            self._axes["y2"] = _AxisState("y2", y2)
+            self._axes["y2"] = _AxisState("y2", id, y2)
         self._elements: list[dict[str, Any]] = []
         self._colorbar: dict[str, Any] | None = None
 
@@ -232,22 +375,48 @@ class ChartPlot:
     def _on(self, axis: AxisName, data: Values) -> np.ndarray:
         """Get data as numbers in the unit of an axis, which may take its unit.
 
+        Names on a category axis are the indices of their categories; the
+        first data array with a name on an axis without a label names it.
+
         Raises:
             pint.DimensionalityError: for a quantity which the unit of the
                 axis cannot take.
+            ValueError: for names on an axis which takes none and for units
+                which cannot be converted to the unit of the axis.
         """
         state = self._state(axis)
-        data = _as_quantity(data)
+        names = _names(data)
+        if names is not None:
+            return state.index(names)
+        if isinstance(data, xr.DataArray):
+            if state.label is None and isinstance(data.name, str):
+                state.label = data.name
+            units = data.attrs.get("units")
+            values = np.asarray(data.values, dtype=float)
+            if not units:
+                return values
+            try:
+                data = ureg.Quantity(values, units)
+            except _UNIT_ERRORS as error:
+                raise ValueError(
+                    f"The units '{units}' of a data array on {state.where} are "
+                    f"no units of pint: {error}"
+                ) from error
         if not isinstance(data, Quantity):
-            return data
+            return np.asarray(data, dtype=float)
         if state.unit is None:
             if state.axis.unit:
                 raise ValueError(
-                    f"The axis {axis} of the plot '{self.id}' has the unit "
-                    f"'{state.axis.unit}', which pint does not know, so a quantity "
-                    "cannot be converted to it."
+                    f"{state.where} has the unit '{state.axis.unit}', which pint "
+                    "does not know, so a quantity cannot be converted to it."
                 )
-            state.unit = data.units
+            try:
+                state.unit = ureg.Unit(str(data.units))
+            except _UNIT_ERRORS as error:
+                raise ValueError(
+                    f"The unit '{data.units}' of a quantity on {state.where} is no "
+                    f"unit of the registry of sbmlsim: {error}"
+                ) from error
             return np.asarray(data.magnitude, dtype=float)
         try:
             return np.asarray(data.to(state.unit).magnitude, dtype=float)
@@ -257,27 +426,31 @@ class ChartPlot:
                 error.units2,
                 error.dim1,
                 error.dim2,
-                extra_msg=f" on the axis {axis} of the plot '{self.id}'",
+                extra_msg=f" on {state.where}",
+            ) from error
+        except _UNIT_ERRORS as error:
+            raise ValueError(
+                f"A quantity of '{data.units}' cannot be converted to the unit "
+                f"'{state.unit}' of {state.where}: {error}"
             ) from error
 
-    def _scalar(self, axis: AxisName, value: Values) -> float:
-        """Get one value in the unit of an axis."""
-        return float(np.asarray(self._on(axis, value), dtype=float).ravel()[0])
+    def _position(self, axis: AxisName, value: Values, name: str) -> float:
+        """Get one finite value in the unit of an axis."""
+        return _finite(self._on(axis, value), name)
 
     def _add(
         self,
         kind: str,
         data: dict[str, Any],
+        style: _Style,
         *,
         label: str | None,
         legend: str | None,
         id: str | None,
         axis: AxisName,
-        style: dict[str, Any],
     ) -> str:
         """Add an element of a kind with its data and return its id."""
-        if axis != "y":
-            self._state(axis)
+        self._state(axis)
         element_id = self.chart._element_id(id)
         element: dict[str, Any] = {"id": element_id, "kind": kind}
         if label is not None:
@@ -285,19 +458,10 @@ class ChartPlot:
         if legend is not None:
             element["legend"] = legend
         element["axis"] = axis
-        element["style"] = style
+        element["style"] = style.spec()
         element.update(data)
         self._elements.append(element)
         return element_id
-
-    @staticmethod
-    def _style(color: str | None, opacity: float) -> dict[str, Any]:
-        """Get the style of a color and an opacity."""
-        style: dict[str, Any] = {}
-        if color is not None:
-            style["color"] = color
-        style["opacity"] = float(opacity)
-        return style
 
     def curve(
         self,
@@ -306,12 +470,13 @@ class ChartPlot:
         *,
         xerr: Values | None = None,
         yerr: Values | None = None,
-        line: str = "solid",
+        line: LineType = "solid",
         width: float = 2.0,
         marker: str = "none",
         size: float = 6.0,
         fill: str | None = None,
         edge: str | None = None,
+        edge_width: float = 1.0,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -334,6 +499,7 @@ class ChartPlot:
             size: the size of the markers in pixels.
             fill: the fill color of the markers.
             edge: the edge color of the markers.
+            edge_width: the width of the edge of the markers in pixels.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -352,16 +518,19 @@ class ChartPlot:
             data["xerr"] = _numbers(self._on("x", xerr))
         if yerr is not None:
             data["yerr"] = _numbers(self._on(axis, yerr))
-        style = self._style(color, opacity)
-        style["line"] = {"type": line, "width": float(width)}
-        markers: dict[str, Any] = {"type": marker, "size": float(size)}
-        if fill is not None:
-            markers["fill"] = fill
-        if edge is not None:
-            markers["edge"] = edge
-        style["marker"] = markers
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            marker=marker,
+            size=size,
+            marker_fill=fill,
+            edge=edge,
+            edge_width=edge_width,
+        )
         return self._add(
-            "curve", data, label=label, legend=legend, id=id, axis=axis, style=style
+            "curve", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def band(
@@ -371,6 +540,10 @@ class ChartPlot:
         high: Values,
         *,
         median: Values | None = None,
+        line: LineType = "solid",
+        width: float = 2.0,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -385,6 +558,10 @@ class ChartPlot:
             low: the lower edge.
             high: the upper edge.
             median: the median line.
+            line: the type of the median line.
+            width: the width of the median line in pixels.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, `BAND_OPACITY` by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -402,14 +579,17 @@ class ChartPlot:
         }
         if median is not None:
             data["median"] = _numbers(self._on(axis, median))
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            default_fill_opacity=BAND_OPACITY,
+        )
         return self._add(
-            "band",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "band", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def area(
@@ -418,6 +598,8 @@ class ChartPlot:
         low: Values,
         high: Values,
         *,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -431,6 +613,8 @@ class ChartPlot:
             x: the x values.
             low: the start of the area, `from` of the contract.
             high: the end of the area, `to` of the contract.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, `BAND_OPACITY` by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -446,14 +630,15 @@ class ChartPlot:
             "from": _numbers(self._on(axis, low)),
             "to": _numbers(self._on(axis, high)),
         }
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            default_fill_opacity=BAND_OPACITY,
+        )
         return self._add(
-            "area",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "area", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def bar(
@@ -464,6 +649,10 @@ class ChartPlot:
         err: Values | None = None,
         horizontal: bool = False,
         bar_width: float | None = None,
+        line: LineType | None = None,
+        width: float | None = None,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -471,15 +660,22 @@ class ChartPlot:
         opacity: float = 1.0,
         axis: Literal["y", "y2"] = "y",
     ) -> str:
-        """Add bars at positions or at the indices of categories.
+        """Add bars at positions or at categories.
 
         Args:
-            x: the positions, on the y axis for horizontal bars.
+            x: the positions or the names of their categories, on the y axis
+                for horizontal bars.
             height: the heights, on the x axis for horizontal bars.
             err: the errors of the heights.
             horizontal: whether the bars are horizontal.
             bar_width: the width of a bar in units of the axis of the
                 positions, the default of the renderer for `None`.
+            line: the type of the outline, in the color of the bars; no
+                outline is written without `line` and `width`, and the
+                renderer of sbmlsim-core 0.27.0 draws bars without one.
+            width: the width of the outline in pixels.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, 1 by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -497,17 +693,19 @@ class ChartPlot:
         }
         if err is not None:
             data["err"] = _numbers(self._on(heights, err))
-        data["horizontal"] = horizontal
+        data["horizontal"] = bool(horizontal)
         if bar_width is not None:
             data["width"] = float(bar_width)
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
+        )
         return self._add(
-            "bar",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "bar", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def box(
@@ -515,6 +713,14 @@ class ChartPlot:
         positions: Values,
         stats: Sequence[Mapping[str, Any]],
         *,
+        line: LineType = "solid",
+        width: float = 2.0,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
+        marker: str = "none",
+        size: float = 6.0,
+        edge: str | None = None,
+        edge_width: float = 1.0,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -525,10 +731,21 @@ class ChartPlot:
         """Add box plots, one per position.
 
         Args:
-            positions: the positions on the x axis.
+            positions: the positions on the x axis or the names of their
+                categories.
             stats: the statistics of every box: `low_whisker`, `q1`,
                 `median`, `q3`, `high_whisker` and optional `outliers`,
-                values on the y axis.
+                values on the y axis; an outlier which is not finite is left
+                out.
+            line: the type of the outline of the boxes.
+            width: the width of the outline in pixels.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, `BAND_OPACITY` by default.
+            marker: the marker of the outliers, `none` for the open circles
+                of the renderer.
+            size: the size of the markers of the outliers in pixels.
+            edge: the edge color of the markers of the outliers.
+            edge_width: the width of the edge of the markers in pixels.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -538,24 +755,35 @@ class ChartPlot:
 
         Returns:
             The id of the element.
+
+        Raises:
+            ValueError: for a statistic which is not finite.
         """
         boxes: list[dict[str, Any]] = []
-        for stat in stats:
+        for k, stat in enumerate(stats):
             box: dict[str, Any] = {
-                key: self._scalar(axis, stat[key])
+                key: _finite(self._on(axis, stat[key]), f"stats[{k}].{key}")
                 for key in ("low_whisker", "q1", "median", "q3", "high_whisker")
             }
-            box["outliers"] = _numbers(self._on(axis, stat.get("outliers", [])))
+            outliers = _numbers(self._on(axis, stat.get("outliers", [])))
+            box["outliers"] = [v for v in outliers if v is not None]
             boxes.append(box)
         data = {"positions": _numbers(self._on("x", positions)), "stats": boxes}
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            default_fill_opacity=BAND_OPACITY,
+            marker=marker,
+            size=size,
+            edge=edge,
+            edge_width=edge_width,
+        )
         return self._add(
-            "box",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "box", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def violin(
@@ -563,6 +791,10 @@ class ChartPlot:
         positions: Values,
         densities: Sequence[Mapping[str, Any]],
         *,
+        line: LineType = "solid",
+        width: float = 2.0,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -573,9 +805,14 @@ class ChartPlot:
         """Add violins, one per position.
 
         Args:
-            positions: the positions on the x axis.
+            positions: the positions on the x axis or the names of their
+                categories.
             densities: the density of every violin, `values` on the y axis
                 and their `density`, of one length.
+            line: the type of the outline of the violins.
+            width: the width of the outline in pixels.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, `BAND_OPACITY` by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -596,14 +833,17 @@ class ChartPlot:
                 for d in densities
             ],
         }
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            default_fill_opacity=BAND_OPACITY,
+        )
         return self._add(
-            "violin",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "violin", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def histogram(
@@ -611,6 +851,8 @@ class ChartPlot:
         edges: Values,
         counts: Values,
         *,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -623,6 +865,8 @@ class ChartPlot:
         Args:
             edges: the edges of the bins on the x axis, one more than counts.
             counts: the counts of the bins.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, 1 by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -637,14 +881,11 @@ class ChartPlot:
             "edges": _numbers(self._on("x", edges)),
             "counts": _numbers(self._on(axis, counts)),
         }
+        style = _Style(
+            color=color, opacity=opacity, fill=fill, fill_opacity=fill_opacity
+        )
         return self._add(
-            "histogram",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "histogram", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def heatmap(
@@ -692,7 +933,7 @@ class ChartPlot:
         Returns:
             The id of the element.
         """
-        cells = [_numbers(_magnitude(row)) for row in _magnitude_rows(values)]
+        cells = [_numbers(_magnitude(row)) for row in _rows(values)]
         data: dict[str, Any] = {
             "rows": [str(r) for r in rows],
             "columns": [str(c) for c in columns],
@@ -704,11 +945,11 @@ class ChartPlot:
         return self._add(
             "heatmap",
             data,
+            _Style(color=color, opacity=opacity),
             label=label,
             legend=legend,
             id=id,
             axis=axis,
-            style=self._style(color, opacity),
         )
 
     def text(
@@ -728,7 +969,7 @@ class ChartPlot:
         """Add a text at a position.
 
         Args:
-            x: the x position.
+            x: the x position, or the name of its category.
             y: the y position.
             text: the text.
             anchor: the anchor of the text at the position, `start`,
@@ -742,21 +983,24 @@ class ChartPlot:
 
         Returns:
             The id of the element.
+
+        Raises:
+            ValueError: for a position which is not finite.
         """
         data = {
-            "x": self._scalar("x", x),
-            "y": self._scalar(axis, y),
-            "text": text,
+            "x": self._position("x", x, "x of a text"),
+            "y": self._position(axis, y, "y of a text"),
+            "text": str(text),
             "anchor": anchor,
         }
         return self._add(
             "text",
             data,
+            _Style(color=color, opacity=opacity),
             label=label,
             legend=legend,
             id=id,
             axis=axis,
-            style=self._style(color, opacity),
         )
 
     def rule(
@@ -764,6 +1008,8 @@ class ChartPlot:
         value: Values,
         *,
         orientation: Literal["horizontal", "vertical"] = "horizontal",
+        line: LineType = "solid",
+        width: float = 2.0,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -777,6 +1023,8 @@ class ChartPlot:
             value: the position on the other axis, a value of the y axis
                 for a horizontal rule and of the x axis for a vertical one.
             orientation: `horizontal` or `vertical`.
+            line: the type of the line.
+            width: the width of the line in pixels.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -786,23 +1034,28 @@ class ChartPlot:
 
         Returns:
             The id of the element.
+
+        Raises:
+            ValueError: for a value which is not finite.
         """
         on: AxisName = axis if orientation == "horizontal" else "x"
-        data = {"orientation": orientation, "value": self._scalar(on, value)}
+        data = {
+            "orientation": orientation,
+            "value": self._position(on, value, "value of a rule"),
+        }
+        style = _Style(color=color, opacity=opacity, line=line, width=width)
         return self._add(
-            "rule",
-            data,
-            label=label,
-            legend=legend,
-            id=id,
-            axis=axis,
-            style=self._style(color, opacity),
+            "rule", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def polygon(
         self,
         paths: Sequence[Values],
         *,
+        line: LineType = "solid",
+        width: float = 2.0,
+        fill: str | None = None,
+        fill_opacity: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -813,7 +1066,14 @@ class ChartPlot:
         """Add filled polygons.
 
         Args:
-            paths: the rings, each of `[x, y]` pairs with at least 3 points.
+            paths: the rings, each of at least 3 points: `[x, y]` pairs, an
+                array or a quantity of the shape `(n, 2)`, or a tuple
+                `(x, y)` of the coordinates; the x coordinates are values of
+                the x axis and the y coordinates of the y axis.
+            line: the type of the outline, `none` for none.
+            width: the width of the outline in pixels.
+            fill: the fill color, the color by default.
+            fill_opacity: the opacity of the fill, `BAND_OPACITY` by default.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -826,18 +1086,34 @@ class ChartPlot:
         """
         rings: list[list[list[float | None]]] = []
         for path in paths:
-            points = np.asarray(path, dtype=float).reshape(-1, 2)
-            xs = _numbers(points[:, 0])
-            ys = _numbers(points[:, 1])
-            rings.append([[px, py] for px, py in zip(xs, ys, strict=True)])
+            xs, ys = _columns(path)
+            rings.append(
+                [
+                    [px, py]
+                    for px, py in zip(
+                        _numbers(self._on("x", xs)),
+                        _numbers(self._on(axis, ys)),
+                        strict=True,
+                    )
+                ]
+            )
+        style = _Style(
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            default_fill_opacity=BAND_OPACITY,
+        )
         return self._add(
             "polygon",
             {"paths": rings},
+            style,
             label=label,
             legend=legend,
             id=id,
             axis=axis,
-            style=self._style(color, opacity),
         )
 
     def colorbar(
@@ -850,7 +1126,7 @@ class ChartPlot:
         center: float | None = None,
         log: bool = False,
     ) -> None:
-        """Give the plot a color bar, which is no element.
+        """Give the plot a color bar, which is a field of the plot and no element.
 
         Args:
             scale: the name of the color scale.
@@ -885,17 +1161,30 @@ class ChartPlot:
         spec["legend"] = self.legend
         if self._colorbar is not None:
             spec["colorbar"] = self._colorbar
+        if self.declared_legends is not None:
+            spec["declared_legends"] = self.declared_legends
         if self.legend_order is not None:
-            spec["legend_order"] = list(self.legend_order)
-        spec["elements"] = [dict(e) for e in self._elements]
-        return spec
+            spec["legend_order"] = self.legend_order
+        spec["elements"] = self._elements
+        return copy.deepcopy(spec)
 
 
-def _magnitude_rows(values: Values) -> list[Any]:
+def _rows(values: Values) -> list[Any]:
     """Get the rows of the values of a heat map, which may differ in length."""
     if isinstance(values, Quantity | xr.DataArray | np.ndarray):
         return list(np.atleast_2d(_magnitude(values)))
     return list(values)
+
+
+def _columns(path: Values) -> tuple[Values, Values]:
+    """Get the x and y coordinates of a ring of a polygon."""
+    if isinstance(path, tuple) and len(path) == 2:
+        return path
+    if isinstance(path, Quantity):
+        points = np.asarray(path.magnitude, dtype=float).reshape(-1, 2)
+        return points[:, 0] * path.units, points[:, 1] * path.units
+    points = np.asarray(path, dtype=float).reshape(-1, 2)
+    return points[:, 0], points[:, 1]
 
 
 def _color_scale(
@@ -915,7 +1204,7 @@ def _color_scale(
     scale: dict[str, Any] = {"name": name, "low": float(low), "high": float(high)}
     if center is not None:
         scale["center"] = float(center)
-    scale["log"] = log
+    scale["log"] = bool(log)
     return scale
 
 
@@ -955,14 +1244,14 @@ class Chart:
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
             legend_position: `inside` or `outside`, right of the plot.
         """
-        self.width = width
-        self.height = height
+        self.width = float(width)
+        self.height = float(height)
         self.title = title
-        self.rows = rows
-        self.columns = columns
-        self.wspace = wspace
-        self.hspace = hspace
-        self.fonts = None if fonts is None else dict(fonts)
+        self.rows = int(rows)
+        self.columns = int(columns)
+        self.wspace = float(wspace)
+        self.hspace = float(hspace)
+        self.fonts = None if fonts is None else {k: float(v) for k, v in fonts.items()}
         self.legend_scope = legend_scope
         self.legend_position = legend_position
         self.plots: list[ChartPlot] = []
@@ -982,6 +1271,7 @@ class Chart:
         y2: ChartAxis | None = None,
         legend: bool = True,
         legend_order: Sequence[str] | None = None,
+        declared_legends: Sequence[Sequence[str]] | None = None,
     ) -> ChartPlot:
         """Add a plot at a cell of the grid.
 
@@ -996,6 +1286,9 @@ class Chart:
             y2: the right y axis, which elements select with `axis="y2"`.
             legend: whether the plot has a legend.
             legend_order: the legend groups listed first, in this order.
+            declared_legends: the legends the plot may show in some state of
+                a page, each a list of entry labels, whose largest takes the
+                room of the legend.
 
         Returns:
             The plot, which its methods add elements to.
@@ -1013,6 +1306,7 @@ class Chart:
             y2=y2,
             legend=legend,
             legend_order=legend_order,
+            declared_legends=declared_legends,
         )
         self.plots.append(plot)
         return plot
@@ -1038,8 +1332,8 @@ class Chart:
         """Get the spec of the chart as a dictionary of `figure/1`.
 
         Returns:
-            The spec with the snake case fields of the contract, an optional
-            field which is `None` left out and a gap `None`.
+            A copy of the spec with the snake case fields of the contract, an
+            optional field which is `None` left out and a gap `None`.
         """
         spec: dict[str, Any] = {
             "contract": FIGURE_CONTRACT,
