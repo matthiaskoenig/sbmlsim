@@ -32,19 +32,9 @@ from typing import Any
 
 import numpy as np
 import xarray as xr
-from matplotlib import colormaps
-from matplotlib.colors import (
-    BoundaryNorm,
-    Colormap,
-    LinearSegmentedColormap,
-    ListedColormap,
-    LogNorm,
-    Normalize,
-    to_hex,
-    to_rgb,
-)
 
 from sbmlsim.data import ROW
+from sbmlsim.engine import import_core
 from sbmlsim.plot.padding import without_padding
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.result.timecourse import PLOT_POINTS, plot_times
@@ -71,6 +61,32 @@ MAX_TICKS = 12
 #: the part of the colour map the points use: its light yellow end is hard to
 #: see on white
 _COLORMAP_END = 0.85
+
+#: the number of colours of the ramp of a colour bar
+RAMP_SIZE = 256
+
+#: the colours of the names of matplotlib which a colour of a style may use
+_NAMED = {
+    "tab:blue": "#1f77b4",
+    "tab:orange": "#ff7f0e",
+    "tab:green": "#2ca02c",
+    "tab:red": "#d62728",
+    "tab:purple": "#9467bd",
+    "tab:brown": "#8c564b",
+    "tab:pink": "#e377c2",
+    "tab:gray": "#7f7f7f",
+    "tab:olive": "#bcbd22",
+    "tab:cyan": "#17becf",
+    "black": "#000000",
+    "white": "#ffffff",
+    "red": "#ff0000",
+    "green": "#008000",
+    "blue": "#0000ff",
+    "gray": "#808080",
+    "grey": "#808080",
+    "orange": "#ffa500",
+    "purple": "#800080",
+}
 
 #: how much white the lightest shade of a colour has
 _LIGHTEST = 0.65
@@ -349,31 +365,34 @@ def point_colors(n: int, color: str | None) -> list[str]:
 
     Returns:
         Shades of the colour from light to the colour itself, or colours of the
-        colour map `COLORMAP`, as hex strings; one point keeps the colour.
+        colour scale `COLORMAP` of sbmlsim-core, as hex strings; one point
+        keeps the colour.
+    """
+    if color is not None and n == 1:
+        return [_hex(_rgb(color))]
+    return _ramp(color, np.linspace(0.0, 1.0, n))
+
+
+def point_ramp(color: str | None) -> list[str]:
+    """Get the `RAMP_SIZE` colours of the colour bar of a dimension, see `point_colors`."""
+    return _ramp(color, np.linspace(0.0, 1.0, RAMP_SIZE))
+
+
+def _ramp(color: str | None, fractions: np.ndarray) -> list[str]:
+    """Get the colours at fractions of the colour range of the points.
+
+    The range is the shades of a colour from light to the colour or the first
+    `_COLORMAP_END` of the colour scale.
     """
     if color is not None:
-        if n == 1:
-            return [to_hex(color)]
-        return [_shade(color, f) for f in np.linspace(_LIGHTEST, 0.0, n)]
-    return [to_hex(colormaps[COLORMAP](f)) for f in np.linspace(0.0, _COLORMAP_END, n)]
-
-
-def point_colormap(color: str | None) -> Colormap:
-    """Get the colour map of the colour bar of a dimension, see `point_colors`."""
-    if color is not None:
-        return LinearSegmentedColormap.from_list(
-            "shades", [_shade(color, _LIGHTEST), to_hex(color)]
+        return [_shade(color, _LIGHTEST * (1.0 - float(f))) for f in fractions]
+    if fractions.size == 0:
+        return []
+    return list(
+        import_core().color_scale(
+            COLORMAP, 0.0, 1.0, [float(f) * _COLORMAP_END for f in fractions]
         )
-    return ListedColormap(colormaps[COLORMAP](np.linspace(0.0, _COLORMAP_END, 256)))
-
-
-def cycle_color(position: int) -> str:
-    """Get the colour of the colour cycle of matplotlib at a position, as a hex string.
-
-    It is the colour of a band without a colour, by its position among the
-    bands of its plot, in both backends.
-    """
-    return to_hex(f"C{position}")
+    )
 
 
 def point_linestyles(n: int) -> list[str]:
@@ -450,23 +469,39 @@ def point_labels(
     return [f"{target} = {format_value(value)} {unit}".rstrip() for value in values]
 
 
-def point_norm(values: np.ndarray) -> Normalize | None:
-    """Get the norm which maps the values of the points of a dimension onto a colour map.
+def point_scale(values: np.ndarray) -> tuple[float, float, bool] | None:
+    """Get the range which maps the values of the points of a dimension onto colours.
 
     Returns:
-        A logarithmic norm when all values are positive and the largest is
-        more than `LOG_RATIO` times the smallest, else a linear one from the
-        smallest to the largest value; `None` if the values do not span a
+        `(low, high, log)`, logarithmic when all values are positive and the
+        largest is more than `LOG_RATIO` times the smallest, else linear from
+        the smallest to the largest value; `None` if the values do not span a
         range (a single value, equal values or a value which is not finite).
     """
     if values.size == 0 or not np.all(np.isfinite(values)):
         return None
-    vmin, vmax = float(np.min(values)), float(np.max(values))
-    if vmax <= vmin:
+    low, high = float(np.min(values)), float(np.max(values))
+    if high <= low:
         return None
-    if vmin > 0.0 and vmax / vmin > LOG_RATIO:
-        return LogNorm(vmin, vmax)
-    return Normalize(vmin, vmax)
+    return low, high, low > 0.0 and high / low > LOG_RATIO
+
+
+def _fraction(value: float, low: float, high: float, log: bool) -> float:
+    """Get the position of a value in the range, 0 at its low and 1 at its high end."""
+    if log:
+        return math.log(value / low) / math.log(high / low)
+    return (value - low) / (high - low)
+
+
+def _value_ticks(low: float, high: float, log: bool) -> list[float]:
+    """Get the ticks of a colour bar of values: the decades of a log range, else five."""
+    if log:
+        decades = [
+            10.0**k
+            for k in range(math.ceil(math.log10(low)), math.floor(math.log10(high)) + 1)
+        ]
+        return decades if len(decades) >= 2 else [low, high]
+    return [float(t) for t in np.linspace(low, high, 5)]
 
 
 def format_value(value: float) -> str:
@@ -537,10 +572,56 @@ def _labels(
     }
 
 
+def _rgb(color: str) -> np.ndarray:
+    """Parse a colour, a hex string or a name of `_NAMED`, as floats of 0 to 1."""
+    text = _NAMED.get(color, color)
+    digits = text[1:] if text.startswith("#") else ""
+    if len(digits) in (3, 4):
+        digits = "".join(c * 2 for c in digits)
+    digits = digits[:6]
+    try:
+        if len(digits) != 6:
+            raise ValueError(color)
+        return np.array([int(digits[i : i + 2], 16) for i in (0, 2, 4)]) / 255.0
+    except ValueError:
+        raise ValueError(
+            f"the colour {color!r} is no hex colour or known name"
+        ) from None
+
+
+def _hex(rgb: np.ndarray) -> str:
+    """Write floats of 0 to 1 as a hex colour."""
+    return "#" + "".join(f"{round(float(c) * 255):02x}" for c in rgb)
+
+
 def _shade(color: str, white: float) -> str:
     """Mix a colour with a part of white, as a hex string."""
-    rgb = np.asarray(to_rgb(color))
-    return to_hex(rgb + (1.0 - rgb) * white)
+    rgb = _rgb(color)
+    return _hex(rgb + (1.0 - rgb) * white)
+
+
+@dataclass(frozen=True)
+class ColorBarScale:
+    """The scale of the colour bar of a dimension.
+
+    Attributes:
+        low: the value at the low end of the colour bar.
+        high: the value at its high end.
+        log: whether the scale is logarithmic.
+        ticks: the values which get a tick.
+        labels: the label of every tick.
+        categorical: whether it has a step per point, the ticks being the
+            positions of the points `0..n-1` (the range is half a step wider
+            on both sides) and the labels their labels, of which a renderer
+            shows `tick_positions`.
+    """
+
+    low: float
+    high: float
+    log: bool
+    ticks: list[float]
+    labels: list[str]
+    categorical: bool
 
 
 @dataclass(frozen=True)
@@ -555,11 +636,9 @@ class PointStyle:
         values: the values of the points of the first dimension, their
             positions without a single target.
         title: the label of the colour bar, `<target> [<unit>]` or the dimension.
-        norm: the norm of the colours and the colour bar: linear or logarithmic
-            over the values, a boundary per point over the positions.
-        colormap: the colour map the norm maps onto.
-        ticks: the tick labels of a discrete colour bar (the labels of the
-            points), `None` for a colour bar of values.
+        scale: the scale of the colour bar, `None` for no points.
+        ramp: the colours of the colour bar from its low to its high end.
+        middle: the colour of the middle of the ramp, of the legend entry of a curve.
     """
 
     colors: list[str]
@@ -568,14 +647,9 @@ class PointStyle:
     colorbar: bool
     values: np.ndarray
     title: str
-    norm: Normalize
-    colormap: Colormap
-    ticks: list[str] | None
-
-    @property
-    def middle(self) -> str:
-        """Get the colour of the middle of the colour map, of the legend entry of a curve."""
-        return to_hex(self.colormap(0.5))
+    scale: ColorBarScale | None
+    ramp: list[str]
+    middle: str
 
 
 def point_styles(
@@ -612,20 +686,36 @@ def point_styles(
     ]
     n = len(labels_of[0])
     found = point_values(dimensions[0], units, labels_of[0])
-    norm = point_norm(found[1]) if found is not None else None
-    ticks: list[str] | None = None
-    if found is not None and norm is not None:
+    span = point_scale(found[1]) if found is not None else None
+    ramp = point_ramp(color)
+    scale: ColorBarScale | None
+    if found is not None and span is not None:
         target, values, unit = found
+        low, high, log = span
         title = f"{target} [{unit}]" if unit else target
-        colormap = point_colormap(color)
-        colors = [to_hex(colormap(float(norm(value)))) for value in values]
+        fractions = np.array([_fraction(float(v), low, high, log) for v in values])
+        colors = _ramp(color, fractions)
+        ticks = _value_ticks(low, high, log)
+        scale = ColorBarScale(
+            low, high, log, ticks, [format_value(t) for t in ticks], False
+        )
     else:
         values = np.arange(n, dtype=float)
         title = over[0]
         colors = point_colors(n, color)
-        colormap = ListedColormap(colors) if n else point_colormap(color)
-        norm = BoundaryNorm(np.arange(n + 1) - 0.5, n) if n else Normalize(0.0, 1.0)
-        ticks = [label_text(label) for label in labels_of[0]]
+        ramp = colors if n else ramp
+        scale = (
+            ColorBarScale(
+                -0.5,
+                n - 0.5,
+                False,
+                [float(k) for k in range(n)],
+                [label_text(label) for label in labels_of[0]],
+                True,
+            )
+            if n
+            else None
+        )
     return PointStyle(
         colors=colors,
         linestyles=point_linestyles(len(labels_of[1])) if len(over) == 2 else None,
@@ -633,7 +723,9 @@ def point_styles(
         colorbar=n >= COLORBAR_FROM,
         values=values,
         title=title,
-        norm=norm,
-        colormap=colormap,
-        ticks=ticks,
+        scale=scale,
+        ramp=ramp,
+        middle=colors[int(0.5 * n)]
+        if scale is not None and scale.categorical
+        else ramp[RAMP_SIZE // 2],
     )

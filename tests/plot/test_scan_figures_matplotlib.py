@@ -18,8 +18,8 @@ from matplotlib.transforms import Bbox
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Axis, Figure, FigureSettings, Plot
+from sbmlsim.plot._mpl_compat import point_colormap
 from sbmlsim.plot.plotting import CurveType, YAxisPosition
-from sbmlsim.plot.points import point_colormap
 from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
 from sbmlsim.simulator import Simulator
 from tests.plot.scan_experiment import ScanFigures
@@ -459,6 +459,15 @@ def test_a_selected_second_dimension_draws_with_its_own_labels(
     assert _labels(ax)[3:] == [f"ke = 0.4 {unit}".rstrip(), f"ke = 0.2 {unit}".rstrip()]
 
 
+def _same_colors(a: list[str], b: list[str]) -> bool:
+    """Compare hex colours up to one level per channel, the lookup of a colour map is quantised."""
+    return len(a) == len(b) and all(
+        abs(int(x[i : i + 2], 16) - int(y[i : i + 2], 16)) <= 1
+        for x, y in zip(a, b, strict=True)
+        for i in (1, 3, 5)
+    )
+
+
 def test_geometric_doses_get_a_logarithmic_colour_bar(
     experiment: SimulationExperiment,
 ) -> None:
@@ -468,8 +477,8 @@ def test_geometric_doses_get_a_logarithmic_colour_bar(
     assert bar.get_ylim() == pytest.approx((1.0, 1000.0))
     values = np.geomspace(1, 1000, 12)
     norm, cmap = LogNorm(1.0, 1000.0), point_colormap(None)
-    assert _colors(ax) == [to_hex(cmap(float(norm(v)))) for v in values]
-    assert _colors(ax) == _bar_colors(bar, values)
+    assert _same_colors(_colors(ax), [to_hex(cmap(float(norm(v)))) for v in values])
+    assert _same_colors(_colors(ax), _bar_colors(bar, values))
 
 
 def test_decreasing_doses_keep_line_and_bar_consistent(
@@ -479,8 +488,8 @@ def test_decreasing_doses_keep_line_and_bar_consistent(
     bar = fig.axes[1]
     assert bar.get_yscale() == "linear"
     assert bar.get_ylim() == pytest.approx((10.0, 120.0))
-    assert _colors(ax) == _bar_colors(bar, np.linspace(120, 10, 12))
-    assert _colors(ax)[0] == to_hex(point_colormap(None)(1.0))
+    assert _same_colors(_colors(ax), _bar_colors(bar, np.linspace(120, 10, 12)))
+    assert _same_colors(_colors(ax)[:1], [to_hex(point_colormap(None)(1.0))])
 
 
 def test_a_dimension_of_labels_shows_its_labels_on_the_colour_bar(

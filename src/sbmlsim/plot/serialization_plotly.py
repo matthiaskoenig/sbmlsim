@@ -35,6 +35,12 @@ import numpy as np
 import xarray as xr
 from matplotlib.colors import Colormap, LogNorm, to_hex, to_rgb
 
+from sbmlsim.plot._mpl_compat import (
+    cycle_color,
+    style_colormap,
+    style_norm,
+    style_ticks,
+)
 from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     Axis,
@@ -59,7 +65,6 @@ from sbmlsim.plot.points import (
     band_label,
     band_lines,
     curve_lines,
-    cycle_color,
     format_value,
     point_styles,
     tick_positions,
@@ -188,21 +193,20 @@ def _colorbar_trace(styles: PointStyle) -> Any:
 
     colorbar: dict[str, Any] = {"title": {"text": styles.title, "side": "right"}}
     marker: dict[str, Any] = {"showscale": True, "colorbar": colorbar}
-    if styles.ticks is not None:
-        n = len(styles.ticks)
+    ticks_of = style_ticks(styles)
+    if ticks_of is not None:
+        n = len(ticks_of)
         scale: list[list[Any]] = []
         for k, color in enumerate(styles.colors):
             scale += [[k / n, color], [(k + 1) / n, color]]
         positions = tick_positions(n)
         marker.update(color=[-0.5, n - 0.5], cmin=-0.5, cmax=n - 0.5, colorscale=scale)
-        colorbar.update(
-            tickvals=positions, ticktext=[styles.ticks[k] for k in positions]
-        )
+        colorbar.update(tickvals=positions, ticktext=[ticks_of[k] for k in positions])
     else:
         # the norm of the values spans them, from the smallest to the largest
         vmin, vmax = float(np.min(styles.values)), float(np.max(styles.values))
-        marker["colorscale"] = _colorscale(styles.colormap)
-        if isinstance(styles.norm, LogNorm):
+        marker["colorscale"] = _colorscale(style_colormap(styles))
+        if isinstance(style_norm(styles), LogNorm):
             ticks = _log_ticks(vmin, vmax)
             marker["color"] = [math.log10(vmin), math.log10(vmax)]
             colorbar.update(

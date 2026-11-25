@@ -5,10 +5,9 @@ import warnings
 import numpy as np
 import pytest
 import xarray as xr
-from matplotlib import colormaps
-from matplotlib.colors import LogNorm, Normalize, to_hex, to_rgb
 
 from sbmlsim import Q
+from sbmlsim.engine import import_core
 from sbmlsim.plot.points import (
     LINE_STYLES,
     Line,
@@ -18,15 +17,23 @@ from sbmlsim.plot.points import (
     format_value,
     nan_quantile,
     onto_grid,
-    point_colormap,
     point_colors,
     point_labels,
     point_linestyles,
-    point_norm,
+    point_scale,
     point_styles,
     point_values,
 )
 from sbmlsim.simulation import Dimension, Simulation
+
+
+def _viridis(*fractions: float) -> list[str]:
+    return list(import_core().color_scale("viridis", 0.0, 1.0, list(fractions)))
+
+
+def _rgb(color: str) -> list[int]:
+    return [int(color[i : i + 2], 16) for i in (1, 3, 5)]
+
 
 TIME = np.array([0.0, 1.0, 2.0])
 
@@ -222,9 +229,9 @@ def test_a_band_across_a_dimension_the_data_has_not_raises() -> None:
 def test_point_colors() -> None:
     shades = point_colors(3, "#ff0000")
     assert shades[-1] == "#ff0000" and len(set(shades)) == 3
-    assert sum(to_rgb(shades[0])) > sum(to_rgb(shades[1]))  # lighter first
+    assert sum(_rgb(shades[0])) > sum(_rgb(shades[1]))  # lighter first
     viridis = point_colors(3, None)
-    assert viridis[0] == to_hex(colormaps["viridis"](0.0)) and len(set(viridis)) == 3
+    assert viridis == _viridis(0.0, 0.425, 0.85)
     assert point_colors(1, "#00ff00") == ["#00ff00"]
 
 
@@ -268,8 +275,7 @@ def _lines(dimension: Dimension, labels: list | None = None) -> list[Line]:
 def test_point_styles_of_one_dimension() -> None:
     dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0, 200.0], "mg")})
     style = point_styles(_lines(dose), ["dose"], None, [dose], {})
-    cmap = point_colormap(None)
-    assert style.colors == [to_hex(cmap(f)) for f in (0.0, 1 / 3, 1.0)]
+    assert style.colors == _viridis(0.0, 0.85 / 3, 0.85)
     assert style.linestyles is None
     assert style.labels[0] == ["PODOSE = 50 mg", "PODOSE = 100 mg", "PODOSE = 200 mg"]
     assert style.colorbar is False
@@ -306,7 +312,11 @@ def test_point_styles_without_a_target_use_the_positions() -> None:
         for i, label in enumerate(sims.labels)
     ]
     style = point_styles(lines, ["s"], None, [sims], {})
-    assert style.title == "s" and style.ticks == ["a", "b"]
+    assert (
+        style.title == "s"
+        and style.scale is not None
+        and style.scale.labels == ["a", "b"]
+    )
     np.testing.assert_allclose(style.values, [0.0, 1.0])
 
 
@@ -335,37 +345,38 @@ def test_point_styles_of_selected_points_of_two_dimensions() -> None:
     ]
     assert style.linestyles == ["-", "--"]
     np.testing.assert_allclose(style.values, [200.0, 100.0])
-    cmap = point_colormap(None)
-    assert style.colors == [to_hex(cmap(1.0)), to_hex(cmap(0.0))]
+    assert style.colors == _viridis(0.85, 0.0)
 
 
-def test_point_norm_is_logarithmic_above_a_factor_of_one_hundred() -> None:
-    assert isinstance(point_norm(np.array([1.0, 101.0])), LogNorm)
-    linear = point_norm(np.array([1.0, 100.0]))
-    assert type(linear) is Normalize and (linear.vmin, linear.vmax) == (1.0, 100.0)
-    assert type(point_norm(np.array([0.0, 1000.0]))) is Normalize
-    assert type(point_norm(np.array([-1.0, 1000.0]))) is Normalize
-    assert point_norm(np.array([5.0, 5.0])) is None
-    assert point_norm(np.array([5.0, np.nan])) is None
+def test_point_scale_is_logarithmic_above_a_factor_of_one_hundred() -> None:
+    assert point_scale(np.array([1.0, 101.0])) == (1.0, 101.0, True)
+    assert point_scale(np.array([1.0, 100.0])) == (1.0, 100.0, False)
+    assert point_scale(np.array([0.0, 1000.0])) == (0.0, 1000.0, False)
+    assert point_scale(np.array([-1.0, 1000.0])) == (-1.0, 1000.0, False)
+    assert point_scale(np.array([5.0, 5.0])) is None
+    assert point_scale(np.array([5.0, np.nan])) is None
 
 
-def test_point_colours_are_the_colour_map_at_their_values() -> None:
+def test_point_colours_are_the_colour_scale_at_their_values() -> None:
     values = np.geomspace(1, 1000, 12)
     geometric = Dimension("dose", values={"PODOSE": Q(values, "mg")})
     style = point_styles(_lines(geometric), ["dose"], None, [geometric], {})
-    assert isinstance(style.norm, LogNorm) and style.colorbar
-    cmap = point_colormap(None)
-    assert style.colors == [to_hex(cmap(float(style.norm(v)))) for v in values]
-    assert style.ticks is None
+    assert style.scale is not None and style.scale.log and style.colorbar
+    assert (style.scale.low, style.scale.high) == (1.0, 1000.0)
+    fractions = np.log10(values) / 3 * 0.85
+    assert style.colors == _viridis(*fractions)
+    assert style.scale.ticks == [1.0, 10.0, 100.0, 1000.0]
+    assert style.scale.labels == ["1", "10", "100", "1000"]
+    assert not style.scale.categorical
 
     decreasing = Dimension("dose", values={"PODOSE": Q(np.linspace(120, 10, 12), "mg")})
-    style = point_styles(_lines(decreasing), ["dose"], "tab:red", [decreasing], {})
-    assert type(style.norm) is Normalize
-    assert (style.norm.vmin, style.norm.vmax) == (10.0, 120.0)
-    shades = point_colormap("tab:red")
-    assert style.colors[0] == to_hex(shades(1.0))
-    assert style.colors[-1] == to_hex(shades(0.0))
-    assert style.middle == to_hex(shades(0.5))
+    style = point_styles(_lines(decreasing), ["dose"], "#d62728", [decreasing], {})
+    assert style.scale is not None and not style.scale.log
+    assert (style.scale.low, style.scale.high) == (10.0, 120.0)
+    assert style.colors[0] == "#d62728"
+    assert style.ramp[-1] == "#d62728" and len(style.ramp) == 256
+    assert style.ramp[0] == point_colors(2, "#d62728")[0]
+    assert style.colors[-1] == style.ramp[0]
 
 
 def test_point_styles_without_a_target_are_discrete_with_the_labels() -> None:
@@ -376,9 +387,11 @@ def test_point_styles_without_a_target_are_discrete_with_the_labels() -> None:
     )
     style = point_styles(_lines(cond), ["cond"], None, [cond], {})
     assert style.title == "cond"
-    assert style.ticks == ["0", "10", "20"]
-    assert style.colors == point_colors(3, None)
-    assert [to_hex(style.colormap(style.norm(k))) for k in range(3)] == style.colors
+    assert style.scale is not None and style.scale.categorical
+    assert (style.scale.low, style.scale.high) == (-0.5, 2.5)
+    assert style.scale.ticks == [0.0, 1.0, 2.0]
+    assert style.scale.labels == ["0", "10", "20"]
+    assert style.colors == point_colors(3, None) == style.ramp
     assert style.labels[0] == ["cond = 0", "cond = 10", "cond = 20"]
 
 
@@ -412,3 +425,19 @@ def test_a_band_of_many_steps_has_the_time_points_of_a_figure() -> None:
     assert x.size <= 301
     assert values.shape == (20, x.size)
     np.testing.assert_allclose(values.values[0], np.exp(-x.values), atol=1e-3)
+
+
+def test_no_matplotlib_import() -> None:
+    import ast
+    from pathlib import Path
+
+    import sbmlsim.plot.points as points
+
+    tree = ast.parse(Path(points.__file__).read_text())
+    modules = [
+        node.module if isinstance(node, ast.ImportFrom) else alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for alias in getattr(node, "names", [])
+    ]
+    assert not [m for m in modules if m and m.split(".")[0] == "matplotlib"]

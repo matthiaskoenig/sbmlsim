@@ -11,8 +11,8 @@ from matplotlib.colors import LogNorm, to_hex, to_rgb
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.plot._mpl_compat import point_colormap
 from sbmlsim.plot.plotting import YAxisPosition
-from sbmlsim.plot.points import point_colormap
 from sbmlsim.simulator import Simulator
 from tests.plot.scan_experiment import ScanFigures
 
@@ -287,6 +287,15 @@ def test_a_selected_second_dimension_draws_with_its_own_labels(
     assert entries[3:] == ["ke = 0.4 1/hr", "ke = 0.2 1/hr"]
 
 
+def _same_colors(a: list[str], b: list[str]) -> bool:
+    """Compare hex colours up to one level per channel, the lookup of a colour map is quantised."""
+    return len(a) == len(b) and all(
+        abs(int(x[i : i + 2], 16) - int(y[i : i + 2], 16)) <= 1
+        for x, y in zip(a, b, strict=True)
+        for i in (1, 3, 5)
+    )
+
+
 def test_geometric_doses_get_a_logarithmic_colour_bar(
     experiment: SimulationExperiment,
 ) -> None:
@@ -301,9 +310,10 @@ def test_geometric_doses_get_a_logarithmic_colour_bar(
     assert ticks["100"] == pytest.approx(2.0)
     values = np.geomspace(1, 1000, 12)
     norm, cmap = LogNorm(1.0, 1000.0), point_colormap(None)
-    assert [t.line.color for t in _lines(traces)] == [
-        to_hex(cmap(float(norm(v)))) for v in values
-    ]
+    assert _same_colors(
+        [t.line.color for t in _lines(traces)],
+        [to_hex(cmap(float(norm(v)))) for v in values],
+    )
     assert all(c == to_hex(cmap(f)) for f, c in bar.marker.colorscale)
 
 
