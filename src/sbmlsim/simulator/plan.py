@@ -204,10 +204,24 @@ class Assignment:
     formula: str | None = None
 
 
-#: the path of the pre-initialization of the plan itself in `Plan.places`,
-#: the one place whose targets the parameters of a condition of a fit of the
-#: engine override, see `sbmlsim.fit.fit_core`
-PREINIT: str = "preinit"
+class PlaceKind(StrEnum):
+    """What a place of a plan is, the question its readers ask of it.
+
+    A fit of the engine treats the places of a plan differently, and this is
+    what it reads instead of the path: the parameters of a condition override
+    the pre-initialization of the plan and nothing else, and a request
+    carries the formulas of a change as forms, which the engine evaluates
+    from its own state. `OTHER` is the answer for every other place, which is
+    the conservative one, so a place a later change gives `Plan` keeps the
+    gaps of a fit until it is given a rule of its own (#629).
+    """
+
+    #: the pre-initialization of the plan itself
+    PREINIT = "preinit"
+    #: the assignments of one change
+    CHANGE = "change"
+    #: any other place, e.g. the pre-initialization of a steady state
+    OTHER = "other"
 
 
 @dataclass(frozen=True)
@@ -220,11 +234,14 @@ class Place:
         where: the place in the words of a message to a user, e.g. `before
             the initialization`.
         assignments: the assignments of the place, in their order.
+        kind: what the place is, `OTHER` for a place without a rule of its
+            own.
     """
 
     path: str
     where: str
     assignments: tuple[Assignment, ...]
+    kind: PlaceKind = PlaceKind.OTHER
 
 
 @dataclass(frozen=True)
@@ -332,7 +349,9 @@ class Plan:
         others quiet, which is an objective that is wrong without saying so
         (#629). `tests/simulator/test_plan.py` derives the places from the
         annotations of `Plan` and of the types it holds, so a new field which
-        carries assignments and is not enumerated here fails the suite.
+        carries assignments and is not enumerated here fails the suite. What
+        those walkers read of a place is its `PlaceKind`, which a new place
+        does not name and which is `OTHER` for it.
 
         `steady_state_output` is no place: it carries no assignments, see
         `__post_init__`.
@@ -342,7 +361,14 @@ class Plan:
             one of its steady state and then the assignments of every event
             in the order of their times.
         """
-        places = [Place(PREINIT, "before the initialization", self.preinit)]
+        places = [
+            Place(
+                "preinit",
+                "before the initialization",
+                self.preinit,
+                PlaceKind.PREINIT,
+            )
+        ]
         if self.steady_state is not None:
             places.append(
                 Place(
@@ -356,6 +382,7 @@ class Plan:
                 f"events[{k}].assignments",
                 f"at the time {event.time}",
                 event.assignments,
+                PlaceKind.CHANGE,
             )
             for k, event in enumerate(self.events)
         ]
