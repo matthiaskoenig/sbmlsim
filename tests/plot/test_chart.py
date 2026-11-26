@@ -787,3 +787,190 @@ def test_legend_locations() -> None:
         Chart(400, 300, legend_loc="top")
     with pytest.raises(ValueError, match="none of best"):
         Chart(400, 300).plot(legend_loc="somewhere")
+
+
+def test_axis_ticks_and_tick_labels() -> None:
+    """An axis takes the values of its ticks and their labels (sbmlsim-core#115)."""
+    hours = ChartAxis(label="time", unit="hr", ticks=range(0, 145, 24))
+    chart = Chart()
+    plot = chart.plot(x=hours, y=ChartAxis(ticks=[0, 1], tick_labels=["0\nlow", "1"]))
+    plot.curve([0, 144], [0, 1])
+
+    spec = chart.spec()["plots"][0]
+    assert spec["x"]["ticks"] == [0, 24, 48, 72, 96, 120, 144]
+    assert "tick_labels" not in spec["x"]
+    assert spec["y"]["tick_labels"] == ["0\nlow", "1"]
+    # an axis without them writes neither, which the renderer of 0.30 reads
+    assert "ticks" not in Chart().plot().spec()["x"]
+    with pytest.raises(ValueError, match="need its ticks"):
+        ChartAxis(tick_labels=["a"])
+    with pytest.raises(ValueError, match="as many tick labels"):
+        ChartAxis(ticks=[0, 1], tick_labels=["a"])
+    with pytest.raises(ValueError, match="category axis"):
+        ChartAxis(scale="category", ticks=[0])
+
+
+def test_color_scale_of_stops() -> None:
+    """A scale is a name or the colours of a map at positions."""
+    stops = [(0.0, "#006d77"), (0.3, "seagreen"), (1.0, "#d8f3dc")]
+    chart = Chart()
+    plot = chart.plot()
+    plot.heatmap(["r"], ["a", "b"], [[0.0, 1.0]], scale=stops)
+    plot.colorbar(stops, 0.1, 2.0, log=True)
+
+    spec = chart.spec()["plots"][0]
+    scale = spec["elements"][0]["scale"]
+    assert "name" not in scale
+    assert scale["stops"] == [[0.0, "#006d77"], [0.3, "#2e8b57"], [1.0, "#d8f3dc"]]
+    assert spec["colorbar"]["scale"]["stops"] == scale["stops"]
+    chart.svg()
+    with pytest.raises(ValueError, match="unknown colour"):
+        Chart().plot().colorbar([(0.0, "nocolour"), (1.0, "#ffffff")], 0, 1)
+    with pytest.raises(ValueError, match="pair"):
+        Chart().plot().colorbar([0.0, 1.0], 0, 1)  # ty: ignore[invalid-argument-type]
+
+
+def test_colorbar_marks_and_placements() -> None:
+    """A color bar takes marks, a placement, a location, a length and a thickness."""
+    chart = Chart(800, 400, columns=2)
+    first = chart.plot(0, 0)
+    first.curve([0, 1], [0, 1])
+    first.colorbar(
+        "greens_r",
+        0.1,
+        2.0,
+        log=True,
+        label="renal function [-]",
+        ticks=[0.1, 1, 2],
+        tick_labels=["0.1\nsevere", "1", "2"],
+        marks=[1.0, {"value": 2.0, "color": "red", "width": 4}],
+        placement="top",
+        length=0.4,
+        thickness=16,
+    )
+    second = chart.plot(0, 1)
+    second.curve([0, 1], [0, 1], label="a")
+    second.colorbar("viridis", 0, 1, placement="inset", loc="lower left")
+
+    top = chart.spec()["plots"][0]["colorbar"]
+    assert top["marks"] == [
+        {"value": 1.0},
+        {"value": 2.0, "color": "#ff0000", "width": 4.0},
+    ]
+    assert (top["placement"], top["length"], top["thickness"]) == ("top", 0.4, 16.0)
+    assert "loc" not in top
+    inset = chart.spec()["plots"][1]["colorbar"]
+    assert (inset["placement"], inset["loc"]) == ("inset", "lower_left")
+    svg = chart.svg()
+    assert "sbmlsim-colorbar-top" in svg
+    assert "sbmlsim-colorbar-inset" in svg
+    # a bar right of its panel writes none of the fields
+    plain = Chart().plot()
+    plain.colorbar("viridis", 0, 1)
+    assert set(plain.spec()["colorbar"]) == {"scale"}
+    with pytest.raises(ValueError, match="inset bar"):
+        Chart().plot().colorbar("viridis", 0, 1, loc="upper left")
+    with pytest.raises(ValueError, match="inset bar"):
+        Chart().plot().colorbar("viridis", 0, 1, placement="inset", loc="best")
+    with pytest.raises(ValueError, match="share above 0"):
+        Chart().plot().colorbar("viridis", 0, 1, length=1.5)
+    with pytest.raises(ValueError, match="'right', 'top' or 'inset'"):
+        Chart().plot().colorbar("viridis", 0, 1, placement="left")  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError, match="mark of a color bar"):
+        Chart().plot().colorbar("viridis", 0, 1, marks=[{"at": 1}])
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "triangle_down",
+        "triangle_left",
+        "triangle_right",
+        "star",
+        "x_filled",
+        "plus_filled",
+        "pentagon",
+        "hexagon",
+        "thin_diamond",
+    ],
+)
+def test_markers_of_matplotlib(marker: str) -> None:
+    """The markers of matplotlib, half filled with the colour and their other fill."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve(
+        [0, 1],
+        [0, 1],
+        marker=marker,
+        size=10,
+        marker_fill_style="left",
+        marker_fill_alt="white",
+    )
+    style = chart.spec()["plots"][0]["elements"][0]["style"]["marker"]
+    assert style["type"] == marker
+    assert (style["fill_style"], style["fill_alt"]) == ("left", "#ffffff")
+    chart.svg()
+    # a full marker writes neither field
+    full = Chart()
+    full.plot().curve([0, 1], [0, 1], marker=marker)
+    marker_spec = full.spec()["plots"][0]["elements"][0]["style"]["marker"]
+    assert "fill_style" not in marker_spec
+    assert "fill_alt" not in marker_spec
+
+
+def test_box_and_error_widths() -> None:
+    """A box takes its width, the error bars of a curve and of bars theirs."""
+    chart = Chart()
+    plot = chart.plot(x=ChartAxis(scale="category", categories=["a", "b"]))
+    stats = [{"low_whisker": 0, "q1": 1, "median": 2, "q3": 3, "high_whisker": 4}]
+    plot.box([-0.2], stats, box_width=0.35)
+    plot.curve([0, 1], [1, 2], yerr=[0.5, 0.5], error_width=2)
+    plot.bar([0, 1], [1, 2], err=[0.1, 0.1], error_width=1.5)
+
+    box, curve, bar = chart.spec()["plots"][0]["elements"]
+    assert box["width"] == 0.35
+    assert curve["error_width"] == 2.0
+    assert bar["error_width"] == 1.5
+    chart.svg()
+    plain = Chart()
+    plain.plot().curve([0, 1], [1, 2], yerr=[0.5, 0.5])
+    assert "error_width" not in plain.spec()["plots"][0]["elements"][0]
+    with pytest.raises(ValueError, match="positive number"):
+        Chart().plot().box([0], stats, box_width=0)
+    with pytest.raises(ValueError, match="width in pixels"):
+        Chart().plot().curve([0], [0], yerr=[1], error_width=-1)
+
+
+def test_legend_below_the_grid_and_titles() -> None:
+    """A legend below the grid in columns with a title, a plot legend with its title."""
+    chart = Chart(
+        600,
+        300,
+        columns=2,
+        legend_position="bottom",
+        legend_columns=2,
+        legend_title="scan",
+        fonts={"plot_title": 14},
+    )
+    for k in range(2):
+        plot = chart.plot(0, k, title=f"p{k}")
+        for f in (0.5, 1.0, 2.0):
+            plot.curve([0, 1], [0, f], label=f"{f:g}", legend=f"g{f:g}")
+    spec = chart.spec()
+    assert spec["legend"] == {
+        "scope": "plot",
+        "position": "bottom",
+        "columns": 2,
+        "title": "scan",
+    }
+    assert spec["fonts"]["plot_title"] == 14.0
+    geometry = import_core().figure_geometry(chart.to_json())
+    assert {e["owner"] for e in geometry["legend_entries"]} == {"figure"}
+    assert geometry["height"] > 300
+    titled = Chart()
+    titled.plot(legend_title="3 day").curve([0, 1], [0, 1], label="a")
+    assert titled.spec()["plots"][0]["legend_title"] == "3 day"
+    assert "sbmlsim-legend-title" in titled.svg()
+    assert "columns" not in Chart().spec()["legend"]
+    with pytest.raises(ValueError, match="at least 1 column"):
+        Chart(legend_columns=0)

@@ -77,6 +77,40 @@ type LineType = Literal["solid", "dashed", "dotted", "dashdot", "none"]
 #: The aspect of a panel: `equal` or the length of a unit of y in units of x.
 type Aspect = Literal["equal"] | float
 
+#: A colour map: the name of a map of matplotlib, or its colours at positions,
+#: `[(0.0, color), (0.3, color), ..., (1.0, color)]`.
+type ColorMap = str | Sequence[tuple[float, str]]
+
+#: Which half of a marker its fill fills, matplotlib's `fillstyle`.
+type FillStyle = Literal["full", "left", "right", "bottom", "top"]
+
+#: Where a colour bar goes: right of its panel, above the panels of its row or
+#: inside its panel.
+type Placement = Literal["right", "top", "inset"]
+
+#: The markers of the renderer, the names of matplotlib's markers `o`, `s`,
+#: `^`, `D`, `+`, `x`, `v`, `<`, `>`, `*`, `X`, `P`, `p`, `h` and `d` (and
+#: `cross`, an `x` of its own).
+MARKERS: Final = (
+    "none",
+    "circle",
+    "square",
+    "triangle",
+    "diamond",
+    "cross",
+    "plus",
+    "x",
+    "triangle_down",
+    "triangle_left",
+    "triangle_right",
+    "star",
+    "x_filled",
+    "plus_filled",
+    "pentagon",
+    "hexagon",
+    "thin_diamond",
+)
+
 
 def axis_label(name: str, unit: Any) -> str:
     """Get the label of an axis: its name and the short form of its unit.
@@ -123,6 +157,14 @@ class ChartAxis:
             `None` for the default of the renderer.
         frame: the values `(low, high)` the axis must hold with its margins,
             in contrast to `min` and `max`, which are the ends themselves.
+        ticks: the values of the ticks in the unit of the axis instead of the
+            ones the renderer computes, matplotlib's `set_xticks`, e.g. every
+            24 hours of a time axis; a tick outside of the limits is not
+            drawn, the ticks do not change the limits; `None` for the ticks
+            of the renderer. Not on a category axis.
+        tick_labels: the labels of `ticks`, one per tick, a newline breaking
+            a label into lines and `^{...}` a superscript; `None` for their
+            numbers.
     """
 
     label: str | None = None
@@ -140,14 +182,37 @@ class ChartAxis:
     tick_rotation: float = 0.0
     max_decades: float | None = None
     frame: tuple[float, float] | None = None
+    ticks: Sequence[float] | None = None
+    tick_labels: Sequence[str] | None = None
 
     def __post_init__(self) -> None:
-        """Keep the categories and the frame as tuples."""
+        """Keep the categories, the frame and the ticks as tuples.
+
+        Raises:
+            ValueError: for ticks of a category axis, for tick labels without
+                ticks and for as many labels as there are not ticks.
+        """
         if self.categories is not None:
             object.__setattr__(self, "categories", tuple(self.categories))
         if self.frame is not None:
             low, high = self.frame
             object.__setattr__(self, "frame", (float(low), float(high)))
+        if self.ticks is not None:
+            if self.scale == "category":
+                raise ValueError(
+                    "A category axis has its categories as ticks and takes no ticks."
+                )
+            object.__setattr__(self, "ticks", tuple(float(t) for t in self.ticks))
+        if self.tick_labels is not None:
+            if self.ticks is None:
+                raise ValueError("The tick labels of an axis need its ticks.")
+            labels = tuple(str(t) for t in self.tick_labels)
+            if len(labels) != len(self.ticks):
+                raise ValueError(
+                    f"An axis of {len(self.ticks)} ticks takes as many tick labels, "
+                    f"not {len(labels)}."
+                )
+            object.__setattr__(self, "tick_labels", labels)
 
 
 @dataclass
@@ -231,6 +296,10 @@ class _AxisState:
             spec["tick_marks_visible"] = bool(a.tick_marks_visible)
         if not a.line_visible:
             spec["line_visible"] = False
+        if a.ticks is not None:
+            spec["ticks"] = list(a.ticks)
+        if a.tick_labels is not None:
+            spec["tick_labels"] = list(a.tick_labels)
         return spec
 
 
@@ -295,6 +364,22 @@ def _error_cap(error_cap: float) -> float:
     if not math.isfinite(value) or value < 0:
         raise ValueError(
             f"The caps of error bars are a length in pixels, not {error_cap!r}."
+        )
+    return value
+
+
+def _error_width(error_width: float | None) -> float | None:
+    """Get the width of the lines of error bars in pixels, `None` for the default.
+
+    Raises:
+        ValueError: for a width which is negative or not finite.
+    """
+    if error_width is None:
+        return None
+    value = float(error_width)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            f"The lines of error bars have a width in pixels, not {error_width!r}."
         )
     return value
 
@@ -365,6 +450,8 @@ class _Style:
     marker_fill: str | None = None
     marker_edge: str | None = None
     marker_edge_width: float | None = None
+    marker_fill_style: FillStyle = "full"
+    marker_fill_alt: str | None = None
     fill: str | None = None
     fill_opacity: float | None = None
     default_fill_opacity: float = 1.0
@@ -394,6 +481,10 @@ class _Style:
                 marker["edge"] = _marker_color(self.marker_edge)
             if self.marker_edge_width is not None:
                 marker["edge_width"] = float(self.marker_edge_width)
+            if self.marker_fill_style != "full":
+                marker["fill_style"] = self.marker_fill_style
+            if self.marker_fill_alt is not None:
+                marker["fill_alt"] = _marker_color(self.marker_fill_alt)
             style["marker"] = marker
         if self.fill is not None or self.fill_opacity is not None:
             fill: dict[str, Any] = {}
@@ -415,6 +506,7 @@ class _Style:
 _SWATCH_KEYWORDS: Final = frozenset(
     {"color", "opacity", "line", "width", "marker", "size", "marker_fill"}
     | {"marker_edge", "marker_edge_width", "fill", "fill_opacity"}
+    | {"marker_fill_style", "marker_fill_alt"}
 )
 
 
@@ -443,9 +535,14 @@ class ChartPlot:
     `fill` and `fill_opacity` the fill (of a band, an area, a bar, a box, a
     violin, a histogram and a polygon; a band, an area, a box, a violin and a
     polygon are filled with their color at `BAND_OPACITY` without them) and
-    `marker`, `size`, `marker_fill`, `marker_edge` and `marker_edge_width`
-    the markers of a curve and of the outliers of a box, so `fill` is the
-    fill of a shape and never the one of a marker.
+    `marker`, `size`, `marker_fill`, `marker_edge`, `marker_edge_width`,
+    `marker_fill_style` and `marker_fill_alt` the markers of a curve and of
+    the outliers of a box, so `fill` is the fill of a shape and never the one
+    of a marker. The markers are `MARKERS`, matplotlib's shapes: a half
+    filled marker (`marker_fill_style` `left`, `right`, `bottom` or `top`,
+    matplotlib's `fillstyle`) fills that half with `marker_fill` and the
+    other with `marker_fill_alt` (none by default, matplotlib's
+    `markerfacecoloralt`).
     """
 
     def __init__(
@@ -467,6 +564,7 @@ class ChartPlot:
         legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
         aspect: Aspect | None = None,
         legend_loc: str | None = None,
+        legend_title: str | None = None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
@@ -478,6 +576,7 @@ class ChartPlot:
         self.title = title
         self.legend = bool(legend)
         self.legend_loc = None if legend_loc is None else legend_loc_spec(legend_loc)
+        self.legend_title = legend_title
         self.aspect = _aspect(aspect)
         self.legend_order = None if legend_order is None else list(legend_order)
         self.declared_legends = (
@@ -607,6 +706,7 @@ class ChartPlot:
         xerr: Values | None = None,
         yerr: Values | None = None,
         error_cap: float = 0.0,
+        error_width: float | None = None,
         line: LineType = "solid",
         width: float = 2.0,
         marker: str = "none",
@@ -614,6 +714,8 @@ class ChartPlot:
         marker_fill: str | None = None,
         marker_edge: str | None = None,
         marker_edge_width: float = 1.0,
+        marker_fill_style: FillStyle = "full",
+        marker_fill_alt: str | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -630,15 +732,27 @@ class ChartPlot:
             yerr: the errors of y.
             error_cap: the length of the caps across the ends of the error
                 bars in pixels, matplotlib's `capsize`; 0 for none.
+            error_width: the width of the lines of the error bars and their
+                caps in pixels, matplotlib's `elinewidth`; `None` for the 1
+                pixel of the renderer.
             line: the type of the line, `solid`, `dashed`, `dotted`,
                 `dashdot` or `none`.
             width: the width of the line in pixels.
-            marker: the type of the markers, `none`, `circle`, `square`,
-                `triangle`, `diamond`, `cross`, `plus` or `x`.
+            marker: the type of the markers, one of `MARKERS`: `none`,
+                `circle`, `square`, `triangle`, `diamond`, `cross`, `plus`,
+                `x`, `triangle_down`, `triangle_left`, `triangle_right`,
+                `star`, `x_filled`, `plus_filled`, `pentagon`, `hexagon` or
+                `thin_diamond`.
             size: the size of the markers in pixels.
             marker_fill: the fill color of the markers, the color by default.
             marker_edge: the edge color of the markers, the color by default.
             marker_edge_width: the width of the edge of the markers in pixels.
+            marker_fill_style: the half of the markers `marker_fill` fills,
+                `full`, `left`, `right`, `bottom` or `top` (matplotlib's
+                `fillstyle`).
+            marker_fill_alt: the fill color of the other half of a half
+                filled marker, none by default (matplotlib's
+                `markerfacecoloralt`).
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -660,6 +774,8 @@ class ChartPlot:
             data["yerr"] = _numbers(self._on(axis, yerr))
         if cap := _error_cap(error_cap):
             data["error_cap"] = cap
+        if (lines := _error_width(error_width)) is not None:
+            data["error_width"] = lines
         style = _Style(
             color=color,
             opacity=opacity,
@@ -670,6 +786,8 @@ class ChartPlot:
             marker_fill=marker_fill,
             marker_edge=marker_edge,
             marker_edge_width=marker_edge_width,
+            marker_fill_style=marker_fill_style,
+            marker_fill_alt=marker_fill_alt,
         )
         return self._add(
             "curve", data, style, label=label, legend=legend, id=id, axis=axis
@@ -792,6 +910,7 @@ class ChartPlot:
         *,
         err: Values | None = None,
         error_cap: float = 0.0,
+        error_width: float | None = None,
         horizontal: bool = False,
         bar_width: float | None = None,
         line: LineType | None = None,
@@ -814,6 +933,8 @@ class ChartPlot:
             err: the errors of the heights.
             error_cap: the length of the caps across the ends of the error
                 bars in pixels; 0 for none.
+            error_width: the width of the lines of the error bars in pixels,
+                `None` for the 1 pixel of the renderer.
             horizontal: whether the bars are horizontal.
             bar_width: the width of a bar in units of the axis of the
                 positions, the default of the renderer for `None`.
@@ -842,6 +963,8 @@ class ChartPlot:
             data["err"] = _numbers(self._on(heights, err))
         if cap := _error_cap(error_cap):
             data["error_cap"] = cap
+        if (lines := _error_width(error_width)) is not None:
+            data["error_width"] = lines
         data["horizontal"] = bool(horizontal)
         if bar_width is not None:
             data["width"] = float(bar_width)
@@ -862,6 +985,7 @@ class ChartPlot:
         positions: Values,
         stats: Sequence[Mapping[str, Any]],
         *,
+        box_width: float | None = None,
         line: LineType = "solid",
         width: float = 2.0,
         fill: str | None = None,
@@ -871,6 +995,8 @@ class ChartPlot:
         marker_fill: str | None = None,
         marker_edge: str | None = None,
         marker_edge_width: float = 1.0,
+        marker_fill_style: FillStyle = "full",
+        marker_fill_alt: str | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -887,6 +1013,10 @@ class ChartPlot:
                 `median`, `q3`, `high_whisker` and optional `outliers`,
                 values on the y axis; an outlier which is not finite is left
                 out.
+            box_width: the width of a box in units of the x axis,
+                matplotlib's `widths`, a share of the slot of a category on a
+                category axis (two boxes side by side at ±0.2 of a category
+                with 0.35); `None` for half of the spacing of the positions.
             line: the type of the outline of the boxes.
             width: the width of the outline in pixels.
             fill: the fill color, the color by default.
@@ -899,6 +1029,9 @@ class ChartPlot:
             marker_edge: the edge color of the markers of the outliers, the
                 color by default.
             marker_edge_width: the width of the edge of the markers in pixels.
+            marker_fill_style: the half of the markers of the outliers
+                `marker_fill` fills, see `curve`.
+            marker_fill_alt: the fill color of the other half, see `curve`.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -911,7 +1044,8 @@ class ChartPlot:
             The id of the element.
 
         Raises:
-            ValueError: for a statistic which is not finite.
+            ValueError: for a statistic which is not finite and for a width
+                of a box which is not positive.
         """
         boxes: list[dict[str, Any]] = []
         for k, stat in enumerate(stats):
@@ -922,7 +1056,17 @@ class ChartPlot:
             outliers = _numbers(self._on(axis, stat.get("outliers", [])))
             box["outliers"] = [v for v in outliers if v is not None]
             boxes.append(box)
-        data = {"positions": _numbers(self._on("x", positions)), "stats": boxes}
+        data: dict[str, Any] = {
+            "positions": _numbers(self._on("x", positions)),
+            "stats": boxes,
+        }
+        if box_width is not None:
+            value = float(box_width)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(
+                    f"The width of a box is a positive number, not {box_width!r}."
+                )
+            data["width"] = value
         style = _Style(
             color=color,
             opacity=opacity,
@@ -936,6 +1080,8 @@ class ChartPlot:
             marker_fill=marker_fill,
             marker_edge=marker_edge,
             marker_edge_width=marker_edge_width,
+            marker_fill_style=marker_fill_style,
+            marker_fill_alt=marker_fill_alt,
         )
         return self._add(
             "box", data, style, label=label, legend=legend, id=id, axis=axis
@@ -1054,7 +1200,7 @@ class ChartPlot:
         x_edges: Values | None = None,
         y_edges: Values | None = None,
         text: Sequence[Sequence[str]] | None = None,
-        scale: str = "viridis",
+        scale: ColorMap = "viridis",
         low: float | None = None,
         high: float | None = None,
         center: float | None = None,
@@ -1084,10 +1230,13 @@ class ChartPlot:
                 quantities of the axis.
             y_edges: the edges of the rows on the y axis, one more than rows.
             text: the text of the cells, in the shape of `values`.
-            scale: the name of the color scale, a sequential or diverging
+            scale: the color map: the name of a sequential or diverging
                 colour map of matplotlib in any case (`viridis`, `Blues`,
                 `PuRd`, `RdBu`, ...) or its reversal `<name>_r`, see
-                `sbmlsim_core.COLOR_SCALES`.
+                `sbmlsim_core.COLOR_SCALES`, or the colours of a map at
+                positions, `[(0.0, color), (0.3, color), ..., (1.0, color)]`
+                as matplotlib's `LinearSegmentedColormap.from_list`, the
+                first at 0 and the last at 1, the positions not decreasing.
             low: the value of the lower end of the scale, the smallest
                 finite value (positive on a log scale) by default.
             high: the value of the upper end of the scale, the largest
@@ -1320,7 +1469,7 @@ class ChartPlot:
 
     def colorbar(
         self,
-        scale: str,
+        scale: ColorMap,
         low: float,
         high: float,
         *,
@@ -1332,14 +1481,30 @@ class ChartPlot:
         ticks: Sequence[float] | None = None,
         tick_labels: Sequence[str] | None = None,
         categorical: bool = False,
+        marks: Sequence[float | Mapping[str, Any]] | None = None,
+        placement: Placement = "right",
+        loc: str | None = None,
+        length: float | None = None,
+        thickness: float | None = None,
     ) -> None:
         """Add a color bar to the plot, a field of the plot and no element.
 
         A plot of several color bars shows them stacked right of its panel in
-        the order they were added.
+        the order they were added. A bar may go above the panels of the row of
+        its plot instead (`placement="top"`, matplotlib's
+        `fig.colorbar(..., location="top")` over a row, one bar per row) or
+        into its panel (`placement="inset"`, a horizontal bar in matplotlib's
+        `ax.inset_axes`, which a legend at `best` goes around):
+
+            plot.colorbar(
+                [(0.0, "#006d77"), (0.3, "#2a9d4b"), (1.0, "#d8f3dc")],
+                0.1, 2.0, log=True, label="renal function [-]",
+                ticks=[0.1, 1, 2], tick_labels=["0.1", "1", "2"],
+                marks=[1.0], placement="top", length=0.4,
+            )
 
         Args:
-            scale: the name of the color scale, see `heatmap`.
+            scale: the color map, a name or stops, see `heatmap`.
             low: the value of the lower end of the scale.
             high: the value of the upper end of the scale.
             label: the label of the color bar.
@@ -1353,6 +1518,27 @@ class ChartPlot:
                 without; a categorical bar takes one per band without `ticks`.
             categorical: whether the bar is one band of one color per integer
                 from `low` to `high`, e.g. of the lines over named values.
+            marks: lines across the bar at values of the scale (matplotlib's
+                `cbar.ax.axhline`, e.g. at the default of a scan): a value,
+                black and 2 pixels wide, or a mapping of `value`, `color` and
+                `width`.
+            placement: `right` of the panel (vertical), `top`, above the
+                panels of the row centred over them, or `inset`, inside the
+                panel at `loc` (both horizontal).
+            loc: the location of an inset bar, a location of `LEGEND_LOCS`
+                but `best`; `None` for the upper right.
+            length: the length of the bar as a share of what it runs along,
+                matplotlib's `shrink`: the height of the panel (1), the span
+                of the panels of the row (1, 0.4 for a bar of 40 % of it) or
+                the width of the panel of an inset (0.5); `None` for these.
+            thickness: the thickness of the bar in pixels, `None` for the 12
+                pixels of the renderer.
+
+        Raises:
+            ValueError: for a mark which is no number or mapping, for an
+                unknown placement, for a location of a bar which is no inset
+                or `best`, and for a length which is not above 0 and at most
+                1.
         """
         color_scale = _color_scale(scale, low, high, center, log, [])
         if start != 0.0:
@@ -1368,6 +1554,32 @@ class ChartPlot:
             colorbar["tick_labels"] = [str(t) for t in tick_labels]
         if categorical:
             colorbar["categorical"] = True
+        if marks is not None:
+            colorbar["marks"] = [_mark(m) for m in marks]
+        if placement not in ("right", "top", "inset"):
+            raise ValueError(
+                f"A color bar goes 'right', 'top' or 'inset', not {placement!r}."
+            )
+        if placement != "right":
+            colorbar["placement"] = placement
+        if loc is not None:
+            spot = legend_loc_spec(loc)
+            if placement != "inset" or spot == "best":
+                raise ValueError(
+                    f"The location {loc!r} of a color bar is one of an inset bar "
+                    "and no 'best'."
+                )
+            colorbar["loc"] = spot
+        if length is not None:
+            share = float(length)
+            if not 0.0 < share <= 1.0:
+                raise ValueError(
+                    f"The length of a color bar is a share above 0 and at most 1, "
+                    f"not {length!r}."
+                )
+            colorbar["length"] = share
+        if thickness is not None:
+            colorbar["thickness"] = float(thickness)
         self._colorbars.append(colorbar)
 
     def spec(self) -> dict[str, Any]:
@@ -1388,6 +1600,8 @@ class ChartPlot:
         spec["legend"] = self.legend
         if self.legend_loc is not None:
             spec["legend_loc"] = self.legend_loc
+        if self.legend_title is not None:
+            spec["legend_title"] = self.legend_title
         if len(self._colorbars) == 1:
             spec["colorbar"] = self._colorbars[0]
         elif self._colorbars:
@@ -1429,8 +1643,63 @@ def _columns(path: Values, name: str) -> tuple[Values, Values]:
     return points[:, 0], points[:, 1]
 
 
+def _mark(mark: float | Mapping[str, Any]) -> dict[str, Any]:
+    """Get a mark of a color bar for the spec.
+
+    Raises:
+        ValueError: for a mark which is neither a number nor a mapping of
+            `value`, `color` and `width`.
+    """
+    if isinstance(mark, Mapping):
+        unknown = sorted(set(mark) - {"value", "color", "width"})
+        if "value" not in mark or unknown:
+            raise ValueError(
+                "A mark of a color bar is a value or a mapping of 'value', 'color' "
+                f"and 'width', not {dict(mark)!r}."
+            )
+        spec: dict[str, Any] = {"value": float(mark["value"])}
+        if mark.get("color") is not None:
+            color, _ = color_alpha(str(mark["color"]))
+            if color is not None:
+                spec["color"] = color
+        if mark.get("width") is not None:
+            spec["width"] = float(mark["width"])
+        return spec
+    if isinstance(mark, str):
+        raise ValueError(f"A mark of a color bar is a value, not {mark!r}.")
+    return {"value": float(mark)}
+
+
+def _color_map(name: ColorMap) -> dict[str, Any]:
+    """Get the colour map of a scale: its name in lower case or its stops.
+
+    The name is that of the spec, a colour map of matplotlib in lower case:
+    matplotlib's `Blues` is `blues`, its `PuRd_r` is `purd_r`. Stops are
+    pairs of a position and a colour, a name of matplotlib or hex, written as
+    `[position, "#rrggbb"]`.
+
+    Raises:
+        ValueError: for stops which are no pairs or of a colour which is none.
+    """
+    if isinstance(name, str):
+        return {"name": name.lower()}
+    stops: list[list[Any]] = []
+    for stop in name:
+        try:
+            position, value = stop
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"A stop of a colour map is a pair (position, color), not {stop!r}."
+            ) from error
+        color, _ = color_alpha(str(value))
+        if color is None:
+            raise ValueError(f"The colour {value!r} of a stop is no colour.")
+        stops.append([float(position), color])
+    return {"stops": stops}
+
+
 def _color_scale(
-    name: str,
+    name: ColorMap,
     low: float | None,
     high: float | None,
     center: float | None,
@@ -1439,8 +1708,7 @@ def _color_scale(
 ) -> dict[str, Any]:
     """Get a color scale, its ends by default the range of the finite values.
 
-    The name is that of the spec, a colour map of matplotlib in lower case:
-    matplotlib's `Blues` is `blues`, its `PuRd_r` is `purd_r`.
+    The map is a name or stops, see `_color_map`.
     """
     finite = [v for row in cells for v in row if v is not None and (v > 0 or not log)]
     if low is None:
@@ -1448,7 +1716,7 @@ def _color_scale(
     if high is None:
         high = max(finite) if finite else low * 10.0 if log else low + 1.0
     scale: dict[str, Any] = {
-        "name": name.lower(),
+        **_color_map(name),
         "low": float(low),
         "high": float(high),
     }
@@ -1518,6 +1786,8 @@ class Chart:
         legend_scope: str = "plot",
         legend_position: str = "inside",
         legend_loc: str = "best",
+        legend_columns: int | None = None,
+        legend_title: str | None = None,
         dpi: float | None = None,
     ) -> None:
         """Create a chart.
@@ -1532,16 +1802,23 @@ class Chart:
             hspace: the space between the rows as a fraction of a plot.
             fonts: the font sizes in points by `title`, `label`, `tick`,
                 `tick_y` (the tick labels of the y axes and the color bars,
-                `tick` without) and `legend`, and the weights `normal` or
+                `tick` without), `legend` and `plot_title` (the titles of the
+                plots, `label` without), and the weights `normal` or
                 `bold` by `title_weight`, `label_weight`, `tick_weight` and
                 `legend_weight`; the defaults of the renderer for the others.
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
-            legend_position: `inside` or `outside`, right of the plot.
+            legend_position: `inside`, `outside`, right of the plot, or
+                `bottom`, one legend of the entries of all plots below the
+                grid, centred (matplotlib's `fig.legend(loc="lower center")`).
             legend_loc: where a legend inside goes, a location of matplotlib
                 (`LEGEND_LOCS`): `best`, the location of the least data (a
                 legend stays inside however much data it covers and goes
                 outside only when it does not fit into its panel), or a fixed
                 one, e.g. `upper left`; a plot may set its own.
+            legend_columns: the columns of the legend `bottom`, matplotlib's
+                `ncols`, filled top down and then left to right; `None` for
+                as many as fit into the width in one row.
+            legend_title: the title of the legend `bottom`.
             dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
                 the spec.
         """
@@ -1556,6 +1833,10 @@ class Chart:
         self.legend_scope = legend_scope
         self.legend_position = legend_position
         self.legend_loc = legend_loc_spec(legend_loc)
+        if legend_columns is not None and int(legend_columns) < 1:
+            raise ValueError(f"A legend has at least 1 column, not {legend_columns!r}.")
+        self.legend_columns = None if legend_columns is None else int(legend_columns)
+        self.legend_title = legend_title
         self.dpi = None if dpi is None else float(dpi)
         self.plots: list[ChartPlot] = []
         self._element_ids: set[str] = set()
@@ -1578,6 +1859,7 @@ class Chart:
         legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
         aspect: Aspect | None = None,
         legend_loc: str | None = None,
+        legend_title: str | None = None,
     ) -> ChartPlot:
         """Add a plot at a cell of the grid.
 
@@ -1601,7 +1883,8 @@ class Chart:
             legend_swatches: the swatch of a legend group by group, the style
                 keywords of `ChartPlot.curve` (`color`, `opacity`, `line`,
                 `width`, `marker`, `size`, `marker_fill`, `marker_edge`,
-                `marker_edge_width`, `fill` and `fill_opacity`) it is drawn
+                `marker_edge_width`, `marker_fill_style`, `marker_fill_alt`,
+                `fill` and `fill_opacity`) it is drawn
                 with instead of the style of its element, e.g. the lines of a
                 scan in one group shown in the middle colour of their map; a
                 swatch without `color` takes the colour of its entry.
@@ -1615,6 +1898,9 @@ class Chart:
                 location of `LEGEND_LOCS` (matplotlib's `loc`, e.g. `upper
                 left`); `None` for the `legend_loc` of the chart. A legend of a
                 row takes the one of its rightmost plot with a legend.
+            legend_title: the title of the legend of the plot, matplotlib's
+                `ax.legend(title=...)`; a legend of a row takes the first of
+                its plots.
 
         Returns:
             The plot, which its methods add elements to.
@@ -1636,6 +1922,7 @@ class Chart:
             legend_swatches=legend_swatches,
             aspect=aspect,
             legend_loc=legend_loc,
+            legend_title=legend_title,
         )
         self.plots.append(plot)
         return plot
@@ -1679,12 +1966,17 @@ class Chart:
             "wspace": self.wspace,
             "hspace": self.hspace,
         }
-        spec["legend"] = {
+        legend: dict[str, Any] = {
             "scope": self.legend_scope,
             "position": self.legend_position,
         }
+        spec["legend"] = legend
         if self.legend_loc != "best":
             spec["legend"]["loc"] = self.legend_loc
+        if self.legend_columns is not None:
+            spec["legend"]["columns"] = self.legend_columns
+        if self.legend_title is not None:
+            spec["legend"]["title"] = self.legend_title
         spec["plots"] = [plot.spec() for plot in self.plots]
         return spec
 

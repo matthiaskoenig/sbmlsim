@@ -63,7 +63,7 @@ chart.save("hctz.json")
 
 ![Output figure](images/outputs/plotting-01.svg)
 
-A plot can have several colour bars: every `plot.colorbar(scale, low, high, label=...)` adds one, stacked right of the panel. A bar takes the part of its colour map it shows (`start`, `end`, from 0 to 1), its `ticks` and their `tick_labels`, and `categorical=True` draws one band per integer from `low` to `high`, labelled by `tick_labels`. `chart.plot(legend_swatches={group: {...}})` draws the swatch of a legend group in a style of its own, the style keywords of `curve`, e.g. the middle colour of lines which differ in colour. A text, a title or a label breaks its lines at `\n`; a tick label stays one line. The fonts of a chart take the sizes `title`, `label`, `tick`, `tick_y` (the y axes and the colour bars) and `legend` and the weights `title_weight`, `label_weight`, `tick_weight` and `legend_weight`, `normal` or `bold`: `Chart(fonts={"label": 13, "label_weight": "bold"})`.
+A plot can have several colour bars: every `plot.colorbar(scale, low, high, label=...)` adds one, stacked right of the panel. A bar takes the part of its colour map it shows (`start`, `end`, from 0 to 1), its `ticks` and their `tick_labels`, and `categorical=True` draws one band per integer from `low` to `high`, labelled by `tick_labels`. `chart.plot(legend_swatches={group: {...}})` draws the swatch of a legend group in a style of its own, the style keywords of `curve`, e.g. the middle colour of lines which differ in colour. A text, a title or a label breaks its lines at `\n`, a tick label too. The fonts of a chart take the sizes `title`, `label`, `tick`, `tick_y` (the y axes and the colour bars), `legend` and `plot_title` (the titles of the plots, `label` without) and the weights `title_weight`, `label_weight`, `tick_weight` and `legend_weight`, `normal` or `bold`: `Chart(fonts={"label": 13, "label_weight": "bold"})`.
 
 A heat map and a colour bar take the sequential and the diverging colour maps of matplotlib by their names, in the case of matplotlib or in lower case (`Blues`, `Reds`, `PuRd`, `YlOrRd`, `RdBu`, ...), each also reversed (`Blues_r`); `sbmlsim_core.COLOR_SCALES` lists them, and a value has the colour matplotlib gives it. A heat map places its cells on the categories of its axes, or with `x_edges` and `y_edges` between edges on numeric axes, which stay numeric, so a space-time heat map shares its time with a curve below it. `ChartAxis(line_visible=False)` hides the line of an axis, and `chart.plot(aspect="equal")` makes a unit of y as long as a unit of x by widening the limits of one axis, so a lobule is a regular hexagon without measuring the panel. Error bars take caps of a length in pixels (`error_cap=`), a text its `size` and `weight`, and a text keeps its runs of spaces. The panel of a plot is at least 20 pixels over its span, so a grid of many thin columns fits its chart as long as its plots span several of them:
 
@@ -121,6 +121,70 @@ chart
 ```
 
 ![Output figure](images/outputs/plotting-02.svg)
+
+The scans of a model draw the matplotlib figures of their parameters as charts. A colour map is a name or the colours of a map at positions, `[(0.0, color), (0.3, color), ..., (1.0, color)]`, as matplotlib's `LinearSegmentedColormap.from_list`, wherever a scale is taken (`colorbar`, `heatmap`). A colour bar takes `marks`, lines across it at values such as the default of the scan, and goes right of its panel (`placement="right"`), above the panels of its row (`"top"`, centred over them, `length` its share of their width, matplotlib's `shrink`, and `thickness` in pixels) or into its panel (`"inset"`, at a `loc` of the legend locations, which a legend at `best` goes around). An axis takes the values of its `ticks` and their `tick_labels`, so a time axis ticks every 24 hours; the renderer writes the decades of a log axis as powers of ten and the ticks of large or small values with a multiplier at the end of the axis, as matplotlib. A curve takes the markers of matplotlib (`MARKERS`: `triangle_down`, `star`, `x_filled`, `thin_diamond`, ...), half filled with `marker_fill_style` (`left`, `right`, `bottom`, `top`) and the fill of the other half `marker_fill_alt`, and the width of its error bars, `error_width`; a box its width, `box_width`. A plot takes a `legend_title`, and a chart a legend below the grid, `Chart(legend_position="bottom", legend_columns=3, legend_title=...)`, of the entries of all plots:
+
+```python
+import numpy as np
+
+from sbmlsim.engine import import_core
+from sbmlsim.plot import Chart, ChartAxis
+
+stops = [(0.0, "#006d77"), (0.3, "#2a9d4b"), (0.6, "#74c69d"), (1.0, "#d8f3dc")]
+factors = [0.1, 0.2, 0.5, 1.0, 2.0]
+colors = import_core().color_scale(stops, 0.1, 2.0, factors, log=True)
+hours = np.linspace(0, 144, 145)
+chart = Chart(
+    width=760,
+    height=300,
+    columns=2,
+    fonts={"label_weight": "bold", "plot_title": 12},
+    legend_position="bottom",
+    legend_columns=3,
+    legend_title="renal function [-]",
+)
+time = ChartAxis(label="time", unit="hr", min=0, max=144, ticks=range(0, 145, 24))
+plasma = chart.plot(0, 0, title="plasma", x=time, y=ChartAxis(label="HCTZ", unit="µM"))
+urine = chart.plot(
+    0, 1, title="urine", x=time, y=ChartAxis(label="HCTZ", unit="µM", scale="log")
+)
+for factor, color in zip(factors, colors, strict=True):
+    ke = 0.12 * factor
+    cp = 0.9 * 0.6 / (0.6 - ke) * (np.exp(-ke * hours) - np.exp(-0.6 * hours))
+    width = 2.0 if factor == 1.0 else 1.5
+    style = {"color": "black" if factor == 1.0 else color, "width": width}
+    plasma.curve(hours, cp, label=f"{factor:g}", legend=f"{factor:g}", **style)
+    urine.curve(hours, np.maximum(cp, 1e-4), legend=f"{factor:g}", **style)
+plasma.curve(
+    [12, 36, 72],
+    [0.45, 0.2, 0.05],
+    yerr=[0.05, 0.04, 0.02],
+    error_width=1.5,
+    line="none",
+    marker="triangle_down",
+    size=8,
+    marker_fill_style="left",
+    marker_fill_alt="white",
+    color="black",
+    label="Smith2001",
+    legend="data",
+)
+plasma.colorbar(
+    stops,
+    0.1,
+    2.0,
+    log=True,
+    label="renal function [-]",
+    ticks=[0.1, 1, 2],
+    tick_labels=["0.1\nsevere", "1\nnormal", "2"],
+    marks=[1.0],
+    placement="top",
+    length=0.4,
+)
+chart
+```
+
+![Output figure](images/outputs/plotting-03.svg)
 
 A chart shows itself in a notebook, where its SVG is the last expression of a cell. The SVG is the default format of the package, the PNG takes a `dpi` (the resolution is stored in the PNG), and the JSON is the spec of the contract `figure/1`, `chart.spec()` as a dictionary, which the renderer of sbmlsim-core, in Python or in the browser, draws again. A value which is not finite is a gap in a curve, `null` in the JSON.
 
@@ -271,7 +335,7 @@ urine.add_data(task="task_po25", xid="time", yid="Aurine_hctz", label="simulatio
 fig_po25 = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-04.svg)
+![Output figure](images/outputs/plotting-05.svg)
 
 
 `Figure.add_subplot(plot, row, col, row_span=2)` places a plot that spans several panels instead.
@@ -313,7 +377,7 @@ peak.curve(
 fig_doses = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-05.svg)
+![Output figure](images/outputs/plotting-06.svg)
 
 
 The lines get the colours of the viridis colour map at the value the dimension sets, and the legend says what that value is. With `color=` they get shades of that colour instead. The colour scale is logarithmic when all values are positive and the largest is more than 100 times the smallest. From eleven points on, a colour bar replaces the legend entries: it spans the values of the points, from the smallest to the largest, in the part of the colour map the lines take, so the colour of the bar at a value is the colour of its line, and the lines share one legend entry drawn in their middle colour. A dimension which does not set one target gets a bar of one band per point, labelled by the labels of the points. The shades of a colour of its own are no colour map of the renderer, so such lines get no colour bar. A plot of several curves with colour bars shows all of them, the same bar once.
@@ -359,7 +423,7 @@ for plot in [linear, log]:
 fig_patients = figure_chart(experiment, bands)
 ```
 
-![Output figure](images/outputs/plotting-06.svg)
+![Output figure](images/outputs/plotting-07.svg)
 
 
 The default quantiles are 5 % and 95 %; `quantiles=(0.25, 0.75)` changes them and `median=False` leaves out the median. `over=` draws one band per point of one other dimension. A band takes `color=` and `alpha=`; without a colour it takes the next colour of the colour cycle. Bands are drawn below the curves.
@@ -408,7 +472,7 @@ plot.curve(
 fig_style = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-07.svg)
+![Output figure](images/outputs/plotting-08.svg)
 
 
 Colours are `ColorType` objects, made from matplotlib colour names or hex strings.
@@ -463,7 +527,7 @@ By default each plot has its legend inside, at the location of matplotlib which 
 fig_row = figure_chart(experiment, bands, settings={"legend_scope": "row"})
 ```
 
-![Output figure](images/outputs/plotting-09.svg)
+![Output figure](images/outputs/plotting-10.svg)
 
 
 The `legend` flag of a plot decides whether its entries go into the legend of the row.
