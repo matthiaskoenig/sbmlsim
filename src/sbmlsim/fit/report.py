@@ -423,6 +423,51 @@ def _scale_value(scale: Mapping[str, Any], fraction: float) -> float:
     return low + fraction * (high - low)
 
 
+def evaluate(problem: OptimizationProblem, pset: ParameterSet) -> dict[str, list[Any]]:
+    """Evaluate a set in the units of the problem, its arrays are read only.
+
+    The complete data of the set (`OptimizationProblem.residuals` with
+    `complete_data`), which `FitReport` caches per set of the report.
+
+    Args:
+        problem: the initialized problem.
+        pset: the set, bound to the problem (`bind_parameter_set`).
+
+    Returns:
+        The residual data of the mappings.
+    """
+    evaluation: dict[str, list[Any]] = problem.residuals(  # ty: ignore[invalid-assignment]
+        xlog=problem.to_scale(pset.x(problem.pids)), complete_data=True
+    )
+    for values in evaluation.values():
+        for value in values:
+            if isinstance(value, np.ndarray):
+                value.setflags(write=False)
+    return evaluation
+
+
+def evaluate_metrics(problem: OptimizationProblem, pset: ParameterSet) -> FitMetrics:
+    """Get the metrics of a parameter set on a problem, evaluated now.
+
+    What `FitReport.metrics` gives for a set which is not one of the report,
+    without a report and its caches: the problem is evaluated as it is, e.g.
+    with the integrator settings of `OptimizationProblem.integrating`, or in
+    a worker of a pool which holds the problem (`sbmlsim.fit.pool`).
+
+    Args:
+        problem: the initialized problem.
+        pset: the parameter set.
+
+    Returns:
+        The metrics of the set, see `sbmlsim.fit.metrics`.
+    """
+    return FitMetrics(
+        problem=problem,
+        parameter_set=deepcopy(pset),
+        evaluation=evaluate(problem, problem.bind_parameter_set(pset)),
+    )
+
+
 class FitReport:
     """Report of a fit for one or more parameter sets.
 
@@ -818,15 +863,8 @@ class FitReport:
         return self._res_data[key]
 
     def _evaluate(self, pset: ParameterSet) -> dict[str, list[Any]]:
-        """Evaluate a set in the units of the problem, its arrays are read only."""
-        evaluation: dict[str, list[Any]] = self.problem.residuals(  # ty: ignore[invalid-assignment]
-            xlog=self.problem.to_scale(pset.x(self.problem.pids)), complete_data=True
-        )
-        for values in evaluation.values():
-            for value in values:
-                if isinstance(value, np.ndarray):
-                    value.setflags(write=False)
-        return evaluation
+        """Evaluate a set in the units of the problem, see `evaluate`."""
+        return evaluate(self.problem, pset)
 
     def points(self, pset: ParameterSet) -> pd.DataFrame:
         """Get the data points of a parameter set with their kind.

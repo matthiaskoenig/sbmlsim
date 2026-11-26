@@ -634,6 +634,8 @@ def report_from_records(
     mapping_figures: bool = True,
     show_titles: bool = False,
     groupings: Sequence[Grouping] | None = None,
+    problem: OptimizationProblem | None = None,
+    settings: FitSettings | None = None,
 ) -> FitReport:
     """Build the report of a stored fit from the records of its folder.
 
@@ -669,6 +671,11 @@ def report_from_records(
         show_titles: add titles to the figures.
         groupings: the groupings the report evaluates the data by, the
             groupings of the definition by default, see `FitReport`.
+        problem: the problem of the report, `problem_of_records` of the
+            definition and the records by default; a caller which built it
+            already, e.g. to send its definition to a pool, passes it.
+        settings: the settings of the report, `settings_of` the definition
+            and the records by default.
 
     Returns:
         The report, initialized and ready for `FitReport.create`.
@@ -686,8 +693,12 @@ def report_from_records(
     from sbmlsim.fit.report import FitReport
 
     return FitReport(
-        problem=problem_of_records(definition, records, opid=opid),
-        settings=settings_of(definition, records),
+        problem=(
+            problem_of_records(definition, records, opid=opid)
+            if problem is None
+            else problem
+        ),
+        settings=settings_of(definition, records) if settings is None else settings,
         parameter_sets=parameter_sets,
         opt_result=records.opt_result,
         identifiability=records.identifiability,

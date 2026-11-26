@@ -468,31 +468,6 @@ def _describe(settings: FitSettings, method: str = "BDF") -> str:
     return f"CVODE {method}, rtol {settings.relative_tolerance:g}, atol {tolerance}"
 
 
-def _second_method(report: FitReport) -> None:
-    """Integrate the problem of a report with the second integration method.
-
-    The BDF of CVODE of at most `SECOND_METHOD_ORDER`; the setting is given to
-    the simulator of the problem and to its loaded models, as
-    `OptimizationProblem.initialize` does with the settings of a fit.
-    """
-    from sbmlsim.simulator import Simulator
-
-    problem = report.problem
-    settings = report.settings
-    problem.set_simulator(
-        Simulator(
-            n_workers=1,
-            absolute_tolerance=settings.absolute_tolerance,
-            relative_tolerance=settings.relative_tolerance,
-            variable_step_size=settings.variable_step_size,
-            initial_time_step=settings.initial_time_step,
-            maximum_bdf_order=SECOND_METHOD_ORDER,
-        )
-    )
-    for model in {id(m): m for m in problem.models}.values():
-        model.set_integrator_settings(maximum_bdf_order=SECOND_METHOD_ORDER)
-
-
 def second_method_reason(fits: FitTable) -> str | None:
     """Get why the check `integrator` cannot be made, `None` if it can.
 
@@ -533,18 +508,20 @@ def second_method_reason(fits: FitTable) -> str | None:
 def _alternative_points(
     report: FitReport, check: Check, tightening: float
 ) -> pd.DataFrame:
-    """Evaluate the reference parameters of a report with the settings of a check."""
-    from sbmlsim.fit.report import FitReport
+    """Evaluate the reference parameters of a report with the settings of a check.
 
-    alternative = FitReport(
-        problem=report.problem,
-        settings=_tightened_settings(report.settings, tightening),
-        parameter_sets=report.reference_set,
-        mapping_figures=False,
-    )
-    if check == INTEGRATOR:
-        _second_method(alternative)
-    return alternative.metrics(alternative.reference_set).datapoints_df()
+    The problem of the report is evaluated again with the tolerances divided
+    by `tightening`, for the check `integrator` with the BDF of CVODE of at
+    most `SECOND_METHOD_ORDER` as well, and set back after
+    (`OptimizationProblem.integrating`): the evaluation of the problem
+    initialized with these settings, without initializing it again.
+    """
+    from sbmlsim.fit.report import evaluate_metrics
+
+    problem = report.problem
+    extra = {"maximum_bdf_order": SECOND_METHOD_ORDER} if check == INTEGRATOR else {}
+    with problem.integrating(_tightened_settings(report.settings, tightening), **extra):
+        return evaluate_metrics(problem, report.reference_set).datapoints_df()
 
 
 def _predictions(

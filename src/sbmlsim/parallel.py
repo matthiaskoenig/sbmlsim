@@ -37,7 +37,7 @@ import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Generator, Hashable, Sequence
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from multiprocessing.connection import wait
@@ -408,7 +408,13 @@ def start_pool(
     )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:
-        executor.submit(_alive).result(timeout=WORKER_STARTUP_TIMEOUT)
+        # a pool spawns a worker per task submitted while none is idle, so a
+        # probe per worker starts every worker now and they start together:
+        # one probe would start one worker and the others only with the
+        # tasks, after the first had run the initializer, e.g. initialized
+        # the problem of a fit. The first answer shows that the workers start.
+        probes = [executor.submit(_alive) for _ in range(n_workers)]
+        next(as_completed(probes, timeout=WORKER_STARTUP_TIMEOUT)).result()
     except BrokenProcessPool as err:
         stop(executor)
         raise RuntimeError(
