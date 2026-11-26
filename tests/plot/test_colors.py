@@ -17,6 +17,15 @@ def test_tables_equal_matplotlib() -> None:
         assert normalize_color(f"C{k}") == colors.to_hex(f"C{k}") == CYCLE[k]
 
 
+def test_every_named_colour_of_matplotlib() -> None:
+    """Every name matplotlib takes, `grey` for `gray` in a table included."""
+    colors = pytest.importorskip("matplotlib.colors")
+    names = colors.get_named_colors_mapping()
+    assert "tab:grey" in names and "xkcd:cool grey" in names
+    for name in names:
+        assert normalize_color(name) == colors.to_hex(name), name
+
+
 def test_case_padding_and_none() -> None:
     assert normalize_color("  DimGrey ") == "#696969"
     assert normalize_color("TAB:Red") == "#d62728"
