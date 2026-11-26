@@ -111,8 +111,10 @@ dependencies = [
 	# and the steady state in the forward sensitivities; 0.29.1 no longer reports
 	# a stall at a step which leaves the time unchanged; 0.30.0 draws the axis
 	# lines, caps, aspects, edges, colour maps and legend locations of the chart
-	# builder (sbmlsim-core#113)
-	"sbmlsim-core>=0.30.0",
+	# builder (sbmlsim-core#113); 0.31.0 the colour bars, ticks, markers, legends
+	# and texts of the scan figures (sbmlsim-core#115), 0.31.1 the legend columns,
+	# monospace text and signs of units
+	"sbmlsim-core>=0.31.1",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
