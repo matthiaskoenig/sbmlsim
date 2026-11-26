@@ -368,6 +368,19 @@ def _error_cap(error_cap: float) -> float:
     return value
 
 
+def _legend_columns(columns: int | None) -> int | None:
+    """Get the columns of a legend, `None` for the default.
+
+    Raises:
+        ValueError: for fewer than one column.
+    """
+    if columns is None:
+        return None
+    if int(columns) < 1:
+        raise ValueError(f"A legend has at least 1 column, not {columns!r}.")
+    return int(columns)
+
+
 def _error_width(error_width: float | None) -> float | None:
     """Get the width of the lines of error bars in pixels, `None` for the default.
 
@@ -565,6 +578,7 @@ class ChartPlot:
         aspect: Aspect | None = None,
         legend_loc: str | None = None,
         legend_title: str | None = None,
+        legend_columns: int | None = None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
@@ -577,6 +591,7 @@ class ChartPlot:
         self.legend = bool(legend)
         self.legend_loc = None if legend_loc is None else legend_loc_spec(legend_loc)
         self.legend_title = legend_title
+        self.legend_columns = _legend_columns(legend_columns)
         self.aspect = _aspect(aspect)
         self.legend_order = None if legend_order is None else list(legend_order)
         self.declared_legends = (
@@ -1299,6 +1314,7 @@ class ChartPlot:
         anchor: Literal["start", "middle", "end"] = "start",
         size: float | None = None,
         weight: Literal["normal", "bold"] = "normal",
+        family: Literal["sans", "monospace"] = "sans",
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -1317,6 +1333,10 @@ class ChartPlot:
             size: the font size, the `tick` size of the fonts of the chart
                 for `None`.
             weight: the font weight, `normal` or `bold`.
+            family: the font, `sans` or `monospace`, whose characters are all
+                0.6 of the size wide, so the columns of a table of lines
+                padded with spaces align (`sbmlsim_core.text_width(text,
+                size, family="monospace")` measures it).
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -1329,7 +1349,8 @@ class ChartPlot:
             The id of the element.
 
         Raises:
-            ValueError: for a position which is not finite.
+            ValueError: for a position which is not finite and for an
+                unknown family.
         """
         data: dict[str, Any] = {
             "x": self._position("x", x, "x of a text"),
@@ -1341,6 +1362,10 @@ class ChartPlot:
             data["size"] = float(size)
         if weight != "normal":
             data["weight"] = weight
+        if family not in ("sans", "monospace"):
+            raise ValueError(f"A text is 'sans' or 'monospace', not {family!r}.")
+        if family != "sans":
+            data["family"] = family
         return self._add(
             "text",
             data,
@@ -1602,6 +1627,8 @@ class ChartPlot:
             spec["legend_loc"] = self.legend_loc
         if self.legend_title is not None:
             spec["legend_title"] = self.legend_title
+        if self.legend_columns is not None:
+            spec["legend_columns"] = self.legend_columns
         if len(self._colorbars) == 1:
             spec["colorbar"] = self._colorbars[0]
         elif self._colorbars:
@@ -1833,9 +1860,7 @@ class Chart:
         self.legend_scope = legend_scope
         self.legend_position = legend_position
         self.legend_loc = legend_loc_spec(legend_loc)
-        if legend_columns is not None and int(legend_columns) < 1:
-            raise ValueError(f"A legend has at least 1 column, not {legend_columns!r}.")
-        self.legend_columns = None if legend_columns is None else int(legend_columns)
+        self.legend_columns = _legend_columns(legend_columns)
         self.legend_title = legend_title
         self.dpi = None if dpi is None else float(dpi)
         self.plots: list[ChartPlot] = []
@@ -1860,6 +1885,7 @@ class Chart:
         aspect: Aspect | None = None,
         legend_loc: str | None = None,
         legend_title: str | None = None,
+        legend_columns: int | None = None,
     ) -> ChartPlot:
         """Add a plot at a cell of the grid.
 
@@ -1901,6 +1927,10 @@ class Chart:
             legend_title: the title of the legend of the plot, matplotlib's
                 `ax.legend(title=...)`; a legend of a row takes the first of
                 its plots.
+            legend_columns: the columns of the legend of the plot,
+                matplotlib's `ncol`, filled top down and then left to right,
+                inside or outside; a legend of a row takes the first of its
+                plots; `None` for one.
 
         Returns:
             The plot, which its methods add elements to.
@@ -1923,6 +1953,7 @@ class Chart:
             aspect=aspect,
             legend_loc=legend_loc,
             legend_title=legend_title,
+            legend_columns=legend_columns,
         )
         self.plots.append(plot)
         return plot

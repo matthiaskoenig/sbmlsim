@@ -974,3 +974,30 @@ def test_legend_below_the_grid_and_titles() -> None:
     assert "columns" not in Chart().spec()["legend"]
     with pytest.raises(ValueError, match="at least 1 column"):
         Chart(legend_columns=0)
+
+
+def test_legend_columns_and_monospace_text() -> None:
+    """A legend of a plot fills its columns, a text takes a monospace font."""
+    chart = Chart(columns=2)
+    plot = chart.plot(0, 0, legend_columns=2)
+    for k in range(4):
+        plot.curve([0, 1], [k, k], label=f"study {k}")
+    table = chart.plot(0, 1, legend=False)
+    table.text(0.1, 0.5, "AUC  mg\u22c5hr/l  12.4", family="monospace")
+
+    spec = chart.spec()
+    assert spec["plots"][0]["legend_columns"] == 2
+    assert "legend_columns" not in spec["plots"][1]
+    (text,) = spec["plots"][1]["elements"]
+    assert text["family"] == "monospace"
+    geometry = import_core().figure_geometry(chart.to_json())
+    xs = sorted({e["rect"]["x"] for e in geometry["legend_entries"]})
+    assert len(xs) == 2
+    assert "ui-monospace" in chart.svg()
+    plain = Chart()
+    plain.plot().text(0, 0, "x")
+    assert "family" not in plain.spec()["plots"][0]["elements"][0]
+    with pytest.raises(ValueError, match="at least 1 column"):
+        Chart().plot(legend_columns=0)
+    with pytest.raises(ValueError, match="'sans' or 'monospace'"):
+        Chart().plot().text(0, 0, "x", family="serif")  # ty: ignore[invalid-argument-type]
