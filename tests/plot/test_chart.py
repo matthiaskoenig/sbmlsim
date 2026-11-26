@@ -11,6 +11,7 @@ import pint
 import pytest
 import xarray as xr
 
+from sbmlsim.engine import import_core
 from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.plot.chart import BAND_OPACITY, axis_label
 from sbmlsim.units import Q
@@ -655,3 +656,117 @@ def test_bar_outline_is_drawn() -> None:
     plot.bar([0], [1], line="solid", width=1.5, color="#123456", fill="#ffffff")
 
     assert 'stroke="#123456"' in chart.svg()
+
+
+def test_hidden_axis_lines_and_equal_aspect() -> None:
+    """A lobule on a plot without axes: no axis lines, a regular hexagon."""
+    hidden = ChartAxis(label_visible=False, ticks_visible=False, line_visible=False)
+    chart = Chart(width=300, height=200)
+    plot = chart.plot(x=hidden, y=hidden, aspect="equal", legend=False)
+    angles = np.linspace(0, 2 * np.pi, 7)[:-1]
+    plot.polygon([np.column_stack([np.cos(angles), np.sin(angles)])], line="none")
+
+    spec = chart.spec()["plots"][0]
+    assert spec["aspect"] == "equal"
+    assert spec["x"]["line_visible"] is False
+    assert "line_visible" not in Chart().plot().spec()["x"]
+    assert "aspect" not in Chart().plot().spec()
+    assert "charton-axis-line" not in chart.svg()
+
+    (panel,) = import_core().figure_geometry(chart.to_json())["plots"]
+    per_x = panel["rect"]["width"] / (panel["x"]["high"] - panel["x"]["low"])
+    per_y = panel["rect"]["height"] / (panel["y"]["high"] - panel["y"]["low"])
+    assert per_y == pytest.approx(per_x)
+
+
+@pytest.mark.parametrize("aspect", ["auto", 0, -1.0, math.inf])
+def test_aspect_refused(aspect: Any) -> None:
+    """An aspect is `equal` or a positive number."""
+    with pytest.raises(ValueError, match="aspect"):
+        Chart().plot(aspect=aspect)
+
+
+def test_error_caps() -> None:
+    """The error bars of curves and bars take caps of a length in pixels."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve([1, 2], [1, 2], yerr=[0.1, 0.2], error_cap=6, marker="circle")
+    plot.bar([1, 2], [1, 2], err=[0.3, 0.3], error_cap=8)
+    plot.curve([1, 2], [2, 3], yerr=[0.1, 0.1])
+
+    capped, bars, plain = chart.spec()["plots"][0]["elements"]
+    assert (capped["error_cap"], bars["error_cap"]) == (6.0, 8.0)
+    assert "error_cap" not in plain
+    chart.svg()
+    with pytest.raises(ValueError, match="caps"):
+        plot.curve([1], [1], yerr=[0.1], error_cap=-1)
+
+
+def test_heatmap_over_edges() -> None:
+    """A heat map over the edges of its cells keeps a numeric axis in its unit."""
+    time = ChartAxis(label="time", unit="hr")
+    chart = Chart(rows=2)
+    heat = chart.plot(0, 0, x=time, y=ChartAxis(label="position"))
+    heat.heatmap(
+        None,
+        None,
+        [[1, 2, 3], [4, 5, 6]],
+        x_edges=Q([0, 60, 180, 600], "min"),
+        y_edges=[0, 0.5, 1],
+        scale="PuRd",
+    )
+    chart.plot(1, 0, x=time).curve(Q([0, 5, 10], "hr"), [0, 1, 0])
+
+    (cells,) = chart.spec()["plots"][0]["elements"]
+    assert cells["x_edges"] == [0.0, 1.0, 3.0, 10.0]
+    assert cells["y_edges"] == [0.0, 0.5, 1.0]
+    assert "rows" not in cells and "columns" not in cells
+    # the name of matplotlib is the name of the spec in lower case
+    assert cells["scale"]["name"] == "purd"
+
+    above, below = import_core().figure_geometry(chart.to_json())["plots"]
+    assert above["x"]["kind"] == "linear"
+    assert (above["x"]["low"], above["x"]["high"]) == (0.0, 10.0)
+    assert above["rect"]["x"] == below["rect"]["x"]
+    with pytest.raises(ValueError, match="names or the edges of its rows"):
+        heat.heatmap(None, ["a"], [[1]])
+
+
+def test_text_size_weight_and_spaces() -> None:
+    """A text has a size and a weight of its own and keeps its runs of spaces."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.text(0, 1, "A  Circuit", size=16, weight="bold")
+    plot.text(0, 0, "plain")
+
+    heading, plain = chart.spec()["plots"][0]["elements"]
+    assert (heading["size"], heading["weight"]) == (16.0, "bold")
+    assert "size" not in plain and "weight" not in plain
+    svg = chart.svg()
+    assert 'font-size="16"' in svg and 'font-weight="bold"' in svg
+    assert "A  Circuit" in svg
+
+
+@pytest.mark.parametrize("name", ["Blues", "Reds", "PuRd", "YlOrRd", "Greys_r"])
+def test_color_maps_of_matplotlib(name: str) -> None:
+    """A color bar takes a sequential map of matplotlib with its colours."""
+    chart = Chart()
+    plot = chart.plot()
+    plot.curve([0, 1], [0, 1])
+    plot.colorbar(name, 0, 1)
+
+    bar = chart.spec()["plots"][0]["colorbar"]
+    assert bar["scale"]["name"] == name.lower()
+    chart.svg()
+
+
+def test_wide_grid_fits() -> None:
+    """A grid of many thin columns fits its chart when its plots span them."""
+    chart = Chart(width=1225, height=300, columns=32, wspace=1.2)
+    for k in range(4):
+        chart.plot(0, 8 * k, column_span=8).curve([0, 1], [0, 1])
+
+    geometry = import_core().figure_geometry(chart.to_json())
+    assert geometry["width"] == 1225
+    last = geometry["plots"][-1]["rect"]
+    assert last["x"] + last["width"] < 1225
