@@ -181,6 +181,39 @@ def runtime_timeout_ms() -> int:
     return milliseconds
 
 
+#: what the message of an error of the engine carries when the wall clock
+#: deadline of the runtime interrupted an execution, see `deadline_error`
+INTERRUPT: Final[str] = "wasm trap: interrupt"
+
+
+def deadline_error(label: str, message: str) -> RuntimeError | None:
+    """Get the error of an execution the wall clock deadline interrupted.
+
+    The bindings report a deadline which fired as the trap `INTERRUPT` of the
+    engine, which tells a reader neither that a deadline fired nor what to do
+    (#581). The deadline interrupts every execution of the engine: the load of
+    a model, the instance of a model and a simulation, so each of them gives
+    this one error.
+
+    Args:
+        label: the name of the model in the message.
+        message: the message of the error of the bindings.
+
+    Returns:
+        The `RuntimeError` naming the deadline, `None` for an error the deadline
+        did not cause.
+    """
+    if INTERRUPT not in message:
+        return None
+    return RuntimeError(
+        f"The engine 'core' was interrupted on the model '{label}' by the wall "
+        f"clock deadline of its runtime, {runtime_timeout_ms()} ms of "
+        f"{TIMEOUT_VARIABLE}: the simulation needed longer than that, which "
+        f"depends on the load of the machine. Raise the deadline or unset it "
+        f"for none: {message}"
+    )
+
+
 @cache
 def runtime() -> Any:
     """Get the runtime of the engine of this process, created once.
@@ -261,6 +294,9 @@ def compiled_model(
         try:
             loaded = runtime().load(compiled.wasm, compiled.description)
         except core.LoadError as err:
+            interrupted = deadline_error(label, str(err))
+            if interrupted is not None:
+                raise interrupted from err
             raise UnsupportedModelError(
                 f"The engine 'core' cannot load the model '{label}': {err}"
             ) from err
@@ -654,9 +690,24 @@ class CoreSBMLModel(SBMLModel):
 
         Returns:
             The instance, made at the first simulation.
+
+        Raises:
+            RuntimeError: if the wall clock deadline of the runtime interrupted
+                making the instance, see `deadline_error`, or the engine failed
+                to make it.
         """
         if self._instance is None:
-            self._instance = self.loaded.instance()
+            core = import_core()
+            try:
+                self._instance = self.loaded.instance()
+            except core.LoadError as err:
+                interrupted = deadline_error(self.label, str(err))
+                if interrupted is not None:
+                    raise interrupted from err
+                raise RuntimeError(
+                    f"The engine 'core' failed to make an instance of the model "
+                    f"'{self.label}': {err}"
+                ) from err
         return self._instance
 
     def batch_executor(self, threads: int) -> Any:

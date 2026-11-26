@@ -6,6 +6,7 @@ the requests of the contract `simulation/1` a plan becomes are read as they
 are, so the fields of the contract are pinned.
 """
 
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import Final
 
@@ -20,7 +21,7 @@ from sbmlsim.model import RoadrunnerSBMLModel, load_model
 from sbmlsim.model import model_core as core_module
 from sbmlsim.model.model_core import CoreSBMLModel
 from sbmlsim.model.symbols import TargetKind
-from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.resources import HCTZ_SBML, REPRESSILATOR_SBML
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation import (
     Change,
@@ -1342,31 +1343,81 @@ def test_a_deadline_which_is_no_milliseconds_is_refused(
         core_module.runtime_timeout_ms()
 
 
-def test_a_deadline_which_fires_names_itself(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An interrupted execution says a deadline fired, how long it was and what to do.
+@pytest.fixture
+def deadline_of_one_millisecond(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give the runtime of the process a deadline of one millisecond.
 
-    It surfaced as `wasm trap: interrupt` of the bindings, which does not tell
-    a reader that a deadline fired (#581). The deadline of this test is one
-    millisecond, so it fires inside the first simulation which is longer than
-    that; the runtime of the process is created again for it and the models
-    compiled into it, which the fixture of the module undoes.
+    The runtime and the models compiled into it are created again for it, and
+    dropped again after the test whatever it raised, so the deadline never
+    reaches a later test of the same process (it interrupted the propagations
+    of the next tests of a worker of pytest-xdist when it stayed).
     """
     pytest.importorskip("sbmlsim_core")
     monkeypatch.setenv(core_module.TIMEOUT_VARIABLE, "1")
     core_module.runtime.cache_clear()
     core_module.COMPILED.clear()
-    model = load_model(HCTZ_SBML, Engine.CORE)
-    # long enough that a deadline of one millisecond fires inside it
-    simulation = Simulation(start=0, end=240, steps=200_000)
+    try:
+        yield
+    finally:
+        core_module.runtime.cache_clear()
+        core_module.COMPILED.clear()
+
+
+@pytest.mark.usefixtures("deadline_of_one_millisecond")
+def test_a_deadline_which_fires_names_itself() -> None:
+    """An interrupted execution says a deadline fired, how long it was and what to do.
+
+    It surfaced as `wasm trap: interrupt` of the bindings, which does not tell
+    a reader that a deadline fired (#581). The integration of the repressilator
+    over 1e5 time units runs about 0.2 s inside the engine with an output of
+    two rows, so a deadline of one millisecond fires on every machine, also
+    with the coarse timer of windows; it may fire in the load of the model, in
+    making its instance or in the simulation, which give the same error.
+    """
+    simulation = Simulation(start=0, end=1e5, times=[0, 1e5])
+    simulator = Simulator(
+        engine=Engine.CORE, n_workers=1, maximum_num_steps=100_000_000
+    )
 
     with pytest.raises(RuntimeError, match="wall clock deadline") as caught:
-        Simulator(engine=Engine.CORE, n_workers=1).simulate(model, simulation)
+        model = load_model(REPRESSILATOR_SBML, Engine.CORE)
+        simulator.simulate(model, simulation)
 
     message = str(caught.value)
     assert core_module.TIMEOUT_VARIABLE in message
     assert "1 ms" in message
-    core_module.runtime.cache_clear()
-    core_module.COMPILED.clear()
+
+
+def test_an_interrupted_instance_names_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Making the instance of a model runs in the engine, which a deadline interrupts.
+
+    The bindings raise a `LoadError` for it, which reached the caller of a
+    simulation as an error of the bindings.
+    """
+    core = pytest.importorskip("sbmlsim_core")
+    model = load_model(sbml(PROBE), Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+
+    class Loaded:
+        """A loaded model whose instance fails with the given message."""
+
+        def __init__(self, message: str) -> None:
+            self.message = message
+
+        def instance(self) -> object:
+            raise core.LoadError(self.message)
+
+    monkeypatch.setattr(model, "_instance", None)
+    monkeypatch.setattr(model, "loaded", Loaded("trapped: wasm trap: interrupt"))
+    with pytest.raises(RuntimeError, match="wall clock deadline"):
+        model.instance()
+
+    monkeypatch.setattr(model, "loaded", Loaded("out of memory"))
+    with pytest.raises(RuntimeError, match="failed to make an instance") as caught:
+        model.instance()
+    assert not isinstance(caught.value, core.LoadError)
 
 
 def _urine_plan(
