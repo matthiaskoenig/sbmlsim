@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import Field
 
+from sbmlsim.cgroup import available_cpus
 from sbmlsim.run.kinds import (
     ConfigurationError,
     Kind,
@@ -328,6 +329,7 @@ def _run(spec: CredibilitySpec, ctx: RunContext) -> dict[str, Any]:
                 uncertainty=_propagation(spec),
                 variability=_variability(spec),
                 cross_validations=_cross_validations(project, spec.cross_validation),
+                workers=ctx.workers or available_cpus(),
             )
         except DeclarationError as err:
             raise ConfigurationError(f"The declaration is invalid: {err}") from err
@@ -343,7 +345,9 @@ CREDIBILITY: Kind[CredibilitySpec] = Kind(
     run=_run,
     plan=_plan,
     inputs=("cross_validation", "record"),
-    uses_cores=False,
+    # the draws of the uncertainty and the subjects of the variability are
+    # evaluated in a pool of the workers of the run (sbmlsim#664)
+    uses_cores=True,
     description="Assess the credibility of a model for its contexts of use",
 )
 

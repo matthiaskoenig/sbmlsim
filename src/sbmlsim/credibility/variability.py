@@ -297,6 +297,7 @@ def predictive_checks(
     variability: Variability,
     settings: VariabilitySettings,
     propagation: FitPropagation | None = None,
+    workers: int = 1,
 ) -> PredictiveChecks:
     """Get the predictive check of every adopted fit of a project.
 
@@ -309,6 +310,7 @@ def predictive_checks(
         propagation: the draws of the parameters of the fits, see
             `sbmlsim.credibility.uncertainty.propagate_fits`; the subjects vary
             around the adopted parameters without.
+        workers: the processes the subjects of a check are evaluated in.
 
     Returns:
         The bands of the points of the fits.
@@ -346,6 +348,8 @@ def predictive_checks(
             groups=settings.groups,
             seed=settings.seed,
             studies=settings.studies,
+            workers=workers,
+            settings=report.settings,
         )
         logger.info(
             "The predictive check of the fit '%s' with %s subjects at %s vectors "

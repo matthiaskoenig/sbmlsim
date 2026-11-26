@@ -1871,6 +1871,7 @@ def assess(
     uncertainty: PropagationSettings | None = None,
     variability: VariabilitySettings | None = None,
     cross_validations: Mapping[str, CrossValidation] | None = None,
+    workers: int = 1,
 ) -> CredibilityAssessment:
     """Assess the contexts of use of a project on its adopted fits.
 
@@ -1904,6 +1905,10 @@ def assess(
         cross_validations: the cross-validations of the adopted fits by their
             subset, the ones of the records of the project
             (`read_cross_validations`) without.
+        workers: the processes the draws of the uncertainty and the subjects
+            of the variability are evaluated in, see
+            `sbmlsim.fit.pool.map_evaluations`; the assessment is the one of
+            a single process.
 
     Returns:
         The assessment.
@@ -1953,13 +1958,15 @@ def assess(
         else None
     )
     propagation = (
-        None if uncertainty is None else propagate_fits(project, fits, uncertainty)
+        None
+        if uncertainty is None
+        else propagate_fits(project, fits, uncertainty, workers)
     )
     checks_of_variability = (
         None
         if variability is None or credibility.variability is None
         else predictive_checks(
-            project, fits, credibility.variability, variability, propagation
+            project, fits, credibility.variability, variability, propagation, workers
         )
     )
     validations = (

@@ -299,3 +299,20 @@ def test_the_band_of_the_steps_of_the_integrator(toy: Path) -> None:
     steps = [point_timecourse(res, "[A]", draws=k)[0] for k in range(5)]
     assert time.size <= max(PLOT_POINTS, np.unique(np.concatenate(steps)).size)
     assert np.all(lower <= median) and np.all(median <= upper)
+
+
+def test_nan_quantiles_are_the_ones_of_numpy_value_for_value() -> None:
+    from sbmlsim.result.scan import nan_quantiles
+
+    rng = np.random.default_rng(7)
+    table = rng.lognormal(size=(100, 300))
+    table[rng.random(table.shape) < 0.02] = np.nan
+    table[:, 5] = np.nan
+    qs = [0.05, 0.5, 0.95]
+    with np.errstate(all="ignore"), pytest.warns(RuntimeWarning):
+        expected = np.nanquantile(table, qs, axis=0)
+    np.testing.assert_array_equal(nan_quantiles(table, qs), expected)
+    full = rng.lognormal(size=(50, 40))
+    np.testing.assert_array_equal(
+        nan_quantiles(full, qs), np.nanquantile(full, qs, axis=0)
+    )

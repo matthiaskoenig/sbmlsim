@@ -1260,15 +1260,59 @@ def point_timecourse(
             f"A point needs a position along every dimension of the scan "
             f"{list(res.dims)}: missing {missing}, unknown {unknown}."
         )
-    selected = res.isel(**point) if point else res
-    tdim = POINT if selected.ragged else TIME
-    if key not in selected.ds.data_vars or tdim not in selected.ds[key].dims:
+    values, time = _timecourse_arrays(res, key)
+    changes = np.asarray(res.ds.attrs.get(CHANGES, []), dtype=float)
+    return _point_of(values, time, changes, point)
+
+
+def _timecourse_arrays(res: ScanResult, key: str) -> tuple[xr.DataArray, xr.DataArray]:
+    """Get a timecourse of a result and its times, checked.
+
+    Raises:
+        ValueError: if the variable is no timecourse.
+    """
+    tdim = POINT if res.ragged else TIME
+    if key not in res.ds.data_vars or tdim not in res.ds[key].dims:
         raise ValueError(f"'{key}' is no timecourse of the result.")
-    values = np.asarray(selected.ds[key].values, dtype=float)
-    time = np.asarray(selected.ds[TIME].values, dtype=float)
-    changes = np.asarray(selected.ds.attrs.get(CHANGES, []), dtype=float)
+    return res.ds[key], res.ds[TIME]
+
+
+def _at(
+    array: xr.DataArray, values: np.ndarray, point: Mapping[str, int]
+) -> np.ndarray:
+    """Get the values of an array at a point, by position, as `isel` selects them.
+
+    The values are indexed with numpy: `isel` of the whole result selects every
+    variable and builds a dataset for the values of one, which is what made
+    the bands of a scan over draws slow (sbmlsim#664). A dimension of the
+    point which the array does not have is ignored, as `isel` ignores it.
+    """
+    index = tuple(point.get(str(d), slice(None)) for d in array.dims)
+    return np.asarray(values[index], dtype=float)
+
+
+def _point_of(
+    values: xr.DataArray,
+    time: xr.DataArray,
+    changes: np.ndarray,
+    point: Mapping[str, int],
+    arrays: tuple[np.ndarray, np.ndarray] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the timecourse of a point, see `point_timecourse`.
+
+    Args:
+        values: the variable.
+        time: the times of the result.
+        changes: the times of the changes after the start.
+        point: the position of the point along every dimension.
+        arrays: the values of `values` and of `time`, read once by a caller
+            which takes many points.
+    """
+    data, times = (values.values, time.values) if arrays is None else arrays
     kept_time, kept_values = without_states_before(
-        time[np.newaxis, :], values[np.newaxis, :], [changes]
+        _at(time, times, point)[np.newaxis, :],
+        _at(values, data, point)[np.newaxis, :],
+        [changes],
     )
     finite = np.isfinite(kept_time[0])
     return kept_time[0][finite], kept_values[0][finite]
@@ -1315,8 +1359,19 @@ def point_band(
         raise ValueError(
             f"The dimension '{across}' of the draws is reduced, not a point."
         )
+    missing = sorted(set(res.dims) - set(point) - {across})
+    unknown = sorted(set(point) - set(res.dims))
+    if missing or unknown:
+        raise ValueError(
+            f"A point needs a position along every dimension of the scan "
+            f"{list(res.dims)}: missing {missing}, unknown {unknown}."
+        )
+    values, time = _timecourse_arrays(res, key)
+    changes = np.asarray(res.ds.attrs.get(CHANGES, []), dtype=float)
+    # the values are read once for all draws, not once per draw
+    arrays = (values.values, time.values)
     draws = [
-        point_timecourse(res, key, **point, **{across: k})
+        _point_of(values, time, changes, {**point, across: k}, arrays)
         for k in range(res.ds.sizes[across])
     ]
     if not draws:
@@ -1339,8 +1394,40 @@ def point_band(
             ]
         )
     low, high = quantiles
-    # a time at which every draw failed has no quantile, it is NaN
+    lower, median, upper = nan_quantiles(stacked, [low, 0.5, high])
+    return times, lower, median, upper
+
+
+def nan_quantiles(stacked: np.ndarray, quantiles: Sequence[float]) -> np.ndarray:
+    """Get the quantiles of the columns of a table, ignoring `NaN`.
+
+    The result of `np.nanquantile(stacked, quantiles, axis=0)`, value for value:
+    `nanquantile` along an axis computes every column on its own in python
+    (`apply_along_axis`) when the table has a `NaN` anywhere, which is most of
+    the time of the bands of a scan over draws (sbmlsim#664). The columns
+    without a `NaN` are one vectorized `quantile`, which is what `nanquantile`
+    computes for such a column; only the columns with a `NaN` take its path.
+    A column in which every value is `NaN` has no quantile, it is `NaN`.
+
+    Args:
+        stacked: the values, a row per draw.
+        quantiles: the quantiles, in `[0, 1]`.
+
+    Returns:
+        The quantiles, a row per quantile.
+    """
+    table = np.asarray(stacked, dtype=float)
+    qs = np.asarray(quantiles, dtype=float)
+    result = np.full((qs.size, *table.shape[1:]), np.nan)
+    if table.shape[0] == 0:
+        return result
+    gaps = np.isnan(table).any(axis=0)
+    if not gaps.any():
+        return np.quantile(table, qs, axis=0)
+    full = ~gaps
+    if full.any():
+        result[:, full] = np.quantile(table[:, full], qs, axis=0)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        lower, median, upper = np.nanquantile(stacked, [low, 0.5, high], axis=0)
-    return times, lower, median, upper
+        result[:, gaps] = np.nanquantile(table[:, gaps], qs, axis=0)
+    return result

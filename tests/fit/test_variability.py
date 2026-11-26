@@ -6,6 +6,7 @@ prediction, `A = 2 f exp(-k t)`, so the predictions of the subjects are known
 exactly.
 """
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,11 @@ TIMES = np.array([0.5, 1.0, 2.0, 4.0])
 #: the file of the model, written by the fixture
 MODEL_PATH: dict[str, Path] = {}
 
+#: the file of the model in a worker of a pool, which imports this module
+#: without the fixture having run in it, see
+#: `test_the_predictive_check_in_a_pool_is_the_one_of_one_process`
+WORKER_MODEL_PATH = Path(tempfile.gettempdir()) / "sbmlsim-test-variability-decay.xml"
+
 
 class DecayExperiment(SimulationExperiment):
     """The decay of a study group with `a0 = 2`, the data of six subjects."""
@@ -53,7 +59,7 @@ class DecayExperiment(SimulationExperiment):
     count: int | None = 6
 
     def models(self) -> dict[str, AbstractModel | Path]:
-        return {"m": AbstractModel(source=MODEL_PATH["path"])}
+        return {"m": AbstractModel(source=MODEL_PATH.get("path", WORKER_MODEL_PATH))}
 
     def datasets(self) -> dict[str, DataSet]:
         data = {
@@ -341,3 +347,17 @@ def test_the_variability_between_the_studies(problem: OptimizationProblem) -> No
         problem, X, Variability({"a0": LogNormal(cv=0.1)}), 4, seed=5, studies=8
     )
     assert alone.n_studies == 1
+
+
+def test_the_predictive_check_in_a_pool_is_the_one_of_one_process(
+    tmp_path: Path,
+) -> None:
+    """The vectors and studies of a check run in workers, value for value (#664)."""
+    problem = _problem(tmp_path, DecayExperiment)
+    WORKER_MODEL_PATH.write_text(sbml(DECAY), encoding="utf-8")
+    variability = Variability(factors={"k": LogNormal(cv=0.3)})
+    vectors = np.array([[0.4], [0.5], [0.6]])
+    serial = predictive_check(problem, vectors, variability, 16, seed=5)
+    pooled = predictive_check(problem, vectors, variability, 16, seed=5, workers=3)
+    pd.testing.assert_frame_equal(pooled.points, serial.points)
+    assert pooled.coverage == serial.coverage

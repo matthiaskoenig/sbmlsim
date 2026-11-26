@@ -632,12 +632,20 @@ class ExperimentRunner:
                 return result
 
             # the experiments whose scans need the pool of the simulator run
-            # here and before the pool of the others starts, so that the two
-            # pools never run at the same time and the imports of the workers
-            # take no core from a scan which runs here (#554)
-            for sid in self._order:
-                if sid in spread.in_process and sid not in self.failed:
-                    done[sid] = run_one(sid)
+            # here. A pool of processes of the simulator (roadrunner) runs
+            # before the pool of the others starts, so that the two pools
+            # never run at the same time and the imports of the workers take
+            # no core from a scan which runs here (#554). The engine core
+            # runs a scan on threads and the rest of an experiment - its
+            # outputs and figures - in python on one core, so its experiments
+            # run here while the workers run the others: one after the other
+            # the pool waited for the figures of the experiments here, the
+            # long part of a run over draws (sbmlsim#664)
+            beside = self.engine is Engine.CORE
+            if not beside:
+                for sid in self._order:
+                    if sid in spread.in_process and sid not in self.failed:
+                        done[sid] = run_one(sid)
             executor = (
                 parallel.start_pool(
                     workers,
@@ -661,6 +669,10 @@ class ExperimentRunner:
                 )
             for sid, future in futures.items():
                 future.add_done_callback(_on_done(display, count, sid))
+            if beside:
+                for sid in self._order:
+                    if sid in spread.in_process and sid not in self.failed:
+                        done[sid] = run_one(sid)
             for sid in self._order:
                 if sid in done:
                     continue
@@ -803,7 +815,13 @@ class ExperimentRunner:
             ]
             for sid in jobs
         }
-        if self.simulator.n_workers is not None:
+        # the engine core runs the points of a scan on threads, which a
+        # worker has as well (its share of the CPUs, `parallel.worker_cores`):
+        # only a scan which earns every CPU leaves the pool, as for
+        # `n_workers=None`, and not every experiment of a scan - with the draws
+        # of an uncertainty run every experiment, which then ran one after the
+        # other in this process (sbmlsim#664)
+        if self.simulator.n_workers is not None and self.engine is not Engine.CORE:
             sids = [sid for sid, points in scans.items() if points]
             if not sids:
                 return [], None
