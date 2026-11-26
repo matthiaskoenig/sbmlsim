@@ -65,6 +65,63 @@ chart.save("hctz.json")
 
 A plot can have several colour bars: every `plot.colorbar(scale, low, high, label=...)` adds one, stacked right of the panel. A bar takes the part of its colour map it shows (`start`, `end`, from 0 to 1), its `ticks` and their `tick_labels`, and `categorical=True` draws one band per integer from `low` to `high`, labelled by `tick_labels`. `chart.plot(legend_swatches={group: {...}})` draws the swatch of a legend group in a style of its own, the style keywords of `curve`, e.g. the middle colour of lines which differ in colour. A text, a title or a label breaks its lines at `\n`; a tick label stays one line. The fonts of a chart take the sizes `title`, `label`, `tick`, `tick_y` (the y axes and the colour bars) and `legend` and the weights `title_weight`, `label_weight`, `tick_weight` and `legend_weight`, `normal` or `bold`: `Chart(fonts={"label": 13, "label_weight": "bold"})`.
 
+A heat map and a colour bar take the sequential and the diverging colour maps of matplotlib by their names, in the case of matplotlib or in lower case (`Blues`, `Reds`, `PuRd`, `YlOrRd`, `RdBu`, ...), each also reversed (`Blues_r`); `sbmlsim_core.COLOR_SCALES` lists them, and a value has the colour matplotlib gives it. A heat map places its cells on the categories of its axes, or with `x_edges` and `y_edges` between edges on numeric axes, which stay numeric, so a space-time heat map shares its time with a curve below it. `ChartAxis(line_visible=False)` hides the line of an axis, and `chart.plot(aspect="equal")` makes a unit of y as long as a unit of x by widening the limits of one axis, so a lobule is a regular hexagon without measuring the panel. Error bars take caps of a length in pixels (`error_cap=`), a text its `size` and `weight`, and a text keeps its runs of spaces. The panel of a plot is at least 20 pixels over its span, so a grid of many thin columns fits its chart as long as its plots span several of them:
+
+```python
+import numpy as np
+
+from sbmlsim.plot import Chart, ChartAxis
+
+hidden = ChartAxis(label_visible=False, ticks_visible=False, line_visible=False)
+chart = Chart(width=720, height=360, rows=2, columns=3, title="Zonation")
+lobule = chart.plot(
+    0, 0, title="lobule", x=hidden, y=hidden, aspect="equal", legend=False
+)
+angles = np.linspace(0, 2 * np.pi, 7)[:-1]
+for radius, color, zone in [
+    (1.0, "#fdae61", "periportal"),
+    (0.5, "#d7191c", "pericentral"),
+]:
+    ring = np.column_stack([radius * np.cos(angles), radius * np.sin(angles)])
+    lobule.polygon([ring], line="none", fill=color, fill_opacity=1.0, label=zone)
+
+time = ChartAxis(label="time", unit="hr", min=0, max=10)
+space_time = chart.plot(
+    0,
+    1,
+    column_span=2,
+    title="space-time",
+    x=ChartAxis(min=0, max=10, ticks_visible=False),
+    y=ChartAxis(label="position"),
+    legend=False,
+)
+edges = np.array([0, 1, 2, 4, 6, 10])
+position = np.linspace(0, 1, 5)
+signal = np.exp(-(((edges[:-1] + edges[1:]) / 2 - 6 * position[:-1, None]) ** 2) / 8)
+space_time.heatmap(None, None, signal, x_edges=edges, y_edges=position, scale="PuRd")
+space_time.colorbar("PuRd", 0, 1, label="signal")
+
+blank = ChartAxis(
+    label_visible=False, ticks_visible=False, line_visible=False, min=0, max=1
+)
+note = chart.plot(1, 0, x=blank, y=blank, legend=False)
+note.text(0.05, 0.7, "A  Circuit", size=16, weight="bold")
+note.text(0.05, 0.3, "pump  ->  liver")
+
+outflow = chart.plot(1, 1, column_span=2, x=time, y=ChartAxis(label="outflow"))
+outflow.curve(
+    [1, 2, 4, 6, 8],
+    [0.4, 0.8, 0.9, 0.6, 0.3],
+    yerr=[0.05, 0.1, 0.1, 0.05, 0.05],
+    error_cap=8,
+    marker="circle",
+    label="measured",
+)
+chart
+```
+
+![Output figure](images/outputs/plotting-02.svg)
+
 A chart shows itself in a notebook, where its SVG is the last expression of a cell. The SVG is the default format of the package, the PNG takes a `dpi` (the resolution is stored in the PNG), and the JSON is the spec of the contract `figure/1`, `chart.spec()` as a dictionary, which the renderer of sbmlsim-core, in Python or in the browser, draws again. A value which is not finite is a gap in a curve, `null` in the JSON.
 
 ## An experiment to plot
@@ -214,7 +271,7 @@ urine.add_data(task="task_po25", xid="time", yid="Aurine_hctz", label="simulatio
 fig_po25 = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-03.svg)
+![Output figure](images/outputs/plotting-04.svg)
 
 
 `Figure.add_subplot(plot, row, col, row_span=2)` places a plot that spans several panels instead.
@@ -256,7 +313,7 @@ peak.curve(
 fig_doses = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-04.svg)
+![Output figure](images/outputs/plotting-05.svg)
 
 
 The lines get the colours of the viridis colour map at the value the dimension sets, and the legend says what that value is. With `color=` they get shades of that colour instead. The colour scale is logarithmic when all values are positive and the largest is more than 100 times the smallest. From eleven points on, a colour bar replaces the legend entries: it spans the values of the points, from the smallest to the largest, in the part of the colour map the lines take, so the colour of the bar at a value is the colour of its line, and the lines share one legend entry drawn in their middle colour. A dimension which does not set one target gets a bar of one band per point, labelled by the labels of the points. The shades of a colour of its own are no colour map of the renderer, so such lines get no colour bar. A plot of several curves with colour bars shows all of them, the same bar once.
@@ -302,7 +359,7 @@ for plot in [linear, log]:
 fig_patients = figure_chart(experiment, bands)
 ```
 
-![Output figure](images/outputs/plotting-05.svg)
+![Output figure](images/outputs/plotting-06.svg)
 
 
 The default quantiles are 5 % and 95 %; `quantiles=(0.25, 0.75)` changes them and `median=False` leaves out the median. `over=` draws one band per point of one other dimension. A band takes `color=` and `alpha=`; without a colour it takes the next colour of the colour cycle. Bands are drawn below the curves.
@@ -351,14 +408,14 @@ plot.curve(
 fig_style = figure_chart(experiment, fig)
 ```
 
-![Output figure](images/outputs/plotting-06.svg)
+![Output figure](images/outputs/plotting-07.svg)
 
 
 Colours are `ColorType` objects, made from matplotlib colour names or hex strings.
 
 ## Figure settings
 
-Sizes, fonts and legends are set with `FigureSettings`: `fig_dpi`, `panel_width`, `panel_height`, the font sizes and weights of titles, labels, ticks and legends, `legend_position` and `legend_scope`, among others. `fig_facecolor` (other than white) and `legend_loc` (other than `best`) are not supported: the renderer has no background colour, the theme comes from CSS, and places the legend itself, so a figure which sets either logs one warning. The renderer has one title size: `axes_titlesize` is used for a figure with plot titles and no figure title, `fig_titlesize` otherwise, and a figure with both takes `fig_titlesize` for the plot titles as well, which is logged. The renderer has two weights, `normal` and `bold`: a weight of 600 or more, or `semibold`, `bold`, `heavy` and `black`, is bold, and the title of the figure and the titles of its plots share one weight, bold when either is. `xtick_labelsize` and `ytick_labelsize` are the sizes of the tick labels of the x and the y axes, and an axis with `ticks_visible=False` hides its tick labels and keeps the tick marks. The settings come in four levels, and the more specific level wins:
+Sizes, fonts and legends are set with `FigureSettings`: `fig_dpi`, `panel_width`, `panel_height`, the font sizes and weights of titles, labels, ticks and legends, `legend_position` and `legend_scope`, among others. `legend_loc` places a legend inside its plot at a location of matplotlib: `best` (the default) at the location of the least data, as matplotlib does, or a fixed one such as `upper left`; a legend stays inside however much data it covers and goes outside only when it does not fit into its panel. `fig_facecolor` (other than white) is not supported: the renderer has no background colour, the theme comes from CSS, so a figure which sets it logs one warning. The renderer has one title size: `axes_titlesize` is used for a figure with plot titles and no figure title, `fig_titlesize` otherwise, and a figure with both takes `fig_titlesize` for the plot titles as well, which is logged. The renderer has two weights, `normal` and `bold`: a weight of 600 or more, or `semibold`, `bold`, `heavy` and `black`, is bold, and the title of the figure and the titles of its plots share one weight, bold when either is. `xtick_labelsize` and `ytick_labelsize` are the sizes of the tick labels of the x and the y axes, and an axis with `ticks_visible=False` hides its tick labels and keeps the tick marks. The settings come in four levels, and the more specific level wins:
 
 1. the defaults of `FigureSettings`,
 2. the run: `run_experiments(..., figure_settings={"fig_dpi": 300})`,
@@ -400,13 +457,13 @@ Older code set the settings on the class, `Figure.fig_dpi = 300`, which changed 
 
 ### Legends
 
-By default each plot has its legend inside, in the corner of the panel which covers the least of the data; a legend which covers too much of the data in every corner goes right of the plot. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
+By default each plot has its legend inside, at the location of matplotlib which covers the least of the data (`legend_loc="best"`); it stays inside however much data it covers, as in matplotlib, and goes right of the plot only when it does not fit into the panel. `legend_loc` of the figure settings, of `Chart` or of `Chart.plot` (for one plot) puts it at a fixed location of matplotlib instead, e.g. `"upper left"` or `"lower center"`. `legend_position="outside"` puts it right of the plot, and the figure grows by the width of the legend, so the panels keep their size. When the plots of a row show the same entries, as the two panels of the band figure above, `legend_scope="row"` draws one legend per row, right of the grid, with every entry once:
 
 ```python
 fig_row = figure_chart(experiment, bands, settings={"legend_scope": "row"})
 ```
 
-![Output figure](images/outputs/plotting-08.svg)
+![Output figure](images/outputs/plotting-09.svg)
 
 
 The `legend` flag of a plot decides whether its entries go into the legend of the row.

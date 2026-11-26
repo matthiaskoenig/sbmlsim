@@ -1006,7 +1006,7 @@ def test_the_one_title_size(
 def test_unsupported_settings_warn(
     experiment: SimulationExperiment, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A background colour and a legend location are warned about per figure."""
+    """A background colour is warned about per figure, a legend location not."""
     with caplog.at_level("WARNING"):
         figure_chart(experiment, _figure(experiment, _doses))
     assert not caplog.records
@@ -1015,4 +1015,4 @@ def test_unsupported_settings_warn(
         figure_chart(experiment, figure)
     messages = [r.getMessage() for r in caplog.records]
     assert sum("fig_facecolor" in m for m in messages) == 1
-    assert sum("legend_loc" in m for m in messages) == 1
+    assert not any("legend_loc" in m for m in messages)

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 import numpy as np
 
 from sbmlsim.data import Data
+from sbmlsim.plot.chart import legend_loc_spec
 from sbmlsim.plot.colors import color_alpha
 from sbmlsim.units import short_unit
 
@@ -1972,7 +1973,8 @@ class FigureSettings:
         legend_fontsize: the font size of a legend.
         legend_position: `"inside"` a plot or `"outside"` right of it.
         legend_loc: the location of a legend inside a plot, a location of
-            matplotlib, e.g. `"best"` or `"upper left"`.
+            matplotlib (`sbmlsim.plot.chart.LEGEND_LOCS`), e.g. `"best"`, the
+            location of the least data, or `"upper left"`.
         legend_scope: which plots a legend collects, `LEGEND_SCOPES`:
             `"plot"` a legend per plot, placed by `legend_position` and
             `legend_loc`; `"row"` one legend per row of the grid, right of
@@ -2004,13 +2006,15 @@ class FigureSettings:
         """Check the settings which take one of some values.
 
         Raises:
-            ValueError: if `legend_scope` is none of `LEGEND_SCOPES`.
+            ValueError: if `legend_scope` is none of `LEGEND_SCOPES` or
+                `legend_loc` none of the locations of a legend.
         """
         if self.legend_scope not in LEGEND_SCOPES:
             raise ValueError(
                 f"The legend_scope of a figure is one of {list(LEGEND_SCOPES)}, "
                 f"not {self.legend_scope!r}."
             )
+        legend_loc_spec(self.legend_loc)
 
     @classmethod
     def names(cls) -> tuple[str, ...]:
