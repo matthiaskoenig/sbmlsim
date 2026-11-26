@@ -108,8 +108,9 @@ dependencies = [
 	# parameter of a profile likelihood, which the analysis computes from the
 	# Fisher information of the optimum, so python and the engine walk the
 	# same points (#647); 0.28.0 draws the figures; 0.29.0 carries the changes
-	# and the steady state in the forward sensitivities
-	"sbmlsim-core>=0.29.0",
+	# and the steady state in the forward sensitivities; 0.29.1 no longer reports
+	# a stall at a step which leaves the time unchanged
+	"sbmlsim-core>=0.29.1",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
