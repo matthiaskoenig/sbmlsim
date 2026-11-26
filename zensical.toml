@@ -143,6 +143,7 @@ nav = [
       { "plotting" = "api/plot.plotting.md" },
       { "axes" = "api/plot.axes.md" },
       { "points" = "api/plot.points.md" },
+      { "thinning" = "api/plot.thinning.md" },
     ] },
     { "sbmlsim.report" = [
       { "experiment_report" = "api/report.experiment_report.md" },

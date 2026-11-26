@@ -634,7 +634,10 @@ def test_the_log_panel_of_a_curve_has_a_gap_at_zero(
         ParameterSet(sid="true", values={"ke": TRUE_KE}),
     )
     report.plot_mapping(tmp_path)
-    linear, log = figures["UrineStudy_fm_urine"].spec()["plots"][:2]
+    # the points of the two panels, which their own axes would thin apart
+    chart = figures["UrineStudy_fm_urine"]
+    chart.thinning = None
+    linear, log = chart.spec()["plots"][:2]
     assert log["y"]["scale"] == "log"
 
     def curve_of(plot: dict[str, Any]) -> np.ndarray:
