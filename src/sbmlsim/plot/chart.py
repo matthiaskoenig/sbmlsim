@@ -234,6 +234,37 @@ class _AxisState:
         return spec
 
 
+#: the locations of a legend inside its panel, the `loc` of matplotlib: `best`
+#: takes the one of the least data, the others are fixed
+LEGEND_LOCS: Final = (
+    "best",
+    "upper right",
+    "upper left",
+    "lower left",
+    "lower right",
+    "right",
+    "center left",
+    "center right",
+    "lower center",
+    "upper center",
+    "center",
+)
+
+
+def legend_loc_spec(loc: str) -> str:
+    """Get a location of a legend for the spec, its words joined by `_`.
+
+    Raises:
+        ValueError: for a location which is none of `LEGEND_LOCS`.
+    """
+    name = str(loc).strip().lower().replace("_", " ")
+    if name not in LEGEND_LOCS:
+        raise ValueError(
+            f"The legend location {loc!r} is none of {', '.join(LEGEND_LOCS)}."
+        )
+    return name.replace(" ", "_")
+
+
 def _aspect(aspect: Aspect | None) -> str | float | None:
     """Get the aspect of a plot for the spec.
 
@@ -435,6 +466,7 @@ class ChartPlot:
         declared_legends: Sequence[Sequence[str]] | None,
         legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
         aspect: Aspect | None = None,
+        legend_loc: str | None = None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
@@ -445,6 +477,7 @@ class ChartPlot:
         self.column_span = int(column_span)
         self.title = title
         self.legend = bool(legend)
+        self.legend_loc = None if legend_loc is None else legend_loc_spec(legend_loc)
         self.aspect = _aspect(aspect)
         self.legend_order = None if legend_order is None else list(legend_order)
         self.declared_legends = (
@@ -1353,6 +1386,8 @@ class ChartPlot:
         if "y2" in self._axes:
             spec["y2"] = self._axes["y2"].spec()
         spec["legend"] = self.legend
+        if self.legend_loc is not None:
+            spec["legend_loc"] = self.legend_loc
         if len(self._colorbars) == 1:
             spec["colorbar"] = self._colorbars[0]
         elif self._colorbars:
@@ -1482,6 +1517,7 @@ class Chart:
         fonts: Mapping[str, float | str] | None = None,
         legend_scope: str = "plot",
         legend_position: str = "inside",
+        legend_loc: str = "best",
         dpi: float | None = None,
     ) -> None:
         """Create a chart.
@@ -1501,6 +1537,11 @@ class Chart:
                 `legend_weight`; the defaults of the renderer for the others.
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
             legend_position: `inside` or `outside`, right of the plot.
+            legend_loc: where a legend inside goes, a location of matplotlib
+                (`LEGEND_LOCS`): `best`, the location of the least data (a
+                legend stays inside however much data it covers and goes
+                outside only when it does not fit into its panel), or a fixed
+                one, e.g. `upper left`; a plot may set its own.
             dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
                 the spec.
         """
@@ -1514,6 +1555,7 @@ class Chart:
         self.fonts = None if fonts is None else _fonts(fonts)
         self.legend_scope = legend_scope
         self.legend_position = legend_position
+        self.legend_loc = legend_loc_spec(legend_loc)
         self.dpi = None if dpi is None else float(dpi)
         self.plots: list[ChartPlot] = []
         self._element_ids: set[str] = set()
@@ -1535,6 +1577,7 @@ class Chart:
         declared_legends: Sequence[Sequence[str]] | None = None,
         legend_swatches: Mapping[str, Mapping[str, Any]] | None = None,
         aspect: Aspect | None = None,
+        legend_loc: str | None = None,
     ) -> ChartPlot:
         """Add a plot at a cell of the grid.
 
@@ -1568,6 +1611,10 @@ class Chart:
                 the renderer keeps the panel and widens the limits of one
                 axis, so e.g. a hexagon is regular; `None` for axes of their
                 own limits.
+            legend_loc: where the legend of the plot goes inside its panel, a
+                location of `LEGEND_LOCS` (matplotlib's `loc`, e.g. `upper
+                left`); `None` for the `legend_loc` of the chart. A legend of a
+                row takes the one of its rightmost plot with a legend.
 
         Returns:
             The plot, which its methods add elements to.
@@ -1588,6 +1635,7 @@ class Chart:
             declared_legends=declared_legends,
             legend_swatches=legend_swatches,
             aspect=aspect,
+            legend_loc=legend_loc,
         )
         self.plots.append(plot)
         return plot
@@ -1635,6 +1683,8 @@ class Chart:
             "scope": self.legend_scope,
             "position": self.legend_position,
         }
+        if self.legend_loc != "best":
+            spec["legend"]["loc"] = self.legend_loc
         spec["plots"] = [plot.spec() for plot in self.plots]
         return spec
 

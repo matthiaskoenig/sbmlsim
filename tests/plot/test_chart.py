@@ -770,3 +770,20 @@ def test_wide_grid_fits() -> None:
     assert geometry["width"] == 1225
     last = geometry["plots"][-1]["rect"]
     assert last["x"] + last["width"] < 1225
+
+
+def test_legend_locations() -> None:
+    """The locations of matplotlib go into the spec, of the chart and of a plot."""
+    chart = Chart(400, 300, columns=2, legend_loc="upper left")
+    chart.plot(0, 0).curve([0, 1], [0, 1], label="a")
+    chart.plot(0, 1, legend_loc="lower_center").curve([0, 1], [0, 1], label="b")
+    spec = chart.spec()
+    assert spec["legend"]["loc"] == "upper_left"
+    assert "legend_loc" not in spec["plots"][0]
+    assert spec["plots"][1]["legend_loc"] == "lower_center"
+    # best, the default, is no part of the spec, which the renderer of 0.29 reads
+    assert "loc" not in Chart(400, 300).spec()["legend"]
+    with pytest.raises(ValueError, match="none of best"):
+        Chart(400, 300, legend_loc="top")
+    with pytest.raises(ValueError, match="none of best"):
+        Chart(400, 300).plot(legend_loc="somewhere")

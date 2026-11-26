@@ -137,7 +137,6 @@ HOLLOW: Final = "none"
 #: the font weights of matplotlib by name which the renderer draws bold
 #: the defaults of the settings the renderer cannot carry
 DEFAULT_FACECOLOR: Final = "white"
-DEFAULT_LEGEND_LOC: Final = "best"
 
 BOLD_WEIGHTS: Final = frozenset(
     {"semibold", "demibold", "demi", "bold", "heavy", "extra bold", "black"}
@@ -208,6 +207,7 @@ def figure_chart(
         },
         legend_scope=resolved.legend_scope,
         legend_position=resolved.legend_position,
+        legend_loc=resolved.legend_loc,
         dpi=resolved.fig_dpi,
     )
     groups = _Groups()
@@ -263,12 +263,6 @@ def _warn_unsupported(figure: Figure, resolved: FigureSettings) -> None:
         logger.warning(
             "The figure '%s' sets fig_facecolor, which the renderer does not "
             "support: it has no background colour, the theme comes from CSS.",
-            figure.sid,
-        )
-    if resolved.legend_loc != DEFAULT_LEGEND_LOC:
-        logger.warning(
-            "The figure '%s' sets legend_loc, which the renderer does not "
-            "support: it places the legend itself.",
             figure.sid,
         )
 
