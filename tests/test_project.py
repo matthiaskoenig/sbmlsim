@@ -9,11 +9,14 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+import sbmlsim.project as project_module
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import Engine
 from sbmlsim.project import (
     ADOPTED_FILE,
     Project,
     SimulatorSettings,
+    collect_figure_files,
     load_project,
     write_adopted,
 )
@@ -212,3 +215,46 @@ def test_the_uncertainty_of_the_example_propagates(project: Project) -> None:
     )
     summary = result.summary(list(analysis.outputs or []))
     assert np.isfinite(summary["mean"]).all()
+
+
+def test_the_figures_are_collected_as_hard_links(tmp_path: Path) -> None:
+    """A collected figure is a hard link of the file of its experiment.
+
+    A figure collected again is replaced, and a figure written atomically
+    afterwards is a new file, which the collected one does not follow.
+    """
+    figure = tmp_path / "Study" / "Study_Fig1.svg"
+    figure.parent.mkdir()
+    figure.write_text("<svg>1</svg>", encoding="utf-8")
+    (tmp_path / "Study" / "Study.json").write_text("{}", encoding="utf-8")
+
+    figures_dir = collect_figure_files(tmp_path, show=False)
+    collected = figures_dir / figure.name
+    assert sorted(p.name for p in figures_dir.iterdir()) == [figure.name]
+    assert collected.read_text(encoding="utf-8") == "<svg>1</svg>"
+    assert collected.stat().st_ino == figure.stat().st_ino
+
+    write_text_atomic(figure, "<svg>2</svg>")
+    assert collected.read_text(encoding="utf-8") == "<svg>1</svg>"
+    collect_figure_files(tmp_path, show=False)
+    assert collected.read_text(encoding="utf-8") == "<svg>2</svg>"
+    assert collected.stat().st_ino == figure.stat().st_ino
+
+
+def test_a_figure_is_copied_where_no_hard_link_can_be_made(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A filesystem without hard links gets a copy."""
+
+    def refuse(source: Path, target: Path) -> None:
+        raise OSError("no hard links")
+
+    monkeypatch.setattr(project_module.os, "link", refuse)
+    figure = tmp_path / "Study" / "Study_Fig1.svg"
+    figure.parent.mkdir()
+    figure.write_text("<svg>1</svg>", encoding="utf-8")
+
+    collected = collect_figure_files(tmp_path, show=False) / figure.name
+
+    assert collected.read_text(encoding="utf-8") == "<svg>1</svg>"
+    assert collected.stat().st_ino != figure.stat().st_ino
