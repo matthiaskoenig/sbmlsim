@@ -80,3 +80,51 @@ def test_section_icon_is_left_out_without_utf8(monkeypatch: pytest.MonkeyPatch) 
     display.section("Report", icon=display.ICON_REPORT)
     stream.flush()
     assert b"Report" in raw.getvalue()
+
+
+def _plain(monkeypatch: pytest.MonkeyPatch) -> StringIO:
+    """Print to a file, without the control codes of a terminal: a link once."""
+    buffer = StringIO()
+    monkeypatch.setattr(display, "console", Console(file=buffer, width=400))
+    return buffer
+
+
+def test_a_link_into_a_staging_folder_names_the_folder_it_ends_up_as(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A link printed while the output is staged names its final folder (#669)."""
+    buffer = _plain(monkeypatch)
+    staging = tmp_path / ".all.0123"
+    target = tmp_path / "all"
+    with display.relocated({staging: target}):
+        display.link("report", staging / "index.html")
+        display.link("figures", staging / "_figures")
+        display.link("other", tmp_path / "other" / "index.html")
+    display.link("after", staging / "index.html")
+
+    out = buffer.getvalue()
+    assert (target / "index.html").resolve().as_uri() in out
+    assert (target / "_figures").resolve().as_uri() in out
+    assert (tmp_path / "other" / "index.html").resolve().as_uri() in out
+    # outside of the block a link is the path it is given
+    assert out.count(staging.resolve().as_uri()) == 1
+
+
+def test_the_deepest_folder_of_a_relocation_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A result folder moved up out of the staging folder is that folder's target.
+
+    The records of a fit are written into `<staging>/<fit id>` and moved up into
+    the staging folder, which becomes `<fit id>` itself.
+    """
+    buffer = _plain(monkeypatch)
+    staging = tmp_path / ".PK_1.0123"
+    target = tmp_path / "PK_1"
+    with display.relocated({staging: target, staging / "PK_1": target}):
+        display.link("report", staging / "PK_1" / "index.html")
+        display.link("results", staging / "index.html")
+
+    out = buffer.getvalue()
+    assert out.count((target / "index.html").resolve().as_uri()) == 2
+    assert "PK_1/PK_1" not in out
