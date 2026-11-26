@@ -283,6 +283,55 @@ def test_the_variants_of_an_app_are_answered(bundle_variants: dict[str, Any]) ->
     assert answers[""]["panels"]["patient_plasma"]["run"]["model"] == default["model"]
 
 
+def test_a_bundle_parses_the_sbml_of_a_variant_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The panels of a variant share the parse of its SBML and its tolerances.
+
+    The knob parameters of every panel with derived targets read the ids of
+    the SBML of its variant and every model of derived targets copies that
+    SBML, so a bundle parses an SBML once and once more per such model, and
+    loads a file in roadrunner for its tolerances once, however many panels
+    and models of derived targets its variant has.
+    """
+    from sbmlsim.serve import export
+
+    parsed: list[str] = []
+    document = export._document
+
+    def counted_document(sbml: str) -> libsbml.SBMLDocument:
+        parsed.append(sbml)
+        return document(sbml)
+
+    loaded: list[Path] = []
+    tolerances = export._tolerances
+
+    def counted_tolerances(
+        entry: ModelEntry, model: SBMLModel, path: Path
+    ) -> dict[str, float]:
+        loaded.append(path)
+        return tolerances(entry, model, path)
+
+    monkeypatch.setattr(export, "_document", counted_document)
+    monkeypatch.setattr(export, "_tolerances", counted_tolerances)
+    content = build_bundle(ModelRegistry.of({"hctz": VARIANTS}), "hctz").content
+    derived = [key for key in content["models"] if "-" in key]
+    variants = {content["models"][key]["variant"] for key in content["models"]}
+    runs = [
+        panel["run"]
+        for answer in content["answers"].values()
+        for panel in answer["panels"].values()
+    ]
+    assert len(derived) == 2
+    assert len(variants) == 2
+    # more panels of derived targets than models of them
+    assert sum(run["model"] in derived for run in runs) > len(derived)
+    # the files of the variants have the same SBML, which is parsed once
+    assert len(set(parsed)) == 1
+    assert len(parsed) == len(set(parsed)) + len(derived)
+    assert len(loaded) == len(set(loaded)) == len(variants)
+
+
 def test_a_derived_target_which_is_no_parameter_is_refused() -> None:
     panel = HCTZ_PATIENT_PLASMA.model_copy(
         update={
