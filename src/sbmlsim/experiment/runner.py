@@ -488,7 +488,9 @@ class ExperimentRunner:
                 worker per `EXPERIMENTS_PER_WORKER` experiments, at most one
                 per CPU, i.e. serially for a few experiments, and serially in a
                 worker. In a pool every experiment
-                runs serially in its worker, its scans included, so an
+                runs in its worker, its scans included (the engine core on the
+                threads of the share of the worker of the CPUs,
+                `parallel.worker_cores`, another engine serially), so an
                 experiment whose scans the simulator would run in a pool of
                 its own runs in the calling process, whatever this says, and
                 the others in the pool after it (`_scan_pool`); a run with
@@ -733,6 +735,9 @@ class ExperimentRunner:
                     dict(self.simulator.integrator_settings)
                     if self.simulator is not None
                     else None
+                ),
+                simulator_workers=(
+                    self.simulator.n_workers if self.simulator is not None else 1
                 ),
                 output_path=output_path / sid,
                 formats=formats,
@@ -1145,6 +1150,10 @@ class _Job:
     #: the settings of the integrator of the simulator of the run, `None` for
     #: a runner without a simulator
     integrator_settings: dict[str, IntegratorSetting] | None
+    #: the workers of the simulator of the run, which the engine core runs the
+    #: points of a scan in a worker on as threads, at most the share of the
+    #: worker of the CPUs (`sbmlsim.simulator.worker.core_threads`)
+    simulator_workers: int | None
     output_path: Path
     formats: list[str]
     figure_formats: list[str] | None
@@ -1279,12 +1288,19 @@ def _run_job(job: _Job) -> _Outcome:
     logging.root.handlers[:] = [handler]
     simulator: Simulator | None = None
     if job.integrator_settings is not None:
-        # a worker runs the scans of its experiment itself; the simulator of
-        # COPASI or AMICI imports it through sbmlsim, see `sbmlsim.engine`
-        simulator = Simulator(n_workers=1, engine=job.engine)
+        # a worker runs the scans of its experiment itself, a pool of the
+        # simulator would be a pool in a worker; the engine core runs the
+        # points of a scan on threads in this process, its share of the CPUs
+        # (`parallel.worker_cores`). The simulator of COPASI or AMICI imports
+        # it through sbmlsim, see `sbmlsim.engine`
+        simulator = Simulator(
+            n_workers=job.simulator_workers if job.engine is Engine.CORE else 1,
+            engine=job.engine,
+        )
         simulator.set_integrator_settings(**job.integrator_settings)
     try:
         with (
+            parallel.working(),
             reporting(_EVENTS.put if _EVENTS is not None else None),
             worker_reporting(_EVENTS),
             using_amici_cache(job.amici_cache),
