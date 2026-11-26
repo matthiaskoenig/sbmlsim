@@ -1075,6 +1075,8 @@ def _plausibility(
 
 def _rebuild(project: Project) -> BatteryResult:
     """Check that the factory builds the models of the project again."""
+    from sbmlsim.webapp.assets import is_web_asset
+
     statement = (
         "The factory builds the models of the project again, equal but for "
         "the dates of the model history."
@@ -1086,14 +1088,20 @@ def _rebuild(project: Project) -> BatteryResult:
         out = Path(tmp)
         start = time.perf_counter()
         try:
-            project.create_models(out)
+            # the models, not the web assets: compiling the variants for the
+            # browser is no part of what the models are and was most of the
+            # time of the check (sbmlsim#664); `run_simulation --action
+            # factory --rebuild` checks them
+            project.create_models(out, web_app=False)
         except Exception as err:  # a failure of a factory of a model is the result
             collector.problems.append(
                 f"the factory failed: {type(err).__name__}: {err}"
             )
             return collector.result(REBUILD, statement)
         logger.info("Rebuild '%s' in %.1f s", project.name, time.perf_counter() - start)
-        compared = project.compared_outputs(out)
+        compared = [
+            path for path in project.compared_outputs(out) if not is_web_asset(path)
+        ]
         collector.cases = len(compared)
         if not compared:
             collector.problems.append(
@@ -1101,7 +1109,10 @@ def _rebuild(project: Project) -> BatteryResult:
                 "variants and no file of the package"
             )
         for path in project.changed_outputs(out):
-            collector.problems.append(f"'{path.as_posix()}' differs from its rebuild")
+            if not is_web_asset(path):
+                collector.problems.append(
+                    f"'{path.as_posix()}' differs from its rebuild"
+                )
     return collector.result(REBUILD, statement)
 
 

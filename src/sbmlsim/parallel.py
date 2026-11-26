@@ -159,6 +159,30 @@ def in_worker() -> bool:
     return multiprocessing.parent_process() is not None
 
 
+#: the processes of the pool of this worker, which the pool tells its workers
+#: when they start; `None` outside of a worker of `start_pool`
+_POOL_SIZE: int | None = None
+
+
+def worker_cores() -> int:
+    """Get the cores this process may use for threads of its own.
+
+    A worker of a pool of `n` processes has the `1/n` share of the CPUs of the
+    quota (at least one), so the threads of all workers of a busy pool are no
+    more than the CPUs; any other process has every CPU of the quota. The
+    threads of the batches of sbmlsim-core in a worker take this share
+    (`sbmlsim.simulator.worker.core_threads`), so a worker which runs the long
+    experiment of a run is not held to one core (sbmlsim#664).
+
+    Returns:
+        The number of cores, at least one.
+    """
+    cpus = max(1, cgroup.available_cpus())
+    if _POOL_SIZE is None:
+        return cpus if not in_worker() else 1
+    return max(1, cpus // _POOL_SIZE)
+
+
 def check_workers(n_workers: int | None) -> None:
     """Check a number of workers.
 
@@ -306,7 +330,9 @@ def _end_with_the_parent() -> None:
 
 
 def _initialize_worker(
-    initializer: Callable[..., object] | None = None, initargs: tuple[Any, ...] = ()
+    initializer: Callable[..., object] | None = None,
+    initargs: tuple[Any, ...] = (),
+    pool_size: int | None = None,
 ) -> None:
     """Initialize a worker: it ends with its parent, and SIGINT is ignored.
 
@@ -329,6 +355,8 @@ def _initialize_worker(
     terminates its workers with it and waits for them, and waited forever for
     a worker which never received it.
     """
+    global _POOL_SIZE
+    _POOL_SIZE = pool_size
     _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
@@ -376,7 +404,7 @@ def start_pool(
         max_workers=n_workers,
         mp_context=_context(preload),
         initializer=_initialize_worker,
-        initargs=(initializer, initargs),
+        initargs=(initializer, initargs, n_workers),
     )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:

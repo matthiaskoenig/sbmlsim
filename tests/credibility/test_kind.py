@@ -44,7 +44,8 @@ def test_the_kind() -> None:
     kind = run.get_kind("credibility")
     assert kind.spec is CredibilitySpec
     assert kind.inputs == ("cross_validation", "record")
-    assert not kind.uses_cores
+    # the draws and the subjects are evaluated in a pool of the workers (#664)
+    assert kind.uses_cores
     assert not kind.splittable
 
 

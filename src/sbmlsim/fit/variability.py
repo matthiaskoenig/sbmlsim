@@ -52,6 +52,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from sbmlsim.fit.pool import chunks, map_evaluations
 from sbmlsim.simulation.sampling.distributions import (
     EPS,
     Distribution,
@@ -64,6 +65,7 @@ from sbmlsim.uncertainty.sources import Variable
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.options import FitSettings
 
 __all__ = [
     "PredictiveCheck",
@@ -319,6 +321,41 @@ def subject_predictions(
     )
 
 
+def _subjects_of(
+    problem: OptimizationProblem,
+    shared: tuple[
+        Variability,
+        int,
+        list[int],
+        int,
+        Literal["sobol", "lhs", "random"],
+        list[tuple[np.ndarray, int, dict[str, float] | None]],
+    ],
+    task: range,
+) -> list[SubjectPredictions]:
+    """Get the subjects of some vectors and studies of a predictive check.
+
+    A task of `sbmlsim.fit.pool.map_evaluations`: the units of the task are
+    vectors and studies, each with the first subject of its sequence and the
+    factors of its study.
+    """
+    variability, n_subjects, chosen, seed, design, units = shared
+    return [
+        subject_predictions(
+            problem,
+            units[u][0],
+            variability,
+            n_subjects,
+            indices=chosen,
+            seed=seed,
+            design=design,
+            start=units[u][1],
+            study=units[u][2],
+        )
+        for u in task
+    ]
+
+
 def _group_means(
     values: np.ndarray,
     size: int,
@@ -427,6 +464,8 @@ def predictive_check(
     seed: int | None = None,
     design: Literal["sobol", "lhs", "random"] = "sobol",
     studies: int = 16,
+    workers: int = 1,
+    settings: FitSettings | None = None,
 ) -> PredictiveCheck:
     """Get the predictive check of the mappings of a problem, see the module.
 
@@ -447,6 +486,12 @@ def predictive_check(
             points of one sequence.
         studies: the studies of every parameter vector with a variability
             between the studies (`Variability.between`), one without.
+        workers: the processes the subjects of the vectors and studies are
+            evaluated in, see `sbmlsim.fit.pool.map_evaluations`; a vector
+            and a study is a sequence of its own, so the predictions are the
+            ones of one process.
+        settings: the settings the problem is initialized with in a worker,
+            the settings of the problem by default.
 
     Returns:
         The bands and the coverage of the data points.
@@ -481,27 +526,33 @@ def predictive_check(
         else between.draw(len(vectors) * n_studies, seed=seed + 1, design=design)
     )
     chosen = list(problem.indices() if indices is None else indices)
-    subjects = tuple(
-        subject_predictions(
-            problem,
+    units = [
+        (
             vector,
-            variability,
-            n_subjects,
-            indices=chosen,
-            seed=seed,
-            design=design,
-            start=(o * n_studies + s) * n_subjects,
-            study=(
-                None
-                if between is None
-                else {
-                    target: float(study_factors[o * n_studies + s, j])
-                    for j, target in enumerate(between.targets)
-                }
-            ),
+            (o * n_studies + s) * n_subjects,
+            None
+            if between is None
+            else {
+                target: float(study_factors[o * n_studies + s, j])
+                for j, target in enumerate(between.targets)
+            },
         )
         for o, vector in enumerate(vectors)
         for s in range(n_studies)
+    ]
+    shared = (variability, n_subjects, chosen, seed, design, units)
+    tasks = chunks(len(units), workers)
+    subjects = tuple(
+        prediction
+        for chunk in map_evaluations(
+            problem,
+            settings if settings is not None else problem.settings,
+            _subjects_of,
+            tasks,
+            workers,
+            shared,
+        )
+        for prediction in chunk
     )
     typical = problem.predictions(vectors[0], chosen)
     rng = np.random.default_rng(seed)

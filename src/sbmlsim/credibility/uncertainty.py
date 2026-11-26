@@ -255,9 +255,13 @@ def _same_points(points: pd.DataFrame, reference: pd.DataFrame) -> bool:
 
 
 def _evaluate(
-    report: FitReport, draws: FitDraws, reference: pd.DataFrame
+    report: FitReport, draws: FitDraws, reference: pd.DataFrame, workers: int = 1
 ) -> tuple[np.ndarray, int]:
     """Evaluate a fit at its draws.
+
+    The draws are evaluated in a pool of `workers` processes, see
+    `sbmlsim.fit.pool.map_evaluations`; a draw is a function of its values
+    alone, so the predictions are the ones of one process.
 
     Returns:
         The predictions, one column per draw, and the number of failed draws.
@@ -265,11 +269,45 @@ def _evaluate(
     Raises:
         ValueError: if the points of a draw are not the reference points.
     """
-    from sbmlsim.fit.parameters import ParameterSet
+    from sbmlsim.fit.pool import chunks, map_evaluations
 
     predictions = np.full((len(reference), len(draws.values)), np.nan)
     failed = 0
-    for k, row in enumerate(draws.values):
+    evaluated = map_evaluations(
+        report,
+        report.settings,
+        _evaluate_draws,
+        chunks(len(draws.values), workers),
+        workers,
+        (draws, reference),
+    )
+    for chunk in evaluated:
+        for k, values in chunk:
+            if values is None:
+                failed += 1
+            else:
+                predictions[:, k] = values
+    return predictions, failed
+
+
+def _evaluate_draws(
+    report: FitReport, state: tuple[FitDraws, pd.DataFrame], task: range
+) -> list[tuple[int, np.ndarray | None]]:
+    """Evaluate some draws of a fit, a task of `_evaluate`.
+
+    Returns:
+        The index of every draw and its predictions, `None` for a draw which
+        failed.
+
+    Raises:
+        ValueError: if the points of a draw are not the reference points.
+    """
+    from sbmlsim.fit.parameters import ParameterSet
+
+    draws, reference = state
+    out: list[tuple[int, np.ndarray | None]] = []
+    for k in task:
+        row = draws.values[k]
         pset = ParameterSet(
             sid=f"draw_{k}",
             values=dict(zip(draws.pids, row.tolist(), strict=True)),
@@ -283,19 +321,19 @@ def _evaluate(
             logger.warning(
                 "The draw %s of the fit '%s' failed: %s", k, draws.subset, err
             )
-            failed += 1
+            out.append((k, None))
             continue
         if not _same_points(points, reference):
             raise ValueError(
                 f"The points of the draw {k} of the fit '{draws.subset}' are not the "
                 f"points of its reference."
             )
-        predictions[:, k] = points["IPRED"].to_numpy(dtype=float)
-    return predictions, failed
+        out.append((k, points["IPRED"].to_numpy(dtype=float)))
+    return out
 
 
 def propagate_fits(
-    project: Project, fits: FitTable, settings: PropagationSettings
+    project: Project, fits: FitTable, settings: PropagationSettings, workers: int = 1
 ) -> FitPropagation:
     """Evaluate the adopted fits of a project at the draws of their parameters.
 
@@ -304,6 +342,7 @@ def propagate_fits(
         fits: the fresh evaluation of the fits with their reports, see
             `sbmlsim.credibility.records.evaluate_fits`.
         settings: the settings of the propagation.
+        workers: the processes the draws of a fit are evaluated in.
 
     Returns:
         The predictions per draw.
@@ -330,7 +369,7 @@ def propagate_fits(
         )
         rows = table.index[table["fit"] == subset]
         start = time.perf_counter()
-        values, failed[subset] = _evaluate(report, draws, table.loc[rows])
+        values, failed[subset] = _evaluate(report, draws, table.loc[rows], workers)
         logger.info(
             "Evaluate the fit '%s' at %s draws in %.1f s",
             subset,

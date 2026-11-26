@@ -225,6 +225,10 @@ def test_an_experiment_whose_scans_need_the_pool_of_the_simulator_runs_here(
 ) -> None:
     """A scan of a simulator with a pool runs in this process, not in a worker (#554).
 
+    Roadrunner runs the points of a scan in processes, which a worker cannot
+    start; the engine core runs them on threads, which a worker has, see
+    `test_an_experiment_of_the_engine_core_runs_its_scans_in_a_worker`.
+
     An experiment runs its scans serially in a worker, so an experiment of a
     scan which the simulator would run in a pool of its own is faster here:
     it runs in this process and the experiments which have no such scan run
@@ -232,7 +236,12 @@ def test_an_experiment_whose_scans_need_the_pool_of_the_simulator_runs_here(
     skipped this guard and left every scan of such a run on one core.
     """
     with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.runner"):
-        results = _run(tmp_path, 2, [Scanned, First, Second, Third], Simulator(4))
+        results = _run(
+            tmp_path,
+            2,
+            [Scanned, First, Second, Third],
+            Simulator(4, engine="roadrunner"),
+        )
 
     assert [r.error for r in results] == [None, None, None, None]
     assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
@@ -242,6 +251,44 @@ def test_an_experiment_whose_scans_need_the_pool_of_the_simulator_runs_here(
         "1 experiments run in this process: the simulator runs the scans in a pool of 4 workers"
         in caplog.text
     )
+
+
+def test_an_experiment_of_the_engine_core_runs_its_scans_in_a_worker(
+    tmp_path: Path,
+) -> None:
+    """The engine core runs a scan on threads, which a worker has (sbmlsim#664).
+
+    A simulator which names its workers no longer sends every experiment of a
+    scan into this process: with the draws of an uncertainty run that was
+    every experiment, one after the other. A scan below the threshold of a
+    pool of every CPU runs in its worker, on the share of the worker of the
+    CPUs (`parallel.worker_cores`).
+    """
+    results = _run(
+        tmp_path, 2, [Scanned, First, Second, Third], Simulator(4, engine="core")
+    )
+
+    assert [r.error for r in results] == [None, None, None, None]
+    for sid in ("Scanned", "First", "Second", "Third"):
+        assert _process(tmp_path, sid)["pid"] != os.getpid(), sid
+
+
+def test_the_threads_of_a_worker_are_its_share_of_the_cpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker of a pool of n takes 1/n of the CPUs, also when a run names more."""
+    from sbmlsim.simulator.worker import core_threads
+
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
+    monkeypatch.setattr(parallel, "_POOL_SIZE", 7)
+    assert parallel.worker_cores() == 2
+    assert core_threads(None, 100) == 2
+    assert core_threads(16, 100) == 2
+    assert core_threads(1, 100) == 1
+    assert core_threads(None, 1) == 1
+    monkeypatch.setattr(parallel, "_POOL_SIZE", None)
+    assert core_threads(None, 100) == 1
 
 
 def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
@@ -258,7 +305,9 @@ def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
 
 def test_a_run_of_nothing_but_such_experiments_is_serial(tmp_path: Path) -> None:
     """A pool of one experiment is no pool, so the run is serial with its reason."""
-    results = _run(tmp_path, 2, [Scanned, First], Simulator(n_workers=4))
+    results = _run(
+        tmp_path, 2, [Scanned, First], Simulator(n_workers=4, engine="roadrunner")
+    )
 
     assert [r.error for r in results] == [None, None]
     assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
@@ -270,7 +319,11 @@ def test_the_timings_name_the_experiments_which_ran_in_this_process(
 ) -> None:
     """The table of the timings says what was overridden and why (#554)."""
     _runner(
-        Scanned, First, Second, Third, simulator=Simulator(n_workers=4)
+        Scanned,
+        First,
+        Second,
+        Third,
+        simulator=Simulator(n_workers=4, engine="roadrunner"),
     ).run_experiments(output_path=tmp_path, n_workers=2, progress=True)
 
     words = " ".join(capsys.readouterr().out.split())

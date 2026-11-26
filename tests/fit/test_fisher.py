@@ -383,16 +383,16 @@ def test_the_jacobian_on_workers_is_the_jacobian_of_this_process(
     assert np.array_equal(serial, on_workers)
 
 
-def test_the_jacobian_of_the_engine_core_is_one_batch_in_one_worker(
+def test_the_jacobian_of_the_engine_core_is_one_batch_in_this_process(
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The points of a jacobian of sbmlsim-core run on the threads of a worker.
+    """The points of a jacobian of sbmlsim-core run on threads of this process.
 
-    The engine simulates them at once, so the cores of the jacobian are the
-    threads of one worker and the jacobian is the one of this process, see
-    `sbmlsim.fit.runner.FitPool.threads`.
+    The engine simulates them at once, so the cores of the jacobian are its
+    threads, and no worker is started and initialized for one batch
+    (sbmlsim#664); the jacobian is the one of the serial evaluation.
     """
     from sbmlsim.fit import runner
 
@@ -419,7 +419,7 @@ def test_the_jacobian_of_the_engine_core_is_one_batch_in_one_worker(
         assert evaluate is not None
         batched = jacobian(problem, x, evaluate=evaluate)
 
-    assert sized == [(1, 2)]
+    assert sized == []
     assert np.array_equal(serial, batched)
 
 
