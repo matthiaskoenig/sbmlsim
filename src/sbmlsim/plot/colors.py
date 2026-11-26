@@ -196,6 +196,21 @@ TABLEAU = {
     "cyan": "#17becf",
 }
 
+#: the names of the tables as matplotlib takes them: a tableau name of `gray`
+#: also spelt `grey` (`tab:grey`), an xkcd name of `grey` also spelt `gray`,
+#: which wins over a name of `gray` of the table (the names of
+#: `matplotlib.colors.get_named_colors_mapping`); the CSS names list both
+_TABLEAU_NAMES = TABLEAU | {
+    name.replace("gray", "grey"): value
+    for name, value in TABLEAU.items()
+    if "gray" in name
+}
+_XKCD_NAMES = XKCD | {
+    name.replace("grey", "gray"): value
+    for name, value in XKCD.items()
+    if "grey" in name
+}
+
 #: the colours `C0` to `C9` of the default colour cycle of matplotlib
 CYCLE = (
     "#1f77b4",
@@ -237,12 +252,12 @@ def _parse(color: str | Sequence[float]) -> tuple[str | None, float]:
         text = color.strip().lower()
         if text == "none":
             return None, 1.0
-        if text.startswith("tab:") and text[4:] in TABLEAU:
-            text = TABLEAU[text[4:]]
+        if text.startswith("tab:") and text[4:] in _TABLEAU_NAMES:
+            text = _TABLEAU_NAMES[text[4:]]
         elif len(text) == 2 and text[0] == "c" and text[1].isdigit():
             text = CYCLE[int(text[1])]
-        elif text.startswith("xkcd:") and text[5:] in XKCD:
-            text = XKCD[text[5:]]
+        elif text.startswith("xkcd:") and text[5:] in _XKCD_NAMES:
+            text = _XKCD_NAMES[text[5:]]
         elif text in BASE:
             text = BASE[text]
         elif text in CSS4:
