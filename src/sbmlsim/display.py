@@ -15,7 +15,9 @@ The output goes to the console of the package, see `sbmlsim.console`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,52 @@ KEY_WIDTH = 18
 
 #: icon of the section of a report
 ICON_REPORT = ":clipboard:"
+
+#: the folders a run writes into and the folders they end up as, see
+#: `relocated`
+_RELOCATIONS: ContextVar[tuple[tuple[tuple[Path, Path], ...], ...]] = ContextVar(
+    "relocations", default=()
+)
+
+
+@contextmanager
+def relocated(moves: Mapping[Path | str, Path | str]) -> Generator[None]:
+    """Let the links printed in the block name the folders the output ends up in.
+
+    A command which writes into a staging folder and moves it into its place
+    when the run succeeded (e.g. the staged swap of the commands of pkpdsim)
+    prints its links while the output is still in the staging folder, which no
+    longer exists once it is moved (#669). Within the block a link to a path
+    in one of the folders of `moves` names the path in the folder it is moved
+    to; the deepest folder wins, so a folder of the result which is moved up
+    out of the staging folder is given before the staging folder itself.
+    Blocks nest, the inner moves are applied first.
+
+    Args:
+        moves: the folders the run writes into, by the folder each ends up as.
+    """
+    resolved = tuple(
+        sorted(
+            ((Path(old).resolve(), Path(new).resolve()) for old, new in moves.items()),
+            key=lambda move: len(move[0].parts),
+            reverse=True,
+        )
+    )
+    token = _RELOCATIONS.set((resolved, *_RELOCATIONS.get()))
+    try:
+        yield
+    finally:
+        _RELOCATIONS.reset(token)
+
+
+def _final(path: Path) -> Path:
+    """Get the path a resolved path ends up at after the moves of `relocated`."""
+    for moves in _RELOCATIONS.get():
+        for old, new in moves:
+            if path.is_relative_to(old):
+                path = new / path.relative_to(old)
+                break
+    return path
 
 
 def section(title: str, icon: str | None = None) -> None:
@@ -75,9 +123,10 @@ def link(key: str, path: Path | str) -> None:
 
     Args:
         key: what the link points to, in front of it.
-        path: path of the file or the directory, relative paths are resolved.
+        path: path of the file or the directory, relative paths are resolved;
+            a path in a folder of `relocated` names the folder it ends up as.
     """
-    uri = Path(path).resolve().as_uri()
+    uri = _final(Path(path).resolve()).as_uri()
     # the two spaces are the padding of the columns of `key_values`, so that
     # the link starts where the values of a key/value block start
     text = Text.assemble((f"{key:<{KEY_WIDTH}}", "bold"), "  ", (uri, Style(link=uri)))
