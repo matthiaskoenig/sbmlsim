@@ -145,6 +145,7 @@ import math
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
@@ -269,6 +270,17 @@ DIFFERENCE_QUOTIENT = "difference_quotient"
 #: request takes none of its own, so that the profiles are walked around the
 #: optimum the caller gives, see `profile_points`
 MAX_ITERATIONS_OF_A_POINT: int = 100
+
+#: the settings of the optimizer of a point of a profile by the arguments of
+#: `scipy.optimize.least_squares` they are, the arguments of a point the
+#: engine takes, see `profile_points`
+POINT_TOLERANCES: Mapping[str, str] = MappingProxyType(
+    {
+        "gtol": "gradient_tolerance",
+        "xtol": "step_tolerance",
+        "ftol": "cost_tolerance",
+    }
+)
 
 #: the codes a run of the engine stops with which are a point its optimizer
 #: cannot improve on (`basin::TerminationCode`), i.e. the `success` of a run
@@ -3336,7 +3348,7 @@ def gaps_of_the_profiles(
             )
         )
     for key in settings.optimizer_kwargs:
-        if key not in {"gtol"}:
+        if key not in POINT_TOLERANCES:
             gaps.append(
                 Gap(
                     "optimizer",
@@ -3409,8 +3421,20 @@ def profile_points(
             f"{len(steps)} first steps."
         )
     points: dict[str, Any] = {"max_iterations": MAX_ITERATIONS_OF_A_POINT}
-    if "gtol" in settings.optimizer_kwargs:
-        points["gradient_tolerance"] = float(settings.optimizer_kwargs["gtol"])
+    for key, value in settings.optimizer_kwargs.items():
+        points[POINT_TOLERANCES[key]] = float(value)
+    # the tolerances a point of a profile in python gets from
+    # `OptimizationProblem.optimizer_arguments`, as a run of the engine does
+    # (`gaps_of_a_fit`, #607): without a test of its step and of the change
+    # of its cost the fit of a point chases the noise of the integrator and
+    # ends in `NumericalNoProgress` or `SolverFailed`, which took the profiles
+    # of the PK fit of HCTZ of pkdb_models 102 s instead of 35 s, to the same
+    # intervals
+    from sbmlsim.fit.optimization import default_tolerance
+
+    tolerance = default_tolerance(problem.settings_initialized.relative_tolerance)
+    for name in ("gradient_tolerance", "step_tolerance", "cost_tolerance"):
+        points.setdefault(name, tolerance)
     request = fit_request(
         problem,
         # the starts of a request are the values of the parameters, the walk

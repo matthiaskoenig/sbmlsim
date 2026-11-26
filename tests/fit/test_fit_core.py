@@ -54,7 +54,7 @@ from sbmlsim.fit.fit_core import (
 )
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.objects import MappingKind
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import OptimizationProblem, default_tolerance
 from sbmlsim.fit.options import (
     RUN_IN_PYTHON,
     RUN_IN_THE_ENGINE,
@@ -504,6 +504,58 @@ def test_the_request_of_an_analysis_carries_the_first_step_of_every_parameter(
     assert analysis["steps"] == computed
     # the walk keeps the one step of the settings, which no parameter takes
     assert analysis["walk"]["step"] == ProfileSettings().initial_step
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        # the tolerances of a point in python, `default_tolerance`
+        ({}, {}),
+        # an argument of the analysis replaces its default
+        (
+            {"xtol": 1e-5, "ftol": 1e-4},
+            {"step_tolerance": 1e-5, "cost_tolerance": 1e-4},
+        ),
+    ],
+)
+def test_a_point_of_a_profile_of_the_engine_tests_its_step_and_its_cost(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, float],
+    expected: dict[str, float],
+) -> None:
+    """The fit of a point stops at the tolerances of a point in python.
+
+    Without a tolerance of its step and of the change of its cost the
+    optimizer of the engine chases the noise of the integrator at every point
+    and ends in `NumericalNoProgress` or `SolverFailed`: the profiles of the
+    PK fit of HCTZ of pkdb_models took 102 s instead of 35 s, to the same
+    intervals.
+    """
+    problem = on_core(op_hctz_iv, fit_settings)
+    settings = ProfileSettings(max_points=1, optimizer_kwargs=kwargs)
+    assert gaps_of_the_profiles(problem, settings) == []
+    spy = spy_on(problem, monkeypatch)
+
+    profile_likelihood(
+        problem,
+        fit_settings,
+        problem.parameter_set_model(),
+        settings,
+        show_progress=False,
+        engine_profiles=True,
+    )
+
+    (request,) = spy.requests
+    tolerance = default_tolerance(problem.settings_initialized.relative_tolerance)
+    assert request["identifiability"]["optimizer"] == {
+        "max_iterations": fit_core.MAX_ITERATIONS_OF_A_POINT,
+        "gradient_tolerance": tolerance,
+        "step_tolerance": tolerance,
+        "cost_tolerance": tolerance,
+        **expected,
+    }
 
 
 def test_the_profiles_of_the_engine_are_the_profiles_of_python(
