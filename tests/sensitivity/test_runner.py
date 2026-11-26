@@ -799,16 +799,19 @@ def test_the_heatmaps_of_sbmlsim_085_are_labelled_with_the_names(
     plot_heatmap = plots.plot_heatmap
     save = module._save
 
-    heatmaps: dict[int, tuple[list[str], list[str], dict[str, object]]] = {}
+    # the charts are kept with their record: a chart which was freed gives its id to a later
+    # one (macos does), which would be taken for a heatmap
+    heatmaps: list[tuple[Chart, tuple[list[str], list[str], dict[str, object]]]] = []
 
     def recorded(result: SensitivityResult, index: str, **kwargs: Any) -> Chart:
         chart = plot_heatmap(result, index, **kwargs)
-        heatmaps[id(chart)] = (result.parameters, result.observables, kwargs)
+        heatmaps.append((chart, (result.parameters, result.observables, kwargs)))
         return chart
 
     def saved(chart: Chart, path: Path) -> None:
-        if id(chart) in heatmaps:
-            calls[path.name] = heatmaps[id(chart)]
+        for heatmap, record in heatmaps:
+            if heatmap is chart:
+                calls[path.name] = record
         save(chart, path)
 
     monkeypatch.setattr(plots, "plot_heatmap", recorded)
