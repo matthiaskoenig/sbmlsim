@@ -91,19 +91,15 @@ EXCLUDED_PROBLEMS: dict[str, str] = {
     "the steady state)",
 }
 
-#: the problems which pass in python and not in sbmlsim-core, with the reason
-#: (matthiaskoenig/sbmlsim-core#145), which are read and simulated with
-#: `PetabReader` until the core runs them; every other problem runs in the core
-CORE_GAPS: dict[str, str] = {
-    "Armistead_CellDeathDis2024": "the model requires the package comp, "
-    "which the compiler of the core does not support (python flattens it)",
-    "Beer_MolBioSystems2014": "the model has an `<apply>` whose first child "
-    "is an `<apply>` and no operator, which libSBML reads and the compiler "
-    "of the core refuses (`unknown MathML function <apply>`)",
-    "Blasi_CellSystems2016": "every measurement is at `inf` and has no "
-    "experiment, the core gives the initial state instead of the steady "
-    "state (llh -inf, all 252 simulations differ)",
-}
+#: the problems which pass in python and not in sbmlsim-core, with the reason,
+#: which are read and simulated with `PetabReader` until the core runs them;
+#: every other problem runs in the core. Since sbmlsim-core 0.40.0 the core
+#: runs every problem of the collection (matthiaskoenig/sbmlsim-core#145): it
+#: flattens `comp` (`Armistead_CellDeathDis2024`), reads an `<apply>` whose
+#: only child is an `<apply>` as libSBML does (`Beer_MolBioSystems2014`) and
+#: gives the steady state of a measurement at `inf` without an experiment
+#: (`Blasi_CellSystems2016`)
+CORE_GAPS: dict[str, str] = {}
 
 #: the log-likelihoods of AMICI at a commit
 AMICI_URL = (
