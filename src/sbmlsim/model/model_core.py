@@ -192,8 +192,8 @@ def deadline_error(label: str, message: str) -> RuntimeError | None:
     The bindings report a deadline which fired as the trap `INTERRUPT` of the
     engine, which tells a reader neither that a deadline fired nor what to do
     (#581). The deadline interrupts every execution of the engine: the load of
-    a model, the instance of a model and a simulation, so each of them gives
-    this one error.
+    a model with the read of its values as loaded, the instance of a model and
+    a simulation, so each of them gives this one error.
 
     Args:
         label: the name of the model in the message.
@@ -211,6 +211,31 @@ def deadline_error(label: str, message: str) -> RuntimeError | None:
         f"{TIMEOUT_VARIABLE}: the simulation needed longer than that, which "
         f"depends on the load of the machine. Raise the deadline or unset it "
         f"for none: {message}"
+    )
+
+
+def load_error(label: str, err: Exception) -> RuntimeError | UnsupportedModelError:
+    """Get the error of a load of a model which the engine failed.
+
+    The load is the module loaded into the runtime and the read of the values
+    of the model as loaded, both executions of the engine, so a deadline which
+    fires in either names itself (`deadline_error`) and any other failure is a
+    model the engine cannot load: nothing of the bindings reaches a caller of
+    `load_model`.
+
+    Args:
+        label: the name of the model in the message.
+        err: the `LoadError` of the bindings.
+
+    Returns:
+        The `RuntimeError` naming the deadline, else the
+        `UnsupportedModelError` of a model the engine cannot load.
+    """
+    interrupted = deadline_error(label, str(err))
+    if interrupted is not None:
+        return interrupted
+    return UnsupportedModelError(
+        f"The engine 'core' cannot load the model '{label}': {err}"
     )
 
 
@@ -271,6 +296,8 @@ def compiled_model(
         UnsupportedModelError: naming the feature, for a model the compiler
             refuses, and for one the engine cannot load, so that nothing of
             the bindings reaches a caller of `load_model`.
+        RuntimeError: if the wall clock deadline of the runtime interrupted
+            the load, see `load_error`.
         ImportError: if the bindings of sbmlsim-core are not installed.
     """
     key = (sbml, optimize, jacobian)
@@ -294,12 +321,7 @@ def compiled_model(
         try:
             loaded = runtime().load(compiled.wasm, compiled.description)
         except core.LoadError as err:
-            interrupted = deadline_error(label, str(err))
-            if interrupted is not None:
-                raise interrupted from err
-            raise UnsupportedModelError(
-                f"The engine 'core' cannot load the model '{label}': {err}"
-            ) from err
+            raise load_error(label, err) from err
         COMPILED[key] = loaded
         return loaded
 
@@ -340,7 +362,10 @@ class CoreSBMLModel(SBMLModel):
 
         Raises:
             UnsupportedModelError: for a model the compiler of the engine
-                refuses, e.g. one with a fast reaction.
+                refuses, e.g. one with a fast reaction, or the engine cannot
+                load.
+            RuntimeError: if the wall clock deadline of the runtime interrupted
+                the load, see `load_error`.
             ValueError: for a selection the model has not, or an unknown
                 setting.
             ImportError: if the bindings of sbmlsim-core are not installed.
@@ -373,8 +398,13 @@ class CoreSBMLModel(SBMLModel):
             for e in (*self.description["states"], *self.description["parameters"])
             if e["kind"] == COMPARTMENT
         )
-        #: the values of the model as loaded, read once, see `loaded_value`
-        self._loaded_values: dict[str, float] = dict(self.loaded.initial_values())
+        #: the values of the model as loaded, read once, see `loaded_value`;
+        #: the read runs in the engine, which a deadline interrupts as the load
+        core = import_core()
+        try:
+            self._loaded_values: dict[str, float] = dict(self.loaded.initial_values())
+        except core.LoadError as err:
+            raise load_error(self.label, err) from err
         self.assignments: tuple[Assignment, ...] = ()
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
         #: the instance of the engine the simulations of this model run on,

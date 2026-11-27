@@ -180,9 +180,14 @@ def test_the_pool_alone_waits_for_its_workers(monkeypatch: pytest.MonkeyPatch) -
     assert all(process.exitcode is not None for process in processes)
 
 
-def _slow_start() -> None:
-    """Start a worker slowly, as the initializer of a fit initializes its problem."""
-    time.sleep(0.5)
+def _start_together(barrier: Any) -> None:
+    """Start a worker once every worker of its pool runs the initializer.
+
+    The initializer of a fit initializes its problem, which takes a while; the
+    barrier stands for it and holds the first worker until the others run
+    their initializers as well, as long as the workers may take to start.
+    """
+    barrier.wait(timeout=parallel.WORKER_STARTUP_TIMEOUT)
 
 
 def test_the_workers_of_a_pool_start_together() -> None:
@@ -190,24 +195,19 @@ def test_the_workers_of_a_pool_start_together() -> None:
 
     A pool spawns a worker per task which finds none idle, and a start which
     waited for one probe started one worker, whose initializer ran before the
-    others were spawned by the first tasks.
+    others were spawned by the first tasks. The initializers meet at a
+    barrier, which only workers that start together pass: a worker spawned by
+    the tasks after the first had answered would never meet it. The check
+    holds however loaded the machine is, where a bound of the time the tasks
+    take to spread over the workers failed next to other work.
     """
-    executor = parallel.start_pool(3, initializer=_slow_start)
+    barrier = process_context().Barrier(3)
+    executor = parallel.start_pool(3, initializer=_start_together, initargs=(barrier,))
     try:
         assert len(executor._processes or {}) == 3
-        start = time.monotonic()
-        pids = set(executor.map(_pid_after, [0.2] * 6))
-        # the workers which started with the first are ready soon after it
-        assert time.monotonic() - start < 2.0
-        assert len(pids) >= 2
+        assert not barrier.broken
     finally:
         parallel.stop(executor)
-
-
-def _pid_after(seconds: float) -> int:
-    """Get the process id after a while, so that the tasks spread."""
-    time.sleep(seconds)
-    return os.getpid()
 
 
 def test_shutdown_stops_every_pool() -> None:

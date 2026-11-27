@@ -14,6 +14,11 @@ from sbmlsim.simulator import (
     resolve_engine,
 )
 
+#: the seconds a process of python which imports sbmlsim may take: about 1.5 s
+#: on an idle machine, more than 60 s next to other work (a load of 450 on 20
+#: logical CPUs); the tests check what a process imports, not how fast
+TIMEOUT = 300
+
 
 def test_resolve_engine() -> None:
     """An engine is resolved from its name or itself."""
@@ -35,7 +40,7 @@ def test_import_copasi_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_sbmlsim_does_not_import_copasi() -> None:
     """Importing the package does not import COPASI."""
     code = "import sys, sbmlsim, sbmlsim.simulator; assert 'COPASI' not in sys.modules"
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_import_copasi_keeps_the_locale() -> None:
@@ -58,7 +63,7 @@ def test_import_copasi_keeps_the_locale() -> None:
         "assert locale.setlocale(locale.LC_NUMERIC) == 'C'\n"
         "assert locale.getpreferredencoding(False) == encoding\n"
     )
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_import_amici_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -74,7 +79,7 @@ def test_import_amici_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_sbmlsim_does_not_import_amici() -> None:
     """Importing the package does not import AMICI."""
     code = "import sys, sbmlsim, sbmlsim.simulator; assert 'amici' not in sys.modules"
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_import_amici_keeps_the_locale() -> None:
@@ -91,7 +96,7 @@ def test_import_amici_keeps_the_locale() -> None:
         "assert locale.setlocale(locale.LC_NUMERIC) == before[locale.LC_NUMERIC]\n"
         "assert locale.getpreferredencoding(False) == encoding\n"
     )
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_an_amici_simulator_without_amici_names_the_extra(
@@ -120,7 +125,7 @@ def test_the_runs_of_the_other_engines_do_not_import_amici() -> None:
         "    Simulator(n_workers=1, engine=engine).run(DEMO_SBML, scan)\n"
         "assert 'amici' not in sys.modules\n"
     )
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=120)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_import_core_names_the_install(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,7 +150,7 @@ def test_a_core_simulator_without_the_bindings_names_the_install(
 def test_sbmlsim_does_not_import_core() -> None:
     """Importing the package does not import the bindings of sbmlsim-core."""
     code = "import sys, sbmlsim, sbmlsim.simulator; assert 'sbmlsim_core' not in sys.modules"
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_the_runs_of_the_other_engines_do_not_import_core() -> None:
@@ -163,7 +168,7 @@ def test_the_runs_of_the_other_engines_do_not_import_core() -> None:
         "    Simulator(n_workers=1, engine=engine).run(DEMO_SBML, scan)\n"
         "assert 'sbmlsim_core' not in sys.modules\n"
     )
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=120)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=TIMEOUT)
 
 
 def test_every_engine_is_a_key_of_the_mappings_keyed_by_engine() -> None:
