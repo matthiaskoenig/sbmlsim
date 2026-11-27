@@ -54,6 +54,12 @@ from tests.fit.test_scalar_mappings import (
 #: the doses of a dimension with a time, a second dose at `LATE`
 LATE = 24.0
 
+#: the relative tolerance of the residuals of the engine against python: a
+#: few ulps, since the engine and numpy compute the same operations, but the
+#: compiler or the libm of another platform may round them differently, e.g.
+#: a multiplication and an addition fused into one (1 ulp on macos-latest)
+ULPS = 1e-14
+
 
 class ScanStudy(DoseStudy):
     """The scan over the doses with reductions and a dimension with a time.
@@ -270,7 +276,7 @@ def test_the_residuals_of_a_scan_are_the_ones_of_the_problem(
 ) -> None:
     """A scan group is a condition per point and its residuals are the ones of python.
 
-    Bitwise at three points: the condition of a point is the plan python
+    To a few ulps at three points: the condition of a point is the plan python
     simulates the point with, the values of the point applied after the
     values of the parameters, and the curve of a measurement over a
     dimension reads the point it is at.
@@ -292,7 +298,7 @@ def test_the_residuals_of_a_scan_are_the_ones_of_the_problem(
 
         residuals = np.asarray(core.residuals(x), dtype=float)
 
-        np.testing.assert_array_equal(residuals, expected)
+        np.testing.assert_allclose(residuals, expected, rtol=ULPS, atol=0.0)
 
 
 def test_a_point_after_the_change_of_a_dimension_reads_the_state_after_it(
@@ -500,10 +506,11 @@ FIELD_CASES: dict[
 def test_the_residuals_of_the_fields_of_a_scan_are_the_ones_of_the_problem(
     tmp_path: Path, case: str
 ) -> None:
-    """A curve over a dimension and a pinned parameter, bitwise the residuals of python.
+    """A curve over a dimension and a pinned parameter, the residuals of python.
 
     The curve over a dimension is `numpy.interp` of the values of the points
-    operation for operation, and a pinned target holds the value of the point,
+    operation for operation, so the residuals agree to a few ulps (`ULPS`),
+    and a pinned target holds the value of the point,
     which wins over the parameter in python.
     """
     experiment, mappings, parameter, over = FIELD_CASES[case]
@@ -527,7 +534,7 @@ def test_the_residuals_of_the_fields_of_a_scan_are_the_ones_of_the_problem(
 
         residuals = np.asarray(core.residuals(x), dtype=float)
 
-        np.testing.assert_array_equal(residuals, expected)
+        np.testing.assert_allclose(residuals, expected, rtol=ULPS, atol=0.0)
 
 
 def test_a_curve_over_a_dimension_carries_the_reduction_of_every_point(
