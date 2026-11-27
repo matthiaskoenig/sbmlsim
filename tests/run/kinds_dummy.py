@@ -58,7 +58,6 @@ def merge(spec: DummySpec, ctx: RunContext) -> dict[str, Any]:
     return {
         "total": total,
         "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
-        "mplbackend": os.environ.get("MPLBACKEND"),
         "workers": ctx.workers,
     }
 

@@ -235,11 +235,6 @@ class Fill:
         }
 
 
-# matplotlib line styles, see
-# https://matplotlib.org/3.1.0/gallery/lines_bars_and_markers/linestyles.html
-MplLineStyle = str | tuple[int, tuple[int, ...]]
-
-
 class Style(BasePlotObject):
     """Style class.
 
@@ -276,15 +271,6 @@ class Style(BasePlotObject):
         "dashdot": LineType.DASHDOT,
         "dashdotdotted": LineType.DASHDOTDOT,
     }
-    SEDML2MPL_LINESTYLE_MAPPING: ClassVar[dict[LineType, MplLineStyle]] = {
-        LineType.NONE: "",
-        LineType.SOLID: "solid",
-        LineType.DOT: "dotted",
-        LineType.DASH: "dashed",
-        LineType.DASHDOT: "dashdot",
-        LineType.DASHDOTDOT: (0, (3, 5, 1, 5, 1, 5)),
-    }
-
     MPL2SEDML_MARKER_MAPPING: ClassVar[dict[str, MarkerType]] = {
         "": MarkerType.NONE,
         "s": MarkerType.SQUARE,
@@ -305,21 +291,6 @@ class Style(BasePlotObject):
         "d": MarkerType.DIAMOND,
         "X": MarkerType.XCROSS,
         "P": MarkerType.PLUS,
-    }
-    SEDML2MPL_MARKER_MAPPING: ClassVar[dict[MarkerType, str]] = {
-        MarkerType.NONE: "",
-        MarkerType.SQUARE: "s",
-        MarkerType.CIRCLE: "o",
-        MarkerType.DIAMOND: "D",
-        MarkerType.XCROSS: "x",
-        MarkerType.PLUS: "+",
-        MarkerType.STAR: "*",
-        MarkerType.TRIANGLEUP: "^",
-        MarkerType.TRIANGLEDOWN: "v",
-        MarkerType.TRIANGLELEFT: "<",
-        MarkerType.TRIANGLERIGHT: ">",
-        MarkerType.HDASH: "_",
-        MarkerType.VDASH: "|",
     }
 
     def __init__(
@@ -436,122 +407,6 @@ class Style(BasePlotObject):
             fill=self.fill,
         )
 
-    def to_mpl_curve_kwargs(self) -> dict[str, Any]:
-        """Convert to matplotlib curve keyword arguments.
-
-        Returns:
-            Keyword arguments for matplotlib curves.
-        """
-        kwargs: dict[str, Any] = {}
-        if self.line:
-            if self.line.color:
-                kwargs["color"] = self.line.color.color
-            if self.line.type is not None:
-                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.type]
-            if self.line.thickness:
-                kwargs["linewidth"] = self.line.thickness
-        if self.marker:
-            if self.marker.type is not None:
-                kwargs["marker"] = Style.SEDML2MPL_MARKER_MAPPING[self.marker.type]
-            if self.marker.size:
-                kwargs["markersize"] = self.marker.size
-            if self.marker.fill:
-                kwargs["markerfacecolor"] = self.marker.fill.color
-            if self.marker.line_color:
-                kwargs["markeredgecolor"] = self.marker.line_color.color
-            if self.marker.line_thickness:
-                kwargs["markeredgewidth"] = self.marker.line_thickness
-
-        if self.fill:
-            if self.fill.color:
-                kwargs["fill.color"] = self.fill.color.color
-            if self.fill.second_color:
-                kwargs["fill.second_color"] = self.fill.second_color.color
-
-        return kwargs
-
-    #: length of the caps of an error bar, in points
-    ERROR_CAPSIZE: ClassVar[float] = 3.0
-
-    def _mpl_error_kwargs(self) -> dict[str, Any]:
-        """Define keywords for error bars.
-
-        `errorbar` takes them directly and `bar` takes them in `error_kw`, so
-        the two callers unpack this differently.
-
-        Returns:
-            Keyword arguments for error bars.
-        """
-        return {"capsize": Style.ERROR_CAPSIZE}
-
-    def to_mpl_points_kwargs(self) -> dict[str, Any]:
-        """Convert to matplotlib point curve keyword arguments.
-
-        Returns:
-            Keyword arguments for matplotlib errorbar plots.
-        """
-        points_kwargs = self.to_mpl_curve_kwargs()
-        for key in ["fill.color", "fill.second_color"]:
-            if key in points_kwargs:
-                points_kwargs.pop(key)
-        return {
-            **points_kwargs,
-            **self._mpl_error_kwargs(),
-        }
-
-    def to_mpl_bar_kwargs(self) -> dict[str, Any]:
-        """Convert to matplotlib bar curve keyword arguments.
-
-        Returns:
-            Keyword arguments for matplotlib bar plots.
-        """
-        bar_kwargs = self.to_mpl_curve_kwargs()
-        for key in [
-            "marker",
-            "markersize",
-            "markeredgewidth",
-            "markeredgecolor",
-            "markerfacecolor",
-            "fill.second_color",
-        ]:
-            # pop line keys
-            if key in bar_kwargs:
-                bar_kwargs.pop(key)
-
-        if "color" in bar_kwargs:
-            bar_kwargs["edgecolor"] = bar_kwargs.pop("color")
-        if "fill.color" in bar_kwargs:
-            bar_kwargs["color"] = bar_kwargs.pop("fill.color")
-
-        return {
-            **bar_kwargs,
-            "error_kw": self._mpl_error_kwargs(),
-        }
-
-    def to_mpl_area_kwargs(self) -> dict[str, Any]:
-        """Define keyword dictionary for a shaded area.
-
-        Returns:
-            Keyword arguments for matplotlib fill_between.
-        """
-        kwargs: dict[str, Any] = {}
-
-        if self.line:
-            if self.line.color:
-                kwargs["edgecolor"] = self.line.color.color
-            if self.line.type is not None:
-                kwargs["linestyle"] = Style.SEDML2MPL_LINESTYLE_MAPPING[self.line.type]
-            if self.line.thickness:
-                kwargs["linewidth"] = self.line.thickness
-
-        if self.fill and self.fill.color:
-            kwargs["color"] = self.fill.color.color
-            # FIXME: second color not supported (gradients)
-            # if self.fill.second_color:
-            #    kwargs["second.color"] = self.fill.second_color
-
-        return kwargs
-
     @staticmethod
     def _lookup(mapping: dict[str, Any], value: Any, kind: str) -> Any:
         """Translate a matplotlib style value into the type of the figure model.
@@ -628,57 +483,6 @@ class Style(BasePlotObject):
         fill = Fill(color=color)
 
         return Style(line=line, marker=marker, fill=fill)
-
-
-#: the decades below the largest value which the automatic limits of a log
-#: axis show at most, see `log_limits`
-LOG_DECADES = 6
-
-#: the margin of the automatic limits of a log axis, a share of its decades, as
-#: matplotlib's default margin
-LOG_MARGIN = 0.05
-
-
-def log_limits(
-    smallest: float,
-    largest: float,
-    low: float | None = None,
-    high: float | None = None,
-) -> tuple[float, float] | None:
-    """Get the limits of a log axis whose data span too many decades.
-
-    The steps of the integrator start with tiny steps, at which a value which
-    starts at zero, e.g. a concentration after an oral dose, is tiny as well;
-    the automatic limits of a log axis would show dozens of decades of these
-    values. Data which span more than `LOG_DECADES` below the largest value
-    are limited to these decades, with the margin `LOG_MARGIN` of the
-    decades; a limit set on the axis is kept and the margin follows it.
-
-    Args:
-        smallest: the smallest positive value of the data.
-        largest: the largest value of the data.
-        low: the lower limit set on the axis, `None` without.
-        high: the upper limit set on the axis, `None` without.
-
-    Returns:
-        The lower and the upper limit, `None` when the automatic limits are
-        fine: no positive data, or data within `LOG_DECADES`, which keeps the
-        figures of such data as they were.
-    """
-    if not (np.isfinite(smallest) and np.isfinite(largest)) or largest <= 0:
-        return None
-    floor = largest / 10**LOG_DECADES
-    if smallest >= floor:
-        return None
-    bottom = low if low is not None else max(smallest, floor)
-    top = high if high is not None else largest
-    if top <= bottom:
-        return None
-    margin = 10 ** (LOG_MARGIN * np.log10(top / bottom))
-    return (
-        bottom if low is not None else bottom / margin,
-        top if high is not None else top * margin,
-    )
 
 
 class AxisScale(Enum):

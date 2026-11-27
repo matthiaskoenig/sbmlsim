@@ -172,7 +172,6 @@ def check(installer: str, python: str, version: str, index: str) -> None:
             f"sys.exit(v != {version!r})",
             cwd=work,
         )
-        os.environ.setdefault("MPLBACKEND", "Agg")
         run(python_path, "-I", SCAN, cwd=work)
 
 
