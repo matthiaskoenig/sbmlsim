@@ -514,3 +514,77 @@ def test_a_partially_read_document_is_returned_unchanged() -> None:
     assert document.getLevel() == 2
     assert severities
     assert to_level3(broken, "toy") == broken
+
+
+def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Count the reads of SBML text by libsbml, with no document kept."""
+    from sbmlsim.model import symbols
+
+    monkeypatch.setattr(symbols, "_LAST_READ", None)
+    reads: list[str] = []
+    read = libsbml.readSBMLFromString
+
+    def counted(text: str) -> libsbml.SBMLDocument:
+        reads.append(text)
+        return read(text)
+
+    monkeypatch.setattr(libsbml, "readSBMLFromString", counted)
+    return reads
+
+
+@pytest.mark.parametrize("engine", [Engine.CORE, Engine.ROADRUNNER])
+def test_the_load_of_a_model_reads_its_sbml_once(
+    monkeypatch: pytest.MonkeyPatch, engine: Engine
+) -> None:
+    """The level, comp, symbols, units, label and selections share one read.
+
+    Every read of the HCTZ model of pkdb_models took 0.11 s, and the load of
+    the model in the engine core read it six times (0.94 s against 0.32 s).
+    Roadrunner reads the model once more for the helpers of its initial
+    assignments, which change a document of their own.
+    """
+    if engine is Engine.CORE:
+        pytest.importorskip("sbmlsim_core")
+    reads = _counted_reads(monkeypatch)
+    model = load_model(AbstractModel(source=HCTZ_SBML), engine)
+    assert model.label
+    assert model.symbols.species
+    assert model.selections
+    text = model.sbml
+    assert reads == [text] * (1 if engine is Engine.CORE else 2)
+    # a second model of the same SBML reads it no more, but for the helpers
+    reads.clear()
+    load_model(AbstractModel(source=HCTZ_SBML), engine, reload=True)
+    assert reads == [text] * (0 if engine is Engine.CORE else 1)
+
+
+def test_the_document_read_once_is_the_one_of_the_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another text is read again, the same text is not; a conversion reads its own."""
+    from sbmlsim.model.symbols import read_document
+
+    reads = _counted_reads(monkeypatch)
+    level3 = Path(HCTZ_SBML).read_text(encoding="utf-8")
+    doc = read_document(level3)
+    assert read_document(level3) is doc
+    assert read_document(probe_sbml()) is not doc
+    assert len(reads) == 2
+    # the conversion of a level 2 model changes a document of its own, the
+    # shared one keeps its level
+    level2 = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    shared = read_document(level2)
+    assert shared.getLevel() == 2
+    assert "level3/version2" in to_level3(level2, "repressilator")
+    assert read_document(level2) is shared
+    assert shared.getLevel() == 2
+
+
+def test_the_units_of_a_model_read_once_are_the_ones_read_again() -> None:
+    """The units of the shared document are the ones `UnitsInformation.from_sbml` reads."""
+    from sbmlsim.units import UnitsInformation
+
+    model = load_model(AbstractModel(source=MIDAZOLAM_SBML), Engine.ROADRUNNER)
+    again = UnitsInformation.from_sbml(sbml=model.sbml, ureg=model.uinfo.ureg)
+    assert dict(model.uinfo) == dict(again)
+    assert model.uinfo.model_uid_dict == again.model_uid_dict

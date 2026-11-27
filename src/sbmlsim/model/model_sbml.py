@@ -26,7 +26,7 @@ from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.model.event_rows import MARKER_PREFIX
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.model.symbols import ModelSymbols
+from sbmlsim.model.symbols import ModelSymbols, read_document
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
@@ -198,7 +198,7 @@ class SBMLModel(AbstractModel, ABC):
     @cached_property
     def _sbml_label(self) -> str:
         """Get the id or else the name of the SBML model, read once."""
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self.sbml)
+        doc: libsbml.SBMLDocument = read_document(self.sbml)
         model: libsbml.Model | None = doc.getModel()
         if model is None:
             return "model"
@@ -231,8 +231,14 @@ class SBMLModel(AbstractModel, ABC):
         """Parse the units of the model from its SBML, see `sbml`.
 
         A hierarchical model has the units of its flattened SBML, which include
-        the ones of its submodels.
+        the ones of its submodels. The SBML is read once for the reads of the
+        model (`read_document`); a document whose read reported an error or
+        a warning is read again by `UnitsInformation.from_sbml`, which reports
+        them.
         """
+        doc: libsbml.SBMLDocument = read_document(self.sbml)
+        if doc.getNumErrors() == 0:
+            return UnitsInformation.from_sbml_doc(doc, ureg=ureg)
         return UnitsInformation.from_sbml(sbml=self.sbml, ureg=ureg)
 
     def default_selections(self) -> list[str]:
@@ -260,7 +266,7 @@ class SBMLModel(AbstractModel, ABC):
         Returns:
             The selections.
         """
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self.sbml)
+        doc: libsbml.SBMLDocument = read_document(self.sbml)
         model: libsbml.Model = doc.getModel()
         ruled = {r.getVariable() for r in model.getListOfRules() if not r.isAlgebraic()}
 
@@ -590,7 +596,7 @@ def to_level3(sbml: str, label: str) -> str:
             returned as it is whatever it contains; the refusal is about what a
             conversion drops, not about what sbmlsim can simulate.
     """
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    doc: libsbml.SBMLDocument = read_document(sbml)
     log: libsbml.SBMLErrorLog = doc.getErrorLog()
     # a document libsbml could not read is no document below level 3: level 0
     # is text it read nothing of, and an error of the read is a document it
@@ -618,7 +624,11 @@ def to_level3(sbml: str, label: str) -> str:
         level,
         version,
     )
-    # reading logs entries of its own, only what the conversion logs counts
+    # the document read once is shared, the conversion changes a document of
+    # its own; reading logs entries of its own, only what the conversion logs
+    # counts
+    doc = libsbml.readSBMLFromString(sbml)
+    log = doc.getErrorLog()
     log.clearLog()
     converted = doc.setLevelAndVersion(3, 2, False)
     problems = [
@@ -639,7 +649,7 @@ def _is_hierarchical(sbml: str) -> bool:
     """Check whether a model uses the package `comp` of hierarchical models."""
     if "comp" not in sbml:
         return False
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    doc: libsbml.SBMLDocument = read_document(sbml)
     return bool(doc.isPackageEnabled("comp"))
 
 

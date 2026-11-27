@@ -68,15 +68,56 @@ class TargetKind(StrEnum):
     SPECIES_CONCENTRATION = "species concentration"
 
 
+#: the SBML read last and its document, see `read_document`
+_LAST_READ: tuple[str, libsbml.SBMLDocument] | None = None
+
+
+def read_document(sbml: str) -> libsbml.SBMLDocument:
+    """Read the document of SBML text, once for the reads of a model.
+
+    The load of a model reads its SBML for its level, the package `comp`, its
+    symbols, its units, its name and its selections, and the key of a run of
+    experiments reads it for `comp` again: every read of a large model took
+    a tenth of a second (0.11 s for the HCTZ model of pkdb_models), half the
+    load of a model in the engine core. The document of the SBML read last
+    is kept, so these reads parse the text once; the text is compared, not
+    its path, so a file which changed is read again. One document is kept,
+    so the memory of the documents of the process stays that of one model
+    (about twenty times its text).
+
+    The document is shared: a caller reads it and never changes it, e.g. a
+    conversion of its level or the parameters added to a model work on a
+    document of their own (`libsbml.readSBMLFromString`). A caller keeps the
+    document while it uses an element of it, e.g. the model, since libsbml
+    frees the elements with their document.
+
+    Args:
+        sbml: the SBML.
+
+    Returns:
+        The document of the SBML, with the errors libsbml reported reading it.
+    """
+    global _LAST_READ
+    last = _LAST_READ
+    if last is not None and last[0] == sbml:
+        return last[1]
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    _LAST_READ = (sbml, doc)
+    return doc
+
+
 def _read(sbml: str | Path) -> libsbml.SBMLDocument:
     """Read the document of SBML, a path or the SBML itself.
+
+    The SBML itself is read once for the reads of a model, see
+    `read_document`.
 
     Raises:
         ValueError: if the SBML has no model.
     """
     text = str(sbml)
     doc: libsbml.SBMLDocument = (
-        libsbml.readSBMLFromString(text)
+        read_document(text)
         if text.lstrip().startswith("<")
         else libsbml.readSBMLFromFile(text)
     )
