@@ -121,7 +121,7 @@ create_model(
 
 ```text title="Output"
 SBML written to uptake.xml  model 'uptake', 0.00 s
-valid ./uptake.xml  0.000 s
+valid ./uptake.xml  0.001 s
 ```
 
 `drive` makes the measured plasma glucose drive it. A column drives the element of its own id:
