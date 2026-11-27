@@ -1235,13 +1235,20 @@ def _resume_values(
     """
     assigned = {ModelSymbols.entity(str(target)) for target, _ in values}
     states = set(model.state_ids())
+    # a segment resumes from every target of the model, hundreds of them, at
+    # every change of every simulation, so their entities are kept
     kept = [
         [t, state[t]]
-        for t in targets
-        if ModelSymbols.entity(t) not in assigned
-        and (t in states or isfinite(state[t]))
+        for t, entity in _entities(tuple(targets))
+        if entity not in assigned and (t in states or isfinite(state[t]))
     ]
     return [*kept, *(list(v) for v in values)]
+
+
+@functools.lru_cache(maxsize=64)
+def _entities(targets: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """Get every target with its entity, see `ModelSymbols.entity`."""
+    return tuple((t, ModelSymbols.entity(t)) for t in targets)
 
 
 def _change_symbols(event: PlanEvent, forms: bool = False) -> list[str]:
@@ -1611,7 +1618,8 @@ def _state_of(
         The value of every selection at the time of the change.
     """
     row = output.values[-1 if time > start else 0]
-    return dict(zip(columns, (float(v) for v in row), strict=True))
+    # the values as floats of python, the row at once: a state has hundreds
+    return dict(zip(columns, map(float, row.tolist()), strict=True))
 
 
 def _segment_output(plan: Plan, start: float, time: float) -> Any:

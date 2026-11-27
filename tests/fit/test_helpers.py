@@ -1,15 +1,19 @@
 """Test the selection of the data of a fit."""
 
+from pathlib import Path
+
 import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984
 from sbmlsim import project_checks
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitMapping, MappingKind, helpers
 from sbmlsim.fit.helpers import (
     FitMappings,
     MappingSelection,
     select_mapping_collections,
+    shared_fit_mappings,
 )
 from sbmlsim.project import SimulatorSettings
 from tests.project_toy import PROJECT
@@ -242,3 +246,37 @@ def test_select_mappings_creates_the_fit_mappings_of_the_project(
     with pytest.raises(_Stop):
         helpers.select_mappings(PROJECT, [])
     assert seen == [PROJECT]
+
+
+def test_shared_fit_mappings_instantiate_the_experiments_once() -> None:
+    """Within the context equal fit mappings share their experiments."""
+
+    def create(
+        *classes: type[SimulationExperiment], data_path: Path | list[Path] = DATA_PATH
+    ) -> FitMappings:
+        return FitMappings(
+            experiment_classes=list(classes), base_path=HCTZ_PATH, data_path=data_path
+        )
+
+    with shared_fit_mappings():
+        first = create(Beermann1976, Patel1984)
+        with shared_fit_mappings():
+            # a nested context keeps the experiments of the outer one
+            assert create(Beermann1976, Patel1984).runner is first.runner
+        second = create(Beermann1976, Patel1984)
+        assert second.runner is first.runner
+        assert second.keys == first.keys
+        # the paths as a list of one are the same paths
+        assert create(Beermann1976, Patel1984, data_path=[DATA_PATH]).runner is (
+            first.runner
+        )
+        # other classes, or another order, are other experiments
+        assert create(Patel1984, Beermann1976).runner is not first.runner
+        assert create(Beermann1976).runner is not first.runner
+        # a selection reads the experiments, so both select the same
+        assert (
+            first.select(print_info=False).kinds
+            == second.select(print_info=False).kinds
+        )
+    # outside of the context every fit mapping has experiments of its own
+    assert create(Beermann1976, Patel1984).runner is not first.runner

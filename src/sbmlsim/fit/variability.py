@@ -66,6 +66,7 @@ from sbmlsim.uncertainty.sources import Variable
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.fit.options import FitSettings
+    from sbmlsim.fit.pool import EvaluationPool
 
 __all__ = [
     "PredictiveCheck",
@@ -275,6 +276,45 @@ def subject_predictions(
             cannot be scaled in a simulation of the mappings, see
             `sbmlsim.simulator.plan.Plan.scaled`.
     """
+    return _subject_range(
+        problem,
+        x,
+        variability,
+        n,
+        range(n),
+        indices=indices,
+        seed=seed,
+        design=design,
+        start=start,
+        study=study,
+    )
+
+
+def _subject_range(
+    problem: OptimizationProblem,
+    x: np.ndarray,
+    variability: Variability,
+    n: int,
+    subjects: range,
+    *,
+    indices: Sequence[int] | None = None,
+    seed: int,
+    design: Literal["sobol", "lhs", "random"] = "sobol",
+    start: int = 0,
+    study: Mapping[str, float] | None = None,
+) -> SubjectPredictions:
+    """Evaluate some of the `n` subjects of `subject_predictions`.
+
+    The factors are drawn for all `n` subjects, as `subject_predictions` draws
+    them, and the subjects of `subjects` are evaluated: the parts of a
+    sequence of subjects, concatenated in their order (`_concatenated`), are
+    the subjects of the whole sequence, number for number, so the subjects of
+    a study can be evaluated in several tasks of a pool.
+
+    Returns:
+        The factors and the predictions of the subjects of `subjects`, see
+        `subject_predictions`.
+    """
     if n < 1:
         raise ValueError(f"The number of subjects must be positive, not {n}.")
     values = np.asarray(x, dtype=float)
@@ -297,12 +337,13 @@ def subject_predictions(
         )
         if targets
         else np.ones((n, 0))
-    )
+    )[subjects.start : subjects.stop]
+    m = len(factors)
     sizes = {k: len(problem.y_references[k]) for k in chosen}
-    predictions = {k: np.full((n, sizes[k]), np.nan) for k in chosen}
+    predictions = {k: np.full((m, sizes[k]), np.nan) for k in chosen}
     failed = 0
-    for i in range(n):
-        subject = {target: float(factors[i, j]) for j, target in enumerate(targets)}
+    for row, i in enumerate(subjects):
+        subject = {target: float(factors[row, j]) for j, target in enumerate(targets)}
         try:
             evaluated = problem.predictions(values, chosen, factors=subject)
         except ValueError as err:
@@ -311,7 +352,7 @@ def subject_predictions(
             failed += 1
             continue
         for k, prediction in evaluated.items():
-            predictions[k][i] = prediction
+            predictions[k][row] = prediction
     return SubjectPredictions(
         targets=targets,
         factors=factors,
@@ -319,6 +360,55 @@ def subject_predictions(
         failed=failed,
         study=shared,
     )
+
+
+def _concatenated(parts: Sequence[SubjectPredictions]) -> SubjectPredictions:
+    """Get the subjects of the parts of a sequence of subjects, in their order."""
+    if len(parts) == 1:
+        return parts[0]
+    first = parts[0]
+    return SubjectPredictions(
+        targets=first.targets,
+        factors=np.concatenate([part.factors for part in parts], axis=0),
+        predictions={
+            k: np.concatenate([part.predictions[k] for part in parts], axis=0)
+            for k in first.predictions
+        },
+        failed=sum(part.failed for part in parts),
+        study=first.study,
+    )
+
+
+def _pieces(tasks: Sequence[range], n_subjects: int) -> list[list[tuple[int, range]]]:
+    """Split the subjects of the units of a predictive check into the tasks of a pool.
+
+    The subjects of all units are one sequence of `n_units * n_subjects`, and a
+    task is a range of it (`chunks`), so the tasks are of one size whatever the
+    number of units is: a unit of a study is a sequence of its own and a pool
+    whose units were its tasks waited for its last units, e.g. 16 studies on
+    5 workers ran in 4 rounds of which the last kept one worker busy.
+
+    A piece draws the factors of all subjects of its unit and evaluates the
+    ones of its range (`_subject_range`), so the pieces of a unit are its
+    subjects, whatever the design of the factors.
+
+    Args:
+        tasks: the ranges of the subjects of all units.
+        n_subjects: the subjects of every unit.
+
+    Returns:
+        Per task its pieces, each a unit and the range of its subjects.
+    """
+    pieces: list[list[tuple[int, range]]] = []
+    for task in tasks:
+        parts: list[tuple[int, range]] = []
+        first, last = task.start, task.stop
+        for u in range(first // n_subjects, (last - 1) // n_subjects + 1):
+            lo = max(first, u * n_subjects) - u * n_subjects
+            hi = min(last, (u + 1) * n_subjects) - u * n_subjects
+            parts.append((u, range(lo, hi)))
+        pieces.append(parts)
+    return pieces
 
 
 def _subjects_of(
@@ -331,28 +421,32 @@ def _subjects_of(
         Literal["sobol", "lhs", "random"],
         list[tuple[np.ndarray, int, dict[str, float] | None]],
     ],
-    task: range,
-) -> list[SubjectPredictions]:
-    """Get the subjects of some vectors and studies of a predictive check.
+    task: list[tuple[int, range]],
+) -> list[tuple[int, SubjectPredictions]]:
+    """Get the subjects of some pieces of the units of a predictive check.
 
-    A task of `sbmlsim.fit.pool.map_evaluations`: the units of the task are
-    vectors and studies, each with the first subject of its sequence and the
-    factors of its study.
+    A task of `sbmlsim.fit.pool.map_evaluations`: a unit is a vector and a
+    study, with the first subject of its sequence and the factors of its
+    study, and a piece the subjects of a unit in a range, see `_pieces`.
     """
     variability, n_subjects, chosen, seed, design, units = shared
     return [
-        subject_predictions(
-            problem,
-            units[u][0],
-            variability,
-            n_subjects,
-            indices=chosen,
-            seed=seed,
-            design=design,
-            start=units[u][1],
-            study=units[u][2],
+        (
+            u,
+            _subject_range(
+                problem,
+                units[u][0],
+                variability,
+                n_subjects,
+                subjects,
+                indices=chosen,
+                seed=seed,
+                design=design,
+                start=units[u][1],
+                study=units[u][2],
+            ),
         )
-        for u in task
+        for u, subjects in task
     ]
 
 
@@ -466,6 +560,8 @@ def predictive_check(
     studies: int = 16,
     workers: int = 1,
     settings: FitSettings | None = None,
+    pool: EvaluationPool | None = None,
+    key: str | None = None,
 ) -> PredictiveCheck:
     """Get the predictive check of the mappings of a problem, see the module.
 
@@ -492,6 +588,10 @@ def predictive_check(
             ones of one process.
         settings: the settings the problem is initialized with in a worker,
             the settings of the problem by default.
+        pool: a started pool which holds the problem as `key`, whose workers
+            evaluate the subjects instead of a pool of this call, see
+            `sbmlsim.fit.pool.EvaluationPool`.
+        key: the key of the problem in `pool`.
 
     Returns:
         The bands and the coverage of the data points.
@@ -541,19 +641,22 @@ def predictive_check(
         for s in range(n_studies)
     ]
     shared = (variability, n_subjects, chosen, seed, design, units)
-    tasks = chunks(len(units), workers)
-    subjects = tuple(
-        prediction
-        for chunk in map_evaluations(
-            problem,
-            settings if settings is not None else problem.settings,
-            _subjects_of,
-            tasks,
-            workers,
-            shared,
-        )
-        for prediction in chunk
-    )
+    n_workers = workers if pool is None else pool.workers
+    tasks = _pieces(chunks(len(units) * n_subjects, n_workers), n_subjects)
+    parts: dict[int, list[SubjectPredictions]] = {}
+    for chunk in map_evaluations(
+        problem,
+        settings if settings is not None else problem.settings,
+        _subjects_of,
+        tasks,
+        workers,
+        shared,
+        pool=pool,
+        key=key,
+    ):
+        for u, part in chunk:
+            parts.setdefault(u, []).append(part)
+    subjects = tuple(_concatenated(parts[u]) for u in range(len(units)))
     typical = problem.predictions(vectors[0], chosen)
     rng = np.random.default_rng(seed)
     columns = [quantile_column(q) for q in qs]

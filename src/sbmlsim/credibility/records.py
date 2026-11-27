@@ -8,6 +8,8 @@ definition must have the same kinds: a split changed after the adoption without
 a refit would otherwise let fitted data count as validation. The remedy of a
 difference is a refit and a new adoption, never an override.
 
+`adopted_problems` builds the problems of the adopted fits without
+initializing them, e.g. to send them to the workers of a pool first, and
 `evaluate_fits` evaluates the adopted fits on the current model and data into
 the table of their data points; `mapping_table` is the same table with one row
 per mapping, without a simulation, for the static check of a declaration.
@@ -16,7 +18,7 @@ per mapping, without a simulation, for the static check of a declaration.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
@@ -32,15 +34,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sbmlsim.experiment import SimulationExperiment
-    from sbmlsim.fit.cli import FitDefinition
+    from sbmlsim.fit.cli import FitDefinition, FitRecords
+    from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.options import FitSettings
     from sbmlsim.fit.report import FitReport
     from sbmlsim.project import Project
 
 __all__ = [
+    "AdoptedProblem",
     "FitTable",
     "KindMismatchError",
     "MappingLookup",
     "adopted_ids",
+    "adopted_problems",
     "evaluate_fits",
     "kind_differences",
     "mapping_table",
@@ -258,6 +264,72 @@ def _adopted_fits(project: Project) -> Iterator[tuple[str, Path, FitDefinition]]
         yield fit_subset(fit_id), record, definitions[fit_subset(fit_id)]
 
 
+@dataclass(frozen=True, kw_only=True, eq=False)
+class AdoptedProblem:
+    """The problem of an adopted fit, not initialized, see `adopted_problems`.
+
+    Attributes:
+        subset: the subset of the fit, the id of its problem.
+        record: the directory of the record of the fit.
+        definition: the definition of the fit.
+        records: the records of the fit.
+        kinds: the kinds of the mappings the record stores, see
+            `recorded_kinds`.
+        problem: the problem of the fit (`sbmlsim.fit.cli.problem_of_records`),
+            a definition which is not initialized.
+        settings: the settings of the fit (`sbmlsim.fit.cli.settings_of`).
+    """
+
+    subset: str
+    record: Path
+    definition: FitDefinition
+    records: FitRecords
+    kinds: Kinds
+    problem: OptimizationProblem
+    settings: FitSettings
+
+
+def adopted_problems(project: Project) -> list[AdoptedProblem]:
+    """Get the problems of the adopted fits of a project, not initialized.
+
+    What `evaluate_fits` evaluates: the problem of every adopted fit as its
+    report is built from its record (`sbmlsim.fit.cli.report_from_records`),
+    in the order of the subsets. Building a problem creates the mapping
+    collections of its definition, initializing it loads its experiments; a
+    caller which builds the problems first can send them to the workers of a
+    pool (`sbmlsim.fit.pool.EvaluationPool`), which initialize them while
+    `evaluate_fits` initializes its own.
+
+    Args:
+        project: the project with its adopted fits.
+
+    Returns:
+        The problem of every adopted fit.
+
+    Raises:
+        ValueError: if the project has no adopted fits, see `adopted_ids`.
+        FileNotFoundError: if a record has no parameters or no kinds.
+    """
+    from sbmlsim.fit.cli import load_fit_records, problem_of_records, settings_of
+
+    problems: list[AdoptedProblem] = []
+    for subset, record, definition in _adopted_fits(project):
+        kinds = recorded_kinds(record, subset)
+        records = load_fit_records(record)
+        problems.append(
+            AdoptedProblem(
+                subset=subset,
+                record=record,
+                definition=definition,
+                records=records,
+                kinds=kinds,
+                problem=problem_of_records(definition, records, opid=subset),
+                settings=settings_of(definition, records),
+            )
+        )
+    return problems
+
+
 def _observable(fit_mapping: FitMapping) -> str:
     """Get the observable of a fit mapping as the data points name it.
 
@@ -268,7 +340,9 @@ def _observable(fit_mapping: FitMapping) -> str:
     return y.index if fit_mapping.observable_model is not None else y.selection
 
 
-def evaluate_fits(project: Project) -> FitTable:
+def evaluate_fits(
+    project: Project, problems: Sequence[AdoptedProblem] | None = None
+) -> FitTable:
     """Evaluate the adopted fits of a project into the table of their data points.
 
     Every fit is evaluated fresh on the current model and data with the settings
@@ -278,6 +352,8 @@ def evaluate_fits(project: Project) -> FitTable:
 
     Args:
         project: the project, its adopted fits are evaluated.
+        problems: the problems of the adopted fits, `adopted_problems` of the
+            project by default.
 
     Returns:
         The data points of every fit with the column `fit`, the subset, and the
@@ -294,11 +370,18 @@ def evaluate_fits(project: Project) -> FitTable:
     experiments: dict[str, SimulationExperiment] = {}
     recorded: dict[tuple[str, str, str], str] = {}
     reports: dict[str, FitReport] = {}
-    for subset, record, definition in _adopted_fits(project):
-        recorded.update(recorded_kinds(record, subset))
+    for adopted in adopted_problems(project) if problems is None else problems:
+        subset = adopted.subset
+        recorded.update(adopted.kinds)
         logger.info("Evaluate the adopted fit '%s' of '%s'", subset, project.name)
         report = report_from_records(
-            definition, record, opid=subset, mapping_figures=False
+            adopted.definition,
+            adopted.record,
+            opid=subset,
+            records=adopted.records,
+            mapping_figures=False,
+            problem=adopted.problem,
+            settings=adopted.settings,
         )
         points = report.metrics(report.reference_set).datapoints_df()
         points.insert(0, "fit", subset)

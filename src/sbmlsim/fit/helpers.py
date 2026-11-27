@@ -31,10 +31,17 @@ The filters of the mappings are the ones of `sbmlsim.fit.filters` (by the
 metadata, the observable, the key and the study), which this module exports
 as well; `select_mappings` selects the data of a fit of a
 `sbmlsim.project.Project` with its paths.
+
+Within `shared_fit_mappings` the experiments of a `FitMappings` are
+instantiated once for every `FitMappings` of the same experiments and paths,
+e.g. once for the fit problems of a project whose definitions each select
+their data from all experiments (a credibility assessment builds every
+adopted fit so, see `sbmlsim.credibility.assessment.assess`).
 """
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Generator, Hashable, Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -85,10 +92,54 @@ __all__ = [
     "observable_id",
     "select_mapping_collections",
     "select_mappings",
+    "shared_fit_mappings",
     "study",
 ]
 
 logger = logging.getLogger(__name__)
+
+#: the runners of the instantiated experiments of `FitMappings` by their
+#: experiments and paths while `shared_fit_mappings` is entered, else `None`
+_SHARED: dict[Hashable, ExperimentRunner] | None = None
+
+
+@contextmanager
+def shared_fit_mappings() -> Generator[None]:
+    """Instantiate the experiments of equal `FitMappings` once within the context.
+
+    A `FitMappings` instantiates its experiments, which loads their models and
+    their datasets and is its expensive part. The definitions of the fits of a
+    model typically create one per fit problem from the same experiments,
+    e.g. a function of the mapping collections of every subset, and select
+    from it with other filters. Within the context a `FitMappings` of the
+    same experiment classes, in the same order, with the same paths and
+    optimization level as an earlier one shares the instantiated experiments
+    of the earlier one: a selection only reads them. The experiments are
+    dropped when the outermost context exits; a nested context changes
+    nothing.
+
+    Yields:
+        Nothing.
+    """
+    global _SHARED
+    if _SHARED is not None:
+        yield
+        return
+    _SHARED = {}
+    try:
+        yield
+    finally:
+        _SHARED = None
+
+
+def _paths(data_path: Path | Iterable[Path] | None) -> tuple[str, ...] | None:
+    """Get the paths of the data as a key of `_SHARED`."""
+    if data_path is None:
+        return None
+    if isinstance(data_path, (str, Path)):
+        return (str(data_path),)
+    return tuple(str(path) for path in data_path)
+
 
 #: filter of fit mappings, called with the key of a fit mapping and the mapping
 MappingFilter = Callable[[str, FitMapping], bool]
@@ -169,6 +220,9 @@ class FitMappings:
     ):
         """Instantiate the simulation experiments.
 
+        Within `shared_fit_mappings` the experiments of an earlier
+        `FitMappings` of the same classes and paths are taken instead.
+
         Args:
             experiment_classes: simulation experiment classes with fit mappings.
             base_path: base path of the simulation experiments.
@@ -178,14 +232,28 @@ class FitMappings:
                 experiments are compiled at, see `ExperimentRunner`; the level
                 of a project is `SimulatorSettings.jit_optimization`.
         """
-        self.runner = ExperimentRunner(
-            experiment_classes=list(experiment_classes),
-            base_path=base_path,
-            data_path=data_path,
-            # a fit needs every experiment, its definition errors are raised
-            on_error="raise",
-            jit_optimization=jit_optimization,
-        )
+        classes = list(experiment_classes)
+        if data_path is not None and not isinstance(data_path, (str, Path)):
+            # an iterable of paths is read twice, for the key and the runner
+            data_path = list(data_path)
+        key = (tuple(classes), str(base_path), _paths(data_path), jit_optimization)
+        runner = None if _SHARED is None else _SHARED.get(key)
+        if runner is None:
+            runner = ExperimentRunner(
+                experiment_classes=classes,
+                base_path=base_path,
+                data_path=data_path,
+                # a fit needs every experiment, its definition errors are raised
+                on_error="raise",
+                jit_optimization=jit_optimization,
+            )
+            if _SHARED is not None:
+                _SHARED[key] = runner
+        else:
+            logger.debug(
+                "The experiments of %s are shared", [c.__name__ for c in classes]
+            )
+        self.runner = runner
         self.keys: dict[str, list[str]] = {
             experiment_id: list(experiment._fit_mappings)
             for experiment_id, experiment in self.runner.experiments.items()

@@ -40,8 +40,12 @@ from sbmlsim.credibility.verification import (
     INTEGRATOR,
     LIMIT,
     SCALE_FLOOR,
+    SECOND_METHOD_ORDER,
     SETUP,
+    TIGHTENING,
     TOLERANCES,
+    _alternative_points,
+    _tightened_settings,
     build_problems,
     relative_differences,
     second_method_reason,
@@ -459,3 +463,38 @@ def test_the_checks_are_open() -> None:
         CHECKS["other"] = unknown  # ty: ignore[invalid-assignment]
     # the checks of the PK battery of pkpdsim 0.19 are read with their factor
     assert check_of("superposition").factor == "numerical_code_verification"
+
+
+@pytest.mark.parametrize("check", [TOLERANCES, INTEGRATOR])
+def test_an_alternative_is_the_problem_initialized_with_its_settings(
+    credibility_project: Project, check: Check
+) -> None:
+    """The checks evaluate the problem of a report again, not a new problem.
+
+    The points of a check are the ones of a report initialized with the
+    tightened settings, and of its models given the second method, as the
+    checks evaluated them before they evaluated the problem of the report
+    within `OptimizationProblem.integrating`; the report evaluates as before.
+    """
+    from sbmlsim.fit.report import FitReport, evaluate_metrics
+
+    fits = evaluate_fits(credibility_project)
+    (report,) = fits.reports.values()
+    before = evaluate_metrics(report.problem, report.reference_set).datapoints_df()
+
+    fresh = FitReport(
+        problem=report.problem,
+        settings=_tightened_settings(report.settings, TIGHTENING),
+        parameter_sets=report.reference_set,
+        mapping_figures=False,
+    )
+    if check == INTEGRATOR:
+        for model in {id(m): m for m in fresh.problem.models}.values():
+            model.set_integrator_settings(maximum_bdf_order=SECOND_METHOD_ORDER)
+    expected = fresh.metrics(fresh.reference_set).datapoints_df()
+
+    points = _alternative_points(report, check, TIGHTENING)
+    pd.testing.assert_frame_equal(points, expected, check_exact=True)
+    assert not points["IPRED"].equals(before["IPRED"])
+    after = evaluate_metrics(report.problem, report.reference_set).datapoints_df()
+    pd.testing.assert_frame_equal(after, before, check_exact=True)

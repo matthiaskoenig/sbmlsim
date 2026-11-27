@@ -776,6 +776,12 @@ class CoreSBMLModel(SBMLModel):
     ) -> None:
         """Set the settings of the integrator, see `integrator_state`.
 
+        The state replaces the settings of the model: a setting which the
+        model had and the state has not, e.g. a `maximum_bdf_order` set after
+        the state was taken, is dropped, so the state of the model is the
+        state again (`OptimizationProblem.integrating` sets the settings of a
+        check and restores the state after it).
+
         Args:
             state: the name of the integrator, `cvode`, and its settings.
 
@@ -789,7 +795,15 @@ class CoreSBMLModel(SBMLModel):
                 f"The engine 'core' integrates with '{INTEGRATOR}', not with "
                 f"'{integrator}'."
             )
-        self.set_integrator_settings(**dict(settings))
+        # checked before the settings are replaced, so a state which is not
+        # valid leaves the settings of the model as they were
+        checked = self._engine_settings.checked(dict(settings))
+        self._settings = {}
+        for key, value in checked.items():
+            if isinstance(value, AbsoluteTolerance):
+                self.absolute_tolerance = value
+            else:
+                self._settings[key] = value
 
     @override
     def state_ids(self) -> list[str]:

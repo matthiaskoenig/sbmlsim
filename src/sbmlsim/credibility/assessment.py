@@ -97,7 +97,11 @@ from sbmlsim.credibility.factors import (
     FactorStatus,
     combine_factor,
 )
-from sbmlsim.credibility.records import MappingLookup, evaluate_fits
+from sbmlsim.credibility.records import (
+    MappingLookup,
+    adopted_problems,
+    evaluate_fits,
+)
 from sbmlsim.credibility.selection import (
     EvidenceSelection,
     in_domain,
@@ -1905,10 +1909,14 @@ def assess(
         cross_validations: the cross-validations of the adopted fits by their
             subset, the ones of the records of the project
             (`read_cross_validations`) without.
-        workers: the processes the draws of the uncertainty and the subjects
-            of the variability are evaluated in, see
-            `sbmlsim.fit.pool.map_evaluations`; the assessment is the one of
-            a single process.
+        workers: the processes the subjects of the variability are
+            evaluated in, one pool for every fit whose workers initialize the
+            problems of the fits while this process evaluates them
+            (`sbmlsim.fit.pool.EvaluationPool`), and the draws of the
+            uncertainty of an engine which runs an evaluation on one thread;
+            the draws of the engine core run in this process, on the threads
+            of the engine (`sbmlsim.fit.pool.evaluates_on_threads`). The
+            assessment is the one of a single process.
 
     Returns:
         The assessment.
@@ -1927,6 +1935,8 @@ def assess(
         lock_differences,
         write_lock,
     )
+    from sbmlsim.fit.helpers import shared_fit_mappings
+    from sbmlsim.fit.pool import EvaluationPool, evaluates_on_threads
 
     credibility = project.load_credibility()
     if not isinstance(credibility, Credibility):
@@ -1940,35 +1950,59 @@ def assess(
             "subjects (`Credibility.variability`), which the predictive check needs."
         )
     extensions = project.evidence_extensions()
-    fits = evaluate_fits(project)
-    selections = select(credibility, fits, extensions)
-    state: str | None
-    if lock is not None:
-        logger.info("Write the lock '%s'", write_lock(selections, fits, lock))
-        state = "written"
-    else:
-        differences = lock_differences(project, selections, fits)
-        if differences:
-            raise LockMismatchError(differences)
-        state = None if differences is None else "matched"
-    prepared = {e.name: e.prepare(project, credibility, fits) for e in extensions}
-    checks = (
-        verify(project, fits, battery=battery, cross_simulator=cross_simulator)
-        if verification
-        else None
-    )
-    propagation = (
-        None
-        if uncertainty is None
-        else propagate_fits(project, fits, uncertainty, workers)
-    )
-    checks_of_variability = (
-        None
-        if variability is None or credibility.variability is None
-        else predictive_checks(
-            project, fits, credibility.variability, variability, propagation, workers
+    # the definitions of the fits of a model build their mapping collections
+    # from the same experiments, which are instantiated once
+    with shared_fit_mappings():
+        problems = adopted_problems(project)
+    # the subjects of the variability, and the draws of the uncertainty of an
+    # engine without threads, are evaluated in one pool for every fit, whose
+    # workers initialize the problems while this process evaluates the fits
+    pooled = workers > 1 and (
+        variability is not None
+        or (
+            uncertainty is not None
+            and not all(evaluates_on_threads(p.problem) for p in problems)
         )
     )
+    with EvaluationPool(
+        {p.subset: (p.problem, p.settings) for p in problems} if pooled else {},
+        workers,
+    ) as pool:
+        fits = evaluate_fits(project, problems)
+        selections = select(credibility, fits, extensions)
+        state: str | None
+        if lock is not None:
+            logger.info("Write the lock '%s'", write_lock(selections, fits, lock))
+            state = "written"
+        else:
+            differences = lock_differences(project, selections, fits)
+            if differences:
+                raise LockMismatchError(differences)
+            state = None if differences is None else "matched"
+        prepared = {e.name: e.prepare(project, credibility, fits) for e in extensions}
+        checks = (
+            verify(project, fits, battery=battery, cross_simulator=cross_simulator)
+            if verification
+            else None
+        )
+        propagation = (
+            None
+            if uncertainty is None
+            else propagate_fits(project, fits, uncertainty, workers, pool)
+        )
+        checks_of_variability = (
+            None
+            if variability is None or credibility.variability is None
+            else predictive_checks(
+                project,
+                fits,
+                credibility.variability,
+                variability,
+                propagation,
+                workers,
+                pool,
+            )
+        )
     validations = (
         read_cross_validations(project)
         if cross_validations is None

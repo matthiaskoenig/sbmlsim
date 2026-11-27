@@ -18,8 +18,12 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit.objects import FitData, FitMapping, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.pool import EvaluationPool, chunks
 from sbmlsim.fit.variability import (
     Variability,
+    _concatenated,
+    _pieces,
+    _subject_range,
     predictive_check,
     quantile_column,
     subject_predictions,
@@ -361,3 +365,74 @@ def test_the_predictive_check_in_a_pool_is_the_one_of_one_process(
     pooled = predictive_check(problem, vectors, variability, 16, seed=5, workers=3)
     pd.testing.assert_frame_equal(pooled.points, serial.points)
     assert pooled.coverage == serial.coverage
+
+
+def test_the_subjects_of_a_study_in_pieces_are_its_subjects(
+    problem: OptimizationProblem,
+) -> None:
+    """A study evaluated in parts is the study, number for number.
+
+    The pieces of a predictive check draw the factors of all subjects of their
+    study, also of a Latin hypercube, which has no continuation, and of
+    correlated factors.
+    """
+    variability = Variability(
+        {"a0": LogNormal(cv=0.3), "kx": LogNormal(cv=0.2)},
+        covariance=[Covariance.correlation({("a0", "kx"): 0.5})],
+    )
+    for design in ("sobol", "lhs", "random"):
+        whole = subject_predictions(
+            problem, X, variability, 11, seed=3, design=design, study={"a0": 1.2}
+        )
+        parts = [
+            _subject_range(
+                problem,
+                X,
+                variability,
+                11,
+                subjects,
+                seed=3,
+                design=design,
+                study={"a0": 1.2},
+            )
+            for subjects in (range(4), range(4, 5), range(5, 11))
+        ]
+        joined = _concatenated(parts)
+        assert joined.targets == whole.targets
+        assert joined.study == whole.study
+        assert joined.failed == whole.failed
+        np.testing.assert_array_equal(joined.factors, whole.factors)
+        assert joined.predictions.keys() == whole.predictions.keys()
+        for k, predictions in whole.predictions.items():
+            np.testing.assert_array_equal(joined.predictions[k], predictions)
+
+
+def test_the_pieces_of_the_subjects_are_the_ranges_of_the_tasks() -> None:
+    """A task is a range of the subjects of all units, cut at their borders."""
+    tasks = chunks(3 * 8, 2)
+    assert [len(task) for task in tasks] == [3] * 8
+    pieces = _pieces(tasks, 8)
+    assert pieces[2] == [(0, range(6, 8)), (1, range(1))]
+    covered = [(u, i) for task in pieces for u, subjects in task for i in subjects]
+    assert covered == [(u, i) for u in range(3) for i in range(8)]
+
+
+def test_the_predictive_check_in_an_evaluation_pool_is_the_one_of_one_process(
+    tmp_path: Path,
+) -> None:
+    """The subjects of a check run in the workers of a shared pool, value for value."""
+    problem = _problem(tmp_path, DecayExperiment)
+    WORKER_MODEL_PATH.write_text(sbml(DECAY), encoding="utf-8")
+    between = Variability({"a0": LogNormal(cv=0.3)})
+    variability = Variability(factors={"k": LogNormal(cv=0.3)}, between=between)
+    vectors = np.array([[0.4], [0.5]])
+    serial = predictive_check(problem, vectors, variability, 6, seed=5, studies=3)
+    with EvaluationPool({"decay": (problem, problem.settings_initialized)}, 3) as pool:
+        assert pool.active
+        pooled = predictive_check(
+            problem, vectors, variability, 6, seed=5, studies=3, pool=pool, key="decay"
+        )
+    pd.testing.assert_frame_equal(pooled.points, serial.points)
+    for one, other in zip(pooled.subjects, serial.subjects, strict=True):
+        np.testing.assert_array_equal(one.factors, other.factors)
+        np.testing.assert_array_equal(one.predictions[0], other.predictions[0])
