@@ -524,9 +524,9 @@ copasi
 equal: True
              copasi    core
 time        0.0e+00 0.0e+00
-Aurine_hctz 4.4e-10 2.2e-11
+Aurine_hctz 4.5e-10 2.2e-11
 Ri_hctz     0.0e+00 0.0e+00
-[Cve_hctz]  7.4e-09 6.2e-11
+[Cve_hctz]  7.5e-09 6.2e-11
 ```
 
 `is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences, the largest of each column per engine in the table. With `"amici"` among the engines, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. sbmlsim-core agrees with roadrunner the most closely of the three at these tolerances: on the packaged models the largest relative difference is `2.4e-11` on the HCTZ model and `1.7e-8` on the midazolam model, a factor of 16 to 660 below COPASI and AMICI, because sbmlsim-core integrates with the vector of absolute tolerances which roadrunner computes per state while the other two have a single one, see [Benchmarks](benchmarks.md) and [Absolute tolerances](#absolute-tolerances). Agreeing with roadrunner closely is not the same as being more accurate: the error of sbmlsim-core is not bounded by roadrunner's, see [sbmlsim-core](#sbmlsim-core). With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
