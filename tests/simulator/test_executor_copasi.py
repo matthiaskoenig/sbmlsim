@@ -467,20 +467,22 @@ def test_a_delayed_event_pending_across_the_stop_before_the_end(
             assert copasi["p"][-1] == 1.0
 
 
-def test_known_difference_an_event_whose_trigger_is_true_within_a_step() -> None:
-    """Pin a known difference: roadrunner misses a trigger true within one step.
+def test_an_event_whose_trigger_is_true_between_output_times() -> None:
+    """COPASI detects a narrow trigger independently of the requested output grid.
 
-    `X > 0.5 && X < 0.8` is true for 0.3 of the time, within one step of
-    CVODE, which finds the roots of both comparisons in it; roadrunner does
-    not fire the event, COPASI does, as SBML.
+    Earlier reference-engine builds missed this trigger, so the SBML expectation
+    is the oracle rather than requiring an upstream bug to remain present.
     """
-    model = "model narrow\n  X = 0\n  X' = 1\n  Y = 0\n"
-    model += "  E: at (X > 0.5 && X < 0.8), t0=true: Y = Y + 1\nend"
-    copasi, roadrunner = both(
-        sbml(model), Simulation(end=3, times=[0, 3]), ["time", "Y"]
+    source = sbml(
+        "model narrow\n  X = 0\n  X' = 1\n  Y = 0\n"
+        "  E: at (X > 0.5 && X < 0.8), t0=true: Y = Y + 1\nend"
     )
-    assert copasi["Y"].tolist() == [0.0, 1.0]
-    assert roadrunner["Y"].tolist() == [0.0, 0.0]
+    model = CopasiSBMLModel(source=source, settings=SETTINGS)
+    plan = compile_simulation(
+        Simulation(end=3, times=[0, 3]), model.symbols, model.uinfo
+    )
+    result = executor_copasi.execute(plan, model, ["time", "Y"])
+    assert result["Y"].tolist() == [0.0, 1.0]
 
 
 def test_known_defect_lsoda_fails_on_a_delayed_event_in_its_steps() -> None:

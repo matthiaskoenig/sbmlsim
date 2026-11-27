@@ -373,8 +373,7 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if name not in ("OMP_NUM_THREADS", "MPLBACKEND")
-        and not name.startswith("SIMRUN_")
+        if name != "OMP_NUM_THREADS" and not name.startswith("SIMRUN_")
     }
     env["PYTHONPATH"] = str(ROOT)
     return subprocess.run(

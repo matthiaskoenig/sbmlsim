@@ -2,11 +2,10 @@
 
 A figure of the figure model is resolved into a `Chart` and written as SVG,
 PNG on request, and its spec as JSON beside every figure; `figures_mpl()` is a
-hook whose objects are saved with their own `savefig` and warned about.
+hook of charts, and a figure of it which is no chart fails under its key.
 """
 
 import json
-import logging
 import struct
 import subprocess
 import sys
@@ -16,7 +15,7 @@ from typing import Any, override
 import pytest
 
 from sbmlsim.data import Data
-from sbmlsim.experiment import ExperimentRunner, SimulationExperiment, experiment
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.figure_formats import FIGURE_FORMATS, figure_formats_of
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Chart, Figure
@@ -31,12 +30,6 @@ HTML_GONE = (
     "the format html is gone with plotly; the report shows the svg and becomes "
     "interactive with the renderer"
 )
-
-
-@pytest.fixture(autouse=True)
-def _no_hook_warned(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every test starts without a warned hook, whatever ran before it."""
-    monkeypatch.setattr(experiment, "_WARNED_HOOKS", set())
 
 
 class _Repressilator(SimulationExperiment):
@@ -167,52 +160,78 @@ def test_png_dpi(tmp_path: Path) -> None:
     assert _png_width(given) == pytest.approx(width * 36 / 72, abs=2)
 
 
-class _Saved:
-    """A figure of another library, which saves itself."""
+def _chart() -> Chart:
+    """A chart of one line."""
+    chart = Chart(title="drawn")
+    chart.plot().curve([0.0, 1.0], [0.0, 1.0], label="line")
+    return chart
 
-    def __init__(self) -> None:
-        self.paths: list[Path] = []
+
+class _Saved:
+    """A figure of another library, which saves itself, e.g. one of matplotlib."""
 
     def savefig(self, path: Path, **kwargs: Any) -> None:
-        self.paths.append(Path(path))
         Path(path).write_text("figure", encoding="utf-8")
 
 
 class _Hooked(_Repressilator):
-    """An experiment with a figure of its own in `figures_mpl`."""
+    """An experiment with a chart of its own in `figures_mpl`."""
 
     @override
     def figures_mpl(self) -> dict[str, Any]:
-        return {"custom": _Saved(), "drawn": Chart()}
+        return {"drawn": _chart()}
 
 
-def test_figures_mpl_hook_warns_and_saves(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A figure of the hook is saved by its `savefig`, warned about once per class."""
-    with caplog.at_level(logging.WARNING):
-        experiment, result = _run(_Hooked, tmp_path, figure_formats=["svg", "png"])
-        _run(_Hooked, tmp_path / "again")
+class _Foreign(_Repressilator):
+    """An experiment whose `figures_mpl` returns a figure which is no chart."""
 
-    sid = experiment.sid
-    assert (tmp_path / f"{sid}_custom.svg").read_text(encoding="utf-8") == "figure"
-    assert (tmp_path / f"{sid}_custom.png").exists()
-    assert not (tmp_path / f"{sid}_custom.json").exists()
-    # a chart of the hook is drawn by the renderer
-    assert (tmp_path / f"{sid}_drawn.json").exists()
+    @override
+    def figures_mpl(self) -> dict[str, Any]:
+        return {"custom": _Saved(), "drawn": _chart()}
+
+
+def test_a_chart_of_the_hook_is_drawn_by_the_renderer(tmp_path: Path) -> None:
+    """A chart of the hook is written with its spec, as the other figures."""
+    experiment, result = _run(_Hooked, tmp_path, figure_formats=["svg", "png"])
+
+    stem = tmp_path / f"{experiment.sid}_drawn"
+    assert stem.with_suffix(".svg").read_text(encoding="utf-8").lstrip()[:5] in (
+        "<svg ",
+        "<?xml",
+    )
+    assert stem.with_suffix(".png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert json.loads(stem.with_suffix(".json").read_text(encoding="utf-8"))
     assert result.figures == {
         "fig": ["svg", "png", "json"],
-        "custom": ["svg", "png"],
         "drawn": ["svg", "png", "json"],
     }
-    warnings = [
-        r.getMessage() for r in caplog.records if "figures_mpl()" in r.getMessage()
-    ]
-    assert warnings == [
-        "_Hooked.figures_mpl() draws 1 figure(s) with matplotlib (custom); move "
-        "them to sbmlsim.plot (Chart or the figure model) to render them with the "
-        "fast renderer"
-    ]
+    assert not result.failed_figures
+
+
+def test_a_figure_of_the_hook_which_is_no_chart_fails(tmp_path: Path) -> None:
+    """A figure of matplotlib or any other library is refused, naming `Chart`.
+
+    It is not saved, a file of it from an earlier run is removed, and the
+    charts of the hook are written.
+    """
+    sid = _experiment(_Foreign)[0].sid
+    stale = tmp_path / f"{sid}_custom.svg"
+    stale.write_text("an earlier run", encoding="utf-8")
+
+    experiment, result = _run(_Foreign, tmp_path, on_error="log")
+
+    assert set(result.failed_figures) == {"custom"}
+    message = result.failed_figures["custom"]
+    assert message.startswith("TypeError: The figure 'custom' of ")
+    assert "_Saved, not a sbmlsim.plot.Chart" in message
+    assert result.figures == {"fig": ["svg", "json"], "drawn": ["svg", "json"]}
+    assert not list(tmp_path.glob(f"{experiment.sid}_custom.*"))
+
+
+def test_a_figure_of_the_hook_which_is_no_chart_raises(tmp_path: Path) -> None:
+    """With `on_error="raise"` the error of the figure is raised."""
+    with pytest.raises(TypeError, match=r"not a sbmlsim\.plot\.Chart"):
+        _run(_Foreign, tmp_path)
 
 
 def test_figure_failure_reported(tmp_path: Path) -> None:
@@ -275,116 +294,30 @@ def test_no_matplotlib_in_a_run(tmp_path: Path) -> None:
     assert list((tmp_path / "_figures").glob("*.png"))
 
 
-# ---------------------------------------------------------------------------
-# figures of matplotlib from the hook
-# ---------------------------------------------------------------------------
-def _pyplot() -> Any:
-    pytest.importorskip("matplotlib")
-    import matplotlib.pyplot as plt
-
-    plt.close("all")
-    return plt
-
-
-def _mpl_hook(draw: Any) -> type[SimulationExperiment]:
-    """An experiment whose `figures_mpl` returns the figures `draw` creates."""
-
-    class MplHook(_Repressilator):
-        @override
-        def figures_mpl(self) -> dict[str, Any]:
-            return draw()
-
-    return MplHook
-
-
-def _square() -> dict[str, Any]:
-    from matplotlib.figure import Figure as FigureMPL
-
-    figure = FigureMPL(figsize=(4, 3))
-    ax = figure.add_subplot()
-    ax.plot([0, 1], [0, 1])
-    return {"square": figure}
-
-
-def test_a_hook_png_has_the_resolution_of_the_run(tmp_path: Path) -> None:
-    """`png_dpi` reaches the figures of matplotlib, their own dpi without."""
-    _pyplot()
-    hook = _mpl_hook(_square)
+def test_a_chart_of_the_hook_has_the_resolution_of_the_run(tmp_path: Path) -> None:
+    """`png_dpi` reaches the charts of the hook."""
     widths = {}
-    for dpi in (100, 200):
+    for dpi in (36, 72):
         experiment, result = _run(
-            hook, tmp_path / str(dpi), figure_formats=["png"], png_dpi=dpi
+            _Hooked, tmp_path / str(dpi), figure_formats=["png"], png_dpi=dpi
         )
-        assert result.figures["square"] == ["png"]
-        widths[dpi] = _png_width(tmp_path / str(dpi) / f"{experiment.sid}_square.png")
-    # the tight box of the same figure at twice the resolution
-    assert widths[200] == pytest.approx(2 * widths[100], abs=3)
-    assert 300 < widths[100] < 400
+        assert result.figures["drawn"] == ["png", "json"]
+        widths[dpi] = _png_width(tmp_path / str(dpi) / f"{experiment.sid}_drawn.png")
+    assert widths[72] == pytest.approx(2 * widths[36], abs=2)
 
 
-def test_the_tight_box_keeps_a_legend_outside_the_axes(tmp_path: Path) -> None:
-    """A hook figure is saved with `bbox_inches="tight"`, as before."""
-    _pyplot()
-
-    def draw() -> dict[str, Any]:
-        figures = _square()
-        ax = figures["square"].axes[0]
-        ax.plot([0, 1], [1, 0], label="a legend entry with a long label")
-        ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0))
-        return figures
-
-    experiment, _ = _run(_mpl_hook(draw), tmp_path, figure_formats=["png"], png_dpi=100)
-    # wider than the 400 pixels of the figure: the legend right of it is kept
-    assert _png_width(tmp_path / f"{experiment.sid}_square.png") > 450
-
-
-def test_a_pyplot_figure_of_the_hook_is_closed_after_saving(tmp_path: Path) -> None:
-    plt = _pyplot()
-
-    def draw() -> dict[str, Any]:
-        figure = plt.figure()
-        figure.add_subplot().plot([0, 1], [0, 1])
-        return {"pyplot": figure}
-
-    experiment, result = _run(_mpl_hook(draw), tmp_path)
-    assert result.figures["pyplot"] == ["svg"]
-    assert (tmp_path / f"{experiment.sid}_pyplot.svg").exists()
-    assert plt.get_fignums() == []
-
-
-def test_the_hook_figures_are_closed_when_a_save_raises(tmp_path: Path) -> None:
-    """With `on_error="raise"` every figure of pyplot is closed all the same."""
-    plt = _pyplot()
-
-    def draw() -> dict[str, Any]:
-        figures = {key: plt.figure() for key in ("bad", "good")}
-
-        def broken(*args: Any, **kwargs: Any) -> None:
-            raise RuntimeError("cannot save")
-
-        figures["bad"].savefig = broken
-        return figures
-
-    with pytest.raises(RuntimeError, match="cannot save"):
-        _run(_mpl_hook(draw), tmp_path)
-    assert plt.get_fignums() == []
-
-
-def test_a_hook_figure_without_an_image_format_is_not_written(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A figure of the hook has no spec: a run of the spec alone skips it."""
-    with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.experiment"):
-        experiment, result = _run(_Hooked, tmp_path, figure_formats=["json"])
+def test_a_chart_of_the_hook_is_written_as_its_spec_alone(tmp_path: Path) -> None:
+    """A run of the spec alone writes the spec of a chart of the hook."""
+    experiment, result = _run(_Hooked, tmp_path, figure_formats=["json"])
     assert result.figures == {"fig": ["json"], "drawn": ["json"]}
-    assert not list(tmp_path.glob(f"{experiment.sid}_custom.*"))
-    assert "have no spec" in caplog.text
+    assert (tmp_path / f"{experiment.sid}_drawn.json").exists()
+    assert not list(tmp_path.glob(f"{experiment.sid}_drawn.svg"))
 
 
 def test_show_figures_shows_the_hook_figures_without_an_output_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """In a notebook the charts and the figures of the hook are displayed."""
+    """In a notebook the charts of the figures and of the hook are displayed."""
     import types
 
     shown: list[Any] = []
@@ -397,4 +330,4 @@ def test_show_figures_shows_the_hook_figures_without_an_output_path(
 
     experiment, simulator = _experiment(_Hooked)
     experiment.run(simulator, show_figures=True)
-    assert [type(figure).__name__ for figure in shown] == ["Chart", "_Saved", "Chart"]
+    assert [type(figure).__name__ for figure in shown] == ["Chart", "Chart"]

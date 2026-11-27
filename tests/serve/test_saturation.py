@@ -1,28 +1,32 @@
 """The requests of one model never take every thread of the server.
 
-The route of a simulation runs in the thread pool of the server (anyio's, 40
-threads), and a request which waits for the lock of its model holds one of
+The route of a simulation runs in the thread pool of the server, and a
+request which waits for the lock of its model holds one of
 them; the runner admits at most `MAX_WAITING` requests of one model and
 refuses the others at once with a 503, so the other models and routes keep
 answering while one model is saturated.
 
 The runs of the saturated model are held until the test releases them, so
 the requests of the test are genuinely concurrent and none of them finishes
-before the test looked at the other model.
+before the test looked at the other model. The test checks the default
+capacity, then saturates a small configured pool to keep its thread use low.
 """
 
 import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
 from typing import Any
 
 import pytest
 
 pytest.importorskip("fastapi")
+from anyio.to_thread import current_default_thread_limiter
 from fastapi.testclient import TestClient
 
 from sbmlsim.project import Project
+from sbmlsim.serve import app as app_module
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.app import OVERLOADED, RETRY_AFTER, create_app
 from sbmlsim.serve.runner import (
@@ -34,8 +38,12 @@ from sbmlsim.serve.runner import (
 )
 from tests.serve.conftest import DATA, SIMULATE
 
-#: the requests of the saturated model, more than the threads of the server
-REQUESTS = 48
+#: a small server pool preserves the saturation test without dozens of threads
+SERVER_THREADS = 4
+#: admitted requests leave room for another model and for refusals
+MODEL_WAITING = 2
+#: more requests than the configured server pool can run at once
+REQUESTS = SERVER_THREADS + 2
 #: the seconds a request of the other model may take while one is saturated;
 #: it reads a declaration, which is milliseconds
 ANSWER = 5.0
@@ -82,20 +90,35 @@ def held(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[threading.Event, Any
 
 
 def test_a_saturated_model_leaves_the_other_models_answering(
-    two_models: ModelRegistry, held: tuple[threading.Event, Any]
+    two_models: ModelRegistry,
+    held: tuple[threading.Event, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     release, entered = held
+    monkeypatch.setattr(
+        app_module, "PanelRunner", partial(PanelRunner, max_waiting=MODEL_WAITING)
+    )
+
+    async def limit_server_threads() -> float:
+        """Read the real default capacity, then use a small pool for the stress."""
+        limiter = current_default_thread_limiter()
+        default = limiter.total_tokens
+        limiter.total_tokens = SERVER_THREADS
+        return default
+
     with (
         TestClient(create_app(two_models)) as client,
         ThreadPoolExecutor(max_workers=REQUESTS + 1) as pool,
     ):
+        assert client.portal is not None
+        assert client.portal.call(limit_server_threads) > MAX_WAITING
         try:
             futures: list[Future[Any]] = [
                 pool.submit(client.post, SIMULATE, json={}) for _ in range(REQUESTS)
             ]
             # the requests beyond the bound are answered at once, while the
             # admitted ones wait for the run which holds the lock
-            refused = REQUESTS - MAX_WAITING
+            refused = REQUESTS - MODEL_WAITING
             deadline = time.monotonic() + TIMEOUT
             while sum(future.done() for future in futures) < refused:
                 assert time.monotonic() < deadline, "the refusals did not come"
@@ -116,7 +139,7 @@ def test_a_saturated_model_leaves_the_other_models_answering(
             release.set()
         answers = [future.result(timeout=TIMEOUT) for future in futures]
     statuses = sorted(answer.status_code for answer in answers)
-    assert statuses == [200] * MAX_WAITING + [503] * (REQUESTS - MAX_WAITING)
+    assert statuses == [200] * MODEL_WAITING + [503] * (REQUESTS - MODEL_WAITING)
     for answer in answers:
         if answer.status_code == 503:
             assert answer.json() == {"detail": OVERLOADED}

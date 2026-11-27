@@ -393,7 +393,7 @@ python -m sbmlsim.run verify compare base.pkl new.pkl
 
 The number of processes of a run is the number of CPUs the process may use, bounded by the CPU quota of its cgroup, so a run in a container with a quota of 4 CPUs on a host of 64 starts 4 workers and not 64. With cgroup v2 the quota is the smallest one of the cgroup of the process and its parents (`cpu.max`), with cgroup v1 the one quota of the cgroup as the container sees it (`cpu.cfs_quota_us` over `cpu.cfs_period_us`), rounded down and at least 1; the pools of `sbmlsim` (`Simulator`, a fit, the experiments) bound their default size the same way.
 
-A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them, and draws its figures with the matplotlib backend `Agg` (`MPLBACKEND` unless set).
+A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them. Its figures are drawn by the renderer of sbmlsim-core and need no display.
 
 ## Profiling
 

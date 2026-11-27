@@ -19,8 +19,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if name not in (*THREAD_VARIABLES, "MPLBACKEND")
-        and not name.startswith("SIMRUN_")
+        if name not in THREAD_VARIABLES and not name.startswith("SIMRUN_")
     }
     env["PYTHONPATH"] = str(REPOSITORY)
     return subprocess.run(
@@ -59,7 +58,6 @@ def test_cli_sets_thread_variables(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["omp_num_threads"] == "1"
-    assert summary["mplbackend"] == "Agg"
 
 
 def test_cli_invalid_spec_exits_4(tmp_path: Path) -> None:

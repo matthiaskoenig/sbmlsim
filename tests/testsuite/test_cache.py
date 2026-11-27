@@ -235,7 +235,10 @@ def test_a_killed_fetch_is_removed_while_a_running_one_is_kept(
     )
     process.start()
     try:
-        deadline = time.monotonic() + 60
+        # the process imports python, this module and sbmlsim before it
+        # selects, about 2 s on an idle machine and more than 60 s next to
+        # other work; the deadline only ends a fetch which hangs
+        deadline = time.monotonic() + 300
         while not marker.exists():
             assert process.is_alive(), "the fetch ended before it selected"
             assert time.monotonic() < deadline, "the fetch did not select"
