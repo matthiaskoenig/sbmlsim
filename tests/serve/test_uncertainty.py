@@ -153,7 +153,9 @@ def test_the_draws_of_a_model_without_distributions_are_refused(
     with pytest.raises(ValueError, match="has a distribution"):
         read.dimension(draws=4, seed=0)
     empty = tmp_path / "empty.xml"
-    empty.write_text(libsbml.writeSBMLToString(libsbml.SBMLDocument(3, 2)))
+    empty.write_text(
+        libsbml.writeSBMLToString(libsbml.SBMLDocument(3, 2)), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="has no SBML model"):
         ModelDistributions.read(empty)
 
