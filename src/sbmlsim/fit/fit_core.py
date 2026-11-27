@@ -40,9 +40,12 @@ the request of the plan of its group with the values of the parameters at the
 start of the fit (`OptimizationProblem.evaluated_plan`), i.e. the simulation
 the problem itself would run; the engine sets the parameters of the fit as
 the varying targets of that request, which take the place of their values at
-the start. A group whose data is read from observables of its experiment, or
-whose simulation is a scan, is no condition of a request: its output is not
-the columns of a simulation at the times of its data.
+the start. A group whose data reads a value per simulation keeps the output
+of its simulation, which python reduces, and its curves are the reductions of
+the columns of its condition (`sbmlsim.fit.reductions`, the `reduction` of a
+curve of sbmlsim-core 0.32.0, the floor of sbmlsim): the largest, the smallest or the mean value of a
+column, its value at a time and a parameter of the analysis of pkpdutils. A
+group whose simulation is a scan is no condition of a request (#624).
 
 A value of that request is a number, so a value which an optimizer moves
 cannot be one: the number would hold it where the fit started. That is a
@@ -171,6 +174,7 @@ from sbmlsim.fit.options import (
     ResidualType,
 )
 from sbmlsim.fit.priors import prior_median, prior_support, untruncated_log_density
+from sbmlsim.fit.reductions import KeptGap, KeptGroup, kept_group
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
@@ -1723,6 +1727,7 @@ def _conditions_and_curves(
     parts = {k: _parts_of(problem, k) for k in problem.indices(MappingKind.TRAINING)}
     conditions: list[dict[str, Any]] = []
     of_the_group: dict[int, str] = {}
+    reduced: dict[int, KeptGroup] = {}
     for group, mappings in enumerate(problem.mapping_groups):
         training = [
             k for k in mappings if problem.mapping_kinds[k] is MappingKind.TRAINING
@@ -1731,30 +1736,24 @@ def _conditions_and_curves(
             continue
         at = _model_of_group(problem, group)
         model = of_the_models[at]
+        kept = (
+            kept_group(problem, group, training)
+            if problem._group_graphs[group] is not None
+            else None
+        )
         plan = problem.evaluated_plan(group, x, [])
         # a value which follows a parameter of the fit is no number of the
         # request: the engine evaluates it before every simulation
         plan, derived = (
             _derived_of(problem, plan, model) if reads_derived(loaded) else (plan, [])
         )
-        selections = list(problem._selections_of(group, training))
-        # the observable of a mapping is a column of the model of the fit, so
-        # the condition selects it instead of what its formula reads, and a
-        # mapping of logarithmic noise reads its logarithmic column
-        for k in training:
-            for part in parts[k]:
-                column = part.column or _observable_column(
-                    problem, group, problem.yid_observable[k]
-                )
-                if _is_log(problem, k):
-                    column = _log_observable(column)
-                if column not in selections:
-                    selections.append(column)
-            # the scale of a noise the fit moves is a column of the model as
-            # well, which the curve names as its `noise_column`
-            noise_column = _noise_column(problem, k)
-            if noise_column is not None and noise_column not in selections:
-                selections.append(noise_column)
+        if kept is not None:
+            # a group which keeps its output selects the columns its curves
+            # reduce, see `sbmlsim.fit.reductions`
+            reduced[group] = kept
+            selections = kept.columns
+        else:
+            selections = _selections_of_a_condition(problem, group, training, parts)
         condition = _condition_id(problem, group, training[0])
         of_the_group[group] = condition
         entry: dict[str, Any] = {
@@ -1774,11 +1773,78 @@ def _conditions_and_curves(
         conditions.append(entry)
     groups = {k: group for group, ks in enumerate(problem.mapping_groups) for k in ks}
     curves = [
-        _curve(problem, k, of_the_group[groups[k]], groups[k], part, len(parts[k]) > 1)
+        _reduced_curve(problem, k, of_the_group[groups[k]], reduced[groups[k]])
+        if groups[k] in reduced
+        else _curve(
+            problem, k, of_the_group[groups[k]], groups[k], part, len(parts[k]) > 1
+        )
         for k in problem.indices(MappingKind.TRAINING)
         for part in parts[k]
     ]
     return conditions, curves
+
+
+def _selections_of_a_condition(
+    problem: OptimizationProblem,
+    group: int,
+    training: Sequence[int],
+    parts: Mapping[int, Sequence[_Part]],
+) -> list[str]:
+    """Get the columns the condition of a group which outputs its data selects."""
+    selections = list(problem._selections_of(group, training))
+    # the observable of a mapping is a column of the model of the fit, so
+    # the condition selects it instead of what its formula reads, and a
+    # mapping of logarithmic noise reads its logarithmic column
+    for k in training:
+        for part in parts[k]:
+            column = part.column or _observable_column(
+                problem, group, problem.yid_observable[k]
+            )
+            if _is_log(problem, k):
+                column = _log_observable(column)
+            if column not in selections:
+                selections.append(column)
+        # the scale of a noise the fit moves is a column of the model as
+        # well, which the curve names as its `noise_column`
+        noise_column = _noise_column(problem, k)
+        if noise_column is not None and noise_column not in selections:
+            selections.append(noise_column)
+    return selections
+
+
+def _training_of(problem: OptimizationProblem, mappings: Sequence[int]) -> list[int]:
+    """Get the training mappings of a simulation group."""
+    return [k for k in mappings if problem.mapping_kinds[k] is MappingKind.TRAINING]
+
+
+def _reduced_curve(
+    problem: OptimizationProblem, mapping: int, condition: str, kept: KeptGroup
+) -> dict[str, Any]:
+    """Get the curve of a training mapping of a group which keeps its output.
+
+    The curve reduces a column of its condition (`sbmlsim.fit.reductions`):
+    every measurement of a value per simulation is compared with the one
+    reduced value, as python compares it, and the measurements of a
+    timecourse with the column interpolated at their times. The noise is the
+    one of every other curve (`_noise_of`), and so is a likelihood, whose
+    noise is a number here.
+    """
+    reduced = kept.curves[mapping]
+    values = np.asarray(problem.y_references[mapping], dtype=float)
+    curve: dict[str, Any] = {
+        "id": problem.mapping_keys[mapping],
+        "condition": condition,
+        "column": reduced.column,
+        "values": [float(value) for value in values],
+        "reduction": reduced.reduction,
+    }
+    if reduced.times:
+        curve["times"] = list(reduced.times)
+    likelihood = _likelihood_of(problem, mapping)
+    if likelihood is not None:
+        curve["likelihood"] = likelihood
+    curve["noise"] = [float(noise) for noise in _noise_of(problem, mapping)]
+    return curve
 
 
 def _condition_id(problem: OptimizationProblem, group: int, mapping: int) -> str:
@@ -1984,16 +2050,9 @@ def _gaps_of_a_group(
                 f"are simulations of their own",
             )
         )
-    if problem._group_graphs[group] is not None:
-        gaps.append(
-            Gap(
-                "observable",
-                f"the data of the group {group} is read from observables of its "
-                f"experiment which need the output of its simulation, a value "
-                f"per simulation, a reduction, a `PK` or a `Custom` observable, "
-                f"and are no column of it",
-            )
-        )
+    kept = problem._group_graphs[group] is not None
+    if kept:
+        gaps.extend(_gaps_of_a_kept_group(problem, group, training))
     if problem.group_derived[group]:
         gaps.append(
             Gap(
@@ -2003,8 +2062,44 @@ def _gaps_of_a_group(
             )
         )
     for k in training:
-        gaps.extend(_gaps_of_a_mapping(problem, group, k))
+        if kept:
+            gaps.extend(_gaps_of_the_weights(problem, k))
+        else:
+            gaps.extend(_gaps_of_a_mapping(problem, group, k))
     return gaps
+
+
+def _gaps_of_a_kept_group(
+    problem: OptimizationProblem, group: int, training: Sequence[int]
+) -> list[Gap]:
+    """Get the gap of a group which keeps the output of its simulation.
+
+    Its training mappings are curves of reductions of the columns of its
+    condition (`sbmlsim.fit.reductions`); what no such curve reads is the gap
+    `observable`. The columns the model of the fit carries for the
+    curves are added to a model of their own here, so a formula the model
+    cannot carry is a gap as well.
+    """
+    message = (
+        f"the data of the group {group} is read from observables of its "
+        f"experiment which need the output of its simulation"
+    )
+    if problem._group_points[group] is not None:
+        # the gap `scan` of the group says it, see #624
+        return [Gap("observable", f"{message}, the points of a scan")]
+    try:
+        kept = kept_group(problem, group, list(training))
+        models = _models_of(problem)
+        if models:
+            symbols = models[_model_of_group(problem, group)].symbols
+            entities = Entities()
+            for formula in kept.formulas:
+                add_formula(
+                    formula.target, formula.formula, symbols, entities, formula.names
+                )
+    except ValueError as err:
+        return [Gap("observable", f"{message}: {err}")]
+    return []
 
 
 def _gaps_of_a_mapping(
@@ -2026,6 +2121,15 @@ def _gaps_of_a_mapping(
             )
         )
         return gaps
+    gaps.extend(_gaps_of_the_weights(problem, mapping))
+    gaps.extend(_gaps_at_the_changes(problem, group, mapping))
+    return gaps
+
+
+def _gaps_of_the_weights(problem: OptimizationProblem, mapping: int) -> list[Gap]:
+    """Get the gaps of the weights of the data of a training fit mapping."""
+    key = problem.mapping_keys[mapping]
+    gaps: list[Gap] = []
     weights = np.asarray(problem.weights[mapping], dtype=float)
     # a weight of exactly zero is a measurement which carries no information,
     # whose standard deviation `_noise_of` gives as a positive infinity: the
@@ -2068,7 +2172,6 @@ def _gaps_of_a_mapping(
                     f"which its normalized residuals divide by",
                 )
             )
-    gaps.extend(_gaps_at_the_changes(problem, group, mapping))
     return gaps
 
 
@@ -2250,6 +2353,27 @@ def _observable_entities(problem: OptimizationProblem, at: int = 0) -> Entities:
             target = _group_observable(k_group, node.id)
             add_formula(target, formula, symbols, entities, names=dict(names))
             names[node.id] = target
+    for k_group, mappings in enumerate(problem.mapping_groups):
+        if (
+            problem._group_graphs[k_group] is None
+            or _model_of_group(problem, k_group) != at
+        ):
+            continue
+        training = _training_of(problem, mappings)
+        if not training:
+            continue
+        # the columns of the curves of a group which keeps its output: its
+        # observables of the values at a time and the arguments of its
+        # reductions which are no selection, see `sbmlsim.fit.reductions`; a
+        # group no curve reads is the gap `observable` of `gaps_of`
+        try:
+            kept = kept_group(problem, k_group, training)
+        except KeptGap:
+            continue
+        for formula in kept.formulas:
+            add_formula(
+                formula.target, formula.formula, symbols, entities, formula.names
+            )
     for mapping in problem.indices(MappingKind.TRAINING):
         if _model_at(problem, mapping) != at:
             continue

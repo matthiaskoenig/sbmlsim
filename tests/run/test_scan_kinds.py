@@ -18,6 +18,8 @@ from examples.hctz_fitting import HCTZ_PATH, MODEL_PATH
 from examples.hctz_fitting.project import PROJECT as HCTZ
 from examples.hctz_fitting.project import observables, oral_dose
 from sbmlsim import run
+from sbmlsim.cgroup import available_cpus
+from sbmlsim.engine import Engine
 from sbmlsim.project import Project, ScanAnalysis
 from sbmlsim.result import ScanResult
 from sbmlsim.run import ConfigurationError, PlanMismatch
@@ -584,7 +586,12 @@ def test_simulate_runs_one_experiment(tmp_path: Path) -> None:
 def test_simulate_gives_the_workers_to_the_simulator(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A serial run of a few experiments runs their scans on the workers."""
+    """A serial run of a few experiments runs their scans on the workers.
+
+    The engine core runs them on threads: on every CPU, which a process of a
+    pool shares with the busy others, not on as many threads as the run has
+    processes.
+    """
     from sbmlsim.experiment import runner
 
     given: dict[str, Any] = {}
@@ -604,7 +611,8 @@ def test_simulate_gives_the_workers_to_the_simulator(
     )
     assert [cls.__name__ for cls in given["experiments"]] == names
     assert given["n_workers"] == 3
-    assert given["simulator"].n_workers == 3
+    threads = HCTZ.simulator.engine is Engine.CORE
+    assert given["simulator"].n_workers == (available_cpus() if threads else 3)
 
 
 def test_simulate_refuses_unknown_experiments() -> None:

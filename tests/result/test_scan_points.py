@@ -10,6 +10,7 @@ from sbmlsim import Q
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import (
     end_values,
+    nan_quantiles,
     point_band,
     point_timecourse,
     scan_dimensions,
@@ -17,7 +18,7 @@ from sbmlsim.result.scan import (
     start_values,
     state_after_changes,
 )
-from sbmlsim.result.timecourse import PLOT_POINTS
+from sbmlsim.result.timecourse import PLOT_POINTS, without_states_before
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from tests.simulator.models import sbml
@@ -299,6 +300,64 @@ def test_the_band_of_the_steps_of_the_integrator(toy: Path) -> None:
     steps = [point_timecourse(res, "[A]", draws=k)[0] for k in range(5)]
     assert time.size <= max(PLOT_POINTS, np.unique(np.concatenate(steps)).size)
     assert np.all(lower <= median) and np.all(median <= upper)
+
+
+@pytest.mark.parametrize(
+    "simulation", [REDOSE, Simulation(end=10, changes=REDOSE.changes)]
+)
+def test_the_band_of_a_point_is_the_one_of_the_timecourses_of_its_draws(
+    toy: Path, simulation: Simulation
+) -> None:
+    """The draws of a point are read at once, value for value as one by one.
+
+    A band read the timecourse of every draw on its own, which was most of the
+    time of the bands of the figures of a scan over draws (sbmlsim#664); the
+    draws lie between two dimensions and have the states before the dose.
+    """
+    volumes = Dimension("dim_volume", values={"Vc": np.array([1.0, 2.0])})
+    doses = Dimension("dim_a", values={"[A]": Q([1.0, 2.0], "mM")})
+    res = run(toy, simulation, [volumes, DRAWS, doses])
+    for point in ({"dim_volume": 1, "dim_a": 0}, {"dim_volume": 0, "dim_a": 1}):
+        time, lower, median, upper = point_band(
+            res, "[A]", across="draws", quantiles=(0.1, 0.9), **point
+        )
+        draws = [
+            point_timecourse(res, "[A]", **point, draws=k)
+            for k in range(res.ds.sizes["draws"])
+        ]
+        if not res.ragged:
+            assert all(np.array_equal(t, time) for t, _ in draws)
+            expected = nan_quantiles(
+                np.vstack([values for _, values in draws]), [0.1, 0.5, 0.9]
+            )
+            np.testing.assert_array_equal(np.vstack([lower, median, upper]), expected)
+        assert 5.0 in time.tolist()
+        assert np.unique(time).size == time.size
+
+
+def test_the_states_before_the_changes_of_rows_with_the_same_changes() -> None:
+    """Rows of the same changes are checked at once, value for value as one by one."""
+    rng = np.random.default_rng(1)
+    time = np.tile(np.array([0.0, 1.0, 2.0, 2.0, 3.0, 4.0, 4.0, 5.0, np.nan]), (4, 1))
+    time[1, -2:] = np.nan
+    values = rng.random(time.shape)
+    changes = np.array([2.0, 4.0])
+    shared = without_states_before(time, values, [changes] * 4)
+    # equal changes which are no one object
+    copied = without_states_before(time, values, [changes.copy() for _ in range(4)])
+    rows = [without_states_before(time[[r]], values[[r]], [changes]) for r in range(4)]
+    for result in (shared, copied):
+        for r, (row_time, row_values) in enumerate(rows):
+            n = row_time.shape[1]
+            np.testing.assert_array_equal(result[0][r, :n], row_time[0])
+            np.testing.assert_array_equal(result[1][r, :n], row_values[0])
+            assert np.isnan(result[0][r, n:]).all()
+    # the states before the changes at 2 and 4 are left out, the padding too
+    np.testing.assert_array_equal(shared[0][0], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    np.testing.assert_array_equal(shared[1][0], values[0, [0, 1, 3, 4, 6, 7]])
+    # rows of other changes
+    other = without_states_before(time[:2], values[:2], [changes, np.array([])])
+    np.testing.assert_array_equal(other[0][1, :7], time[1, :7])
 
 
 def test_nan_quantiles_are_the_ones_of_numpy_value_for_value() -> None:

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import math
 import pickle
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
 
@@ -41,7 +41,13 @@ if TYPE_CHECKING:
 
     from sbmlsim.fit.optimization import OptimizationProblem
 
-__all__ = ["EvaluationPool", "chunks", "evaluates_on_threads", "map_evaluations"]
+__all__ = [
+    "EvaluationPool",
+    "chunks",
+    "evaluates_on_threads",
+    "map_evaluations",
+    "problem_modules",
+]
 
 #: the tasks of every worker, so that a slow task does not keep the others
 #: waiting at the end of a run
@@ -52,13 +58,42 @@ TASKS_PER_WORKER = 4
 _HELD: tuple[Any, Any] | None = None
 
 
+def problem_modules(problems: Iterable[OptimizationProblem]) -> list[str]:
+    """Get the modules the forkserver imports once for the workers of problems.
+
+    Under the start method `forkserver` every worker imports sbmlsim and the
+    modules of the experiments of a problem again when it receives the
+    problem, which costs more than a short optimization, and 0.7 s of every
+    worker of the credibility assessment of the HCTZ model of pkdb_models.
+    The forkserver imports them once and the workers inherit them; the
+    experiments of a script (`__main__`) are imported by every worker.
+
+    Args:
+        problems: the problems of the workers.
+
+    Returns:
+        The modules, sorted.
+    """
+    modules = {"sbmlsim.fit.optimization"}
+    for problem in problems:
+        for mapping_collection in problem.mapping_collections:
+            module = getattr(mapping_collection.experiment_class, "__module__", None)
+            if module and module != "__main__":
+                modules.add(module)
+    return sorted(modules)
+
+
+def _problem_of(owner: Any) -> OptimizationProblem:
+    """Get the problem of an object of `map_evaluations`, a problem or a report."""
+    from sbmlsim.fit.optimization import OptimizationProblem
+
+    return owner if isinstance(owner, OptimizationProblem) else owner.problem
+
+
 def _hold(owner: Any, settings: FitSettings | None, state: Any) -> None:
     """Initialize the problem of the object a worker received and keep it."""
     global _HELD
-    from sbmlsim.fit.optimization import OptimizationProblem
-
-    problem = owner if isinstance(owner, OptimizationProblem) else owner.problem
-    problem.initialize(settings if settings is not None else FitSettings())
+    _problem_of(owner).initialize(settings if settings is not None else FitSettings())
     _HELD = (owner, state)
 
 
@@ -152,7 +187,10 @@ class EvaluationPool:
             return
         payload = pickle.dumps(dict(problems))
         self._executor = parallel.start_pool(
-            self.workers, initializer=_receive, initargs=(payload,)
+            self.workers,
+            preload=problem_modules(problem for problem, _ in problems.values()),
+            initializer=_receive,
+            initargs=(payload,),
         )
         if warm:
             # a worker which takes a second of these finds its problems
@@ -305,7 +343,10 @@ def map_evaluations[T](
     if pool is not None or n_workers <= 1 or parallel.in_worker():
         return [function(owner, state, task) for task in tasks]
     executor = parallel.start_pool(
-        n_workers, initializer=_hold, initargs=(owner, settings, state)
+        n_workers,
+        preload=problem_modules([_problem_of(owner)]),
+        initializer=_hold,
+        initargs=(owner, settings, state),
     )
     try:
         return list(executor.map(_call, [(function, task) for task in tasks]))

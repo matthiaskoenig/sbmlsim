@@ -1265,21 +1265,24 @@ def point_timecourse(
     return _point_of(values, time, changes, point)
 
 
-def _timecourse_arrays(res: ScanResult, key: str) -> tuple[xr.DataArray, xr.DataArray]:
+def _timecourse_arrays(res: ScanResult, key: str) -> tuple[xr.Variable, xr.Variable]:
     """Get a timecourse of a result and its times, checked.
+
+    The variables of the dataset, not its arrays: `ds[key]` builds a
+    `DataArray` with the coordinates of the variable, which was most of the
+    time of a timecourse of a point (sbmlsim#664).
 
     Raises:
         ValueError: if the variable is no timecourse.
     """
     tdim = POINT if res.ragged else TIME
-    if key not in res.ds.data_vars or tdim not in res.ds[key].dims:
+    variables = res.ds.variables
+    if key not in res.ds.data_vars or tdim not in variables[key].dims:
         raise ValueError(f"'{key}' is no timecourse of the result.")
-    return res.ds[key], res.ds[TIME]
+    return variables[key], variables[TIME]
 
 
-def _at(
-    array: xr.DataArray, values: np.ndarray, point: Mapping[str, int]
-) -> np.ndarray:
+def _at(array: xr.Variable, values: np.ndarray, point: Mapping[str, int]) -> np.ndarray:
     """Get the values of an array at a point, by position, as `isel` selects them.
 
     The values are indexed with numpy: `isel` of the whole result selects every
@@ -1292,11 +1295,10 @@ def _at(
 
 
 def _point_of(
-    values: xr.DataArray,
-    time: xr.DataArray,
+    values: xr.Variable,
+    time: xr.Variable,
     changes: np.ndarray,
     point: Mapping[str, int],
-    arrays: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Get the timecourse of a point, see `point_timecourse`.
 
@@ -1305,13 +1307,10 @@ def _point_of(
         time: the times of the result.
         changes: the times of the changes after the start.
         point: the position of the point along every dimension.
-        arrays: the values of `values` and of `time`, read once by a caller
-            which takes many points.
     """
-    data, times = (values.values, time.values) if arrays is None else arrays
     kept_time, kept_values = without_states_before(
-        _at(time, times, point)[np.newaxis, :],
-        _at(values, data, point)[np.newaxis, :],
+        _at(time, time.values, point)[np.newaxis, :],
+        _at(values, values.values, point)[np.newaxis, :],
         [changes],
     )
     finite = np.isfinite(kept_time[0])
@@ -1368,16 +1367,27 @@ def point_band(
         )
     values, time = _timecourse_arrays(res, key)
     changes = np.asarray(res.ds.attrs.get(CHANGES, []), dtype=float)
-    # the values are read once for all draws, not once per draw
-    arrays = (values.values, time.values)
-    draws = [
-        _point_of(values, time, changes, {**point, across: k}, arrays)
-        for k in range(res.ds.sizes[across])
-    ]
+    # the timecourses of all draws at once: a row per draw, read once, and
+    # the states before the changes left out of every row in one call
+    n = res.ds.sizes[across]
+    kept_time, kept_values = without_states_before(
+        _draw_rows(time, point, across, n),
+        _draw_rows(values, point, across, n),
+        [changes] * n,
+    )
+    draws = []
+    for row_time, row_values in zip(kept_time, kept_values, strict=True):
+        finite = np.isfinite(row_time)
+        draws.append((row_time[finite], row_values[finite]))
     if not draws:
         raise ValueError(f"The result has no draws along '{across}'.")
     first = draws[0][0]
-    if all(t.shape == first.shape and np.allclose(t, first) for t, _ in draws):
+    # the draws of a grid of times have the same times, which `array_equal`
+    # sees at a fraction of the time of `allclose`
+    if all(
+        t.shape == first.shape and (np.array_equal(t, first) or np.allclose(t, first))
+        for t, _ in draws
+    ):
         times = first
         stacked = np.vstack([values for _, values in draws])
     else:
@@ -1396,6 +1406,24 @@ def point_band(
     low, high = quantiles
     lower, median, upper = nan_quantiles(stacked, [low, 0.5, high])
     return times, lower, median, upper
+
+
+def _draw_rows(
+    array: xr.Variable, point: Mapping[str, int], across: str, n: int
+) -> np.ndarray:
+    """Get the values of an array at a point for every draw, a row per draw.
+
+    The rows are the values `_at` gives the point with every position along
+    `across`; an array without the dimension of the draws is the same in
+    every row.
+    """
+    dims = [str(d) for d in array.dims]
+    index = tuple(point.get(d, slice(None)) for d in dims)
+    rows = np.asarray(array.values[index], dtype=float)
+    left = [d for d in dims if d not in point]
+    if across in left:
+        return np.moveaxis(rows, left.index(across), 0)
+    return np.broadcast_to(rows, (n, *rows.shape))
 
 
 def nan_quantiles(stacked: np.ndarray, quantiles: Sequence[float]) -> np.ndarray:

@@ -216,12 +216,13 @@ def core_threads(n_workers: int | None, n_points: int) -> int:
     run of another engine, `parallel.resolve_workers`: a number is taken as
     given, `None` is every CPU of the quota for a run of
     `parallel.POOL_THRESHOLD` points or more, and a run of `n_workers=1` and a
-    smaller run use one thread. A run inside a worker of a pool takes the
-    share of the worker of the CPUs (`parallel.worker_cores`, at most one
-    thread per point): threads are no processes which have to be started,
-    so a batch of a few points earns them, and the shares of the workers of
-    a busy pool add up to the CPUs. A worker which runs the long experiment
-    of a run is no longer held to one core (sbmlsim#664).
+    smaller run use one thread. A run inside a worker of a pool, or of a
+    process which runs it beside a pool of its own (`parallel.beside`), takes
+    the share of its process of the CPUs (`parallel.worker_cores`, at most
+    one thread per point): threads are no processes which have to be
+    started, so a batch of a few points earns them, and the shares of the
+    processes of a busy pool add up to the CPUs. A worker which runs the long
+    experiment of a run is no longer held to one core (sbmlsim#664).
 
     Args:
         n_workers: the workers of the run, see `parallel.resolve_workers`.
@@ -231,7 +232,7 @@ def core_threads(n_workers: int | None, n_points: int) -> int:
         The number of threads of a batch, which `parallel.resolve_workers`
         decides.
     """
-    if parallel.in_worker():
+    if parallel.shares_cpus():
         # a worker never takes more than its share, also when the run names
         # more threads: the shares of a busy pool add up to the CPUs
         share = parallel.worker_cores()

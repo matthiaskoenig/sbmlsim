@@ -23,8 +23,9 @@ fit from one directory.
   the adopted fits of the project with the fit adopted for its subset (the
   files of the project are never written). Least squares starts from
   `start`, which the plan resolves into a point, instead of samples of the
-  bounds, and with `record_adopted` the fit records the adopted fits of the
-  other subsets, whose values its models carry, see
+  bounds, and with `record_adopted` the fit keeps the adopted fits of the
+  other subsets fixed at the values of their records, which its problem
+  simulates whatever its models hold, and records them, see
   `sbmlsim.fit.project_fits`; the plan refuses a fit whose bounds let a
   remainder `1 - a - b` of a model of the project become negative.
 - `identifiability` (`IdentifiabilitySpec`) computes the profile likelihoods,
@@ -246,13 +247,18 @@ class FitSpec(FitProblemSpec, SplitSpec, JacobianSpec):
             relative to the file, a fit id stays a name.
         start_from: the start as it was given, set by the plan, which the
             provenance of the fit records.
-        record_adopted: record the adopted fits of the other subsets of the
-            project, whose values the models of the project carry, and these
-            values in the provenance of the fit; its report names them.
+        record_adopted: keep the adopted fits of the other subsets of the
+            project fixed at the values of their records, which the problem
+            of the fit simulates whatever its models hold (a model which
+            holds other values is named in a warning, its factory has not
+            run since an adoption), and record them and these values in the
+            provenance of the fit; its report names them. Without, the fit
+            simulates the values of the models and records none.
         fixed_fits: the adopted fits of the other subsets, set by the plan with
             `record_adopted`, so every unit records the same ones.
         fixed_values: the values of their parameters which the fit does not
-            fit, set by the plan with them.
+            fit, by parameter id in the units of the model, set by the plan
+            with them; the problem of the fit simulates them.
         identifiability: compute the profile likelihoods of the parameters of
             the best run after the fit, `<opid>/identifiability.json`.
         profile: the settings of these profiles.
@@ -740,12 +746,23 @@ def _fixed(
     Raises:
         ConfigurationError: if the records of the adopted fits are not read.
     """
-    from sbmlsim.fit.project_fits import fixed_values
-
     if not spec.record_adopted:
         return [], {}
     if spec.fixed_fits is not None:
         return list(spec.fixed_fits), dict(spec.fixed_values or {})
+    return _adopted_values(spec, definition)
+
+
+def _adopted_values(
+    spec: FitProblemSpec, definition: FitDefinition
+) -> tuple[list[str], dict[str, float]]:
+    """Get the adopted fits of the other subsets of the project and their values.
+
+    Raises:
+        ConfigurationError: if the records of the adopted fits are not read.
+    """
+    from sbmlsim.fit.project_fits import fixed_values
+
     try:
         return fixed_values(load_project_ref(spec.project), spec.subset, definition)
     except (ValueError, OSError) as err:
@@ -1494,7 +1511,9 @@ def _run_petab(spec: PetabSpec, ctx: RunContext) -> dict[str, Any]:
 
     if spec.fit is None:
         definition = _definition(spec)
-        problem = definition.problem(opid=spec.subset)
+        # the problem a fit of the subset optimizes, see `_fixed`
+        _, fixed = _adopted_values(spec, definition)
+        problem = definition.problem(opid=spec.subset, fixed_values=fixed)
         settings, parameter_set = definition.settings, None
     else:
         problem, settings, parameter_set = _stored_fit(spec, _records_dir(spec.fit))

@@ -196,7 +196,10 @@ class FitDefinition:
         return list(itertools.chain(*selected))
 
     def problem(
-        self, opid: str, mapping_collections: list[FitMappingCollection] | None = None
+        self,
+        opid: str,
+        mapping_collections: list[FitMappingCollection] | None = None,
+        fixed_values: Mapping[str, float] | None = None,
     ) -> OptimizationProblem:
         """Create the optimization problem of the definition.
 
@@ -204,6 +207,9 @@ class FitDefinition:
             opid: id of the optimization problem.
             mapping_collections: experiments of the problem, all experiments of the
                 definition by default.
+            fixed_values: the values the problem keeps fixed by entity, in the
+                units of the model, see `OptimizationProblem`; none by default,
+                the problem simulates the values of the models.
 
         Returns:
             The uninitialized optimization problem.
@@ -222,6 +228,7 @@ class FitDefinition:
             jit_optimization=self.jit_optimization,
             prior_correlation=self.prior_correlation,
             engine=self.engine or DEFAULT_ENGINE,
+            fixed_values=fixed_values,
         )
 
 
@@ -354,9 +361,11 @@ def run_fit(
         arguments: further arguments to record in the provenance of the fit,
             e.g. the command line of the caller; they come after the arguments
             of `run_fit` and replace one of the same name.
-        fixed_values: values of the model which the caller keeps fixed, e.g.
-            the fitted values of an earlier fit; recorded in the provenance,
-            not applied.
+        fixed_values: values of the model which the caller keeps fixed, by
+            entity and in the units of the model, e.g. the fitted values of
+            the adopted fits of the other subsets of a project: the problems
+            simulate them whatever value the model holds (see
+            `OptimizationProblem`) and the provenance records them.
         indices: the repeats of every problem which run, all `size` repeats
             if `None`, see `run_optimization`; the provenance is the one of
             the whole fit, so the pieces of a fit merge to it.
@@ -390,6 +399,7 @@ def run_fit(
             definition.problem(
                 opid=f"{collection.experiment_class.__name__}_{opid}",
                 mapping_collections=[collection],
+                fixed_values=fixed_values,
             )
             # a collection which a fit does not fit is not a problem of its
             # own: the validation data is evaluated with the training data and
@@ -400,7 +410,11 @@ def run_fit(
     else:
         # one problem for all experiments
         problems = [
-            definition.problem(opid=opid, mapping_collections=mapping_collections)
+            definition.problem(
+                opid=opid,
+                mapping_collections=mapping_collections,
+                fixed_values=fixed_values,
+            )
         ]
 
     runs: dict[str, FitRun] = {}
@@ -424,7 +438,7 @@ def run_fit(
             base_path=Path(definition.base_path),
             files=problem.files(),
             start_values={p.pid: p.start_value for p in problem.parameters},
-            fixed_values=fixed_values,
+            fixed_values=problem.fixed_values,
             engine=problem.engine,
             sources=sources,
         )
@@ -593,20 +607,47 @@ def recorded_study_ids(records: FitRecords) -> list[str] | None:
     return [str(sid) for sid in study_ids] if study_ids else None
 
 
+def recorded_fixed_values(records: FitRecords) -> dict[str, float]:
+    """Get the values a stored fit kept fixed.
+
+    Args:
+        records: the records of the fit.
+
+    Returns:
+        The fixed values of the provenance of its result by entity, in the
+        units of the model (`run_fit(fixed_values=...)`); none for records
+        without a result or a provenance and for a fit which kept none.
+    """
+    opt_result = records.opt_result
+    if opt_result is None or opt_result.provenance is None:
+        return {}
+    return dict(opt_result.provenance.fixed_values)
+
+
 def problem_of_records(
-    definition: FitDefinition, records: FitRecords, opid: str
+    definition: FitDefinition,
+    records: FitRecords,
+    opid: str,
+    fixed_values: Mapping[str, float] | None = None,
 ) -> OptimizationProblem:
-    """Get the problem a stored fit optimized: of the studies it was fitted to.
+    """Get the problem a stored fit optimized: of its studies and its fixed values.
 
     A fit restricted to some studies (`run_fit(study_ids=...)`) records them
-    in its provenance, see `recorded_study_ids`; its profiles, its Fisher
+    in its provenance, see `recorded_study_ids`, as it records the values it
+    kept fixed, see `recorded_fixed_values`; its profiles, its Fisher
     information, its report and its PEtab problem are computed on the problem
-    of these studies, not of all studies of the definition.
+    of these studies with these fixed values, not of all studies of the
+    definition with the values of the models, which a factory may have
+    changed since.
 
     Args:
         definition: the definition of the fit.
         records: the records of the fit.
         opid: the id of the problem.
+        fixed_values: the values the problem keeps fixed instead of the
+            recorded ones, e.g. the adopted fits of the other subsets of a
+            project now (`sbmlsim.fit.project_fits.fixed_values`), which an
+            assessment of the model evaluates the fit with.
 
     Returns:
         The uninitialized problem.
@@ -619,6 +660,9 @@ def problem_of_records(
         opid=opid,
         mapping_collections=(
             definition.collections(study_ids=study_ids) if study_ids else None
+        ),
+        fixed_values=(
+            recorded_fixed_values(records) if fixed_values is None else fixed_values
         ),
     )
 

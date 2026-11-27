@@ -58,6 +58,7 @@ from sbmlsim.fit.options import (
     FitSettings,
     OptimizationAlgorithmType,
 )
+from sbmlsim.fit.pool import problem_modules
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
@@ -1149,19 +1150,10 @@ class FitPool:
 def _preload(problem: OptimizationProblem) -> list[str]:
     """Get the modules the forkserver imports once for the workers of a fit.
 
-    Under the `forkserver` start method every worker imports sbmlsim and the
-    module of the experiments again, which costs more than a short
-    optimization. The forkserver imports them once and the workers inherit
-    them, which matters for a fit of several problems: the forkserver outlives
-    the pool, so only the first pool pays the imports. The experiments of a
-    script (`__main__`) are imported by every worker.
+    The forkserver outlives the pool, so only the first pool pays the
+    imports, see `sbmlsim.fit.pool.problem_modules`.
     """
-    modules = {"sbmlsim.fit.optimization"}
-    for mapping_collection in problem.mapping_collections:
-        module = getattr(mapping_collection.experiment_class, "__module__", None)
-        if module and module != "__main__":
-            modules.add(module)
-    return sorted(modules)
+    return problem_modules([problem])
 
 
 @contextmanager

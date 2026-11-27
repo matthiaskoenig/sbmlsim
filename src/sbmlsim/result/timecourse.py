@@ -398,22 +398,50 @@ def without_states_before(
         which is not finite as well.
     """
     keep = np.isfinite(time)
-    for r, at in enumerate(changes):
-        if len(at) == 0:
-            continue
-        row = time[r]
-        first = np.ones(row.size, dtype=bool)
-        first[1:] = row[1:] != row[:-1]
-        twice = np.zeros(row.size, dtype=bool)
-        twice[:-1] = row[:-1] == row[1:]
-        keep[r] &= ~(first & twice & np.isin(row, at))
+    if len(changes) == time.shape[0] and _same(changes):
+        # every row has the same changes, e.g. the draws of a point of a
+        # scan: the rows are checked at once
+        if len(changes[0]):
+            keep &= ~_before(time, changes[0])
+    else:
+        for r, at in enumerate(changes):
+            if len(at):
+                keep[r] &= ~_before(time[r], at)
     counts = keep.sum(axis=1)
-    out_time = np.full((time.shape[0], int(counts.max(initial=0))), np.nan)
+    width = int(counts.max(initial=0))
+    if time.shape[0] and np.all(counts == width):
+        # no row is padded: the kept values of every row, row by row
+        shape = (time.shape[0], width)
+        return (
+            time[keep].astype(float, copy=False).reshape(shape),
+            values[keep].astype(float, copy=False).reshape(shape),
+        )
+    out_time = np.full((time.shape[0], width), np.nan)
     out_values = np.full(out_time.shape, np.nan)
     for r in range(time.shape[0]):
         out_time[r, : counts[r]] = time[r, keep[r]]
         out_values[r, : counts[r]] = values[r, keep[r]]
     return out_time, out_values
+
+
+def _same(changes: Sequence[np.ndarray]) -> bool:
+    """Check whether every row has the same times of the changes."""
+    first = np.asarray(changes[0]) if len(changes) else np.empty(0)
+    return all(
+        at is changes[0] or np.array_equal(np.asarray(at), first) for at in changes
+    )
+
+
+def _before(time: np.ndarray, at: np.ndarray) -> np.ndarray:
+    """Get the states before a change: the first of two rows at the time of a change.
+
+    Along the last axis, every row on its own.
+    """
+    first = np.ones(time.shape, dtype=bool)
+    first[..., 1:] = time[..., 1:] != time[..., :-1]
+    twice = np.zeros(time.shape, dtype=bool)
+    twice[..., :-1] = time[..., :-1] == time[..., 1:]
+    return first & twice & np.isin(time, at)
 
 
 #: the number of time points of a figure of simulations with their own time
