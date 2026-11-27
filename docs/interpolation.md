@@ -22,7 +22,7 @@ interpolation.write_sbml_to_file("interpolation.xml")
 ```
 
 ```text title="Output"
-valid <SBMLDocument>  0.002 s
+valid <SBMLDocument>  0.003 s
 ```
 
 The first column is x, every other column is interpolated against it. x named `time` is the simulation time, any other name is the quantity of that id in the model the interpolation runs in. Each column becomes a parameter with an assignment rule which evaluates the interpolation, so simulating the model at time `t` gives the interpolated `y` and `z`. The model is SBML Level 3 Version 2, and every interpolated parameter has a port (and x too, when it is not the time), so the model can be used as a submodel. `write_sbml_to_string()` returns the SBML instead of writing a file.
