@@ -224,6 +224,45 @@ def test_a_model_the_engine_cannot_load_is_refused(
     )
 
 
+def test_an_interrupted_read_of_the_loaded_values_names_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The values of a model as loaded are read in the engine, which a deadline interrupts.
+
+    The read follows the load of the module and is part of the load of the
+    model: a deadline which fired in it reached the caller of `load_model` as
+    the `LoadError` of the bindings with the trap of the engine, which named
+    no deadline, under the load of a machine (#668). Any other failure of it
+    is a model the engine cannot load, as one of the load of the module.
+    """
+    core = import_core()
+    loaded = load_model(REPRESSILATOR_SBML, Engine.CORE)
+    assert isinstance(loaded, CoreSBMLModel)
+    description = loaded.description
+
+    class _Loaded:
+        """A loaded model whose values as loaded fail with the given message."""
+
+        def __init__(self, message: str) -> None:
+            self.message = message
+            self.description = description
+
+        def initial_values(self) -> dict[str, float]:
+            raise core.LoadError(self.message)
+
+    def compiled(message: str) -> Any:
+        return lambda sbml, label: _Loaded(message)
+
+    monkeypatch.setattr(model_core, "compiled_model", compiled("wasm trap: interrupt"))
+    with pytest.raises(RuntimeError, match="wall clock deadline") as caught:
+        load_model(REPRESSILATOR_SBML, Engine.CORE)
+    assert model_core.TIMEOUT_VARIABLE in str(caught.value)
+
+    monkeypatch.setattr(model_core, "compiled_model", compiled("out of memory"))
+    with pytest.raises(UnsupportedModelError, match="cannot load"):
+        load_model(REPRESSILATOR_SBML, Engine.CORE)
+
+
 def test_the_absolute_tolerance_is_a_vector_in_the_state_order(
     hctz_core: CoreSBMLModel, hctz_roadrunner: RoadrunnerSBMLModel
 ) -> None:
