@@ -294,7 +294,11 @@ def adopted_problems(project: Project) -> list[AdoptedProblem]:
 
     What `evaluate_fits` evaluates: the problem of every adopted fit as its
     report is built from its record (`sbmlsim.fit.cli.report_from_records`),
-    in the order of the subsets. Building a problem creates the mapping
+    in the order of the subsets, with the adopted fits of the other subsets
+    fixed (`sbmlsim.fit.project_fits.fixed_values`): the model the
+    assessment is about has the values of all adopted fits, whatever the SBML
+    holds and the record of a fit kept fixed when it ran. Building a problem
+    creates the mapping
     collections of its definition, initializing it loads its experiments; a
     caller which builds the problems first can send them to the workers of a
     pool (`sbmlsim.fit.pool.EvaluationPool`), which initialize them while
@@ -311,11 +315,13 @@ def adopted_problems(project: Project) -> list[AdoptedProblem]:
         FileNotFoundError: if a record has no parameters or no kinds.
     """
     from sbmlsim.fit.cli import load_fit_records, problem_of_records, settings_of
+    from sbmlsim.fit.project_fits import fixed_values
 
     problems: list[AdoptedProblem] = []
     for subset, record, definition in _adopted_fits(project):
         kinds = recorded_kinds(record, subset)
         records = load_fit_records(record)
+        _, fixed = fixed_values(project, subset, definition)
         problems.append(
             AdoptedProblem(
                 subset=subset,
@@ -323,7 +329,9 @@ def adopted_problems(project: Project) -> list[AdoptedProblem]:
                 definition=definition,
                 records=records,
                 kinds=kinds,
-                problem=problem_of_records(definition, records, opid=subset),
+                problem=problem_of_records(
+                    definition, records, opid=subset, fixed_values=fixed
+                ),
                 settings=settings_of(definition, records),
             )
         )

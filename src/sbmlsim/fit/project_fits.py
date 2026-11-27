@@ -1,11 +1,14 @@
 """A fit of a project: its start, the adopted fits it keeps fixed and its remainders.
 
-A fit of one subset of a project (`sbmlsim.project.Project.fits`) runs on the
-models of the project, which carry the values of the adopted fits of the other
-subsets (`Project.adopted_fits`), so a fit keeps these values fixed and
-records them: `fixed_values` gives the adopted fits of the other subsets and
-the values of their parameters, which the provenance of the fit records
-(`FIXED_FITS`), and the report of the fit names them, see
+A fit of one subset of a project (`sbmlsim.project.Project.fits`) keeps the
+values of the adopted fits of the other subsets (`Project.adopted_fits`)
+fixed: `fixed_values` gives these fits and the values of their parameters,
+which the problem of the fit simulates as pre-initialization changes
+(`sbmlsim.fit.optimization.OptimizationProblem`), whatever the models hold,
+so the order of an adoption and of the factory which writes the values into
+the models does not matter; a model which holds other values is named in a
+warning (`stale_values`). The provenance of the fit records them
+(`FIXED_FITS`) and the report of the fit names them, see
 `sbmlsim.fit.cli.report_context`. Least squares can start from a point instead
 of samples of the bounds (`start_point`, `with_start`): the values of a JSON
 file, of a finished or of an adopted fit. `remainder_problems` refuses a fit
@@ -20,6 +23,8 @@ from __future__ import annotations
 import copy
 import dataclasses
 import json
+import logging
+import math
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,9 +42,16 @@ __all__ = [
     "fixed_values",
     "recorded_fixed_fits",
     "remainder_problems",
+    "stale_values",
     "start_point",
     "with_start",
 ]
+
+logger = logging.getLogger(__name__)
+
+#: the warnings of models with other values which were given, so that a fit
+#: whose spec is planned more than once (a check, then the run) warns once
+_warned: set[str] = set()
 
 #: the argument of the provenance of a fit which names the fixed adopted fits
 FIXED_FITS = "fixed_fits"
@@ -208,6 +220,11 @@ def fixed_values(
         subset: the fit problem, e.g. `PK`.
         definition: its definition, whose parameters are fitted and not fixed.
 
+    The problem of the fit simulates the values (`run_fit(fixed_values=...)`)
+    whatever the models of the project hold; a model which holds other values,
+    because the factory has not rebuilt it since a fit was adopted, is named
+    in a warning (`stale_values`).
+
     Returns:
         The adopted fits of the other subsets (`current_fixed_fits`) and the
         values of their parameters in the units of the model, without the
@@ -224,7 +241,56 @@ def fixed_values(
         for pid, parameter in records[fit_id].parameters.items()
         if pid not in fitted
     }
+    stale = stale_values(project, values)
+    message = (
+        f"'{subset}': the models hold other values than the adopted fits "
+        f"{', '.join(fixed_fits)}, the problem simulates the values of the fits: "
+        f"{'; '.join(stale)}. The factory has not rebuilt the models since a fit "
+        f"was adopted, run it."
+    )
+    if stale and message not in _warned:
+        _warned.add(message)
+        logger.warning(message)
     return fixed_fits, values
+
+
+def stale_values(project: Project, values: Mapping[str, float]) -> list[str]:
+    """Get the fixed values which a model of a project does not hold.
+
+    A model holds the values of the adopted fits once its factory wrote them
+    (`AdoptedRecords.parameter`); before, e.g. right after an adoption, it
+    holds older ones. A value of a parameter which a model does not have is
+    no problem of the model, `check_fit_parameters` checks the parameters.
+
+    Args:
+        project: the project, the models of its variants are read.
+        values: the fixed values by parameter id, in the units of the model.
+
+    Returns:
+        One line per variant and parameter whose value differs (within
+        `sbmlsim.experiment.draws.VALUE_RTOL`), with both values.
+    """
+    import libsbml
+
+    from sbmlsim.experiment.draws import VALUE_RTOL
+
+    if not values:
+        return []
+    problems: list[str] = []
+    for path in project.variants.values():
+        if not path.exists():
+            continue
+        model: libsbml.Model | None = libsbml.readSBMLFromFile(str(path)).getModel()
+        if model is None:
+            continue
+        for pid, value in values.items():
+            parameter = model.getParameter(pid)
+            if parameter is None:
+                continue
+            held = parameter.getValue()
+            if not math.isclose(held, value, rel_tol=VALUE_RTOL):
+                problems.append(f"'{pid}' is {held!r} in {path.name}, not {value!r}")
+    return problems
 
 
 def recorded_fixed_fits(records: FitRecords) -> tuple[str, ...]:
