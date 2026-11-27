@@ -22,7 +22,7 @@ interpolation.write_sbml_to_file("interpolation.xml")
 ```
 
 ```text title="Output"
-valid <SBMLDocument>  0.004 s
+valid <SBMLDocument>  0.002 s
 ```
 
 The first column is x, every other column is interpolated against it. x named `time` is the simulation time, any other name is the quantity of that id in the model the interpolation runs in. Each column becomes a parameter with an assignment rule which evaluates the interpolation, so simulating the model at time `t` gives the interpolated `y` and `z`. The model is SBML Level 3 Version 2, and every interpolated parameter has a port (and x too, when it is not the time), so the model can be used as a submodel. `write_sbml_to_string()` returns the SBML instead of writing a file.
@@ -121,7 +121,7 @@ create_model(
 
 ```text title="Output"
 SBML written to uptake.xml  model 'uptake', 0.00 s
-valid ./uptake.xml  0.001 s
+valid ./uptake.xml  0.000 s
 ```
 
 `drive` makes the measured plasma glucose drive it. A column drives the element of its own id:
@@ -142,7 +142,7 @@ in_place = simulator.simulate(loaded, Simulation(end=120, steps=120))
 ```
 
 ```text title="Output"
-valid <SBMLDocument>  0.002 s
+valid <SBMLDocument>  0.001 s
 ```
 
 The source is an SBML file, an SBML string or a `libsbml.SBMLDocument`, which is changed and returned; `filepath` writes the driven model in addition, its SBML Level and Version are kept. What `drive` does:
@@ -163,7 +163,7 @@ Interpolation(dose_response, method="linear").drive(
 ```
 
 ```text title="Output"
-valid <SBMLDocument>  0.002 s
+valid <SBMLDocument>  0.001 s
 ```
 
 ## Driving a model through comp
@@ -186,7 +186,7 @@ assert_allclose(composed["[uptake__glc]"], in_place["[glc]"], rtol=1e-5)
 ```
 
 ```text title="Output"
-valid <SBMLDocument>  0.004 s
+valid <SBMLDocument>  0.002 s
 Flat SBML written to uptake_driven_flat.xml  0.001 s
 ```
 
@@ -221,7 +221,7 @@ create_model(
 
 ```text title="Output"
 SBML written to infusion.xml  model 'infusion', 0.00 s
-valid ./infusion.xml  0.001 s
+valid ./infusion.xml  0.000 s
 ```
 
 See the [interpolation API reference](api/interpolation.md) for method signatures and arguments.
