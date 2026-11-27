@@ -1,18 +1,29 @@
 """Tests of the experiments of a run in a pool of worker processes."""
 
+import dataclasses
 import json
 import logging
 import os
 import pickle
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, override
 
 import pytest
 
 from sbmlsim import parallel
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import ExperimentResult, ExperimentRunner, SimulationExperiment
-from sbmlsim.experiment.runner import EXPERIMENTS_PER_WORKER, _Collect, _run_job
+from sbmlsim.experiment import runner as runner_module
+from sbmlsim.experiment.runner import (
+    EXPERIMENTS_PER_WORKER,
+    _Collect,
+    _run_job,
+    _start_early_pool,
+    _warm,
+)
+from sbmlsim.model.model_roadrunner import resolve_jit_optimization
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from tests.experiment.test_runner_errors import (
@@ -613,3 +624,153 @@ def test_a_message_whose_arguments_cannot_be_pickled_is_sent_as_text() -> None:
 
     (sent,) = collect.records
     assert pickle.loads(pickle.dumps(sent)).getMessage().startswith("<object object")
+
+
+class _BrokenSimulations(_Recorded):
+    """An experiment whose definition raises."""
+
+    @override
+    def simulations(self) -> dict:
+        raise ValueError("the simulations are broken")
+
+
+def _early(
+    classes: list[type[SimulationExperiment]],
+    n_workers: int | None,
+    simulator: Simulator | None = None,
+) -> runner_module._EarlyPool | None:
+    return _start_early_pool(
+        classes,
+        simulator or Simulator(),
+        {},
+        n_workers,
+        False,
+        Path("."),
+        Path("."),
+        resolve_jit_optimization(None),
+    )
+
+
+def test_run_experiments_starts_the_pool_before_it_initializes_the_experiments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The workers start while the experiments are initialized, the run takes them.
+
+    The start of the pool, the import of the modules of the experiments in
+    the forkserver, waited for the initialization of every experiment, and
+    the workers loaded the models after it.
+    """
+    calls: list[str] = []
+    start_pool_soon = parallel.start_pool_soon
+    initialize = ExperimentRunner.initialize
+
+    def soon(*args: Any, **kwargs: Any) -> parallel.PendingPool | None:
+        calls.append("pool")
+        return start_pool_soon(*args, **kwargs)
+
+    def initialized(self: ExperimentRunner, *args: Any, **kwargs: Any) -> None:
+        calls.append("initialize")
+        initialize(self, *args, **kwargs)
+
+    started: list[int] = []
+    start_pool = parallel.start_pool
+
+    def start(n_workers: int, **kwargs: Any) -> Any:
+        started.append(n_workers)
+        return start_pool(n_workers, **kwargs)
+
+    monkeypatch.setattr(parallel, "start_pool_soon", soon)
+    monkeypatch.setattr(parallel, "start_pool", start)
+    monkeypatch.setattr(ExperimentRunner, "initialize", initialized)
+    classes: list[type[SimulationExperiment]] = [First, Second, Third]
+    results = runner_module.run_experiments(
+        classes, tmp_path, base_path=Path("."), n_workers=2, progress=False
+    )
+
+    assert calls == ["pool", "initialize"]
+    # the run takes the pool which started early, it starts no other
+    assert started == [2]
+    assert [r.error for r in results] == [None, None, None]
+    for sid in ("First", "Second", "Third"):
+        assert _process(tmp_path, sid)["pid"] != os.getpid()
+
+
+def test_the_early_pool_has_the_workers_of_the_run() -> None:
+    """At most one per experiment, one per four experiments by default."""
+    classes = CLASSES * 2
+    for n_workers, expected in ((None, 2), (3, 3), (20, len(set(classes)))):
+        early = _early(classes, n_workers)
+        assert early is not None
+        try:
+            assert early.pending.n_workers == expected
+            assert early.events is None
+        finally:
+            early.pending.stop()
+
+
+def test_no_early_pool_where_the_run_starts_none_before_its_scans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No pool for a serial run, nor before the pool of a simulator of processes."""
+
+    class Local(First):
+        pass
+
+    assert _early([First, Second], 1) is None
+    assert _early(CLASSES[:EXPERIMENTS_PER_WORKER], None) is None
+    assert _early([Local, Second], 2) is None
+    assert _early([First, Second], 2, Simulator(engine=Engine.ROADRUNNER)) is None
+    # roadrunner which runs every scan serially starts no pool of its own
+    early = _early([First, Second], 2, Simulator(n_workers=1, engine="roadrunner"))
+    assert early is not None
+    early.pending.stop()
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    assert _early([First, Second], 2) is None
+
+
+def test_a_pool_of_more_workers_is_taken_by_the_run() -> None:
+    early = _early([First, Second, Third], 3)
+    assert early is not None
+    try:
+        assert early.fits(3, listener=False)
+        assert early.fits(2, listener=False)
+        assert not early.fits(4, listener=False)
+        assert not early.fits(1, listener=False)
+        # its workers report to no queue
+        assert not early.fits(2, listener=True)
+    finally:
+        early.pending.stop()
+
+
+def test_a_worker_warms_with_an_experiment_of_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The models of the experiment are in the cache the experiments of the worker take."""
+    monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
+    runner = _runner(First, simulator=Simulator())
+    job = runner._jobs(tmp_path, ["svg"], None, {})["First"]
+
+    _warm(job)
+
+    models = parallel._CACHE[("experiment models", job.engine, job.jit_optimization)]
+    assert isinstance(models, dict)
+    assert list(models) == list(runner.models)
+    # nothing is written, the experiment is not run
+    assert not any(tmp_path.iterdir())
+
+
+def test_the_warm_up_of_a_broken_experiment_is_silent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The parent reports the experiment, the worker does not report it twice."""
+    monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
+    runner = _runner(First, simulator=Simulator())
+    job = dataclasses.replace(
+        runner._jobs(tmp_path, ["svg"], None, {})["First"],
+        experiment_class=_BrokenSimulations,
+    )
+    with caplog.at_level(logging.DEBUG):
+        _warm(job)
+    assert caplog.records == []
