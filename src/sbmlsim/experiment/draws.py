@@ -157,7 +157,10 @@ class UncertaintyRun:
                 variant without.
 
         The parameters of an adopted fit are drawn with the correlation of its
-        record, see `correlations`.
+        record, see `correlations`. A model whose fitted values or
+        distributions are not the ones of the records (`check_fit_parameters`),
+        because the factory has not rebuilt it since a fit was adopted, is
+        named in a warning: the draws are the ones of the model.
 
         Returns:
             The run.
@@ -173,6 +176,15 @@ class UncertaintyRun:
         )
 
         path = project.variant_path(variant)
+        stale = check_fit_parameters(project)
+        if stale:
+            logger.warning(
+                "The model of '%s' differs from the records of its adopted fits, "
+                "the draws are the ones of the model: %s. The factory has not "
+                "rebuilt the model since a fit was adopted, run it.",
+                project.name,
+                "; ".join(stale),
+            )
         drawn = set(parameter_distributions(path))
         correlation = correlations(project, drawn)
         n = len(drawn)

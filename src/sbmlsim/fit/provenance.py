@@ -97,8 +97,8 @@ class FitProvenance:
             and for a fit with `sources`.
         files: SHA-256 of the models and the data by path.
         start_values: start value of every fit parameter.
-        fixed_values: values of the model which the caller keeps fixed;
-            recorded, not applied.
+        fixed_values: values of the model which the problem keeps fixed, by
+            entity in the units of the model (`OptimizationProblem`).
         sources: provenance of the sources of a snapshot a run on a cluster
             runs from (`snapshot_provenance`), `None` for a fit of a checkout.
     """
@@ -360,8 +360,8 @@ def create_provenance(
         base_path: directory of the experiments, it locates the repository.
         files: the models and the data of the problem.
         start_values: start value of every fit parameter.
-        fixed_values: values of the model which the caller keeps fixed;
-            recorded, not applied.
+        fixed_values: values of the model which the problem keeps fixed, by
+            entity in the units of the model (`OptimizationProblem`).
         engine: the engine of the problem, see `collect_versions`.
         sources: provenance of the sources of a snapshot; without them the file
             of the environment variable `SIMRUN_PROVENANCE` is read, if set; with sources there is no git revision (a snapshot has no
