@@ -144,7 +144,9 @@ def test_simulator_settings() -> None:
         # of the run shares with the busy others, not the processes of the run
         (Engine.CORE, 7, None, 20),
         (Engine.CORE, None, None, None),
-        (Engine.CORE, 1, None, 1),
+        # one process gives the engine core every CPU as well
+        (Engine.CORE, 1, None, 20),
+        (Engine.CORE, 1, 1, 1),
         (Engine.CORE, 7, 3, 3),
         # another engine runs a scan in processes
         (Engine.ROADRUNNER, 7, None, 7),
