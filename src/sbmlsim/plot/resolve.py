@@ -82,6 +82,8 @@ from sbmlsim.plot.points import (
 )
 
 if TYPE_CHECKING:
+    import xarray as xr
+
     from sbmlsim.experiment import SimulationExperiment
 
 __all__ = ["PX_PER_INCH", "figure_chart"]
@@ -211,6 +213,9 @@ def figure_chart(
         dpi=resolved.fig_dpi,
     )
     groups = _Groups()
+    # the whole arrays of the tasks, which the data of many selections of one
+    # array share, e.g. the lines of the draws of a curve
+    arrays: dict[Hashable, tuple[xr.DataArray, str | None]] = {}
     for subplot in figure.subplots:
         plot = subplot.plot
         if subplot.row is None or subplot.col is None:
@@ -218,7 +223,7 @@ def figure_chart(
                 f"The plot '{plot.sid}' has no row and column in the figure "
                 f"'{figure.sid}'."
             )
-        builder = _PlotBuilder(experiment, plot.sid or "", groups)
+        builder = _PlotBuilder(experiment, plot.sid or "", groups, arrays)
         y2 = builder.resolve(plot.xaxis, plot.yaxis, plot.yaxis_right, plot)
         chart_plot = chart.plot(
             subplot.row - 1,
@@ -470,6 +475,8 @@ class _PlotBuilder:
         experiment: the experiment the data is read from.
         sid: the id of the plot, for the messages.
         groups: the legend groups of the chart.
+        arrays: the whole arrays of the tasks of the figure, which the data of
+            a selection is selected from, see `Data.get_data`.
         units: the unit of every axis.
         marks: the elements, in the order they are drawn.
         names: the axes which get names of categories.
@@ -482,6 +489,9 @@ class _PlotBuilder:
     experiment: SimulationExperiment
     sid: str
     groups: _Groups
+    arrays: dict[Hashable, tuple[xr.DataArray, str | None]] = field(
+        default_factory=dict
+    )
     units: dict[str, _Unit] = field(default_factory=dict)
     marks: list[_Mark] = field(default_factory=list)
     names: set[str] = field(default_factory=set)
@@ -601,7 +611,9 @@ class _PlotBuilder:
         if data is None:
             return None
         return data.get_data(
-            experiment=self.experiment, to_units=self.units[axis].convert
+            experiment=self.experiment,
+            to_units=self.units[axis].convert,
+            arrays=self.arrays,
         )
 
     def _positions(self, axis: AxisKey, values: Any) -> Any:

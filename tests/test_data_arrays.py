@@ -189,3 +189,52 @@ def test_a_function_of_a_scan_and_a_reference_has_the_time_last(
         },
     ).get_data(experiment)
     assert ratio.dims == ("d", "time")
+
+
+@pytest.mark.parametrize("task", ["grid", "ragged"])
+@pytest.mark.parametrize(
+    ("index", "to_units"), [("[Y]", None), ("time", None), ("time", "second")]
+)
+@pytest.mark.parametrize("sel", [{"d": "mid"}, {"d": "hi"}, {"d": ["lo", "hi"]}])
+def test_a_selection_of_the_whole_array_is_the_data_of_the_selection(
+    experiment: SimulationExperiment,
+    task: str,
+    index: str,
+    to_units: str | None,
+    sel: dict,
+) -> None:
+    """The lines of the draws of a figure select from one array, read once.
+
+    Every line read, renamed and converted the whole array of its task, which
+    was most of the time of the figures of an uncertainty run (sbmlsim#664);
+    the selection of the array gives the same data, its unit included.
+    """
+    arrays: dict = {}
+    for _ in range(2):
+        data = Data(index, task=task, sel=sel)
+        selected = data.get_data(experiment, to_units, arrays=arrays)
+        plain = Data(index, task=task, sel=sel)
+        expected = plain.get_data(experiment, to_units)
+        xr.testing.assert_identical(selected, expected)
+        assert data.unit == plain.unit
+    assert list(arrays) == [(task, index, to_units)]
+    # the whole array keeps its name, also when a selection is all of it
+    ((whole, _),) = arrays.values()
+    assert whole.name == Data(index, task=task).sid
+
+
+def test_a_label_is_selected_by_its_position(experiment: SimulationExperiment) -> None:
+    """A single label is selected by `isel` of its position, as `sel` selects it."""
+    from sbmlsim.data import _select
+
+    result = experiment.results["grid"]
+    array = result["[Y]"]
+    data = Data("[Y]", task="grid")
+    for label in ("lo", "mid", "hi"):
+        xr.testing.assert_identical(
+            _select(array, {"d": label}, data, result.ds), array.sel(d=label)
+        )
+    xr.testing.assert_identical(
+        _select(array, {"d": ["hi", "lo"]}, data, result.ds),
+        array.sel(d=["hi", "lo"]),
+    )

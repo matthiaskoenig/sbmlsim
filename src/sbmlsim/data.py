@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, MutableMapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
@@ -275,12 +275,37 @@ def _select(
         labelled = dim in source.coords
         if dim in array.dims:
             value = list(label) if isinstance(label, tuple | np.ndarray) else label
-            (by_label if labelled else by_position)[dim] = value
+            position = _position(array, dim, value) if labelled else None
+            if position is not None:
+                by_position[dim] = position
+            else:
+                (by_label if labelled else by_position)[dim] = value
     if by_label:
         array = array.sel(by_label)
     if by_position:
         array = array.isel(by_position)
     return array
+
+
+def _position(array: xr.DataArray, dim: str, label: Any) -> int | None:
+    """Get the position of a single label of a dimension, `None` if it has none.
+
+    `sel` of a label builds a dataset of the array and indexes it, about ten
+    times the time of `isel` of its position, which is what it selects: the
+    line of every draw of a figure over the draws selects one (sbmlsim#664).
+    A list of labels, a dimension without a plain index of distinct labels
+    and a label which is not one of them are left to `sel`.
+    """
+    if isinstance(label, list):
+        return None
+    index = array.indexes.get(dim)
+    if index is None or isinstance(index, pd.MultiIndex) or not index.is_unique:
+        return None
+    try:
+        position = index.get_loc(label)
+    except KeyError, TypeError:
+        return None
+    return int(position) if isinstance(position, int | np.integer) else None
 
 
 def _rows(dset: pd.DataFrame, sel: Mapping[str, Any], data: Data) -> pd.DataFrame:
@@ -513,6 +538,8 @@ class Data:
         self,
         experiment: SimulationExperiment,
         to_units: str | None = None,
+        *,
+        arrays: MutableMapping[Hashable, tuple[xr.DataArray, str | None]] | None = None,
     ) -> xr.DataArray:
         """Get the values of the data from an experiment which ran.
 
@@ -538,10 +565,22 @@ class Data:
         of a dataset by the values of its columns. `unit` is set to the unit of
         the values.
 
+        With `arrays` the data of a task with `sel` is a selection of the
+        whole array of its task, which is read, renamed and converted once:
+        a figure over the draws of the fitted parameters draws a line per
+        draw of a curve (`sbmlsim.experiment.draws`), the data of each a
+        selection of one array, which was read and converted for every draw.
+        The values are the ones without `arrays`, a conversion is elementwise.
+
         Args:
             experiment: the experiment whose datasets and results are read.
             to_units: the unit to convert the values to, their own unit
                 without.
+            arrays: the whole arrays of the tasks of data with `sel`, in the
+                unit they are converted to, with the unit of the result, by
+                the task, the selection and the unit; filled as the data reads
+                them. The caller keeps it for data of the same results, e.g.
+                the curves of a figure.
 
         Returns:
             The values.
@@ -558,6 +597,8 @@ class Data:
             DimensionalityError: if the values cannot be converted to
                 `to_units`.
         """
+        if arrays is not None and self.sel and self.dtype == Data.Types.TASK:
+            return self._selected_task_array(experiment, to_units, arrays)
         if self.dtype == Data.Types.DATASET:
             array = self._dataset_array(experiment)
         elif self.dtype == Data.Types.TASK:
@@ -574,6 +615,34 @@ class Data:
                 raise
             array = array.copy(data=np.asarray(quantity.magnitude, dtype=float))
             array.attrs = {"units": to_units}
+        return array
+
+    def _selected_task_array(
+        self,
+        experiment: SimulationExperiment,
+        to_units: str | None,
+        arrays: MutableMapping[Hashable, tuple[xr.DataArray, str | None]],
+    ) -> xr.DataArray:
+        """Get the data of a task with `sel` from the whole array of the task.
+
+        The selection is a view of the whole array, as the data of a task
+        without a unit is a view of its result.
+        """
+        key = (str(self.task_id), self.selection, to_units)
+        cached = arrays.get(key)
+        if cached is None:
+            whole = Data(self.selection, task=self.task_id)
+            cached = (whole.get_data(experiment, to_units), whole.unit)
+            arrays[key] = cached
+        values, unit = cached
+        source = experiment.results[str(self.task_id)].ds
+        array = _select(values, self.sel, self, source)
+        if array is values:
+            # nothing selected, e.g. a dimension the data has not: the name
+            # is set on a copy, not on the whole array of the others
+            array = array.copy(deep=False)
+        array.name = self.sid
+        self.unit = unit
         return array
 
     def _dataset_array(self, experiment: SimulationExperiment) -> xr.DataArray:
