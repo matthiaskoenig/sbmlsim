@@ -512,11 +512,13 @@ def test_the_jacobian_of_a_formula_of_a_pinned_target_is_its_derivative(
 ) -> None:
     """The volume follows the absorption and not the rate, whose column is zero.
 
-    The forward sensitivity of the cmax by the absorption, a rate of the
-    model, is accurate to about 1e-4 of the largest entry of its column, also
-    where no formula reads it (a volume is accurate to 1e-8), and the entries
-    of the volume and of the absorption itself cancel in the cmax of the
-    middle rate of `sum`, so the column is compared at its scale.
+    A condition with a derived value has no forward sensitivities in the
+    engine, which takes the forward differences of its residuals over its
+    `DIFF_STEP` of 1e-3 instead, so the column of the absorption is accurate
+    to about 1e-3 of its largest entry (the volume and the absorption itself
+    cancel in the cmax of the middle rate of `sum`) and is compared at its
+    scale. The rate moves no residual of a condition which pins it, so its
+    difference is exactly zero.
     """
     from sbmlsim.fit.fisher import jacobian
 
