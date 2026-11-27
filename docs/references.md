@@ -165,7 +165,7 @@ The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), 
 
 ## Sensitivity analysis
 
-The designs of the global methods of `sbmlsim.sensitivity` are the ones of [SALib](https://salib.readthedocs.io) and their estimators follow it, see [Sensitivity analysis](sensitivity.md).
+The designs of the global methods of `sbmlsim.sensitivity` and their estimators are the ones of [SALib](https://salib.readthedocs.io), in Rust in sbmlsim-core, which the tests compare with SALib, see [Sensitivity analysis](sensitivity.md).
 
 > Herman J, Usher W.
 > **SALib: An open-source Python library for Sensitivity Analysis.**

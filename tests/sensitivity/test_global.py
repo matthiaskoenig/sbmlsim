@@ -11,7 +11,6 @@ import pytest
 from SALib.analyze import fast as salib_fast
 from SALib.analyze import morris as salib_morris
 from SALib.analyze import sobol as salib_sobol
-from SALib.sample import morris as salib_morris_sampler
 
 from sbmlsim import sensitivity
 from sbmlsim.result import ScanResult
@@ -269,9 +268,11 @@ def test_the_arguments_are_validated(kwargs: dict[str, float]) -> None:
 def test_morris_with_other_levels_equals_salib_on_its_grid() -> None:
     design = sampling.morris(BOUNDS, 20, levels=6, seed=4)
     s = sensitivity.morris(_run(design))
+    from sbmlsim_core import sensitivity as core
+
     problem = unit_problem(3)
-    grid = salib_morris_sampler.sample(problem, 20, num_levels=6, seed=4)
-    # the grid is the one of the design, the values are a function of the centred cube
+    # the grid of the design, whose levels the design maps to the centres of their strata
+    grid = core.morris_sample(3, 20, levels=6, seed=4)
     res = _run(design)
     expected = salib_morris.analyze(
         problem,

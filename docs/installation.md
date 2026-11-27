@@ -124,7 +124,7 @@ pip installs these packages together with `sbmlsim`:
 | [sbmlmath](https://github.com/dweindl/sbmlmath) | the math of SBML as sympy expressions |
 | [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and validated data |
 | [packaging](https://packaging.pypa.io) | the check of the installed libroadrunner at the import |
-| [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | PEtab problems and global sensitivity analysis |
+| [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org) | PEtab problems (the global sensitivity analysis runs in sbmlsim-core) |
 | [pkpdutils](https://github.com/matthiaskoenig/pkpdutils) | non-compartmental pharmacokinetic analysis |
 | [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | reports and console output (the figures are drawn by the renderer of sbmlsim-core) |
 | [certifi](https://github.com/certifi/python-certifi) | the certificates with which sbmlutils and pymetadata reach the network |

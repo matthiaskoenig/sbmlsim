@@ -3,7 +3,7 @@
 A distribution gives the values of a target at probabilities `u` of the unit
 cube, `ppf(u, reference)`, the inverse of its cumulative distribution
 function, so every design (random draws, Latin hypercubes, the designs of
-SALib) works with every marginal. Its numbers are floats in the unit of the
+the global analyses) works with every marginal. Its numbers are floats in the unit of the
 target in the model or quantities; a plain number next to a quantity is in the
 unit of the quantity. A distribution without a location (`Uniform(relative=)`,
 `LogUniform(factor=)`, `Normal(cv=)`, `LogNormal(cv=)`) is relative to the

@@ -4,7 +4,9 @@ A sensitivity analysis tells you which parameters an output depends on, and how 
 
 1. Create a design with `sbmlsim.simulation.sampling` (`local`, `sobol`, `fast` or `morris`, or the plain sample `lhs` or `random` for a polynomial chaos expansion, see [Sampling](sampling.md)). The design is a dimension of a `Scan`.
 2. Run the scan with `Simulator.run` and the observables you are interested in.
-3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast`, `sensitivity.morris` or `sensitivity.pce`. They read the design from the result and compute the global indices, the first three with the estimators of `sensitivity.estimators`, which follow [SALib](https://salib.readthedocs.io) and apply to every element of an output at once, see [References](references.md#sensitivity-analysis).
+3. Compute the indices from the result with `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast`, `sensitivity.morris` or `sensitivity.pce`. They read the design from the result and compute the global indices, the first three with the estimators of `sensitivity.estimators`, the ones of [SALib](https://salib.readthedocs.io) in Rust in sbmlsim-core, which apply to every element of an output at once, see [References](references.md#sensitivity-analysis).
+
+The points of the global designs (`sobol`, `fast`, `morris`) and the resamples of their intervals are drawn by sbmlsim-core as well, from the seed of the design: a seed gives the same points and the same intervals on every platform, natively and in WebAssembly, but not the points SALib draws for it (0.51.0).
 
 The exact local sensitivities of a single simulation are the exception: they come from the engine and need no design and no scan, see [Exact local sensitivities](#exact-local-sensitivities).
 
@@ -106,9 +108,9 @@ print(sobol.index("ST").to_pandas().round(3))
 ```text title="Output"
 observable  px_max  px_mean
 parameter
-n            0.997    0.970
-tau_prot     0.008    0.036
-ps_a         0.033    0.033
+n            0.962    0.915
+tau_prot     0.009    0.045
+ps_a         0.024    0.024
 ```
 
 `plot_indices` draws `S1` and `ST` of one output with their intervals:
@@ -123,7 +125,7 @@ The Hill coefficient `n` explains almost all of the variance of the peak. The sm
 
 ## FAST and Morris
 
-The extended FAST method also gives `S1` and `ST` with intervals. Its design needs more than `4 m^2` points per parameter (`m = 4` by default, so at least 65). SALib documents its bootstrap intervals as unreliable, so read `S1_conf` and `ST_conf` of FAST as rough indications; they are also most of the cost of a FAST analysis, one transform per parameter and resample.
+The extended FAST method also gives `S1` and `ST` with intervals. Its design needs more than `4 m^2` points per parameter (`m = 4` by default, so at least 65). SALib documents its bootstrap intervals as unreliable, so read `S1_conf` and `ST_conf` of FAST as rough indications.
 
 Morris screening is the cheapest global method, with `trajectories (d + 1)` points. For every parameter it gives:
 
@@ -155,14 +157,14 @@ print(morris.index("mu_star").to_pandas().round(1))
 ```text title="Output"
 observable  px_max  px_mean
 parameter
-n            0.995    0.930
-tau_prot     0.010    0.043
-ps_a         0.031    0.030
+n            0.993    0.921
+tau_prot     0.008    0.023
+ps_a         0.040    0.037
 observable  px_max  px_mean
 parameter
-n           2514.6    389.8
-tau_prot     270.7     64.8
-ps_a         269.6     55.8
+n           2707.5    426.7
+tau_prot     177.2     83.6
+ps_a         288.6     60.6
 ```
 
 `plot_morris` draws `mu_star` against `sigma`, one point per parameter, both axes from 0:
@@ -280,7 +282,7 @@ fig = sensitivity.plot_heatmap(
 
 With a high leak, `n` has much less effect on the peak, and the sign of its index flips.
 
-A timecourse needs common time points: pass `time=` to the run, or set `times` in the simulation. A timecourse with the time points of the integrator, which differ between the points of the scan, raises. Every element of an output is estimated in the same pass, so a timecourse costs little more than a scalar: a Sobol design with `n = 1024` and five parameters takes 0.1 s for 1000 elements and Morris 0.01 s, while FAST takes 1.1 s for the windows of its intervals (one call of SALib per element took 9.5 s, 9.2 s and 1.0 s).
+A timecourse needs common time points: pass `time=` to the run, or set `times` in the simulation. A timecourse with the time points of the integrator, which differ between the points of the scan, raises. Every element of an output is estimated in the same pass, so a timecourse costs little more than a scalar: with five parameters, a Sobol design with `n = 1024` takes 0.12 s for 1000 elements, FAST with `n = 1025` 0.15 s and Morris with 100 trajectories 0.01 s, the elements spread over the CPUs (one call of SALib per element took 9.5 s, 9.2 s and 1.0 s).
 
 ## The result
 
@@ -297,9 +299,9 @@ sobol ['n', 'tau_prot', 'ps_a'] ['px_max', 'px_mean']
 ['px_max.S1', 'px_max.S1_conf', 'px_max.ST', 'px_max.ST_conf']
            px_max.ST
 parameter
-n              0.997
-tau_prot       0.008
-ps_a           0.033
+n              0.962
+tau_prot       0.009
+ps_a           0.024
 ```
 
 - `index(name)` stacks one index of all scalar outputs into an array over `(parameter, observable, ...)`. A timecourse joins the stack once a time is selected, as `at_100` above shows.
