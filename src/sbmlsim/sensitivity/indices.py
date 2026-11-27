@@ -18,8 +18,8 @@ ragged timecourse has no common time points; run the scan with `time=`.
 
 The three global analyses estimate every element of an observable in one pass
 with `sbmlsim.sensitivity.estimators`, the estimators of SALib over the
-elements; SALib itself draws the points of a design
-(`sbmlsim.simulation.sampling`) and is the oracle of the tests.
+elements in sbmlsim-core, which draws the points of a design as well
+(`sbmlsim.simulation.sampling`); SALib is the oracle of the tests.
 
 An element whose points contain a failed simulation (`NaN`) has `NaN`
 indices, one warning counts them. An element of a global analysis which is
@@ -342,7 +342,7 @@ def local(
 def _unit_points(
     result: ScanResult, dim: str, design: Design
 ) -> tuple[list[str], np.ndarray]:
-    """Get the parameters and the unit cube of a SALib design, checked against the result.
+    """Get the parameters and the unit cube of a global design, checked against the result.
 
     Args:
         result: the result of the scan.
@@ -458,7 +458,6 @@ def _global(
     keys: Sequence[str],
     dimensionless: bool,
     constant: float,
-    bootstrap: Callable[[int], int],
     conf_level: float,
     num_resamples: int,
     tolerance: float | None,
@@ -488,8 +487,6 @@ def _global(
         dimensionless: whether the indices are dimensionless (else they have
             the unit of the observable).
         constant: the value of every index of a constant element.
-        bootstrap: the seed of the bootstrap of the intervals from the seed of
-            the design.
         conf_level: the level of the confidence intervals.
         num_resamples: the number of bootstrap resamples.
         tolerance: the tolerance of a constant element, see
@@ -504,7 +501,8 @@ def _global(
     tolerance = constant_tolerance(result, tolerance)
     dim, design = design_of(result, methods, dim)
     parameters, cube = _unit_points(result, dim, design)
-    seed = bootstrap(int(design.options["seed"]))
+    # the bootstrap of the intervals is seeded with the seed of the design
+    seed = int(design.options["seed"])
     d = len(parameters)
     pairs = list(pair_keys) if design.options.get("second_order") else []
     indices: dict[str, tuple[list[str], np.ndarray]] = {}
@@ -611,29 +609,11 @@ def sobol(
         keys=("S1", "S1_conf", "ST", "ST_conf"),
         dimensionless=True,
         constant=np.nan,
-        bootstrap=int,
         conf_level=conf_level,
         num_resamples=num_resamples,
         tolerance=tolerance,
         pair_keys=("S2", "S2_conf"),
     )
-
-
-def _fast_seed(seed: int) -> int:
-    """Get the non-zero seed of the bootstrap of FAST from the seed of the design.
-
-    SALib seeded its generator only for a seed which is true, so the seed 0 of
-    a design would have left the global random state in charge. The estimators
-    of sbmlsim seed a generator of their own, which 0 is a seed of as well, and
-    the derived seed is kept so the intervals of a result do not change.
-
-    Args:
-        seed: the seed of the design.
-
-    Returns:
-        A seed in `[1, 2**31)`.
-    """
-    return int(np.random.default_rng(seed).integers(1, 2**31))
 
 
 def fast(
@@ -650,14 +630,13 @@ def fast(
     The indices are `S1` and `ST` with `S1_conf` and `ST_conf`, the spectral
     estimators of the extended FAST on the unit cube the record recreates, see
     `sbmlsim.sensitivity.estimators`. The windows of the bootstrap are drawn
-    from a generator of a seed derived from the seed of the design
-    (`bootstrap_seed`, which is never 0, where SALib leaves its generator
-    alone) and are the ones of every element, so the intervals are
-    reproducible for every seed, and the global random state is not touched. A
+    from the seed of the design and are the ones of every element, so the
+    intervals are reproducible for every seed, and the global random state is
+    not touched. A
     constant element (within `tolerance`) has `NaN` indices. SALib documents
     that the bootstrap intervals of FAST are unreliable, so `S1_conf` and
     `ST_conf` are indicative only, and they are most of the cost of a FAST
-    analysis of many elements: one transform per parameter and resample.
+    analysis of many elements.
 
     Args:
         result: the result of a scan with a `sampling.fast` design.
@@ -700,7 +679,6 @@ def fast(
         keys=("S1", "S1_conf", "ST", "ST_conf"),
         dimensionless=True,
         constant=np.nan,
-        bootstrap=_fast_seed,
         conf_level=conf_level,
         num_resamples=num_resamples,
         tolerance=tolerance,
@@ -770,7 +748,6 @@ def morris(
         keys=keys,
         dimensionless=False,
         constant=0.0,
-        bootstrap=int,
         conf_level=conf_level,
         num_resamples=num_resamples,
         tolerance=tolerance,

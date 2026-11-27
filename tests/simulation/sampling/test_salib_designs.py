@@ -1,10 +1,14 @@
-"""The designs of SALib."""
+"""The designs of SALib, drawn by sbmlsim-core.
+
+sbmlsim-core draws the points on the unit cube with a generator of its own, so
+the points of a seed are not the ones SALib draws for it; it compares its
+designs with SALib's where a seed does not decide them. These tests check that
+a design is the one of sbmlsim-core mapped through the distributions.
+"""
 
 import numpy as np
 import pytest
-from SALib.sample import fast_sampler
-from SALib.sample import morris as morris_sampler
-from SALib.sample import sobol as sobol_sampler
+from sbmlsim_core import sensitivity as core
 
 from sbmlsim.simulation.sampling import (
     Distribution,
@@ -18,7 +22,6 @@ from sbmlsim.simulation.sampling import (
 from sbmlsim.simulation.sampling.designs import unit_cube
 from sbmlsim.simulation.scan import Dimension
 
-PROBLEM = {"num_vars": 2, "names": ["x0", "x1"], "bounds": [[2.0, 5.0], [0.0, 1.0]]}
 UNIFORM: dict[str, Distribution] = {"a": Uniform(2.0, 5.0), "b": Uniform(0.0, 1.0)}
 
 
@@ -27,12 +30,16 @@ def _stack(dimension: Dimension) -> np.ndarray:
     return np.column_stack([np.asarray(dimension.values[t]) for t in ("a", "b")])
 
 
-def test_sobol_equals_salib() -> None:
+def _mapped(u: np.ndarray) -> np.ndarray:
+    """The points of the unit cube mapped through the distributions of `UNIFORM`."""
+    return np.column_stack([2.0 + 3.0 * u[:, 0], u[:, 1]])
+
+
+def test_sobol_is_the_matrix_of_saltelli_of_sbmlsim_core() -> None:
     dimension = sobol(UNIFORM, 16, seed=3)
-    expected = sobol_sampler.sample(
-        PROBLEM, 16, calc_second_order=False, scramble=True, seed=3
+    np.testing.assert_allclose(
+        _stack(dimension), _mapped(core.saltelli(2, 16, seed=3)), rtol=1e-15
     )
-    np.testing.assert_allclose(_stack(dimension), expected)
     assert len(dimension) == 16 * (2 + 2)
     assert len(sobol(UNIFORM, 16, seed=3, second_order=True)) == 16 * (2 * 2 + 2)
 
@@ -42,10 +49,10 @@ def test_sobol_needs_a_power_of_two() -> None:
         sobol(UNIFORM, 10, seed=1)
 
 
-def test_fast_equals_salib() -> None:
+def test_fast_is_the_design_of_sbmlsim_core() -> None:
     dimension = fast(UNIFORM, 65, m=4, seed=2)
     np.testing.assert_allclose(
-        _stack(dimension), fast_sampler.sample(PROBLEM, 65, M=4, seed=2)
+        _stack(dimension), _mapped(core.fast_sample(2, 65, m=4, seed=2)), rtol=1e-15
     )
     with pytest.raises(ValueError, match="4"):
         fast(UNIFORM, 64, m=4, seed=2)
@@ -53,16 +60,10 @@ def test_fast_equals_salib() -> None:
 
 def test_morris_maps_the_levels_to_the_centres_of_their_strata() -> None:
     dimension = morris(UNIFORM, 10, levels=4, seed=1)
-    grid = morris_sampler.sample(
-        {"num_vars": 2, "names": ["x0", "x1"], "bounds": [[0.0, 1.0]] * 2},
-        10,
-        num_levels=4,
-        seed=1,
-    )
+    grid = core.morris_sample(2, 10, levels=4, seed=1)
     u = (grid * 3 + 0.5) / 4
-    np.testing.assert_allclose(
-        _stack(dimension), np.column_stack([2.0 + 3.0 * u[:, 0], u[:, 1]])
-    )
+    np.testing.assert_allclose(_stack(dimension), _mapped(u), rtol=1e-15)
+    assert set(np.round(u.ravel() * 8).astype(int)) <= {1, 3, 5, 7}
 
 
 def test_unbounded_marginals_stay_finite() -> None:
@@ -76,6 +77,12 @@ def test_unbounded_marginals_stay_finite() -> None:
         morris(distributions, 4, seed=1),
     ):
         assert np.isfinite(_stack(dimension)).all()
+
+
+def test_a_seed_is_below_2_to_the_64() -> None:
+    sobol(UNIFORM, 8, seed=2**64 - 1)
+    with pytest.raises(ValueError, match="below 2"):
+        sobol(UNIFORM, 8, seed=2**64)
 
 
 def test_a_correlation_is_refused() -> None:

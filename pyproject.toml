@@ -74,12 +74,10 @@ dependencies = [
 	"sbmlmath>=0.4.1,<0.5",
 	"pint>=0.26.1",
 	"pydantic>=2.14.1",
-	# parameter fitting and sensitivity analysis
-	# 0.10.0 converts an observable on the scale `log10` of PEtab v1 to the
-	# log-normal noise of the same density (`petab1to2`), which the test suite
-	# and the benchmark collection compare the log-likelihood of
+	# parameter fitting; 0.10.0 converts an observable on the scale `log10` of
+	# PEtab v1 to the log-normal noise of the same density (`petab1to2`), which
+	# the test suite and the benchmark collection compare the log-likelihood of
 	"petab>=0.10.0",
-	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
 	# when a PK observable is compiled; 2.0.0 draws its figures with the chart
 	# builder of sbmlsim-core and no longer pulls in matplotlib
@@ -119,8 +117,10 @@ dependencies = [
 	# `sbmlsim.plot.chart` re-exports; 0.35.0 the curves over the points of a
 	# dimension of a scan and the pinned values of a condition of a fit (#624)
 	# and the thinning of the chart builder in the extension; 0.36.0 adds the
-	# shared Rust ODE generator used by model release archives
-	"sbmlsim-core>=0.36.0",
+	# shared Rust ODE generator used by model release archives; 0.37.0 the
+	# designs and the estimators of the global sensitivity analysis
+	# (`sbmlsim_core.sensitivity`)
+	"sbmlsim-core>=0.37.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
@@ -180,6 +180,9 @@ dev = [
 	# without the plugin it installs with pip, whose resolver fails on python 3.14
 	"tox-uv>=1.36.1",
 	"pytest>=9.1.1",
+	# the reference of the designs and the estimators of the global sensitivity
+	# analysis in the tests, never imported by the package
+	"SALib>=1.6.0",
 	# the probe models of the tests of the simulator are written in antimony
 	"antimony>=3.1.3",
 	"zensical>=0.0.68",

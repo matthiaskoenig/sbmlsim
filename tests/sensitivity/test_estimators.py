@@ -1,4 +1,10 @@
-"""The estimators of the global analyses against SALib, element by element."""
+"""The estimators of the global analyses against SALib, element by element.
+
+The estimators are the ones of sbmlsim-core, whose bootstrap draws other
+resamples than numpy does for a seed: the estimates are SALib's within the
+rounding, the intervals SALib's in their spread (sbmlsim-core compares them
+with SALib's for the resamples SALib draws).
+"""
 
 import warnings
 
@@ -40,11 +46,16 @@ def _elements(cube: np.ndarray) -> np.ndarray:
     )
 
 
-def _same(mine: np.ndarray, theirs: np.ndarray) -> None:
+def _same(mine: np.ndarray, theirs: np.ndarray, atol: float = 1e-14) -> None:
     """Compare an index of one element with the one of SALib, within the rounding."""
     np.testing.assert_allclose(
-        mine, np.asarray(theirs, dtype=float), rtol=1e-10, atol=1e-14
+        mine, np.asarray(theirs, dtype=float), rtol=1e-10, atol=atol
     )
+
+
+def _spread(mine: np.ndarray, theirs: np.ndarray) -> None:
+    """Compare an interval with the one of SALib, another bootstrap of the same spread."""
+    np.testing.assert_allclose(mine, np.asarray(theirs, dtype=float), rtol=0.15)
 
 
 @pytest.mark.parametrize("second_order", [False, True])
@@ -58,26 +69,28 @@ def test_sobol_of_every_element_equals_salib(second_order: bool) -> None:
         d=D,
         second_order=second_order,
         conf_level=0.95,
-        num_resamples=100,
+        num_resamples=1000,
         seed=2,
     )
-    keys = ["S1", "S1_conf", "ST", "ST_conf"]
     for element in range(y.shape[1]):
         expected = salib_sobol.analyze(
             PROBLEM,
             y[:, element],
             calc_second_order=second_order,
-            num_resamples=100,
+            num_resamples=1000,
             conf_level=0.95,
             print_to_console=False,
             seed=np.random.default_rng(2),
         )
-        for key in keys:
+        for key in ("S1", "ST"):
             _same(found[key][:, element], expected[key])
+        for key in ("S1_conf", "ST_conf"):
+            _spread(found[key][:, element], expected[key])
         if second_order:
+            upper = np.triu_indices(D, k=1)
+            _same(found["S2"][..., element][upper], expected["S2"][upper])
+            _spread(found["S2_conf"][..., element][upper], expected["S2_conf"][upper])
             for key in ("S2", "S2_conf"):
-                upper = np.triu_indices(D, k=1)
-                _same(found[key][..., element][upper], expected[key][upper])
                 assert np.isnan(found[key][..., element][np.tril_indices(D)]).all()
     assert "S2" in found if second_order else "S2" not in found
 
@@ -85,7 +98,7 @@ def test_sobol_of_every_element_equals_salib(second_order: bool) -> None:
 def test_fast_of_every_element_equals_salib() -> None:
     cube = fast_sampler.sample(PROBLEM, 257, M=4, seed=3)
     y = _elements(cube)
-    found = fast_indices(y, d=D, m=4, conf_level=0.95, num_resamples=100, seed=11)
+    found = fast_indices(y, d=D, m=4, conf_level=0.95, num_resamples=1000, seed=11)
     for element in range(y.shape[1]):
         np.random.seed(11)
         with warnings.catch_warnings():
@@ -95,13 +108,15 @@ def test_fast_of_every_element_equals_salib() -> None:
                 PROBLEM,
                 y[:, element],
                 M=4,
-                num_resamples=100,
+                num_resamples=1000,
                 conf_level=0.95,
                 print_to_console=False,
                 seed=11,
             )
-        for key in ("S1", "S1_conf", "ST", "ST_conf"):
-            _same(found[key][:, element], expected[key])
+        for key in ("S1", "ST"):
+            _same(found[key][:, element], expected[key], atol=1e-12)
+        for key in ("S1_conf", "ST_conf"):
+            _spread(found[key][:, element], expected[key])
 
 
 @pytest.mark.parametrize(("levels", "trajectories"), [(4, 20), (6, 13)])
@@ -111,7 +126,7 @@ def test_morris_of_every_element_equals_salib(levels: int, trajectories: int) ->
     cube = (grid * (levels - 1) + 0.5) / levels
     y = _elements(cube)
     found = morris_effects(
-        cube, y, levels=levels, conf_level=0.95, num_resamples=100, seed=4
+        cube, y, levels=levels, conf_level=0.95, num_resamples=1000, seed=4
     )
     for element in range(y.shape[1]):
         expected = salib_morris.analyze(
@@ -120,23 +135,22 @@ def test_morris_of_every_element_equals_salib(levels: int, trajectories: int) ->
             y[:, element],
             num_levels=levels,
             scaled=False,
-            num_resamples=100,
+            num_resamples=1000,
             conf_level=0.95,
             print_to_console=False,
             seed=np.random.default_rng(4),
         )
         for key in ("mu", "mu_star", "sigma"):
             _same(found[key][:, element], expected[key])
-        # the interval of a parameter whose effects do not vary in magnitude is
-        # the standard deviation of equal means, which cancels, so the two
-        # summation orders round it differently at the scale of the effects
+        # a parameter whose effects do not vary in magnitude has no interval,
+        # up to the rounding at the scale of the effects
         scale = float(np.max(np.abs(np.asarray(expected["mu_star"], dtype=float))))
-        np.testing.assert_allclose(
-            found["mu_star_conf"][:, element],
-            np.asarray(expected["mu_star_conf"], dtype=float),
-            rtol=1e-10,
-            atol=1e-12 * max(scale, 1.0),
-        )
+        theirs = np.asarray(expected["mu_star_conf"], dtype=float)
+        varying = theirs > 1e-10 * max(scale, 1.0)
+        _spread(found["mu_star_conf"][varying, element], theirs[varying])
+        assert (
+            found["mu_star_conf"][~varying, element] < 1e-10 * max(scale, 1.0)
+        ).all()
 
 
 def test_an_element_without_variance_has_zero_indices() -> None:
