@@ -35,11 +35,8 @@ keywords = [
 ]
 dependencies = [
 	# SBML, its formulas and COMBINE archives
-	"sbmlutils>=0.17.3",
+	"sbmlutils>=0.19.0",
 	"pymetadata>=0.9.0",
-	# the differential equations of a model as markdown, written into the
-	# COMBINE archive of a release (`sbmlsim.release.archive`)
-	"sbmlode>=0.3.3",
 	"python-libsbml>=5.21.2",
 	# simulation
 	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
@@ -121,8 +118,9 @@ dependencies = [
 	# 0.34.0 carries the chart builder itself, `sbmlsim_core.chart`, which
 	# `sbmlsim.plot.chart` re-exports; 0.35.0 the curves over the points of a
 	# dimension of a scan and the pinned values of a condition of a fit (#624)
-	# and the thinning of the chart builder in the extension
-	"sbmlsim-core>=0.35.0",
+	# and the thinning of the chart builder in the extension; 0.36.0 adds the
+	# shared Rust ODE generator used by model release archives
+	"sbmlsim-core>=0.36.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
