@@ -91,10 +91,16 @@ fit, and the plan the engine prepares per condition, which it would prepare
 for every row of a dimension as well.
 
 Both fields are read by sbmlsim-core from 0.35.0 on, the floor of sbmlsim
-(`sbmlsim_core.FIT_FIELDS` names them). What no condition or curve carries is
-the gap `scan` (`_gaps_of_a_scan`): a formula before the simulation which
-reads a pinned target (python reads the value of the point, a derived value
-of a condition the parameter).
+(`sbmlsim_core.FIT_FIELDS` names them). A formula before the simulation which
+reads a pinned target reads the value of the point in python, which applies
+the values of the point before it evaluates the formula, so the condition of
+the point reads the target as that number as well (`_free_targets`): the
+formula is a derived value over the other parameters of the fit, whose
+constant carries the term of the pin, or a number of the request where it
+reads no other parameter, and the derivative of the target by the pinned
+parameter is zero there, as its column of the curves of the condition. The
+pin is a number of the condition, so the request expresses this without a
+field of its own and every release of the engine reads it.
 
 A value of that request is a number, so a value which an optimizer moves
 cannot be one: the number would hold it where the fit started. That is a
@@ -1812,7 +1818,7 @@ def _conditions_and_curves(
             # a value which follows a parameter of the fit is no number of the
             # request: the engine evaluates it before every simulation
             plan, derived = (
-                _derived_of(problem, plan, model)
+                _derived_of(problem, group, plan, model)
                 if reads_derived(loaded)
                 else (plan, [])
             )
@@ -2270,7 +2276,7 @@ def _gaps_of_a_group(
     problem: OptimizationProblem, group: int, training: Sequence[int]
 ) -> list[Gap]:
     """Get the gaps of a simulation group of a problem and of its training data."""
-    gaps: list[Gap] = _gaps_of_a_scan(problem, group)
+    gaps: list[Gap] = []
     kept = problem._group_graphs[group] is not None
     if kept:
         gaps.extend(_gaps_of_a_kept_group(problem, group, training))
@@ -2288,61 +2294,6 @@ def _gaps_of_a_group(
         else:
             gaps.extend(_gaps_of_a_mapping(problem, group, k))
     return gaps
-
-
-def _gaps_of_a_scan(problem: OptimizationProblem, group: int) -> list[Gap]:
-    """Get the gaps of a group whose simulation is a scan.
-
-    A group of a scan is a condition per point (`_conditions_and_curves`).
-    A dimension which sets the target of a parameter of the fit before the
-    simulation wins over the parameter in python, which applies the values of
-    a point after the values of the parameters, and the condition of the point
-    pins the parameter at the value of the point (`_pins_of`); a dimension
-    with `at` is a change at its time, which the engine applies after the
-    parameter as python does, and which `_gaps_of_the_values` reads. A mapping
-    over a dimension whose data is between two points of the scan, which
-    python interpolates linearly between the values of the two points
-    (`_data_points`), is a curve over the points of the dimension
-    (`_dimension_curve`). What no condition of a request carries is the gap
-    `scan`: a formula of the plan which reads such a pinned target before the
-    simulation, which python evaluates with the value of the point and the
-    derived value of a condition (`_derived_of`) with the value of the
-    parameter.
-    """
-    points = problem._group_points[group]
-    if points is None:
-        return []
-    gaps: list[Gap] = []
-    targets = _parameter_targets(problem)
-    for target in points.values:
-        if target not in targets:
-            continue
-        pid = problem.parameters[targets[target]].pid
-        if _reads_before_the_simulation(problem.plans[group], target):
-            gaps.append(
-                Gap(
-                    "scan",
-                    f"the scan of the group {group} sets '{target}', the target "
-                    f"of the parameter '{pid}' of the fit, and a formula before "
-                    f"the simulation reads it: python reads the value of the "
-                    f"point, a derived value of a condition the parameter",
-                )
-            )
-    return gaps
-
-
-def _reads_before_the_simulation(plan: Plan, target: str) -> bool:
-    """Whether a formula of a plan before the simulation reads a target.
-
-    The formulas of the pre-initialization of the plan itself, which a
-    condition carries as derived values (`_derived_of`); the symbols are the
-    ones of the formula, which reads a target as itself.
-    """
-    return any(
-        target in compile_formula(str(assignment.formula)).symbols
-        for assignment in plan.preinit
-        if assignment.formula is not None
-    )
 
 
 def _gaps_of_a_kept_group(
@@ -2970,7 +2921,7 @@ def _over_points(problem: OptimizationProblem, mapping: int) -> tuple[int, ...]:
 
 
 def _derived_of(
-    problem: OptimizationProblem, plan: Plan, model: CoreSBMLModel
+    problem: OptimizationProblem, group: int, plan: Plan, model: CoreSBMLModel
 ) -> tuple[Plan, list[dict[str, Any]]]:
     """Get the plan of a condition without its derived values, and those values.
 
@@ -2986,9 +2937,15 @@ def _derived_of(
     assignment of its steady state and a formula which is no linear form over
     the parameters stay in the plan and keep their gap.
 
+    A target which a dimension of the scan of the group pins is the number of
+    the point the plan sets, as in python (`_free_targets`): its term is part
+    of the constant of the form, and a formula which reads no other parameter
+    stays in the plan, a number the executor folds.
+
     Args:
         problem: the initialized problem.
-        plan: the plan of the condition.
+        group: the simulation group of the condition.
+        plan: the plan of the condition, of its point for a group of a scan.
         model: the model of the fit, which gives the values of the symbols a
             formula reads and the fit does not estimate.
 
@@ -2997,7 +2954,7 @@ def _derived_of(
         is the given one when there are none, and those values as the
         dictionaries of the contract.
     """
-    targets = _parameter_targets(problem)
+    targets = _free_targets(problem, group)
     kept: list[Assignment] = []
     derived: list[dict[str, Any]] = []
     for assignment in plan.preinit:
@@ -3092,13 +3049,15 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
             held[assignment.target] = (
                 (seen[0], seen[1], seen[2] + 1) if seen else (group, where, 1)
             )
+        # a pinned target is the number of the point, whatever reads it
+        free = _free_targets(problem, group)
         for assignment, where, kind in _plan_formulas(plan):
             if assignment.formula is None:
                 continue
             read = sorted(
                 symbol
                 for symbol in compile_formula(str(assignment.formula)).symbols
-                if symbol in targets
+                if symbol in free
             )
             if not read:
                 continue
@@ -3109,10 +3068,10 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
                 and carries
                 and linear_form(
                     str(assignment.formula),
-                    targets,
+                    free,
                     _known_values(
                         str(assignment.formula),
-                        targets,
+                        free,
                         plan,
                         of_the_groups[group],
                     ),
@@ -3402,6 +3361,33 @@ def _parameter_targets(problem: OptimizationProblem) -> dict[str, int]:
     return {parameter.target_id: at for at, parameter in enumerate(problem.parameters)}
 
 
+def _free_targets(problem: OptimizationProblem, group: int) -> dict[str, int]:
+    """Get the targets of the parameters of the fit which a group reads from the search.
+
+    A dimension of a scan without a time sets its target after the values of
+    the parameters and before the formulas of the pre-initialization, so a
+    formula which reads a target of the dimension reads the value of the point
+    in python, not the parameter, which the condition of the point pins
+    (`_pins_of`). Such a target is a number of the plan of every point, which
+    `_known_values` reads as any other number of the pre-initialization: the
+    formula is a form over the other parameters alone, whose derivative by the
+    pinned parameter is zero.
+
+    Args:
+        problem: the initialized problem.
+        group: the simulation group.
+
+    Returns:
+        The position in the parameters of the fit of every entity one writes,
+        without the targets the dimensions of the scan of the group pin.
+    """
+    targets = _parameter_targets(problem)
+    points = problem._group_points[group]
+    if points is None:
+        return targets
+    return {target: at for target, at in targets.items() if target not in points.values}
+
+
 def _known_values(
     formula: str, targets: Mapping[str, int], plan: Plan, model: CoreSBMLModel
 ) -> dict[str, float]:
@@ -3416,7 +3402,9 @@ def _known_values(
 
     Args:
         formula: the formula of the assignment.
-        targets: the entities the parameters of the fit write.
+        targets: the entities the parameters of the fit write which the
+            condition reads from the search (`_free_targets`); a target a
+            scan pins is a number of the plan of the point.
         plan: the plan of the condition, whose pre-initialization gives the
             numbers.
         model: the model of the fit.
