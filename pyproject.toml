@@ -84,8 +84,9 @@ dependencies = [
 	"petab>=0.10.0",
 	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
-	# when a PK observable is compiled
-	"pkpdutils>=1.7.1",
+	# when a PK observable is compiled; 2.0.0 draws its figures with the chart
+	# builder of sbmlsim-core and no longer pulls in matplotlib
+	"pkpdutils>=2.0.0",
 	# the files of the PEtab test suite, the benchmark collection and the networks
 	"pyyaml>=6.0.3",
 	# reports (the figures are drawn by the renderer of sbmlsim-core)

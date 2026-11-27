@@ -2279,23 +2279,22 @@ wheels = [
 
 [[package]]
 name = "pkpdutils"
-version = "1.7.1"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pillow" },
     { name = "pint" },
     { name = "pkpdutils-core" },
     { name = "pydantic" },
     { name = "rich" },
+    { name = "sbmlsim-core" },
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/ec/e032900b90a41860dca6a14240538faeb67e53b12fd71df8c375ee14df68/pkpdutils-1.7.1.tar.gz", hash = "sha256:bda64242a4f0e8a97b3cffe4fc9d4a8acc04dfec5ed0216be8ecfefd7c0ac973", size = 2996475, upload-time = "2026-11-24T09:03:47.879Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/c7/858994b223b43dd6a442831d89e5993453c7fbed6ff6e221368ea17b2619/pkpdutils-2.0.0.tar.gz", hash = "sha256:eb25b92667ea0dcb3c6fbe68ff748690aec9d8e8588c9cf9b35d5ede60accd85", size = 1175737, upload-time = "2026-11-27T09:32:11.216Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/01/9bccbcea854c7918562d1505b82c956ed36d988b3cd297c2ffd6739ab4f8/pkpdutils-1.7.1-py3-none-any.whl", hash = "sha256:a3db3407a6e7e87470467ffe798eacb0a49683b901a7952ee19c0a6cb9f11f24", size = 398260, upload-time = "2026-11-24T09:03:46.458Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/b4/06dde88a833c2402be472f13a9e3afe7aa2df99323caf8fc90026befc8ec/pkpdutils-2.0.0-py3-none-any.whl", hash = "sha256:863d2fd42c6fc60d603aea4ee89217408f34194235c89d9c8361fdf16313eb3a", size = 405639, upload-time = "2026-11-27T09:32:09.6Z" },
 ]
 
 [[package]]
@@ -3226,7 +3225,7 @@ requires-dist = [
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pint", specifier = ">=0.26.1" },
-    { name = "pkpdutils", specifier = ">=1.7.1" },
+    { name = "pkpdutils", specifier = ">=2.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.14.1" },
     { name = "pymetadata", specifier = ">=0.9.0" },
