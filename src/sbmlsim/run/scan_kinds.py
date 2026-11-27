@@ -1217,8 +1217,11 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
     """Run the experiments and write their report into the out.
 
     The experiments run in a pool of the workers of the run, at most one per
-    experiment, each serially in its worker, which builds a serial simulator
-    of its own. The experiments which run in this process, a single one or
+    experiment, each in its worker, which builds a simulator of its own
+    without a pool: the engine core runs the points of a scan there on the
+    threads of the share of the worker of the CPUs
+    (`sbmlsim.parallel.worker_cores`), another engine one after the other.
+    The experiments which run in this process, a single one or
     the ones `run_experiments` runs serially (see
     `ExperimentRunner.run_experiments`), run their scans on the workers of
     the run with the simulator of the run.

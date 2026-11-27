@@ -45,6 +45,7 @@ import dataclasses
 import importlib
 import json
 import logging
+import os
 import re
 import shutil
 import sys
@@ -126,7 +127,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: the formats of the figures which a run of experiments with `collect_figures`
-#: copies into `FIGURES_DIR` of its output, see `Project.run_experiments`
+#: collects in `FIGURES_DIR` of its output, see `collect_figure_files`
 COLLECTED_FORMATS: tuple[str, ...] = ("png", "svg")
 
 #: the directory of the collected figures in the output of a run of experiments
@@ -2017,8 +2018,9 @@ class Project(BaseModel):
                 figures were collected).
             uncertainty: run the experiments over draws of the fitted
                 parameters, `None` runs them once.
-            collect_figures: copy the static figures of every experiment
-                (`COLLECTED_FORMATS`) into `FIGURES_DIR` of `out`.
+            collect_figures: collect the static figures of every experiment
+                (`COLLECTED_FORMATS`) in `FIGURES_DIR` of `out`, hard links of
+                their files, see `collect_figure_files`.
 
         Returns:
             The results of the experiments.
@@ -2410,8 +2412,28 @@ def load_project(ref: str) -> Project:
     return project
 
 
+def _link_or_copy(source: Path, target: Path) -> None:
+    """Put a file at a target as a hard link of it, a copy where none can be made.
+
+    A file which is at the target is replaced. A hard link takes no room of
+    its own and is a file of its directory, also for a reader which refuses a
+    symbolic link out of it (the service of a job, `sbmlsim.serve.jobs`). The
+    figures are written atomically, a new file which leaves the link at the
+    figure of the run which collected it, as a copy is.
+    """
+    target.unlink(missing_ok=True)
+    try:
+        os.link(source, target)
+    except OSError:
+        # another filesystem, or one without hard links
+        shutil.copy2(source, target)
+
+
 def collect_figure_files(output_path: Path, *, show: bool = True) -> Path:
-    """Copy the static figures of a run of experiments into one directory.
+    """Collect the static figures of a run of experiments in one directory.
+
+    A figure is a hard link of the file of its experiment, else a copy, see
+    `_link_or_copy`: the figures of a run over draws are large.
 
     Args:
         output_path: the output of the run.
@@ -2430,7 +2452,7 @@ def collect_figure_files(output_path: Path, *, show: bool = True) -> Path:
     for suffix in COLLECTED_FORMATS:
         for path in sorted(output_path.glob(f"**/*.{suffix}")):
             if path.parent != figures_dir:
-                shutil.copy2(path, figures_dir / path.name)
+                _link_or_copy(path, figures_dir / path.name)
     if show:
         display.link("figures", figures_dir)
     return figures_dir

@@ -10,7 +10,9 @@ Every pool of the package comes from here:
   the pool of a fit, whose workers keep the initialized problem;
 - `resolve_workers` turns `n_workers` into the number of processes;
 - `worker_cache` keeps objects in a worker, e.g. the models of a scan or the
-  initialized problem of a fit, and builds one only when its key is new.
+  initialized problem of a fit, and builds one only when its key is new;
+- `worker_cores` is the share of the CPUs of a worker for threads of its own,
+  the CPUs over the workers of its pool which run a task (`working`).
 
 Ctrl-C belongs to the process of the user: a terminal sends SIGINT to every
 process of the job, the workers ignore it and the parent stops a pool whose
@@ -45,9 +47,12 @@ from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from sbmlsim import cgroup
+
+if TYPE_CHECKING:
+    from multiprocessing.sharedctypes import Synchronized
 
 if sys.platform != "win32":
     from multiprocessing.context import (
@@ -163,16 +168,23 @@ def in_worker() -> bool:
 #: when they start; `None` outside of a worker of `start_pool`
 _POOL_SIZE: int | None = None
 
+#: the workers of the pool of this worker which run a task in `working`, a
+#: counter the pool shares with its workers; `None` outside of a worker of
+#: `start_pool`
+_BUSY: Synchronized[int] | None = None
+
 
 def worker_cores() -> int:
     """Get the cores this process may use for threads of its own.
 
-    A worker of a pool of `n` processes has the `1/n` share of the CPUs of the
-    quota (at least one), so the threads of all workers of a busy pool are no
-    more than the CPUs; any other process has every CPU of the quota. The
-    threads of the batches of sbmlsim-core in a worker take this share
-    (`sbmlsim.simulator.worker.core_threads`), so a worker which runs the long
-    experiment of a run is not held to one core (sbmlsim#664).
+    A worker of a pool has the share of the CPUs of the quota of the workers
+    which run a task (`working`), at least one, and the `1/n` share of a pool
+    of `n` processes when none counts itself busy, so the threads of all
+    workers of a busy pool are no more than the CPUs; any other process has
+    every CPU of the quota. The threads of the batches of sbmlsim-core in a
+    worker take this share (`sbmlsim.simulator.worker.core_threads`): a
+    worker which runs the long experiment of a run takes the CPUs the workers
+    which ran out of tasks leave, at its next batch (sbmlsim#664).
 
     Returns:
         The number of cores, at least one.
@@ -180,7 +192,29 @@ def worker_cores() -> int:
     cpus = max(1, cgroup.available_cpus())
     if _POOL_SIZE is None:
         return cpus if not in_worker() else 1
-    return max(1, cpus // _POOL_SIZE)
+    busy = 0 if _BUSY is None else int(_BUSY.value)
+    return max(1, cpus // (busy if busy > 0 else _POOL_SIZE))
+
+
+@contextmanager
+def working() -> Generator[None]:
+    """Count this worker among the workers of its pool which run a task.
+
+    A task of a pool whose threads follow the CPUs the other workers leave
+    (`worker_cores`) runs in it, e.g. an experiment of the runner; outside of
+    a worker of `start_pool` it counts nothing.
+    """
+    busy = _BUSY
+    if busy is None:
+        yield
+        return
+    with busy.get_lock():
+        busy.value += 1
+    try:
+        yield
+    finally:
+        with busy.get_lock():
+            busy.value -= 1
 
 
 def check_workers(n_workers: int | None) -> None:
@@ -333,11 +367,13 @@ def _initialize_worker(
     initializer: Callable[..., object] | None = None,
     initargs: tuple[Any, ...] = (),
     pool_size: int | None = None,
+    busy: Synchronized[int] | None = None,
 ) -> None:
     """Initialize a worker: it ends with its parent, and SIGINT is ignored.
 
     The initializer of the caller of `start_pool` runs after it, with its
-    arguments.
+    arguments. The worker keeps the size of its pool and the counter of its
+    workers which run a task, see `worker_cores`.
 
     A worker ends when the process which started its pool ends, also when it
     was killed, see `_end_with_the_parent`.
@@ -355,8 +391,9 @@ def _initialize_worker(
     terminates its workers with it and waits for them, and waited forever for
     a worker which never received it.
     """
-    global _POOL_SIZE
+    global _POOL_SIZE, _BUSY
     _POOL_SIZE = pool_size
+    _BUSY = busy
     _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
@@ -400,11 +437,13 @@ def start_pool(
             "A pool was started inside a worker process; run the inner part "
             "serially (n_workers=1)."
         )
+    context = _context(preload)
     executor = ProcessPoolExecutor(
         max_workers=n_workers,
-        mp_context=_context(preload),
+        mp_context=context,
         initializer=_initialize_worker,
-        initargs=(initializer, initargs, n_workers),
+        # the workers which run a task, see `working`
+        initargs=(initializer, initargs, n_workers, context.Value("i", 0)),
     )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:
