@@ -106,6 +106,7 @@ Figures and reports, see [Plots and reports](../plotting.md).
 | --- | --- |
 | [plot.plotting](plot.plotting.md) | `Figure`, `Plot`, `Axis`, `Curve` and their styles, the plot description independent of the backend |
 | [plot.points](plot.points.md) | the lines, colours, legend labels and colour bars of a curve over the points of a scan, and the quantiles of a band |
+| [plot.thinning](plot.thinning.md) | the thinning of the lines of a chart to the points which are visibly apart, within a share of the span of its axes |
 | [report.experiment_report](report.experiment_report.md) | HTML and markdown reports of simulation experiments |
 
 ## sbmlsim.fit

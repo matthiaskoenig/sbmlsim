@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from sbmlsim.credibility.declaration import QuantityOfInterest
     from sbmlsim.credibility.records import FitTable
     from sbmlsim.credibility.uncertainty import FitPropagation
+    from sbmlsim.fit.pool import EvaluationPool
     from sbmlsim.fit.report import FitReport
     from sbmlsim.fit.variability import PredictiveCheck, Variability
     from sbmlsim.project import Project
@@ -298,6 +299,7 @@ def predictive_checks(
     settings: VariabilitySettings,
     propagation: FitPropagation | None = None,
     workers: int = 1,
+    pool: EvaluationPool | None = None,
 ) -> PredictiveChecks:
     """Get the predictive check of every adopted fit of a project.
 
@@ -311,6 +313,9 @@ def predictive_checks(
             `sbmlsim.credibility.uncertainty.propagate_fits`; the subjects vary
             around the adopted parameters without.
         workers: the processes the subjects of a check are evaluated in.
+        pool: a started pool which holds the problem of every fit by its
+            subset, whose workers evaluate the subjects instead of a pool per
+            fit, see `sbmlsim.fit.pool.EvaluationPool`.
 
     Returns:
         The bands of the points of the fits.
@@ -350,6 +355,8 @@ def predictive_checks(
             studies=settings.studies,
             workers=workers,
             settings=report.settings,
+            pool=pool,
+            key=subset,
         )
         logger.info(
             "The predictive check of the fit '%s' with %s subjects at %s vectors "

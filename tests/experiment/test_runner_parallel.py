@@ -291,6 +291,80 @@ def test_the_threads_of_a_worker_are_its_share_of_the_cpus(
     assert core_threads(None, 100) == 1
 
 
+def test_the_share_of_a_worker_follows_the_workers_which_run_a_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CPUs which the workers out of tasks leave go to the ones which run one.
+
+    Without a worker counted busy a worker of a pool of n has 1/n of the CPUs;
+    the last worker which runs a task has every CPU (sbmlsim#664).
+    """
+    import multiprocessing
+
+    from sbmlsim.simulator.worker import core_threads
+
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
+    monkeypatch.setattr(parallel, "_POOL_SIZE", 7)
+    busy = multiprocessing.get_context("spawn").Value("i", 0)
+    monkeypatch.setattr(parallel, "_BUSY", busy)
+
+    assert parallel.worker_cores() == 2
+    with parallel.working():
+        assert busy.value == 1
+        assert parallel.worker_cores() == 20
+        assert core_threads(None, 100) == 20
+        assert core_threads(8, 100) == 8
+        busy.value += 2
+        assert parallel.worker_cores() == 6
+        busy.value -= 2
+    assert busy.value == 0
+    assert parallel.worker_cores() == 2
+
+
+class Threads(Scanned):
+    """An experiment of a scan which records the threads of its simulator."""
+
+    @override
+    def run(self, *args: Any, **kwargs: Any) -> ExperimentResult:
+        result = super().run(*args, **kwargs)
+        simulator = args[0] if args else kwargs["simulator"]
+        busy = parallel._BUSY
+        (kwargs["output_path"] / "threads.json").write_text(
+            json.dumps(
+                {
+                    "threads": simulator._workers(100)[1],
+                    "busy": None if busy is None else busy.value,
+                    "cores": parallel.worker_cores(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        return result
+
+
+def test_a_worker_runs_the_scans_of_the_engine_core_on_its_share(
+    tmp_path: Path,
+) -> None:
+    """A worker builds a simulator of the workers of the run, held to its share.
+
+    It built a simulator of one worker, which ran the engine core on one thread
+    whatever its share of the CPUs was. The worker counts itself busy while it
+    runs the experiment.
+    """
+    results = _run(tmp_path, 2, [Threads, First], Simulator(4, engine="core"))
+
+    assert [r.error for r in results] == [None, None]
+    assert _process(tmp_path, "Threads")["pid"] != os.getpid()
+    record = json.loads(
+        (tmp_path / "Threads" / "threads.json").read_text(encoding="utf-8")
+    )
+    assert record["busy"] >= 1
+    assert record["threads"] == min(4, record["cores"])
+    cpus = parallel.cgroup.available_cpus()
+    assert record["cores"] == max(1, cpus // record["busy"])
+
+
 def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

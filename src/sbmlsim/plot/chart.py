@@ -45,6 +45,7 @@ from pint.errors import DimensionalityError, PintError
 
 from sbmlsim.atomic import atomic_path, write_text_atomic
 from sbmlsim.plot.colors import color_alpha
+from sbmlsim.plot.thinning import THIN_TOLERANCE, thin_elements
 from sbmlsim.units import Quantity, short_unit, ureg
 
 __all__ = ["Chart", "ChartAxis", "ChartPlot", "axis_label"]
@@ -400,7 +401,28 @@ def _error_width(error_width: float | None) -> float | None:
 def _numbers(values: Values) -> list[float | None]:
     """Get the numbers of an array as a list, a value which is not finite `None`."""
     flat = np.asarray(values, dtype=float).ravel()
-    return [float(v) if math.isfinite(v) else None for v in flat.tolist()]
+    numbers: list[float | None] = list(flat.tolist())
+    for i in np.flatnonzero(~np.isfinite(flat)).tolist():
+        numbers[i] = None
+    return numbers
+
+
+def _column(values: np.ndarray) -> np.ndarray:
+    """Get a column of the line of an element, a copy of its numbers.
+
+    The columns of curves, bands and areas are kept as arrays until the spec
+    is built, which thins them first (`ChartPlot._thinned_elements`) and
+    then writes them as numbers (`_listed`).
+    """
+    return np.array(values, dtype=float).ravel()
+
+
+def _listed(element: dict[str, Any]) -> dict[str, Any]:
+    """Get an element of the spec with its columns as numbers, see `_column`."""
+    for key, value in element.items():
+        if isinstance(value, np.ndarray):
+            element[key] = _numbers(value)
+    return element
 
 
 def _finite(value: Values, name: str) -> float:
@@ -606,6 +628,8 @@ class ChartPlot:
         if y2 is not None:
             self._axes["y2"] = _AxisState("y2", id, y2)
         self._elements: list[dict[str, Any]] = []
+        # the thinned elements by the tolerance and the number of elements
+        self._thinned: tuple[float, int, list[dict[str, Any]]] | None = None
         self._colorbars: list[dict[str, Any]] = []
         self.legend_swatches = (
             None
@@ -780,13 +804,13 @@ class ChartPlot:
             The id of the element.
         """
         data: dict[str, Any] = {
-            "x": _numbers(self._on("x", x)),
-            "y": _numbers(self._on(axis, y)),
+            "x": _column(self._on("x", x)),
+            "y": _column(self._on(axis, y)),
         }
         if xerr is not None:
-            data["xerr"] = _numbers(self._on("x", xerr))
+            data["xerr"] = _column(self._on("x", xerr))
         if yerr is not None:
-            data["yerr"] = _numbers(self._on(axis, yerr))
+            data["yerr"] = _column(self._on(axis, yerr))
         if cap := _error_cap(error_cap):
             data["error_cap"] = cap
         if (lines := _error_width(error_width)) is not None:
@@ -849,12 +873,12 @@ class ChartPlot:
             The id of the element.
         """
         data: dict[str, Any] = {
-            "x": _numbers(self._on("x", x)),
-            "low": _numbers(self._on(axis, low)),
-            "high": _numbers(self._on(axis, high)),
+            "x": _column(self._on("x", x)),
+            "low": _column(self._on(axis, low)),
+            "high": _column(self._on(axis, high)),
         }
         if median is not None:
-            data["median"] = _numbers(self._on(axis, median))
+            data["median"] = _column(self._on(axis, median))
         style = _Style(
             color=color,
             opacity=opacity,
@@ -903,9 +927,9 @@ class ChartPlot:
             The id of the element.
         """
         data = {
-            "x": _numbers(self._on("x", x)),
-            "from": _numbers(self._on(axis, low)),
-            "to": _numbers(self._on(axis, high)),
+            "x": _column(self._on("x", x)),
+            "from": _column(self._on(axis, low)),
+            "to": _column(self._on(axis, high)),
         }
         style = _Style(
             color=color,
@@ -1641,8 +1665,27 @@ class ChartPlot:
             spec["legend_order"] = self.legend_order
         if self.aspect is not None:
             spec["aspect"] = self.aspect
-        spec["elements"] = self._elements
-        return copy.deepcopy(spec)
+        spec["elements"] = self._thinned_elements(spec)
+        spec = copy.deepcopy(spec)
+        spec["elements"] = [_listed(e) for e in spec["elements"]]
+        return spec
+
+    def _thinned_elements(self, spec: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Get the elements with their lines thinned, see `Chart`.
+
+        The thinned elements are kept until an element is added, so the
+        formats of a chart which is saved several times are thinned once.
+        """
+        tolerance = self.chart.thinning
+        if tolerance is None:
+            return self._elements
+        cached = self._thinned
+        if cached is not None and cached[:2] == (tolerance, len(self._elements)):
+            return cached[2]
+        axes = {name: spec[name] for name in ("x", "y", "y2") if name in spec}
+        elements = thin_elements(self._elements, axes, tolerance)
+        self._thinned = (tolerance, len(self._elements), elements)
+        return elements
 
 
 def _rows(values: Values) -> list[Any]:
@@ -1792,11 +1835,32 @@ def _with_resolution(png: bytes, dpi: float) -> bytes:
     return png[:8] + chunks[0] + phys + b"".join(chunks[1:])
 
 
+def _thinning(tolerance: float) -> float:
+    """Get the tolerance of the thinning of a chart.
+
+    Raises:
+        ValueError: for a tolerance which is negative or not finite.
+    """
+    value = float(tolerance)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            f"The thinning of a chart is a share of the span of its axes, not "
+            f"{tolerance!r}."
+        )
+    return value
+
+
 class Chart:
     """A figure of plots in a grid, the spec `figure/1` of sbmlsim-core.
 
     Plots are added with `plot`, elements with the methods of the plots;
     `svg`, `png` and `save` draw it with the renderer of sbmlsim-core.
+
+    The spec carries the lines of the curves, bands and areas thinned to the
+    points which are visibly apart (`thinning`, `sbmlsim.plot.thinning`): a
+    curve of a simulation has every step of the integrator, thousands of
+    points no one can tell apart in a line of a few hundred pixels. The
+    points of a curve with markers or error bars are data and kept.
     """
 
     def __init__(
@@ -1816,6 +1880,7 @@ class Chart:
         legend_columns: int | None = None,
         legend_title: str | None = None,
         dpi: float | None = None,
+        thinning: float | None = THIN_TOLERANCE,
     ) -> None:
         """Create a chart.
 
@@ -1848,6 +1913,10 @@ class Chart:
             legend_title: the title of the legend `bottom`.
             dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
                 the spec.
+            thinning: the tolerance the lines of its curves, bands and areas
+                are thinned with in the spec, the SVG and the PNG, a share of
+                the span of the axes (`sbmlsim.plot.thinning`); `None` keeps
+                every point.
         """
         self.width = float(width)
         self.height = float(height)
@@ -1863,6 +1932,7 @@ class Chart:
         self.legend_columns = _legend_columns(legend_columns)
         self.legend_title = legend_title
         self.dpi = None if dpi is None else float(dpi)
+        self.thinning = None if thinning is None else _thinning(thinning)
         self.plots: list[ChartPlot] = []
         self._element_ids: set[str] = set()
         self._created = 0

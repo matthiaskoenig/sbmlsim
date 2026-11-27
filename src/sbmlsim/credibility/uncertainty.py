@@ -52,6 +52,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from sbmlsim.credibility.records import FitTable
+    from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.pool import EvaluationPool
     from sbmlsim.fit.records import ParameterCorrelation, ParameterUncertainty
     from sbmlsim.fit.report import FitReport
     from sbmlsim.project import Project
@@ -255,13 +257,21 @@ def _same_points(points: pd.DataFrame, reference: pd.DataFrame) -> bool:
 
 
 def _evaluate(
-    report: FitReport, draws: FitDraws, reference: pd.DataFrame, workers: int = 1
+    report: FitReport,
+    draws: FitDraws,
+    reference: pd.DataFrame,
+    workers: int = 1,
+    pool: EvaluationPool | None = None,
 ) -> tuple[np.ndarray, int]:
     """Evaluate a fit at its draws.
 
-    The draws are evaluated in a pool of `workers` processes, see
-    `sbmlsim.fit.pool.map_evaluations`; a draw is a function of its values
-    alone, so the predictions are the ones of one process.
+    The draws are evaluated in this process when an evaluation of the
+    problem runs its simulations on the threads of its engine
+    (`sbmlsim.fit.pool.evaluates_on_threads`), else in a pool of `workers`
+    processes, or in the workers of `pool`, which holds the problem of the fit
+    by its subset, see `sbmlsim.fit.pool.map_evaluations`; a draw is a
+    function of its values alone, so the predictions are the ones of one
+    process.
 
     Returns:
         The predictions, one column per draw, and the number of failed draws.
@@ -269,17 +279,23 @@ def _evaluate(
     Raises:
         ValueError: if the points of a draw are not the reference points.
     """
-    from sbmlsim.fit.pool import chunks, map_evaluations
+    from sbmlsim.fit.pool import chunks, evaluates_on_threads, map_evaluations
 
+    if evaluates_on_threads(report.problem):
+        # a worker would initialize the problem again, which costs more than
+        # the draws of a fit gain from the processes over the threads
+        workers, pool = 1, None
     predictions = np.full((len(reference), len(draws.values)), np.nan)
     failed = 0
     evaluated = map_evaluations(
-        report,
+        report.problem,
         report.settings,
         _evaluate_draws,
-        chunks(len(draws.values), workers),
+        chunks(len(draws.values), workers if pool is None else pool.workers),
         workers,
         (draws, reference),
+        pool=pool,
+        key=draws.subset,
     )
     for chunk in evaluated:
         for k, values in chunk:
@@ -291,7 +307,7 @@ def _evaluate(
 
 
 def _evaluate_draws(
-    report: FitReport, state: tuple[FitDraws, pd.DataFrame], task: range
+    problem: OptimizationProblem, state: tuple[FitDraws, pd.DataFrame], task: range
 ) -> list[tuple[int, np.ndarray | None]]:
     """Evaluate some draws of a fit, a task of `_evaluate`.
 
@@ -303,6 +319,7 @@ def _evaluate_draws(
         ValueError: if the points of a draw are not the reference points.
     """
     from sbmlsim.fit.parameters import ParameterSet
+    from sbmlsim.fit.report import evaluate_metrics
 
     draws, reference = state
     out: list[tuple[int, np.ndarray | None]] = []
@@ -315,7 +332,7 @@ def _evaluate_draws(
             provenance=f"draw {k} of the uncertainty of {draws.fit_id}",
         )
         try:
-            points = report.metrics(pset).datapoints_df()
+            points = evaluate_metrics(problem, pset).datapoints_df()
         except (RuntimeError, ValueError) as err:
             # sbmlsim raises a `ValueError` for the data of a failed simulation
             logger.warning(
@@ -333,7 +350,11 @@ def _evaluate_draws(
 
 
 def propagate_fits(
-    project: Project, fits: FitTable, settings: PropagationSettings, workers: int = 1
+    project: Project,
+    fits: FitTable,
+    settings: PropagationSettings,
+    workers: int = 1,
+    pool: EvaluationPool | None = None,
 ) -> FitPropagation:
     """Evaluate the adopted fits of a project at the draws of their parameters.
 
@@ -343,6 +364,9 @@ def propagate_fits(
             `sbmlsim.credibility.records.evaluate_fits`.
         settings: the settings of the propagation.
         workers: the processes the draws of a fit are evaluated in.
+        pool: a started pool which holds the problem of every fit by its
+            subset, whose workers evaluate the draws instead of a pool per
+            fit, see `sbmlsim.fit.pool.EvaluationPool`.
 
     Returns:
         The predictions per draw.
@@ -369,7 +393,9 @@ def propagate_fits(
         )
         rows = table.index[table["fit"] == subset]
         start = time.perf_counter()
-        values, failed[subset] = _evaluate(report, draws, table.loc[rows], workers)
+        values, failed[subset] = _evaluate(
+            report, draws, table.loc[rows], workers, pool
+        )
         logger.info(
             "Evaluate the fit '%s' at %s draws in %.1f s",
             subset,

@@ -77,6 +77,7 @@ from sbmlsim.fit.provenance import data_files
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import SBMLModel
 from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
+from sbmlsim.model.model_sbml import IntegratorSetting
 from sbmlsim.result import TimecourseResult
 from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
@@ -2083,6 +2084,52 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         for model in {id(m): m for m in self.models}.values():
             model.set_integrator_settings(**simulator.integrator_settings)
+
+    @contextmanager
+    def integrating(
+        self, settings: FitSettings, **extra: IntegratorSetting
+    ) -> Generator[None]:
+        """Evaluate the problem with other settings of the integrator.
+
+        Within the context every model of the problem integrates with the
+        settings of the integrator of `settings` (its tolerances, and the step
+        settings of roadrunner, see `_simulator`) and the `extra` settings,
+        e.g. `maximum_bdf_order`; the state of the integrator of every model
+        (`SBMLModel.integrator_state`) is set back when the context exits,
+        also after an error. Nothing else of the problem depends on the
+        integrator: its data, weights, groups and plans are kept, so an
+        evaluation within the context is the one of the problem initialized
+        with `settings` (and the models given the `extra` settings), without
+        initializing it again. The checks of the verification of a
+        credibility assessment evaluate the adopted fits so, see
+        `sbmlsim.credibility.verification`.
+
+        Args:
+            settings: the settings whose integrator settings are used; the
+                other settings, e.g. the residuals, stay the ones the problem
+                was initialized with.
+            **extra: further settings of the integrator by their names in
+                roadrunner, set after the ones of `settings`.
+
+        Yields:
+            Nothing; the evaluations of the problem in the context use the
+            settings.
+
+        Raises:
+            ValueError: if the problem was not initialized, or the engine of a
+                model has no setting of a name (nothing is changed then).
+        """
+        self.runner_initialized  # noqa: B018
+        models = list({id(m): m for m in self.models}.values())
+        states = [model.integrator_state() for model in models]
+        integrator = {**self._simulator(settings).integrator_settings, **extra}
+        try:
+            for model in models:
+                model.set_integrator_settings(**integrator)
+            yield
+        finally:
+            for model, state in zip(models, states, strict=True):
+                model.set_integrator_state(state)
 
     @property
     def parameter_scale(self) -> ParameterScaleType:

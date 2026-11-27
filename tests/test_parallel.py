@@ -179,6 +179,36 @@ def test_the_pool_alone_waits_for_its_workers(monkeypatch: pytest.MonkeyPatch) -
     assert all(process.exitcode is not None for process in processes)
 
 
+def _slow_start() -> None:
+    """Start a worker slowly, as the initializer of a fit initializes its problem."""
+    time.sleep(0.5)
+
+
+def test_the_workers_of_a_pool_start_together() -> None:
+    """Every worker starts with the pool, not the first alone before the others.
+
+    A pool spawns a worker per task which finds none idle, and a start which
+    waited for one probe started one worker, whose initializer ran before the
+    others were spawned by the first tasks.
+    """
+    executor = parallel.start_pool(3, initializer=_slow_start)
+    try:
+        assert len(executor._processes or {}) == 3
+        start = time.monotonic()
+        pids = set(executor.map(_pid_after, [0.2] * 6))
+        # the workers which started with the first are ready soon after it
+        assert time.monotonic() - start < 2.0
+        assert len(pids) >= 2
+    finally:
+        parallel.stop(executor)
+
+
+def _pid_after(seconds: float) -> int:
+    """Get the process id after a while, so that the tasks spread."""
+    time.sleep(seconds)
+    return os.getpid()
+
+
 def test_shutdown_stops_every_pool() -> None:
     parallel.pool(2)
     parallel.shutdown()

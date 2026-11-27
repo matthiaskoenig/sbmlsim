@@ -14,8 +14,10 @@ import numpy as np
 import pytest
 
 from sbmlsim import parallel
+from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.pool import EvaluationPool, evaluates_on_threads, map_evaluations
 from sbmlsim.fit.runner import run_optimization
 
 _REAL_WORKER_RUN = runner._worker_run
@@ -491,3 +493,66 @@ def test_a_pool_which_always_breaks_ends_the_run(
     outcomes = _run(pool, _tasks("ok", "ok"))
     assert all(isinstance(v, RuntimeError) for v in outcomes.values())
     assert pool.restarts == runner.MAX_POOL_RESTARTS
+
+
+def _opid_and_task(
+    problem: OptimizationProblem, state: Any, task: int
+) -> tuple[Any, ...]:
+    """Get the problem a task was evaluated with, whether it is initialized, the task."""
+    return problem.opid, problem.is_initialized, state, task, os.getpid()
+
+
+def test_an_evaluation_pool_holds_several_problems(
+    op_hctz_iv: OptimizationProblem,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+) -> None:
+    """The workers receive the problems once and initialize each on its first task."""
+    problems = {"iv": (op_hctz_iv, fit_settings), "pk": (op_hctz_pk, fit_settings)}
+    with EvaluationPool(problems, 2, warm=False) as pool:
+        assert pool.active and pool.keys == ["iv", "pk"]
+        for key, opid in (("iv", "hctz_iv"), ("pk", "hctz_pk"), ("iv", "hctz_iv")):
+            results = pool.map(key, _opid_and_task, [1, 2, 3], state="shared")
+            assert [r[:4] for r in results] == [
+                (opid, True, "shared", task) for task in [1, 2, 3]
+            ]
+            assert all(r[4] != os.getpid() for r in results)
+        with pytest.raises(ValueError, match="no problem 'other'"):
+            pool.map("other", _opid_and_task, [1])
+    assert not pool.active
+    with pytest.raises(ValueError, match="no workers"):
+        pool.map("iv", _opid_and_task, [1])
+    # the problems of the caller are not initialized by the pool
+    assert not op_hctz_iv.is_initialized
+
+
+def test_a_warm_evaluation_pool_initializes_its_problems_at_the_start(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    with EvaluationPool({"iv": (op_hctz_iv, fit_settings)}, 2) as pool:
+        results = pool.map("iv", _opid_and_task, [1, 2])
+    assert [r[:2] for r in results] == [("hctz_iv", True)] * 2
+
+
+def test_an_evaluation_pool_of_one_worker_evaluates_in_the_process(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_iv.initialize(fit_settings)
+    pool = EvaluationPool({"iv": (op_hctz_iv, fit_settings)}, 1)
+    assert not pool.active
+    results = map_evaluations(
+        op_hctz_iv, fit_settings, _opid_and_task, [1, 2], 4, "s", pool=pool, key="iv"
+    )
+    assert [r[:4] for r in results] == [
+        ("hctz_iv", True, "s", 1),
+        ("hctz_iv", True, "s", 2),
+    ]
+    assert {r[4] for r in results} == {os.getpid()}
+
+
+def test_an_evaluation_on_threads_is_one_of_the_engine_core(
+    op_hctz_iv: OptimizationProblem,
+) -> None:
+    assert evaluates_on_threads(op_hctz_iv) is (op_hctz_iv.engine is Engine.CORE)
+    op_hctz_iv.engine = Engine.ROADRUNNER
+    assert not evaluates_on_threads(op_hctz_iv)

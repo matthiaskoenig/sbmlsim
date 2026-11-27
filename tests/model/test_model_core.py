@@ -424,6 +424,12 @@ def test_the_state_of_the_integrator_is_complete_and_round_trips(
     other.set_integrator_state((integrator, settings))
     assert other.integrator_state() == (integrator, settings)
     assert other.request_settings() == hctz_core.request_settings()
+    # a setting which the state has not is dropped, the state is the state
+    other.set_integrator_settings(maximum_bdf_order=2)
+    assert other.integrator_state() != (integrator, settings)
+    other.set_integrator_state((integrator, settings))
+    assert other.integrator_state() == (integrator, settings)
+    assert other.request_settings() == hctz_core.request_settings()
     with pytest.raises(ValueError, match="cvode"):
         other.set_integrator_state(("lsoda", settings))
 
