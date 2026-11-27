@@ -76,7 +76,7 @@ from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.plan import PlaceKind
 from sbmlsim.task import Task
 from sbmlsim.units import UnitsInformation
-from tests.engines import require_core_fit
+from tests.engines import require_core_fit, require_core_reductions
 from tests.fit.test_data_at_change import (
     MODEL_FILE,
     TIMES,
@@ -2267,22 +2267,219 @@ def test_the_factor_of_a_declared_unit_is_in_the_column(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.parametrize("mapping", ["fm_share", "fm_urine_max"])
-def test_a_reduction_and_a_value_per_simulation_are_still_gaps(
+class ReductionStudy(UrineStudy):
+    """`UrineStudy` with a value per simulation of every reduction.
+
+    `urine_mean` and `urine_at` read the time of the output, `urine_max_g`
+    declares a unit the derived one converts into, which python applies after
+    the reduction, and `twice_max` reduces a formula, which the model of the
+    fit carries as a column of its own.
+    """
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        observables = super().observables()
+        observables["urine_min"] = Formula("urine_min", "min(Aurine)")
+        observables["urine_mean"] = Formula("urine_mean", "mean(Aurine)")
+        observables["urine_at"] = Formula("urine_at", "at(Aurine, 30)")
+        observables["urine_max_g"] = Formula("urine_max_g", "max(Aurine)", unit="g")
+        observables["twice_max"] = Formula("twice_max", "max(2 * Aurine)")
+        return observables
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        datasets = super().datasets()
+        urine = float(TRUTH["urine_max"])
+        datasets["reduced"] = DataSet.from_df(
+            pd.DataFrame(
+                {
+                    # two measurements of one value, as two studies report it
+                    "low": [0.1 * urine, 0.2 * urine],
+                    "mean": [0.6 * urine, 0.5 * urine],
+                    "at": [0.8 * urine, 0.9 * urine],
+                    "grams": [1e-3 * urine, 1.1e-3 * urine],
+                    "twice": [2.0 * urine, 1.9 * urine],
+                }
+            ),
+            udict={
+                "low": "mg",
+                "mean": "mg",
+                "at": "mg",
+                "grams": "g",
+                "twice": "mg",
+            },
+            ureg=self.ureg,
+        )
+        return datasets
+
+    @override
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        mappings = super().fit_mappings()
+        for key, yid, observable in (
+            ("fm_min", "low", "urine_min"),
+            ("fm_mean", "mean", "urine_mean"),
+            ("fm_at", "at", "urine_at"),
+            ("fm_grams_max", "grams", "urine_max_g"),
+            ("fm_twice_max", "twice", "twice_max"),
+        ):
+            mappings[key] = FitMapping(
+                self,
+                reference=FitData(self, dataset="reduced", xid=None, yid=yid),
+                observable=FitData(
+                    self, task="task_collected", xid=None, yid=observable
+                ),
+            )
+        return mappings
+
+
+#: the mappings of a group which keeps its output, and the reductions of their curves
+REDUCED = {
+    "fm_urine_max": ["max"],
+    "fm_min": ["min"],
+    "fm_mean": ["mean"],
+    "fm_at": ["at"],
+    "fm_grams_max": ["max"],
+    "fm_twice_max": ["max"],
+    "fm_cmax": ["pk"],
+    "fm_auc": ["pk"],
+    "fm_end_cmax": ["pk"],
+    "fm_coarse_max": ["max"],
+    "fm_shifted_max": ["max"],
+    # a timecourse of a group which keeps its output is interpolated
+    "fm_urine,fm_cmax": ["at", "pk"],
+    "fm_twice,fm_urine_max": ["at", "max"],
+}
+
+
+@pytest.mark.parametrize("mappings", list(REDUCED))
+def test_a_reduction_and_a_value_per_simulation_are_curves_of_the_engine(
+    tmp_path: Path, mappings: str
+) -> None:
+    """A group which keeps its output is a condition of reductions of its columns.
+
+    The residuals of the engine are the ones of python bitwise at three
+    points: the reductions read the same rows of the same simulation, with
+    the times of the output (`time_shift`), and the analysis of a `PK`
+    observable is the kernel of pkpdutils python runs as well.
+    """
+    require_core_reductions()
+    problem = on_core(
+        observable_problem(tmp_path, mappings.split(","), experiment=ReductionStudy),
+        linear_settings(),
+    )
+
+    assert gaps_of(problem) == []
+
+    request = fit_request(problem)
+    assert [c["reduction"]["kind"] for c in request["curves"]] == REDUCED[mappings]
+    core = core_problem(problem)
+    for factor in (1.0, 1.3, 0.7):
+        x = problem.to_scale(problem.xmodel * factor)
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        np.testing.assert_array_equal(residuals, expected)
+
+
+def test_the_curve_of_a_reduction_carries_what_python_reduces_with(
+    tmp_path: Path,
+) -> None:
+    """The factor of a declared unit, the time of `at`, the batch of a `PK`."""
+    require_core_reductions()
+    problem = on_core(
+        observable_problem(
+            tmp_path, ["fm_grams_max", "fm_at", "fm_cmax"], experiment=ReductionStudy
+        ),
+        linear_settings(),
+    )
+
+    grams, at, cmax = fit_request(problem)["curves"]
+
+    assert grams["reduction"] == {"kind": "max", "factor": pytest.approx(1e-3)}
+    assert "times" not in grams
+    assert at["times"] == [30.0, 30.0]
+    assert len(at["values"]) == 2
+    assert cmax["reduction"]["parameter"] == "cmax"
+    assert cmax["reduction"]["batch"]["contract"] == "batch/1"
+    assert cmax["reduction"]["batch"]["route"] == "oral"
+
+
+def test_a_reduction_of_a_formula_is_a_column_of_the_model_of_the_fit(
+    tmp_path: Path,
+) -> None:
+    """`max(2 * Aurine)` reduces a parameter of the model of the fit."""
+    require_core_reductions()
+    problem = on_core(
+        observable_problem(tmp_path, ["fm_twice_max"], experiment=ReductionStudy),
+        linear_settings(),
+    )
+
+    curve = fit_request(problem)["curves"][0]
+
+    assert curve["column"] == fit_core._group_observable(0, "twice_max__reduced")
+    assert fit_core.fit_model(problem) is not problem.models[0]
+
+
+def test_a_fit_of_reductions_in_the_engine_finds_the_optimum_of_python(
+    tmp_path: Path,
+) -> None:
+    """The engine and python fit the same problem to the same optimum."""
+    require_core_reductions()
+    results = {}
+    for engine_fit in (True, False):
+        (tmp_path / str(engine_fit)).mkdir()
+        problem = on_core(
+            observable_problem(
+                tmp_path / str(engine_fit),
+                ["fm_urine", "fm_cmax", "fm_auc", "fm_urine_max"],
+            ),
+            linear_settings(),
+        )
+        results[engine_fit] = run_optimization(
+            problem,
+            problem.settings_initialized,
+            size=1,
+            seed=1234,
+            show_progress=False,
+            engine_fit=engine_fit,
+        )
+
+    assert results[True].optimizer_of == RUN_IN_THE_ENGINE
+    assert results[False].optimizer_of == RUN_IN_PYTHON
+    engine, python = results[True].fits[0], results[False].fits[0]
+    np.testing.assert_allclose(engine.x, python.x, rtol=1e-6)
+    assert engine.cost == pytest.approx(python.cost, rel=1e-8, abs=1e-12)
+    np.testing.assert_allclose(engine.x, [TRUE_KE], rtol=1e-3)
+
+
+@pytest.mark.parametrize("mapping", ["fm_share", "fm_ratio"])
+def test_a_timecourse_which_reads_a_reduction_is_still_a_gap(
     tmp_path: Path, mapping: str
 ) -> None:
-    """A group which keeps the output of its simulation is a gap.
-
-    `urine_share` reads `max(Aurine)` and `fm_urine_max` is a value per
-    simulation: both need the output of the simulation and are no column of
-    it (`_group_graphs`).
-    """
+    """`urine_share` is `Aurine / max(Aurine)`, no reduction of a column."""
+    require_core_reductions()
     problem = observable_problem(tmp_path, [mapping])
     problem.initialize(linear_settings())
 
     gaps = gaps_of(problem)
 
+    assert [gap.code for gap in gaps] == ["observable"]
+
+
+def test_bindings_without_reductions_keep_a_value_per_simulation_a_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A curve of an older binding would read its column at rows, not reduce it."""
+    problem = observable_problem(tmp_path, ["fm_urine_max"])
+    problem.initialize(linear_settings())
+    monkeypatch.setattr(fit_core, "reads_reductions", lambda _: False)
+
+    gaps = gaps_of(problem)
+
     assert "observable" in [gap.code for gap in gaps]
+    if problem.engine is Engine.CORE:
+        assert fit_core.REDUCTIONS_VERSION in gaps[0].message
 
 
 def test_the_row_map_of_a_likelihood_is_the_data_rows_of_every_mapping(
