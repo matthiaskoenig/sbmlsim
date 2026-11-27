@@ -31,6 +31,8 @@ from sbmlsim.serve.runner import (
     check_draws,
 )
 from sbmlsim.simulation.sampling.model_distributions import (
+    ModelDistributions,
+    parameter_distributions,
     uncertainty_dimension,
     uncertainty_name,
 )
@@ -124,6 +126,38 @@ def test_the_model_of_the_tests_carries_the_distribution_of_its_fit(
     value = 0.351832524244915
     assert np.all((draws > value / 2) & (draws < value * 2))
     assert float(np.median(draws)) == pytest.approx(value, rel=0.1)
+
+
+def test_one_read_of_the_distributions_gives_what_the_functions_give(
+    sbml: Path,
+) -> None:
+    """`ModelDistributions` parses the SBML once for all three answers."""
+    read = ModelDistributions.read(sbml)
+    assert read.path == sbml
+    assert read.name == uncertainty_name(sbml) == FIT
+    assert dict(read.distributions) == parameter_distributions(sbml)
+    drawn = read.dimension(draws=4, seed=0)
+    expected = uncertainty_dimension(sbml, draws=4, seed=0)
+    assert drawn.id == expected.id
+    np.testing.assert_array_equal(
+        np.asarray(drawn.values[PARAMETER], dtype=float),
+        np.asarray(expected.values[PARAMETER], dtype=float),
+    )
+
+
+def test_the_draws_of_a_model_without_distributions_are_refused(
+    tmp_path: Path,
+) -> None:
+    read = ModelDistributions.read(PROJECT.variant_path("default"))
+    assert (read.distributions, read.name) == ({}, "")
+    with pytest.raises(ValueError, match="has a distribution"):
+        read.dimension(draws=4, seed=0)
+    empty = tmp_path / "empty.xml"
+    empty.write_text(
+        libsbml.writeSBMLToString(libsbml.SBMLDocument(3, 2)), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="has no SBML model"):
+        ModelDistributions.read(empty)
 
 
 def test_the_band_of_a_point_is_the_percentiles_of_its_draws(
@@ -287,3 +321,40 @@ def test_the_sample_of_a_bundle_is_the_sample_of_the_service(
     other = bundle.content["answers"][""]["panels"]["renal_urine"]
     assert other["run"]["uncertainty"] is None
     assert other["declaration"]["simulation"]["uncertainty"] is None
+
+
+def test_a_bundle_reads_the_distributions_of_a_model_once(
+    project: Project, panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panels of a bundle share the parse of the model and its sample.
+
+    A panel of a large model took 0.2 s of parsing its SBML twice per panel
+    (the distributions and the name of the fit), which made the export of a
+    model of 45 panels with bands 20 s; the sample of the panels of one model,
+    draws and seed is drawn once and every panel carries its own copy.
+    """
+    from sbmlsim.serve import export
+
+    twin = panel.model_copy(update={"id": f"{panel.id}_twin"})
+    shared = project.replace(panels={**dict(project.panels), twin.id: twin})
+    registry = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=shared, title="Hydrochlorothiazide")}
+    )
+    reads: list[Path] = []
+    read = ModelDistributions.read
+
+    def counted(path: Path) -> ModelDistributions:
+        reads.append(path)
+        return read(path)
+
+    monkeypatch.setattr(ModelDistributions, "read", staticmethod(counted))
+    bundle = export.build_bundle(registry, "hctz")
+    panels = bundle.content["answers"][""]["panels"]
+    one, two = (
+        panels[panel.id]["run"]["uncertainty"],
+        panels[twin.id]["run"]["uncertainty"],
+    )
+    assert reads == [shared.variant_path("default").resolve()]
+    assert one == two
+    assert one["draws"] is not two["draws"]
+    assert one["draws"][0] is not two["draws"][0]

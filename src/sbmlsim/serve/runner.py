@@ -2687,13 +2687,11 @@ def _sample(path: Path, max_draws: int, seed: int) -> _Sample:
     """
     # the sampling package reaches the fit and the experiment layers, which
     # import this one, so the draws are imported where they are drawn
-    from sbmlsim.simulation.sampling.model_distributions import (
-        uncertainty_dimension,
-        uncertainty_name,
-    )
+    from sbmlsim.simulation.sampling.model_distributions import ModelDistributions
 
-    dimension = uncertainty_dimension(path, draws=max_draws, seed=seed)
-    return _Sample(fit=uncertainty_name(path), values=dict(dimension.values))
+    read = ModelDistributions.read(path)
+    dimension = read.dimension(draws=max_draws, seed=seed)
+    return _Sample(fit=read.name, values=dict(dimension.values))
 
 
 def _band(

@@ -7,7 +7,8 @@ gives the values of a target at probabilities of the unit cube, so every
 design works with every marginal; a distribution without a location is
 relative to the reference of its target, see `references`. The distributions
 which a model states for its parameters with distrib are read by
-`parameter_distributions` and drawn by `uncertainty_dimension`.
+`parameter_distributions` and drawn by `uncertainty_dimension`, or read
+once for several uses by `ModelDistributions`.
 """
 
 from sbmlsim.simulation.sampling.designs import (
@@ -37,6 +38,7 @@ from sbmlsim.simulation.sampling.fit import (
 from sbmlsim.simulation.sampling.model_distributions import (
     MAX_SIGMA,
     UNCERTAINTY_DIMENSION,
+    ModelDistributions,
     distribution_from_formula,
     parameter_distributions,
     uncertainty_dimension,
@@ -54,6 +56,7 @@ __all__ = [
     "Fixed",
     "LogNormal",
     "LogUniform",
+    "ModelDistributions",
     "Normal",
     "Truncated",
     "Uniform",
