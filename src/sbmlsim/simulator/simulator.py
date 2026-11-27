@@ -181,7 +181,8 @@ class Simulator:
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
                 smaller one serially. A run of sbmlsim-core has one
                 process and counts them as the threads of the batches of its
-                chunks instead, see `_workers`.
+                chunks instead, `None` every CPU for a scan of any size, see
+                `_workers`.
             engine: the engine or its name, `roadrunner`, `copasi`, `amici`
                 or `core`.
             **integrator_settings: the settings of the integrator by their
