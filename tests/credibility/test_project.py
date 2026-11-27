@@ -4,8 +4,9 @@ import pydantic
 import pytest
 
 from sbmlsim.credibility import DeclarationError, EvidenceExtension, records
+from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import MappingMetaData
-from sbmlsim.project import CredibilitySettings
+from sbmlsim.project import CredibilitySettings, Project
 from tests.credibility_toy import PROJECT
 from tests.credibility_toy.extensions import ARMS
 from tests.credibility_toy.metadata import Health, Route, ToyMetaData
@@ -124,3 +125,20 @@ def test_the_mapping_table_creates_the_fit_mappings_of_the_project(
     with pytest.raises(_Stop):
         records.mapping_table(PROJECT)
     assert seen == [PROJECT]
+
+
+def test_the_problems_of_the_adopted_fits_fix_the_adopted_fits_now(
+    credibility_project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The assessment is about the model of all adopted fits, not the SBML (#663)."""
+    from sbmlsim.fit import project_fits
+
+    def adopted_values(
+        project: Project, subset: str, definition: FitDefinition
+    ) -> tuple[list[str], dict[str, float]]:
+        """Get the values of an adopted fit of another subset."""
+        return ["OTHER_20260101_000000__abcde"], {"Vc": 2.0}
+
+    monkeypatch.setattr(project_fits, "fixed_values", adopted_values)
+    (adopted,) = records.adopted_problems(credibility_project)
+    assert adopted.problem.fixed_values == {"Vc": 2.0}

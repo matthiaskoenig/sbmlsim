@@ -288,7 +288,12 @@ def cross_validate(
     Raises:
         ValueError: if the fit is not adopted or a study is no training study.
     """
-    from sbmlsim.fit.cli import report_from_records, run_fit
+    from sbmlsim.fit.cli import (
+        load_fit_records,
+        problem_of_records,
+        report_from_records,
+        run_fit,
+    )
     from sbmlsim.fit.options import OptimizationAlgorithmType
     from sbmlsim.fit.project_fits import fixed_values, start_point
     from sbmlsim.fit.project_fits import with_start as start_from
@@ -315,8 +320,17 @@ def cross_validate(
         )
     point = start_point(project, definition, fit_id, output_dir)
     _, fixed = fixed_values(project, subset, definition)
+    # the reference is the adopted fit with the values the refits keep fixed
+    records = load_fit_records(record)
     reference = report_from_records(
-        definition, record, opid=subset, mapping_figures=False
+        definition,
+        record,
+        opid=subset,
+        records=records,
+        mapping_figures=False,
+        problem=problem_of_records(
+            definition, records, opid=subset, fixed_values=fixed
+        ),
     )
     fitted_points = reference.metrics(reference.reference_set).datapoints_df()
     results: list[HeldOutStudy] = []

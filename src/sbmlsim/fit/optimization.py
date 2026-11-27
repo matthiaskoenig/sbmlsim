@@ -898,6 +898,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         jit_optimization: JitOptimization | str | None = None,
         engine: Engine | str = DEFAULT_ENGINE,
         prior_correlation: Covariance | None = None,
+        fixed_values: Mapping[str, float] | None = None,
     ):
         """Optimization problem.
 
@@ -930,6 +931,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 priors of some parameters, `Covariance.correlation` by their
                 pids, which have a normal or a log-normal prior; the priors
                 are independent without, see `sbmlsim.fit.priors`.
+            fixed_values: the values the problem keeps fixed by the id of their
+                entity in the model, in the units of the model, e.g. the
+                fitted values of the adopted fits of the other subsets of a
+                project (`sbmlsim.fit.project_fits.fixed_values`). They are
+                pre-initialization changes of every simulation of a model
+                which has the entity (`fixed_changes`), so the problem
+                simulates them whatever value the model holds; a change of
+                the model of an experiment and one of its simulation win over
+                them, and a value of an entity which a parameter of the
+                problem writes is left out, the parameter sets it.
 
         Raises:
             ValueError: if the problem has no parameters or two parameters of
@@ -968,6 +979,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         # it was given nor another problem of the same definition; the values
         # of a parameter are immutable, a selector and a prior are shared
         self.parameters = [copy(p) for p in fit_parameters]
+        #: the values the problem keeps fixed by entity, see `fixed_changes`
+        written = {p.target_id for p in self.parameters}
+        self.fixed_values: dict[str, float] = {
+            target: float(value)
+            for target, value in (fixed_values or {}).items()
+            if target not in written
+        }
         check_prior_correlation(self.parameters, prior_correlation)
         #: the correlation of the priors, see `sbmlsim.fit.priors`
         self.prior_correlation: Covariance | None = prior_correlation
@@ -1078,6 +1096,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             jit_optimization=self.jit_optimization,
             engine=self.engine,
             prior_correlation=self.prior_correlation,
+            fixed_values=self.fixed_values,
         )
         fresh._amici_cache = self._worker_amici_cache()
         return fresh.__dict__
@@ -1415,6 +1434,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         d["hybridizations"] = [describe(h) for h in self.hybridizations]
         d["engine"] = self.engine.value
+        d["fixed_values"] = dict(self.fixed_values)
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -2339,9 +2359,34 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
             scan = definition if definition.dimensions else None
             definition = definition.simulation
-        simulation = definition.with_preinit_defaults(model.changes)
+        simulation = definition.with_preinit_defaults(
+            {**self.fixed_changes(model), **model.changes}
+        )
         self._simulation_cache[key] = (simulation, scan)
         return simulation, scan
+
+    def fixed_changes(self, model: SBMLModel) -> dict[str, float]:
+        """Get the fixed values of the problem which apply to a model.
+
+        They are the defaults of the pre-initialization changes of every
+        simulation of the model, below the changes of the model, see
+        `_simulation_of`; a value of an entity the model does not have, e.g.
+        of a parameter of another model of the project, is left out.
+
+        Args:
+            model: the loaded model.
+
+        Returns:
+            The fixed values of the entities of the model, in its units.
+        """
+        changes: dict[str, float] = {}
+        for target, value in self.fixed_values.items():
+            try:
+                model.loaded_value(target)
+            except KeyError:
+                continue
+            changes[target] = value
+        return changes
 
     def _observation_of(
         self,

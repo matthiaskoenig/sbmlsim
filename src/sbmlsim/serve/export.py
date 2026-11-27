@@ -103,10 +103,7 @@ from sbmlsim.serve.runner import (
     time_factor,
     time_unit,
 )
-from sbmlsim.simulation.sampling.model_distributions import (
-    uncertainty_dimension,
-    uncertainty_name,
-)
+from sbmlsim.simulation.sampling.model_distributions import ModelDistributions
 from sbmlsim.simulator.formula import compile_formula, formula_mathml
 
 logger = logging.getLogger(__name__)
@@ -188,6 +185,69 @@ class _BundleModel:
     sbml: str
     tolerances: Mapping[str, float]
     selections: set[str] = field(default_factory=set)
+
+
+@dataclass
+class _Reads:
+    """What the build of a bundle reads of its models, read once per bundle.
+
+    The panels of a model run on few models and the SBML of a large model
+    takes about 0.1 s to parse, more than everything else of the run of a
+    panel, so a bundle parses the SBML of a variant once for the ids of its
+    elements (`_knob_parameters`) and once for its distributions
+    (`ModelDistributions`), and draws the sample of an uncertainty once per
+    seed and number of draws, which all its panels share. It lives as long as
+    the build of one bundle, so a model which is rewritten between two builds
+    is read again.
+
+    Attributes:
+        documents: the document of the SBML of every warm model, by its SBML;
+            read and never written into.
+        distributions: the distributions of every SBML file, by its path.
+        samples: the sample of an uncertainty by the path of the SBML, the
+            draws and the seed, see `_uncertainty`.
+        tolerances: the absolute tolerance of every state of an SBML file by
+            its path, see `_tolerances`, which the models of the derived
+            targets of a variant share.
+    """
+
+    documents: dict[str, libsbml.SBMLDocument] = field(default_factory=dict)
+    distributions: dict[Path, ModelDistributions] = field(default_factory=dict)
+    samples: dict[tuple[Path, int, int], tuple[list[str], list[list[float]]]] = field(
+        default_factory=dict
+    )
+    tolerances: dict[Path, dict[str, float]] = field(default_factory=dict)
+
+    def document(self, sbml: str) -> libsbml.SBMLDocument:
+        """Get the document of an SBML, parsed on its first use.
+
+        Raises:
+            ValueError: for SBML without a model.
+        """
+        doc = self.documents.get(sbml)
+        if doc is None:
+            doc = self.documents[sbml] = _document(sbml)
+        return doc
+
+    def model_distributions(self, path: Path) -> ModelDistributions:
+        """Get the distributions of the parameters of an SBML file, read on its first use.
+
+        Raises:
+            ValueError: see `ModelDistributions.read`.
+        """
+        read = self.distributions.get(path)
+        if read is None:
+            read = self.distributions[path] = ModelDistributions.read(path)
+        return read
+
+    def model_tolerances(
+        self, entry: ModelEntry, model: SBMLModel, path: Path
+    ) -> dict[str, float]:
+        """Get the absolute tolerances of an SBML file, see `_tolerances`."""
+        tolerances = self.tolerances.get(path)
+        if tolerances is None:
+            tolerances = self.tolerances[path] = _tolerances(entry, model, path)
+        return tolerances
 
 
 def export_bundles(registry: ModelRegistry, out: Path) -> list[Path]:
@@ -288,6 +348,7 @@ def build_bundle(
     """
     runner = PanelRunner(registry) if runner is None else runner
     entry = registry.entry(model_id)
+    reads = _Reads()
     models: dict[str, _BundleModel] = {}
     answers: dict[str, Any] = {}
     queries: list[str | None] = [None]
@@ -308,7 +369,7 @@ def build_bundle(
             panel.id: {
                 "declaration": panel_payload(panel),
                 "data": _data(runner, entry, panel, query),
-                "run": _run(runner, entry, panel, query, models),
+                "run": _run(runner, entry, panel, query, models, reads),
             }
             for panel in entry.project.panels_of(query).values()
         }
@@ -372,6 +433,7 @@ def _run(
     panel: Panel,
     query: str | None,
     models: dict[str, _BundleModel],
+    reads: _Reads,
 ) -> dict[str, Any]:
     """Get the recipe of the simulation of a panel, and add its model.
 
@@ -382,6 +444,7 @@ def _run(
         query: the variant of the query, `None` for none.
         models: the models of the bundle by their key, which the model of the
             run is added to.
+        reads: what the bundle has read of its models.
 
     Returns:
         The run, see the module.
@@ -391,12 +454,12 @@ def _run(
     variant = query or panel.simulation.variant or next(iter(project.variants))
     path = project.variant_path(variant).resolve()
     model = runner.model(entry, variant)
-    parameters, key = _knob_parameters(model, panel, variant)
+    parameters, key = _knob_parameters(model, panel, variant, reads)
     if key not in models:
         models[key] = _BundleModel(
             variant=variant,
             sbml=_with_derived(model, panel, parameters),
-            tolerances=_tolerances(entry, model, path),
+            tolerances=reads.model_tolerances(entry, model, path),
         )
     models[key].selections.update(curve.id for curve in panel.curves)
     x, x_unit = delivered_times(
@@ -458,11 +521,11 @@ def _run(
             }
             for dosing in panel.simulation.dosing
         ],
-        "uncertainty": _uncertainty(panel, path),
+        "uncertainty": _uncertainty(panel, path, reads),
     }
 
 
-def _uncertainty(panel: Panel, path: Path) -> dict[str, Any] | None:
+def _uncertainty(panel: Panel, path: Path, reads: _Reads) -> dict[str, Any] | None:
     """Get the sample of the uncertainty of a panel, the draws of its band.
 
     The draws are the Latin hypercube of the distrib distributions of the
@@ -474,6 +537,8 @@ def _uncertainty(panel: Panel, path: Path) -> dict[str, Any] | None:
     Args:
         panel: the declaration of the panel.
         path: the SBML of the variant the panel runs on.
+        reads: what the bundle has read of its models, whose sample of the
+            model, draws and seed the panels share.
 
     Returns:
         The sample, `None` for a panel which declares no uncertainty.
@@ -486,32 +551,39 @@ def _uncertainty(panel: Panel, path: Path) -> dict[str, Any] | None:
     if declared is None:
         return None
     try:
-        dimension = uncertainty_dimension(
-            path, draws=declared.max_draws, seed=declared.seed
-        )
+        read = reads.model_distributions(path)
+        key = (path, declared.max_draws, declared.seed)
+        sample = reads.samples.get(key)
+        if sample is None:
+            dimension = read.dimension(draws=declared.max_draws, seed=declared.seed)
+            parameters = sorted(dimension.values)
+            columns = [
+                np.asarray(
+                    getattr(
+                        dimension.values[name], "magnitude", dimension.values[name]
+                    ),
+                    dtype=float,
+                )
+                for name in parameters
+            ]
+            rows = [[float(value) for value in row] for row in np.column_stack(columns)]
+            sample = reads.samples[key] = (parameters, rows)
     except ValueError as err:
         raise ValueError(f"The panel '{panel.id}' is no bundle: {err}") from err
-    parameters = sorted(dimension.values)
-    columns = [
-        np.asarray(
-            getattr(dimension.values[name], "magnitude", dimension.values[name]),
-            dtype=float,
-        )
-        for name in parameters
-    ]
+    parameters, rows = sample
     return {
-        "fit": uncertainty_name(path),
+        "fit": read.name,
         "level": declared.level,
         "seed": declared.seed,
         "default_draws": declared.draws,
         "max_draws": declared.max_draws,
-        "parameters": parameters,
-        "draws": [[float(value) for value in row] for row in np.column_stack(columns)],
+        "parameters": list(parameters),
+        "draws": [list(row) for row in rows],
     }
 
 
 def _knob_parameters(
-    model: SBMLModel, panel: Panel, variant: str
+    model: SBMLModel, panel: Panel, variant: str, reads: _Reads
 ) -> tuple[dict[str, str], str]:
     """Get the parameters of the knobs a panel's formulas read, and its model key.
 
@@ -519,6 +591,8 @@ def _knob_parameters(
         model: the model of the variant.
         panel: the panel.
         variant: the name of the variant.
+        reads: what the bundle has read of its models, whose document of the
+            SBML of the model gives the ids it has.
 
     Returns:
         The parameter of every knob a formula of a derived target reads, by
@@ -538,7 +612,7 @@ def _knob_parameters(
             "knobs": {knob: float(defaults[knob]) for knob in read},
         }
     )
-    doc = _document(model.sbml)
+    doc = reads.document(model.sbml)
     taken: set[str] = set()
     parameters: dict[str, str] = {}
     for knob in read:

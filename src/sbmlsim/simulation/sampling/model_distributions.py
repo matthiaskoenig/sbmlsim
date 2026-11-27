@@ -7,9 +7,11 @@ uncertainty of the SBML package distrib, an uncert parameter of the type
 record of an adopted fit (`sbmlsim.fit.records.AdoptedRecords.parameter`).
 `parameter_distributions` reads these distributions back as distributions of
 `sbmlsim.simulation.sampling` and `uncertainty_dimension` draws them into the
-dimension `UNCERTAINTY_DIMENSION` of a scan. distrib states one distribution
-per parameter, so the draws are independent unless a correlation of their
-normal scores is given, e.g. the one of the record of an adopted fit
+dimension `UNCERTAINTY_DIMENSION` of a scan; `ModelDistributions` reads the
+distributions and the name of the uncertainties with one parse of the SBML,
+for a caller which draws one model more than once. distrib states one
+distribution per parameter, so the draws are independent unless a correlation
+of their normal scores is given, e.g. the one of the record of an adopted fit
 (`sbmlsim.fit.records.AdoptedRecord.correlation`), which the Latin hypercube
 takes as the rank correlation of a Gaussian copula.
 """
@@ -17,7 +19,8 @@ takes as the rank correlation of a Gaussian copula.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,6 +45,7 @@ if TYPE_CHECKING:
 __all__ = [
     "MAX_SIGMA",
     "UNCERTAINTY_DIMENSION",
+    "ModelDistributions",
     "distribution_from_formula",
     "parameter_distributions",
     "uncertainty_dimension",
@@ -111,29 +115,8 @@ def parameter_distributions(sbml_path: Path) -> dict[str, Distribution]:
             supported, see `distribution_from_formula`, or a parameter states
             two.
     """
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
-    model: libsbml.Model | None = doc.getModel()
-    if model is None:
-        raise ValueError(f"'{sbml_path}' has no SBML model.")
-    distributions: dict[str, Distribution] = {}
-    for parameter in model.getListOfParameters():
-        plugin = parameter.getPlugin("distrib")
-        if plugin is None:
-            continue
-        for k in range(plugin.getNumUncertainties()):
-            uncertainty = plugin.getUncertainty(k)
-            for j in range(uncertainty.getNumUncertParameters()):
-                child = uncertainty.getUncertParameter(j)
-                if child.getType() != libsbml.DISTRIB_UNCERTTYPE_DISTRIBUTION:
-                    continue
-                if not child.isSetMath():
-                    continue
-                pid = parameter.getId()
-                if pid in distributions:
-                    raise ValueError(f"The parameter '{pid}' states two distributions.")
-                formula = libsbml.formulaToL3String(child.getMath())
-                distributions[pid] = distribution_from_formula(formula)
-    return distributions
+    doc = _document(sbml_path)
+    return _distributions(doc.getModel())
 
 
 def uncertainty_name(sbml_path: Path) -> str:
@@ -155,20 +138,8 @@ def uncertainty_name(sbml_path: Path) -> str:
     Raises:
         ValueError: if the file has no model.
     """
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
-    model: libsbml.Model | None = doc.getModel()
-    if model is None:
-        raise ValueError(f"'{sbml_path}' has no SBML model.")
-    names: set[str] = set()
-    for parameter in model.getListOfParameters():
-        plugin = parameter.getPlugin("distrib")
-        if plugin is None:
-            continue
-        for k in range(plugin.getNumUncertainties()):
-            uncertainty = plugin.getUncertainty(k)
-            if uncertainty.isSetName():
-                names.add(uncertainty.getName())
-    return names.pop() if len(names) == 1 else ""
+    doc = _document(sbml_path)
+    return _name(doc.getModel())
 
 
 def uncertainty_dimension(
@@ -205,7 +176,164 @@ def uncertainty_dimension(
             correlations share a parameter or a correlation is not one of the
             kind `correlation`.
     """
-    distributions = parameter_distributions(sbml_path)
+    return _dimension(
+        sbml_path,
+        parameter_distributions(sbml_path),
+        draws,
+        seed,
+        id=id,
+        correlation=correlation,
+    )
+
+
+@dataclass(frozen=True)
+class ModelDistributions:
+    """The distributions of the parameters of a model, read with one parse.
+
+    A caller which needs the distributions, the name of their uncertainties
+    and the draws of one model more than once, e.g. the export of the panels
+    of a model (`sbmlsim.serve.export`), reads its SBML once with `read`
+    instead of once per call of `parameter_distributions`, `uncertainty_name`
+    and `uncertainty_dimension`, which give the same.
+
+    Attributes:
+        path: the SBML model it was read from.
+        distributions: the distribution of every parameter which has one, see
+            `parameter_distributions`.
+        name: the name the uncertainties share, see `uncertainty_name`.
+    """
+
+    path: Path
+    distributions: Mapping[str, Distribution]
+    name: str
+
+    @classmethod
+    def read(cls, sbml_path: Path) -> ModelDistributions:
+        """Read the distributions of the parameters of a model.
+
+        Args:
+            sbml_path: the SBML model, the flat model a simulation runs.
+
+        Returns:
+            The distributions and the name of their uncertainties.
+
+        Raises:
+            ValueError: if the file has no model, a distribution is not
+                supported, see `distribution_from_formula`, or a parameter
+                states two.
+        """
+        doc = _document(sbml_path)
+        model: libsbml.Model = doc.getModel()
+        return cls(
+            path=sbml_path, distributions=_distributions(model), name=_name(model)
+        )
+
+    def dimension(
+        self,
+        draws: int,
+        seed: int,
+        id: str = UNCERTAINTY_DIMENSION,
+        correlation: Sequence[Covariance] = (),
+    ) -> Dimension:
+        """Draw the parameters which have a distribution.
+
+        Args:
+            draws: the number of draws.
+            seed: the seed of the Latin hypercube.
+            id: the id of the dimension.
+            correlation: correlations of the normal scores of parameters.
+
+        Returns:
+            The dimension of the draws, the one `uncertainty_dimension` draws
+            from the SBML of `path`.
+
+        Raises:
+            ValueError: see `uncertainty_dimension`.
+        """
+        return _dimension(
+            self.path, self.distributions, draws, seed, id=id, correlation=correlation
+        )
+
+
+def _document(sbml_path: Path) -> libsbml.SBMLDocument:
+    """Read an SBML file which has a model.
+
+    Args:
+        sbml_path: the SBML file.
+
+    Returns:
+        The document, whose model is set.
+
+    Raises:
+        ValueError: if the file has no model.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml_path))
+    if doc.getModel() is None:
+        raise ValueError(f"'{sbml_path}' has no SBML model.")
+    return doc
+
+
+def _distributions(model: libsbml.Model) -> dict[str, Distribution]:
+    """Get the distributions of the parameters of a model, see `parameter_distributions`."""
+    distributions: dict[str, Distribution] = {}
+    for parameter in model.getListOfParameters():
+        plugin = parameter.getPlugin("distrib")
+        if plugin is None:
+            continue
+        for k in range(plugin.getNumUncertainties()):
+            uncertainty = plugin.getUncertainty(k)
+            for j in range(uncertainty.getNumUncertParameters()):
+                child = uncertainty.getUncertParameter(j)
+                if child.getType() != libsbml.DISTRIB_UNCERTTYPE_DISTRIBUTION:
+                    continue
+                if not child.isSetMath():
+                    continue
+                pid = parameter.getId()
+                if pid in distributions:
+                    raise ValueError(f"The parameter '{pid}' states two distributions.")
+                formula = libsbml.formulaToL3String(child.getMath())
+                distributions[pid] = distribution_from_formula(formula)
+    return distributions
+
+
+def _name(model: libsbml.Model) -> str:
+    """Get the name the uncertainties of a model share, see `uncertainty_name`."""
+    names: set[str] = set()
+    for parameter in model.getListOfParameters():
+        plugin = parameter.getPlugin("distrib")
+        if plugin is None:
+            continue
+        for k in range(plugin.getNumUncertainties()):
+            uncertainty = plugin.getUncertainty(k)
+            if uncertainty.isSetName():
+                names.add(uncertainty.getName())
+    return names.pop() if len(names) == 1 else ""
+
+
+def _dimension(
+    sbml_path: Path,
+    distributions: Mapping[str, Distribution],
+    draws: int,
+    seed: int,
+    id: str,
+    correlation: Sequence[Covariance],
+) -> Dimension:
+    """Draw the distributions of a model, see `uncertainty_dimension`.
+
+    Args:
+        sbml_path: the SBML model, which a problem names.
+        distributions: its distributions, see `parameter_distributions`.
+        draws: the number of draws.
+        seed: the seed of the Latin hypercube.
+        id: the id of the dimension.
+        correlation: correlations of the normal scores of parameters.
+
+    Returns:
+        The dimension of the draws.
+
+    Raises:
+        ValueError: see `uncertainty_dimension`.
+    """
     if not distributions:
         raise ValueError(
             f"No parameter of '{sbml_path}' has a distribution: the uncertainty "
