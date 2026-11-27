@@ -11,8 +11,10 @@ Every pool of the package comes from here:
 - `resolve_workers` turns `n_workers` into the number of processes;
 - `worker_cache` keeps objects in a worker, e.g. the models of a scan or the
   initialized problem of a fit, and builds one only when its key is new;
-- `worker_cores` is the share of the CPUs of a worker for threads of its own,
-  the CPUs over the workers of its pool which run a task (`working`).
+- `worker_cores` is the share of the CPUs of a worker for threads of its own:
+  the CPUs which the workers of its pool which run a task (`working`) leave
+  in python go to the ones which run threads (`threads`), also to a process
+  which runs a task beside its pool (`beside`).
 
 Ctrl-C belongs to the process of the user: a terminal sends SIGINT to every
 process of the job, the workers ignore it and the parent stops a pool whose
@@ -37,6 +39,7 @@ import os
 import signal
 import sys
 import threading
+import weakref
 from collections import OrderedDict
 from collections.abc import Callable, Generator, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -173,27 +176,89 @@ _POOL_SIZE: int | None = None
 #: `start_pool`
 _BUSY: Synchronized[int] | None = None
 
+#: the processes of the pool of this worker which run threads of their own
+#: in `threads`, a counter the pool shares with its workers; `None` outside of
+#: a worker of `start_pool`
+_THREADED: Synchronized[int] | None = None
+
+#: the size and the counters of the processes which run a task (`working`)
+#: and threads (`threads`) of every pool of `start_pool` of this process, by
+#: the pool
+_COUNTERS: weakref.WeakKeyDictionary[
+    ProcessPoolExecutor, tuple[int, Synchronized[int], Synchronized[int]]
+] = weakref.WeakKeyDictionary()
+
+#: the size and the counters of the pool this process runs a task beside, see
+#: `beside`; `None` while it runs none
+_BESIDE: tuple[int, Synchronized[int], Synchronized[int]] | None = None
+
+#: whether this process counts itself among the processes which run threads,
+#: see `threads`
+_IN_THREADS: bool = False
+
+
+def _value(counter: Synchronized[int] | None) -> int:
+    """Get the value of a shared counter, 0 without one."""
+    return 0 if counter is None else int(counter.value)
+
 
 def worker_cores() -> int:
     """Get the cores this process may use for threads of its own.
 
-    A worker of a pool has the share of the CPUs of the quota of the workers
-    which run a task (`working`), at least one, and the `1/n` share of a pool
-    of `n` processes when none counts itself busy, so the threads of all
-    workers of a busy pool are no more than the CPUs; any other process has
-    every CPU of the quota. The threads of the batches of sbmlsim-core in a
-    worker take this share (`sbmlsim.simulator.worker.core_threads`): a
-    worker which runs the long experiment of a run takes the CPUs the workers
-    which ran out of tasks leave, at its next batch (sbmlsim#664).
+    A worker of a pool shares the CPUs of the quota with the workers which
+    run a task (`working`): one which runs no threads of its own takes one
+    CPU, its python, and the ones which run threads (`threads`, this process
+    counted) share the others, at least one each, so the threads of a busy
+    pool are about the CPUs and the long experiment of a run takes the CPUs
+    which the workers in python or out of tasks leave, at its next batch
+    (sbmlsim#664). With no worker counted busy it has the `1/n` share of a
+    pool of `n` processes. A process which runs a task beside a pool of its
+    own (`beside`) counts among the workers and has a share as well; any
+    other process has every CPU of the quota. The threads of the batches of
+    sbmlsim-core in a worker take this share
+    (`sbmlsim.simulator.worker.core_threads`).
 
     Returns:
         The number of cores, at least one.
     """
     cpus = max(1, cgroup.available_cpus())
-    if _POOL_SIZE is None:
+    if _POOL_SIZE is not None:
+        size, busy_counter, threaded_counter = _POOL_SIZE, _BUSY, _THREADED
+    elif _BESIDE is not None:
+        size, busy_counter, threaded_counter = _BESIDE
+    else:
         return cpus if not in_worker() else 1
-    busy = 0 if _BUSY is None else int(_BUSY.value)
-    return max(1, cpus // (busy if busy > 0 else _POOL_SIZE))
+    busy = _value(busy_counter)
+    if busy <= 0:
+        return max(1, cpus // size)
+    threaded = _value(threaded_counter) + (0 if _IN_THREADS else 1)
+    single = max(0, busy - threaded)
+    return max(1, (cpus - single) // threaded)
+
+
+def shares_cpus() -> bool:
+    """Check whether this process shares the CPUs with the workers of a pool.
+
+    A worker of a pool does, and a process while it runs a task beside a
+    pool of its own (`beside`): its threads take its share of the CPUs,
+    `worker_cores`.
+    """
+    return _BESIDE is not None or in_worker()
+
+
+@contextmanager
+def _counted(counter: Synchronized[int] | None) -> Generator[None]:
+    """Count this process in a shared counter while the context runs."""
+    if counter is None:
+        yield
+        return
+    with counter.get_lock():
+        counter.value += 1
+    try:
+        yield
+    finally:
+        with counter.get_lock():
+            counter.value -= 1
 
 
 @contextmanager
@@ -204,17 +269,59 @@ def working() -> Generator[None]:
     (`worker_cores`) runs in it, e.g. an experiment of the runner; outside of
     a worker of `start_pool` it counts nothing.
     """
-    busy = _BUSY
-    if busy is None:
+    with _counted(_BUSY):
+        yield
+
+
+@contextmanager
+def threads() -> Generator[None]:
+    """Count this process among the processes of its pool which run threads.
+
+    The batches of sbmlsim-core run in it, whose threads share the CPUs which
+    the busy processes of the pool in python leave (`worker_cores`); outside
+    of a worker of `start_pool` and of `beside`, or within it already, it
+    counts nothing.
+    """
+    global _IN_THREADS
+    counter = _THREADED if _POOL_SIZE is not None else None
+    if counter is None and _BESIDE is not None:
+        counter = _BESIDE[2]
+    if counter is None or _IN_THREADS:
         yield
         return
-    with busy.get_lock():
-        busy.value += 1
-    try:
+    with _counted(counter):
+        _IN_THREADS = True
+        try:
+            yield
+        finally:
+            _IN_THREADS = False
+
+
+@contextmanager
+def beside(executor: ProcessPoolExecutor) -> Generator[None]:
+    """Count this process among the workers of its pool which run a task.
+
+    A process which runs a task while the workers of a pool it started run
+    theirs, e.g. the experiment which a run of experiments keeps in its own
+    process, shares the CPUs with them: its threads take its share
+    (`worker_cores`), and the share of every worker counts it. Outside of a
+    pool of `start_pool` of this process, or while it runs a task beside one
+    already, it counts nothing.
+
+    Args:
+        executor: the pool, started by `start_pool`.
+    """
+    global _BESIDE
+    pool = _COUNTERS.get(executor)
+    if pool is None or _BESIDE is not None:
         yield
-    finally:
-        with busy.get_lock():
-            busy.value -= 1
+        return
+    with _counted(pool[1]):
+        _BESIDE = pool
+        try:
+            yield
+        finally:
+            _BESIDE = None
 
 
 def check_workers(n_workers: int | None) -> None:
@@ -368,12 +475,13 @@ def _initialize_worker(
     initargs: tuple[Any, ...] = (),
     pool_size: int | None = None,
     busy: Synchronized[int] | None = None,
+    threaded: Synchronized[int] | None = None,
 ) -> None:
     """Initialize a worker: it ends with its parent, and SIGINT is ignored.
 
     The initializer of the caller of `start_pool` runs after it, with its
-    arguments. The worker keeps the size of its pool and the counter of its
-    workers which run a task, see `worker_cores`.
+    arguments. The worker keeps the size of its pool and the counters of its
+    workers which run a task and threads, see `worker_cores`.
 
     A worker ends when the process which started its pool ends, also when it
     was killed, see `_end_with_the_parent`.
@@ -391,9 +499,10 @@ def _initialize_worker(
     terminates its workers with it and waits for them, and waited forever for
     a worker which never received it.
     """
-    global _POOL_SIZE, _BUSY
+    global _POOL_SIZE, _BUSY, _THREADED
     _POOL_SIZE = pool_size
     _BUSY = busy
+    _THREADED = threaded
     _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
@@ -438,13 +547,15 @@ def start_pool(
             "serially (n_workers=1)."
         )
     context = _context(preload)
+    # the workers which run a task and threads, see `working` and `threads`
+    busy, threaded = context.Value("i", 0), context.Value("i", 0)
     executor = ProcessPoolExecutor(
         max_workers=n_workers,
         mp_context=context,
         initializer=_initialize_worker,
-        # the workers which run a task, see `working`
-        initargs=(initializer, initargs, n_workers, context.Value("i", 0)),
+        initargs=(initializer, initargs, n_workers, busy, threaded),
     )
+    _COUNTERS[executor] = (n_workers, busy, threaded)
     logger.debug("Starting a pool of %s workers", n_workers)
     try:
         # a pool spawns a worker per task submitted while none is idle, so a
@@ -522,6 +633,7 @@ def stop(executor: ProcessPoolExecutor) -> None:
     POSIX: the one which loses finds no process to wait for, and the worker
     looks alive for a moment after it ended.
     """
+    _COUNTERS.pop(executor, None)
     for n_workers, kept in list(_POOLS.items()):
         if kept is executor:
             del _POOLS[n_workers]

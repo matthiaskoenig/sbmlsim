@@ -315,11 +315,88 @@ def test_the_share_of_a_worker_follows_the_workers_which_run_a_task(
         assert parallel.worker_cores() == 20
         assert core_threads(None, 100) == 20
         assert core_threads(8, 100) == 8
+        # two other workers run a task in python, one CPU each
         busy.value += 2
-        assert parallel.worker_cores() == 6
+        assert parallel.worker_cores() == 18
         busy.value -= 2
     assert busy.value == 0
     assert parallel.worker_cores() == 2
+
+
+def test_the_workers_which_run_threads_share_the_cpus_the_others_leave(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker in python takes one CPU, the ones which run threads share the rest.
+
+    The long experiment of an uncertainty run got a fifth of the CPUs of a
+    pool of five busy workers while the other four ran python, their
+    initialization and their figures, and left most of the machine idle.
+    """
+    import multiprocessing
+
+    from sbmlsim.simulator.worker import core_threads
+
+    context = multiprocessing.get_context("spawn")
+    busy, threaded = context.Value("i", 0), context.Value("i", 0)
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
+    monkeypatch.setattr(parallel, "_POOL_SIZE", 7)
+    monkeypatch.setattr(parallel, "_BUSY", busy)
+    monkeypatch.setattr(parallel, "_THREADED", threaded)
+
+    with parallel.working():
+        # four other workers in python: this one takes the other 16 CPUs
+        busy.value += 4
+        assert parallel.worker_cores() == 16
+        with parallel.threads():
+            assert threaded.value == 1
+            assert core_threads(None, 100) == 16
+            # a second worker runs threads as well: they share 16 CPUs
+            threaded.value += 1
+            assert parallel.worker_cores() == 8
+            threaded.value -= 1
+            with parallel.threads():
+                # counted once
+                assert threaded.value == 1
+        assert threaded.value == 0
+        busy.value -= 4
+    assert busy.value == 0
+
+
+def test_a_process_beside_its_pool_shares_the_cpus_with_its_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The experiment which a run keeps in its process counts among the busy workers.
+
+    Its threads are its share of the CPUs, as a worker's, and not every CPU
+    beside the threads of the workers; a pool it did not start counts nothing.
+    """
+    from sbmlsim.simulator.worker import core_threads
+
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
+    executor = parallel.start_pool(2)
+    try:
+        _, busy, threaded = parallel._COUNTERS[executor]
+        assert not parallel.shares_cpus()
+        with parallel.beside(executor):
+            assert parallel.shares_cpus()
+            assert busy.value == 1
+            assert core_threads(None, 100) == 20
+            assert core_threads(4, 100) == 4
+            # a worker runs threads as well
+            threaded.value += 1
+            with parallel.threads():
+                assert threaded.value == 2
+                assert core_threads(None, 100) == 10
+            threaded.value -= 1
+            with parallel.beside(executor):
+                assert busy.value == 1
+        assert busy.value == 0
+        assert not parallel.shares_cpus()
+    finally:
+        parallel.stop(executor)
+    with parallel.beside(executor):
+        assert not parallel.shares_cpus()
 
 
 class Threads(Scanned):
@@ -329,12 +406,13 @@ class Threads(Scanned):
     def run(self, *args: Any, **kwargs: Any) -> ExperimentResult:
         result = super().run(*args, **kwargs)
         simulator = args[0] if args else kwargs["simulator"]
-        busy = parallel._BUSY
+        busy, threaded = parallel._BUSY, parallel._THREADED
         (kwargs["output_path"] / "threads.json").write_text(
             json.dumps(
                 {
                     "threads": simulator._workers(100)[1],
                     "busy": None if busy is None else busy.value,
+                    "threaded": None if threaded is None else threaded.value,
                     "cores": parallel.worker_cores(),
                 }
             ),
@@ -350,7 +428,7 @@ def test_a_worker_runs_the_scans_of_the_engine_core_on_its_share(
 
     It built a simulator of one worker, which ran the engine core on one thread
     whatever its share of the CPUs was. The worker counts itself busy while it
-    runs the experiment.
+    runs the experiment, and among the ones which run threads while it scans.
     """
     results = _run(tmp_path, 2, [Threads, First], Simulator(4, engine="core"))
 
@@ -362,7 +440,11 @@ def test_a_worker_runs_the_scans_of_the_engine_core_on_its_share(
     assert record["busy"] >= 1
     assert record["threads"] == min(4, record["cores"])
     cpus = parallel.cgroup.available_cpus()
-    assert record["cores"] == max(1, cpus // record["busy"])
+    # the worker runs threads, the other busy workers without threads one
+    # CPU each
+    threaded = record["threaded"] + 1
+    single = max(0, record["busy"] - threaded)
+    assert record["cores"] == max(1, (cpus - single) // threaded)
 
 
 def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
@@ -375,6 +457,46 @@ def test_an_experiment_of_a_scan_which_fills_the_machine_runs_here(
 
     assert _process(tmp_path, "Scanned")["pid"] == os.getpid()
     assert _process(tmp_path, "First")["pid"] != os.getpid()
+
+
+class LargerScan(Scanned):
+    """An experiment of a scan of more points than `Scanned`."""
+
+    @override
+    def simulations(self) -> dict:
+        return {
+            "sim": Scan(
+                Simulation(end=20, steps=20),
+                [
+                    Dimension(
+                        "k",
+                        values={"KM": [40.0 + k for k in range(2 * SCAN_POINTS)]},
+                    )
+                ],
+            )
+        }
+
+
+def test_the_engine_core_runs_one_experiment_of_such_a_scan_here(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The process runs the most expensive one, the others run in the pool.
+
+    One process runs one experiment after the other: the HCTZ model of
+    pkdb_models ran two experiments of such a scan here over the draws of its
+    parameters, the second after the first, while the workers of the engine
+    core run such a scan on their share of the CPUs as well.
+    """
+    monkeypatch.setattr(parallel, "POOL_THRESHOLD", SCAN_POINTS)
+
+    results = _run(
+        tmp_path, 2, [Scanned, LargerScan, First, Second], Simulator(engine="core")
+    )
+
+    assert [r.error for r in results] == [None, None, None, None]
+    assert _process(tmp_path, "LargerScan")["pid"] == os.getpid()
+    for sid in ("Scanned", "First", "Second"):
+        assert _process(tmp_path, sid)["pid"] != os.getpid(), sid
 
 
 def test_a_run_of_nothing_but_such_experiments_is_serial(tmp_path: Path) -> None:

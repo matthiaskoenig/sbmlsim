@@ -672,9 +672,17 @@ class ExperimentRunner:
             for sid, future in futures.items():
                 future.add_done_callback(_on_done(display, count, sid))
             if beside:
-                for sid in self._order:
-                    if sid in spread.in_process and sid not in self.failed:
-                        done[sid] = run_one(sid)
+                # the experiment here counts among the busy workers of the
+                # pool, so its threads and the ones of the workers share the
+                # CPUs (`parallel.beside`)
+                with (
+                    parallel.beside(executor)
+                    if executor is not None
+                    else contextlib.nullcontext()
+                ):
+                    for sid in self._order:
+                        if sid in spread.in_process and sid not in self.failed:
+                            done[sid] = run_one(sid)
             for sid in self._order:
                 if sid in done:
                     continue
@@ -841,6 +849,15 @@ class ExperimentRunner:
         }
         if not pooled:
             return [], None
+        if self.engine is Engine.CORE:
+            # one process runs one experiment at a time: the most expensive
+            # runs here, already initialized, and the others of such a scan
+            # in the pool, whose workers have their share of the CPUs as well,
+            # instead of one after the other here
+            sid = max(pooled, key=lambda s: _cost(self.experiments[s]))
+            return [sid], (
+                f"its scan of {pooled[sid]} points runs on the threads of this process"
+            )
         return list(pooled), (
             f"the simulator runs a scan of {max(pooled.values())} points in a pool"
         )
