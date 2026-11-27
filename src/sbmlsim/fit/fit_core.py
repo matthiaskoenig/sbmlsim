@@ -44,8 +44,49 @@ the start. A group whose data reads a value per simulation keeps the output
 of its simulation, which python reduces, and its curves are the reductions of
 the columns of its condition (`sbmlsim.fit.reductions`, the `reduction` of a
 curve of sbmlsim-core 0.32.0, the floor of sbmlsim): the largest, the smallest or the mean value of a
-column, its value at a time and a parameter of the analysis of pkpdutils. A
-group whose simulation is a scan is no condition of a request (#624).
+column, its value at a time and a parameter of the analysis of pkpdutils.
+
+A group whose simulation is a scan is **one condition per point** of the scan
+(#624): the problem simulates every point as a simulation of its own, the
+plan of its group with the values of the parameters applied first and the
+values of the point after them (`OptimizationProblem.evaluated_plan` with its
+`point`), and the condition of a point is the request of that plan, so a
+dimension wins over a fitted value of its target in the request as it does
+in python. A mapping of such a group is either a value per simulation, a
+timecourse or a reduction of one point, which is a curve of its condition,
+or values over a dimension of the scan (`xid="<dimension>.<target>"`), which
+python interpolates linearly along the values of the dimension at the x of
+its data: a measurement at a point (within the rounding of a unit, the
+`END_RTOL` of the ends of a dimension) is a curve of the condition of that
+point, one curve per run of measurements at one point (`_Part.point`), and a
+group which keeps its output reduces the columns of every point on the plan
+of that point (`sbmlsim.fit.reductions.kept_group`), the doses of a `PK`
+batch and the changes of a dimension with `at` included. Only the points a
+curve reads are conditions.
+
+The other shape, a dimension of the request whose rows are the values of the
+points of one condition, is no field of the contract, and one condition per
+point holds where it was measured: a scan of the cmax of a `PK` observable or
+of an `at` of a formula over the doses of a one compartment model costs a
+condition of about 6 kB and a curve of 0.2 kB (`at`) or 4.4 kB (`PK`, the
+batch of pkpdutils) per point, linear in the points, so a design of 300
+points is a request of 1.8 MB or 3.0 MB built in 14 ms or 0.24 s (the batch
+of every point) and prepared by the engine in 35 ms or 56 ms, and one of
+1000 points 5.9 MB or 10 MB, built in 0.05 s or 0.85 s and prepared in
+0.12 s or 0.19 s. An evaluation of the residuals of 1000 points takes 64 ms
+(`at`) or 81 ms (`PK`) in the engine on four threads against 217 ms or
+165 ms of python, which simulates the points of one group one after another.
+The cost of a condition per point is the request, which is built once per
+fit, and the plan the engine prepares per condition, which it would prepare
+for every row of a dimension as well.
+
+What stays out is the gap `scan` (`_gaps_of_a_scan`): a dimension without a
+time which sets the target of a parameter of the fit, which the engine sets
+over the pre-initialization of every condition where python lets the
+dimension win, and a measurement between two points, which python
+interpolates between the values of two conditions and no curve of `fit/1`
+reads; the latter would need a curve over the conditions of a dimension,
+a change of sbmlsim-core.
 
 A value of that request is a number, so a value which an optimizer moves
 cannot be one: the number would hold it where the fit started. That is a
@@ -174,7 +215,7 @@ from sbmlsim.fit.options import (
     ResidualType,
 )
 from sbmlsim.fit.priors import prior_median, prior_support, untruncated_log_density
-from sbmlsim.fit.reductions import KeptGap, KeptGroup, kept_group
+from sbmlsim.fit.reductions import KeptGap, KeptGroup, kept_group, point_plan_of
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.simulator.formula import compile_formula, linear_form
 from sbmlsim.simulator.observables import FormulaNode
@@ -1481,6 +1522,9 @@ def _gaps_of_the_request(problem: OptimizationProblem) -> list[Gap]:
         fit_request(problem)
     except UnsupportedModelError as err:
         return [Gap("unsupported", f"the engine does not simulate the fit: {err}")]
+    except KeptGap as err:
+        # a point of a scan whose curves no reduction of the engine reads
+        return [Gap("observable", f"a point of a scan has no curve: {err}")]
     except (ValueError, KeyError, TypeError) as err:
         return [
             Gap(
@@ -1705,7 +1749,11 @@ def _conditions_and_curves(
     A condition is a simulation group of the problem which has training data,
     the request of its plan with the values of the parameters at the start of
     the fit; a curve is a training fit mapping, the data of the problem with
-    the weight of every point of it.
+    the weight of every point of it. A group of a scan is a condition per
+    point its curves read, the plan of the point with the values of the
+    parameters applied first, as `OptimizationProblem.evaluated_plan`
+    applies them, and a mapping over a dimension of the scan is a curve per
+    point its data is at (`_parts_of`).
 
     A condition of a fit of several models names the model it simulates, the
     model of its simulation group, and a condition of a fit of one model
@@ -1726,57 +1774,73 @@ def _conditions_and_curves(
     x = np.asarray(problem.xmodel, dtype=float)
     parts = {k: _parts_of(problem, k) for k in problem.indices(MappingKind.TRAINING)}
     conditions: list[dict[str, Any]] = []
-    of_the_group: dict[int, str] = {}
-    reduced: dict[int, KeptGroup] = {}
+    # the condition and the curves of a group which keeps its output, by the
+    # group and the point of its scan
+    of_the_point: dict[tuple[int, int], str] = {}
+    reduced: dict[tuple[int, int], KeptGroup] = {}
     for group, mappings in enumerate(problem.mapping_groups):
-        training = [
-            k for k in mappings if problem.mapping_kinds[k] is MappingKind.TRAINING
-        ]
+        training = _training_of(problem, mappings)
         if not training:
             continue
         at = _model_of_group(problem, group)
         model = of_the_models[at]
-        kept = (
-            kept_group(problem, group, training)
-            if problem._group_graphs[group] is not None
-            else None
-        )
-        plan = problem.evaluated_plan(group, x, [])
-        # a value which follows a parameter of the fit is no number of the
-        # request: the engine evaluates it before every simulation
-        plan, derived = (
-            _derived_of(problem, plan, model) if reads_derived(loaded) else (plan, [])
-        )
-        if kept is not None:
-            # a group which keeps its output selects the columns its curves
-            # reduce, see `sbmlsim.fit.reductions`
-            reduced[group] = kept
-            selections = kept.columns
-        else:
-            selections = _selections_of_a_condition(problem, group, training, parts)
-        condition = _condition_id(problem, group, training[0])
-        of_the_group[group] = condition
-        entry: dict[str, Any] = {
-            "id": condition,
-            "request": request_of(
-                plan,
-                model,
-                selections,
-                settings_of[at],
-                forms=reads_change_forms(loaded),
-            ),
-        }
-        if len(of_the_models) > 1:
-            entry["model"] = ids[at]
-        if derived:
-            entry["derived"] = derived
-        conditions.append(entry)
+        kept = problem._group_graphs[group] is not None
+        scan = problem._group_points[group] is not None
+        # the points of the scan the curves read, in the order of the points
+        points = sorted({part.point for k in training for part in parts[k]})
+        for point in points:
+            plan = problem.evaluated_plan(group, x, [], point=point)
+            # a value which follows a parameter of the fit is no number of the
+            # request: the engine evaluates it before every simulation
+            plan, derived = (
+                _derived_of(problem, plan, model)
+                if reads_derived(loaded)
+                else (plan, [])
+            )
+            if kept:
+                # a group which keeps its output selects the columns its
+                # curves reduce, see `sbmlsim.fit.reductions`
+                reduced[group, point] = kept_group(problem, group, training, point)
+                selections = reduced[group, point].columns
+            else:
+                selections = _selections_of_a_condition(problem, group, training, parts)
+            condition = _condition_id(
+                problem, group, training[0], point if scan else None
+            )
+            of_the_point[group, point] = condition
+            entry: dict[str, Any] = {
+                "id": condition,
+                "request": request_of(
+                    plan,
+                    model,
+                    selections,
+                    settings_of[at],
+                    forms=reads_change_forms(loaded),
+                ),
+            }
+            if len(of_the_models) > 1:
+                entry["model"] = ids[at]
+            if derived:
+                entry["derived"] = derived
+            conditions.append(entry)
     groups = {k: group for group, ks in enumerate(problem.mapping_groups) for k in ks}
     curves = [
-        _reduced_curve(problem, k, of_the_group[groups[k]], reduced[groups[k]])
-        if groups[k] in reduced
+        _reduced_curve(
+            problem,
+            k,
+            of_the_point[groups[k], part.point],
+            reduced[groups[k], part.point],
+            part,
+            len(parts[k]) > 1,
+        )
+        if (groups[k], part.point) in reduced
         else _curve(
-            problem, k, of_the_group[groups[k]], groups[k], part, len(parts[k]) > 1
+            problem,
+            k,
+            of_the_point[groups[k], part.point],
+            groups[k],
+            part,
+            len(parts[k]) > 1,
         )
         for k in problem.indices(MappingKind.TRAINING)
         for part in parts[k]
@@ -1818,7 +1882,12 @@ def _training_of(problem: OptimizationProblem, mappings: Sequence[int]) -> list[
 
 
 def _reduced_curve(
-    problem: OptimizationProblem, mapping: int, condition: str, kept: KeptGroup
+    problem: OptimizationProblem,
+    mapping: int,
+    condition: str,
+    kept: KeptGroup,
+    part: _Part,
+    numbered: bool,
 ) -> dict[str, Any]:
     """Get the curve of a training mapping of a group which keeps its output.
 
@@ -1828,30 +1897,51 @@ def _reduced_curve(
     timecourse with the column interpolated at their times. The noise is the
     one of every other curve (`_noise_of`), and so is a likelihood, whose
     noise is a number here.
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the training fit mapping.
+        condition: the id of the condition of the point the curve reads.
+        kept: the curves of the group on the plan of that point.
+        part: the part of the mapping the curve is (`_parts_of`), the
+            measurements at one point of a scan for a mapping over a
+            dimension, else the whole of it.
+        numbered: whether the mapping has more than one part, whose curves
+            carry the positions of their points in their id.
     """
     reduced = kept.curves[mapping]
+    at = list(part.at)
     values = np.asarray(problem.y_references[mapping], dtype=float)
+    key = problem.mapping_keys[mapping]
     curve: dict[str, Any] = {
-        "id": problem.mapping_keys[mapping],
+        "id": f"{key}[{at[0]}:{at[-1] + 1}]" if numbered else key,
         "condition": condition,
         "column": reduced.column,
-        "values": [float(value) for value in values],
+        "values": [float(values[point]) for point in at],
         "reduction": reduced.reduction,
     }
     if reduced.times:
-        curve["times"] = list(reduced.times)
+        curve["times"] = [reduced.times[point] for point in at]
     likelihood = _likelihood_of(problem, mapping)
     if likelihood is not None:
         curve["likelihood"] = likelihood
-    curve["noise"] = [float(noise) for noise in _noise_of(problem, mapping)]
+    noise = _noise_of(problem, mapping)
+    curve["noise"] = [float(noise[point]) for point in at]
     return curve
 
 
-def _condition_id(problem: OptimizationProblem, group: int, mapping: int) -> str:
-    """Get the id of the condition of a group, which its curves read it by."""
-    return (
+def _condition_id(
+    problem: OptimizationProblem, group: int, mapping: int, point: int | None = None
+) -> str:
+    """Get the id of the condition of a group, which its curves read it by.
+
+    The condition of a point of a scan carries the point as well, in the
+    order of the points of the group.
+    """
+    condition = (
         f"{problem.experiment_keys[mapping]}|{problem.simulation_keys[mapping]}|{group}"
     )
+    return condition if point is None else f"{condition}|{point}"
 
 
 def _curve(
@@ -2041,15 +2131,7 @@ def _gaps_of_a_group(
     problem: OptimizationProblem, group: int, training: Sequence[int]
 ) -> list[Gap]:
     """Get the gaps of a simulation group of a problem and of its training data."""
-    gaps: list[Gap] = []
-    if problem._group_points[group] is not None:
-        gaps.append(
-            Gap(
-                "scan",
-                f"the simulation of the group {group} is a scan, whose points "
-                f"are simulations of their own",
-            )
-        )
+    gaps: list[Gap] = _gaps_of_a_scan(problem, group, training)
     kept = problem._group_graphs[group] is not None
     if kept:
         gaps.extend(_gaps_of_a_kept_group(problem, group, training))
@@ -2069,6 +2151,62 @@ def _gaps_of_a_group(
     return gaps
 
 
+def _gaps_of_a_scan(
+    problem: OptimizationProblem, group: int, training: Sequence[int]
+) -> list[Gap]:
+    """Get the gaps of a group whose simulation is a scan.
+
+    A group of a scan is a condition per point (`_conditions_and_curves`).
+    What no condition of a request carries is the gap `scan`:
+
+    - a dimension which sets the target of a parameter of the fit before the
+      simulation: python applies the values of a point after the values of
+      the parameters, so the dimension wins and the parameter has no effect
+      in the group, while the engine sets a parameter of the request on its
+      target in every condition, over the pre-initialization of the request
+      (a dimension with `at` is a change at its time, which the engine
+      applies after the parameter as python does, and which
+      `_gaps_of_the_values` reads);
+    - a mapping over a dimension whose data is between two points of the
+      scan, which python interpolates linearly between the values of the
+      two points and which no curve of a request reads (`_data_points`).
+    """
+    points = problem._group_points[group]
+    if points is None:
+        return []
+    gaps: list[Gap] = []
+    targets = _parameter_targets(problem)
+    for target in points.values:
+        if target in targets:
+            gaps.append(
+                Gap(
+                    "scan",
+                    f"the scan of the group {group} sets '{target}', the target "
+                    f"of the parameter "
+                    f"'{problem.parameters[targets[target]].pid}' of the fit, "
+                    f"before the simulation: the dimension wins over the "
+                    f"parameter in python, and the engine sets a parameter of "
+                    f"the request in every condition",
+                )
+            )
+    from sbmlsim.fit.optimization import ObservationKind
+
+    for k in training:
+        if problem.observation_kinds[k] is not ObservationKind.DIMENSION:
+            continue
+        if _data_points(problem, k) is None:
+            gaps.append(
+                Gap(
+                    "scan",
+                    f"the data of the mapping '{problem.mapping_keys[k]}' is "
+                    f"between the points of the scan of the group {group}, "
+                    f"which python interpolates between the values of two "
+                    f"points and a curve of a request reads one condition",
+                )
+            )
+    return gaps
+
+
 def _gaps_of_a_kept_group(
     problem: OptimizationProblem, group: int, training: Sequence[int]
 ) -> list[Gap]:
@@ -2084,10 +2222,11 @@ def _gaps_of_a_kept_group(
         f"the data of the group {group} is read from observables of its "
         f"experiment which need the output of its simulation"
     )
-    if problem._group_points[group] is not None:
-        # the gap `scan` of the group says it, see #624
-        return [Gap("observable", f"{message}, the points of a scan")]
     try:
+        # the curves of the first point: the formulas are the ones of the
+        # group, and what is particular to another point, e.g. a dose the
+        # kernel of pkpdutils does not analyse, is what the request refuses,
+        # see `_gaps_of_the_request`
         kept = kept_group(problem, group, list(training))
         models = _models_of(problem)
         if models:
@@ -2199,8 +2338,10 @@ def after_change_of(
         every mapping of a simulation without changes.
     """
     times = np.asarray(problem.x_references[mapping], dtype=float)
-    plan = problem.plans[group]
-    if plan is None or not plan.change_times or times.size == 0:
+    # a timecourse of a scan reads its one point, whose changes python finds
+    # the rows of the data with (`_compile_plans`, `first`)
+    plan = point_plan_of(problem, group)
+    if not plan.change_times or times.size == 0:
         return None
     at_change = plan.at_change(times - plan.time_shift)
     before = problem._before_change[mapping]
@@ -2539,15 +2680,22 @@ class _Part:
     residuals of the request stay the residuals of the problem in their
     order.
 
+    A mapping over a dimension of a scan is one curve per run of consecutive
+    points which are at one point of the scan, each reading the condition of
+    that point (`_data_points`).
+
     Attributes:
         column: the column of the simulation the curve reads, `None` for the
             selection of the mapping itself.
         at: the positions of the points of the curve in the data of the
             mapping, consecutive and increasing.
+        point: the point of the scan of the group the curve reads, in the
+            order of its points; 0 for a group of a simulation.
     """
 
     column: str | None
     at: tuple[int, ...]
+    point: int = 0
 
 
 def _parts_of(problem: OptimizationProblem, mapping: int) -> list[_Part]:
@@ -2562,6 +2710,14 @@ def _parts_of(problem: OptimizationProblem, mapping: int) -> list[_Part]:
     """
     points = tuple(range(len(problem.x_references[mapping])))
     observable = problem.observable_models[mapping]
+    at_points = _data_points(problem, mapping)
+    if at_points is not None and len(points):
+        # a mapping over a dimension: a curve per run of the data at a point
+        runs = np.flatnonzero(np.diff(at_points)) + 1
+        return [
+            _Part(None, tuple(int(i) for i in run), int(at_points[run[0]]))
+            for run in np.split(np.arange(len(points)), runs)
+        ]
     if observable is None:
         return [_Part(None, points)]
     rows = _placeholder_rows(observable, problem.x_references[mapping])
@@ -2583,6 +2739,43 @@ def _parts_of(problem: OptimizationProblem, mapping: int) -> list[_Part]:
     if row is not None:
         parts.append(_Part(names[row], tuple(at)))
     return parts
+
+
+def _data_points(problem: OptimizationProblem, mapping: int) -> np.ndarray | None:
+    """Get the point of the scan every measurement of a mapping over a dimension is at.
+
+    Python compares the data of a mapping over a dimension of a scan with the
+    values per simulation of its points interpolated linearly along the
+    values of the dimension at the x of the data. A measurement whose x is
+    the value of a point, within the rounding of a unit conversion
+    (`END_RTOL`, which the match of the ends of the dimension allows as
+    well), is compared with the value of that point alone, which is the
+    curve of the condition of that point. A measurement between two points is
+    compared with a mixture of the values of two conditions, which no curve
+    of a request is: the mapping is the gap `scan` (`_gaps_of_a_scan`).
+
+    Args:
+        problem: the initialized problem.
+        mapping: index of the fit mapping.
+
+    Returns:
+        The point of every measurement, in the order of the points of the
+        group (`OptimizationProblem._dimension_values`); `None` for a mapping
+        which is no mapping over a dimension, or one whose data is not at
+        the points of its scan.
+    """
+    from sbmlsim.fit.optimization import END_RTOL, ObservationKind
+
+    if problem.observation_kinds[mapping] is not ObservationKind.DIMENSION:
+        return None
+    values = problem._dimension_values[mapping]
+    if values is None:  # pragma: no cover - set for every mapping over a dimension
+        return None
+    x = np.asarray(problem.x_references[mapping], dtype=float)
+    close = np.isclose(x[:, np.newaxis], values[np.newaxis, :], rtol=END_RTOL, atol=0.0)
+    if not bool(np.all(np.any(close, axis=1))):
+        return None
+    return np.argmax(close, axis=1)
 
 
 def _derived_of(
@@ -2701,7 +2894,7 @@ def _gaps_of_the_values(problem: OptimizationProblem) -> list[Gap]:
         # the forms of a plan are written all or nothing, so one formula
         # which is no form folds the forms of its plan as well
         formed = forms and is_formed(plan, of_the_groups[group])
-        for assignment, where in _held_values(plan):
+        for assignment, where in _held_values_of_the_parameters(problem, group, plan):
             if assignment.target not in targets:
                 continue
             seen = held.get(assignment.target)
@@ -2792,6 +2985,45 @@ def _held_values(plan: Plan) -> list[tuple[Assignment, str]]:
         for place in plan.places
         if place.kind is not PlaceKind.PREINIT
         for assignment in place.assignments
+    ]
+
+
+def _held_values_of_the_parameters(
+    problem: OptimizationProblem, group: int, plan: Plan
+) -> list[tuple[Assignment, str]]:
+    """Get the held values of the plan of a group which carry a parameter of the fit.
+
+    `Plan.with_values` writes the value of a parameter wherever the plan sets
+    its target, so a held value of a target of the fit carries the parameter
+    (`_held_values`). A dimension of a scan with `at` is a change at its time
+    which the plan of a point applies after the parameters, so a held value
+    of that change carries the value of the point instead, which the engine
+    applies after the parameter of the condition as python does: the
+    dimension wins and is no gap. The values of a scan group which do not
+    follow the parameters are left out, the plan of its first point
+    evaluated at another point of the search compared with `plan`.
+
+    Args:
+        problem: the initialized problem.
+        group: the simulation group.
+        plan: the plan of the group at the start of the fit, of the first
+            point of its scan.
+
+    Returns:
+        The held values of the plan which carry a parameter of the fit.
+    """
+    held = _held_values(plan)
+    if problem._group_points[group] is None:
+        return held
+    other = problem.evaluated_plan(
+        group, 2.0 * np.asarray(problem.xmodel, dtype=float) + 1.0, []
+    )
+    return [
+        (assignment, where)
+        for (assignment, where), (moved, _) in zip(
+            held, _held_values(other), strict=True
+        )
+        if (assignment.value, assignment.formula) != (moved.value, moved.formula)
     ]
 
 
