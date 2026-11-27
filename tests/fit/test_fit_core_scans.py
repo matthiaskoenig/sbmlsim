@@ -2,7 +2,9 @@
 
 A group of a scan is a condition of the request per point of the scan, the
 plan of the point with the values of the parameters applied first, and a
-mapping over a dimension of the scan is a curve per point its data is at. The
+mapping over a dimension of the scan is a curve per point its data is at, or
+one curve over the points of the dimension for data between them. A point
+whose dimension sets the target of a parameter of the fit pins it. The
 residuals of the request are the ones of the problem point for point, as for
 the other kinds of a request in `tests/fit/test_fit_core.py`.
 """
@@ -51,6 +53,12 @@ from tests.fit.test_scalar_mappings import (
 
 #: the doses of a dimension with a time, a second dose at `LATE`
 LATE = 24.0
+
+#: the relative tolerance of the residuals of the engine against python: a
+#: few ulps, since the engine and numpy compute the same operations, but the
+#: compiler or the libm of another platform may round them differently, e.g.
+#: a multiplication and an addition fused into one (1 ulp on macos-latest)
+ULPS = 1e-14
 
 
 class ScanStudy(DoseStudy):
@@ -132,6 +140,36 @@ class BetweenStudy(DoseStudy):
     REF_DOSES: ClassVar[list[float]] = [50.0, 75.0, 200.0]
 
 
+class BetweenAtStudy(ScanStudy):
+    """`at` and `max` formulas over the doses, measured between the points.
+
+    The reduction of a formula is the one of every point, where the batch of a
+    `PK` analysis carries the dose of its point.
+    """
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        datasets = super().datasets()
+        doses = np.array([60.0, 100.0, 150.0, 199.0])
+        datasets["reduced"] = DataSet.from_df(
+            pd.DataFrame({"dose": doses, "at": 0.004 * doses, "max": 0.006 * doses}),
+            udict={"dose": "mg", "at": "mg/l", "max": "mg/l"},
+            ureg=self.ureg,
+        )
+        return datasets
+
+
+class RateBetweenStudy(RateStudy):
+    """The cmax at elimination rates between the points of the scan of the rate."""
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        rates = [0.15, 0.2, 0.3]
+        df = pd.DataFrame({"ke": rates, "cmax": [3.0, 2.5, 2.0]})
+        units = {"ke": "1/hr", "cmax": "mg/l"}
+        return {"tab_rates": DataSet.from_df(df, udict=units, ureg=self.ureg)}
+
+
 class RateAtStudy(RateStudy):
     """The scan of the elimination from 12 hr on, a change of every point."""
 
@@ -139,6 +177,30 @@ class RateAtStudy(RateStudy):
     def simulations(self) -> dict[str, Simulation | Scan]:
         rates = Dimension("rate", values={"ke": Q(self.RATES, "1/hr")}, at=12.0)
         return {"single": dosed(), "doses": Scan(dosed(), [rates])}
+
+
+class RatePreinitStudy(RateStudy):
+    """The scan of the elimination with a volume which a formula of the rate sets."""
+
+    @override
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        rates = Dimension("rate", values={"ke": Q(self.RATES, "1/hr")})
+        preinit = Simulation(
+            end=48,
+            steps=480,
+            changes=dosed().changes,
+            preinit_changes={"V": "100 * ke"},
+        )
+        return {"single": dosed(), "doses": Scan(preinit, [rates])}
+
+
+class TwiceStudy(BetweenStudy):
+    """The scan over the doses with 50 mg twice."""
+
+    @override
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        doses = Dimension("dose", values={"PODOSE": Q([50.0, 50.0, 100.0], "mg")})
+        return {"single": dosed(), "doses": Scan(dosed(), [doses])}
 
 
 #: the elimination rate, a parameter of the fit whose target a scan sets
@@ -214,7 +276,7 @@ def test_the_residuals_of_a_scan_are_the_ones_of_the_problem(
 ) -> None:
     """A scan group is a condition per point and its residuals are the ones of python.
 
-    Bitwise at three points: the condition of a point is the plan python
+    To a few ulps at three points: the condition of a point is the plan python
     simulates the point with, the values of the point applied after the
     values of the parameters, and the curve of a measurement over a
     dimension reads the point it is at.
@@ -236,7 +298,7 @@ def test_the_residuals_of_a_scan_are_the_ones_of_the_problem(
 
         residuals = np.asarray(core.residuals(x), dtype=float)
 
-        np.testing.assert_array_equal(residuals, expected)
+        np.testing.assert_allclose(residuals, expected, rtol=ULPS, atol=0.0)
 
 
 def test_a_point_after_the_change_of_a_dimension_reads_the_state_after_it(
@@ -301,26 +363,32 @@ def test_the_curves_over_a_dimension_are_one_per_point(tmp_path: Path) -> None:
     )
 
 
-def test_a_dimension_which_sets_the_target_of_a_parameter_is_a_gap(
+def test_a_formula_before_the_simulation_which_reads_a_pinned_target_is_a_gap(
     tmp_path: Path,
 ) -> None:
-    """The dimension wins in python and the parameter of a condition in the engine."""
-    problem = scan_problem(tmp_path, RateStudy, ["fm_rate"], KE)
+    """Python reads the rate of the point, a derived value of a condition `ke`.
+
+    The volume is a formula of the rate before the simulation: python
+    evaluates it after the values of the point, while the condition would
+    carry it as a derived value of the parameter of the fit.
+    """
+    problem = scan_problem(tmp_path, RatePreinitStudy, ["fm_rate"], KE)
 
     gaps = gaps_of(problem)
 
     assert [gap.code for gap in gaps] == ["scan"]
     assert "'ke'" in gaps[0].message
+    assert "a formula before the simulation reads it" in gaps[0].message
 
 
-def test_data_between_the_points_of_a_scan_is_a_gap(tmp_path: Path) -> None:
-    """75 mg is interpolated between the points of 50 and 100 mg."""
-    problem = scan_problem(tmp_path, BetweenStudy, ["fm_dose"])
+def test_a_dimension_with_a_value_twice_is_refused(tmp_path: Path) -> None:
+    """50 mg twice is no order `numpy.interp` and a curve over a dimension share.
 
-    gaps = gaps_of(problem)
-
-    assert [gap.code for gap in gaps] == ["scan"]
-    assert "'fm_dose'" in gaps[0].message
+    The problem refuses a mapping over such a dimension, so data between the
+    points of a scan is always a curve over its dimension and never a gap.
+    """
+    with pytest.raises(ValueError, match="not strictly monotonic"):
+        scan_problem(tmp_path, TwiceStudy, ["fm_dose"])
 
 
 def test_the_jacobian_of_a_scan_is_the_derivative_of_its_residuals(
@@ -402,3 +470,151 @@ def test_the_residuals_of_a_likelihood_over_a_dimension_are_the_ones_of_python(
         residuals = np.asarray(core.residuals(x), dtype=float)
 
         np.testing.assert_allclose(residuals, expected[rows], rtol=1e-14, atol=1e-14)
+
+
+#: the cases of the fields of `fit/1` a scan needs beyond a curve of a point:
+#: the study, the mappings, the parameter and the points every curve over a
+#: dimension reads, in the order of the curves
+FIELD_CASES: dict[
+    str,
+    tuple[type[SimulationExperiment], list[str], FitParameter | None, list],
+] = {
+    # the cmax of a PK observable at a dose between two points, the batch of
+    # the analysis of every point with its own dose
+    "between_pk": (BetweenStudy, ["fm_dose"], None, [[0, 1, 2]]),
+    # formulas of one reduction over the doses, the same at every point
+    "between_reductions": (
+        BetweenAtStudy,
+        ["fm_dose_at", "fm_dose_max"],
+        None,
+        [[0, 1, 2]] * 2,
+    ),
+    # a dimension which sets the target of the parameter of the fit before
+    # the simulation, which every point pins
+    "pinned": (RateStudy, ["fm_rate"], KE, [None] * 3),
+    # both: the rates of the data between the points, which pin the rate
+    "pinned_between": (
+        RateBetweenStudy,
+        ["fm_rate"],
+        KE,
+        [[0, 1, 2]],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(FIELD_CASES))
+def test_the_residuals_of_the_fields_of_a_scan_are_the_ones_of_the_problem(
+    tmp_path: Path, case: str
+) -> None:
+    """A curve over a dimension and a pinned parameter, the residuals of python.
+
+    The curve over a dimension is `numpy.interp` of the values of the points
+    operation for operation, so the residuals agree to a few ulps (`ULPS`),
+    and a pinned target holds the value of the point,
+    which wins over the parameter in python.
+    """
+    experiment, mappings, parameter, over = FIELD_CASES[case]
+    problem = scan_problem(tmp_path, experiment, mappings, parameter)
+
+    assert gaps_of(problem) == []
+
+    request = fit_request(problem)
+    assert [
+        [int(c.rsplit("|", 1)[1]) for c in curve["dimension"]["conditions"]]
+        if "dimension" in curve
+        else None
+        for curve in request["curves"]
+    ] == over
+    pinned = [c for c in request["conditions"] if "pinned" in c]
+    assert len(pinned) == (len(request["conditions"]) if parameter else 0)
+    core = core_problem(problem)
+    for factor in (1.0, 1.3, 0.7):
+        x = problem.to_scale(problem.xmodel * factor)
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        np.testing.assert_allclose(residuals, expected, rtol=ULPS, atol=0.0)
+
+
+def test_a_curve_over_a_dimension_carries_the_reduction_of_every_point(
+    tmp_path: Path,
+) -> None:
+    """The dose of every point is the dose of the batch of its analysis."""
+    problem = scan_problem(tmp_path, BetweenStudy, ["fm_dose"])
+
+    [curve] = fit_request(problem)["curves"]
+
+    assert "condition" not in curve
+    assert "reduction" not in curve
+    dimension = curve["dimension"]
+    assert dimension["values"] == DOSES
+    assert dimension["x"] == BetweenStudy.REF_DOSES
+    assert [r["batch"]["dose_amount"] for r in dimension["reductions"]] == [
+        [dose] for dose in DOSES
+    ]
+
+
+def test_a_pin_is_the_value_of_the_point_in_the_units_of_the_model(
+    tmp_path: Path,
+) -> None:
+    """The rate of every point holds the target of `ke`, the parameter of the fit."""
+    problem = scan_problem(tmp_path, RateStudy, ["fm_rate"], KE)
+
+    request = fit_request(problem)
+
+    assert [c["pinned"] for c in request["conditions"]] == [
+        [{"parameter": 0, "value": rate}] for rate in RateStudy.RATES
+    ]
+
+
+def test_the_jacobian_of_a_curve_over_a_dimension_is_the_derivative_of_its_residuals(
+    tmp_path: Path,
+) -> None:
+    """The interpolation of the forward sensitivities of the points."""
+    from sbmlsim.fit.fisher import jacobian
+
+    problem = scan_problem(tmp_path, BetweenAtStudy, ["fm_dose_at", "fm_dose_max"])
+    x = problem.to_scale(problem.xmodel)
+
+    sensitivities = fit_core.residual_jacobian(problem, x, threads=2)
+
+    differences = jacobian(problem, x, step=1e-4)
+    assert sensitivities.shape == differences.shape
+    np.testing.assert_allclose(sensitivities, differences, rtol=1e-3, atol=1e-6)
+    assert np.linalg.norm(sensitivities) > 0.0
+
+
+def test_a_fit_between_the_points_in_the_engine_finds_the_optimum_of_python(
+    tmp_path: Path,
+) -> None:
+    """The engine and python fit the cmax between the doses to the same optimum."""
+    results = {}
+    for engine_fit in (True, False):
+        (tmp_path / str(engine_fit)).mkdir()
+        problem = scan_problem(tmp_path / str(engine_fit), BetweenStudy, ["fm_dose"])
+        results[engine_fit] = run_optimization(
+            problem,
+            problem.settings_initialized,
+            size=1,
+            seed=1234,
+            show_progress=False,
+            engine_fit=engine_fit,
+        )
+
+    assert results[True].optimizer_of == RUN_IN_THE_ENGINE
+    assert results[False].optimizer_of == RUN_IN_PYTHON
+    engine, python = results[True].fits[0], results[False].fits[0]
+    np.testing.assert_allclose(engine.x, python.x, rtol=1e-6)
+    assert engine.cost == pytest.approx(python.cost, rel=1e-8, abs=1e-12)
+
+
+def test_the_column_of_a_pinned_parameter_is_zero(tmp_path: Path) -> None:
+    """Every point holds the rate at its own value, so `ke` moves no residual."""
+    problem = scan_problem(tmp_path, RateStudy, ["fm_rate"], KE)
+    x = problem.to_scale(problem.xmodel)
+
+    sensitivities = fit_core.residual_jacobian(problem, x, threads=2)
+
+    assert sensitivities.shape == (len(RateStudy.RATES), 1)
+    assert np.all(sensitivities == 0.0)
