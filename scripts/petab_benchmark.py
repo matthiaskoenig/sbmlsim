@@ -19,10 +19,8 @@ uv run python scripts/petab_benchmark.py report --output results/benchmark
 uv run python scripts/petab_benchmark.py baseline --processes 8
 ```
 
-`--evaluator core` reads and simulates the problems in sbmlsim-core,
-`--evaluator python` (the default, `DEFAULT_EVALUATOR`) with `PetabReader`.
-Both have the outcomes of the baseline but for the problems of `CORE_GAPS`,
-which pass in python only.
+A problem is read and simulated in sbmlsim-core, a problem of `CORE_GAPS`
+with `PetabReader`.
 """
 
 from __future__ import annotations
@@ -38,12 +36,10 @@ from sbmlsim.console import console
 from sbmlsim.fit.petab_v2.benchmark import (
     BENCHMARK_COMMIT,
     BENCHMARK_TIMEOUT,
-    DEFAULT_EVALUATOR,
     BenchmarkCollection,
     BenchmarkResult,
     BenchmarkStatus,
 )
-from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
 from sbmlsim.parallel import process_context
 from sbmlsim.testsuite import baseline
 from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
@@ -58,29 +54,26 @@ RESULTS_FILE = "benchmark.json"
 
 
 def _run_problem(
-    task: tuple[BenchmarkCollection, str, float | None, Evaluator],
+    task: tuple[BenchmarkCollection, str, float | None],
 ) -> BenchmarkResult:
     """Run a problem in a worker, with the time limit `BENCHMARK_TIMEOUT`."""
-    collection, name, reference, evaluator = task
+    collection, name, reference = task
     return collection.problem(name).run(
-        llh_reference=reference, timeout=BENCHMARK_TIMEOUT, evaluator=evaluator
+        llh_reference=reference, timeout=BENCHMARK_TIMEOUT
     )
 
 
 def run(
-    collection: BenchmarkCollection,
-    names: list[str] | None,
-    processes: int,
-    evaluator: Evaluator,
+    collection: BenchmarkCollection, names: list[str] | None, processes: int
 ) -> list[BenchmarkResult]:
     """Run the problems of the collection and report the outcome."""
     console.print(
         f"Running the PEtab benchmark collection '{collection.commit}' from "
-        f"{collection.path} (evaluator '{evaluator.value}')"
+        f"{collection.path}"
     )
     names = names or collection.problem_names()
     references = collection.references()
-    tasks = [(collection, name, references.get(name), evaluator) for name in names]
+    tasks = [(collection, name, references.get(name)) for name in names]
     results: dict[str, BenchmarkResult] = {}
     with process_context().Pool(processes, maxtasksperchild=1) as pool:
         for result in pool.imap_unordered(_run_problem, tasks):
@@ -169,12 +162,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--problems", nargs="*", help="the problems, all by default")
     parser.add_argument("--processes", type=int, default=1)
     parser.add_argument("--output", type=Path, default=Path("results") / "benchmark")
-    parser.add_argument(
-        "--evaluator",
-        choices=[e.value for e in Evaluator],
-        default=DEFAULT_EVALUATOR.value,
-        help="where the problems are read and simulated",
-    )
     args = parser.parse_args(argv)
 
     log.enable_rich_logging()
@@ -194,8 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             f"`baseline` first[/red]"
         )
         return 1
-    evaluator = resolve_evaluator(args.evaluator)
-    results = run(collection, args.problems, args.processes, evaluator)
+    results = run(collection, args.problems, args.processes)
     console.print(f"Results: {write_results(results, args.output)}")
     if args.command == "baseline":
         write_baseline(results, collection, BASELINE_PATH)

@@ -119,8 +119,10 @@ dependencies = [
 	# and the thinning of the chart builder in the extension; 0.36.0 adds the
 	# shared Rust ODE generator used by model release archives; 0.37.0 the
 	# designs and the estimators of the global sensitivity analysis
-	# (`sbmlsim_core.sensitivity`)
-	"sbmlsim-core>=0.37.0",
+	# (`sbmlsim_core.sensitivity`); 0.38.0 reads, simulates and evaluates a
+	# problem of PEtab v2 (`sbmlsim_core.petab`, #711), the validation data of a
+	# validation problem included
+	"sbmlsim-core>=0.38.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

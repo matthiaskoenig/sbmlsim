@@ -228,7 +228,7 @@ The parameters are the estimated parameters of the parameter table by their ids,
 
 The problem of `from_petab` stays a problem of `sbmlsim`, which is evaluated with `log_likelihood(problem)` on its engine and fitted with the objective of its settings, with the reports, profiles and the Fisher information of a fit. At the tolerances of the problem the two evaluations differ by the error of their integrators, at tight tolerances they agree: the log-likelihood of the HCTZ PK training and validation problems to `2e-11`, checked by `tests/fit/test_petab_v2_problems.py`.
 
-The reader of the core is part of sbmlsim-core from the release after 0.37.0 (`CORE_PETAB_RELEASE`). With an older sbmlsim-core a file raises `CorePetabUnavailable`, and the runners of the [PEtab Test Suite](petab_testsuite.md) and of the [PEtab Benchmark Problems](petab_benchmark.md) run in python (`Evaluator`, `resolve_evaluator`, `--evaluator` of their scripts).
+The reader of the core is part of sbmlsim-core from 0.38.0 on, the floor of sbmlsim. The runner of the [PEtab Test Suite](petab_testsuite.md) evaluates every case in the core, the one of the [PEtab Benchmark Problems](petab_benchmark.md) every problem but the few the core does not run as python does yet.
 
 ## Extensions of other tools
 

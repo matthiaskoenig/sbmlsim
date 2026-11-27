@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from sbmlsim.fit.petab_v2 import benchmark
 from sbmlsim.fit.petab_v2.benchmark import (
     BENCHMARK_COMMIT,
     BENCHMARK_SETTINGS,
@@ -32,6 +33,11 @@ from tests.fit.petab_v1 import VALUES, write_v1_problem
 from tests.fit.test_petab_v2_reader import write_problem
 
 NAME = "Lotka_Volterra"
+
+
+#: a problem is read and simulated in sbmlsim-core, a problem of `CORE_GAPS`
+#: with `PetabReader`; both are run
+BOTH_PATHS = pytest.mark.parametrize("in_core", [True, False], ids=["core", "python"])
 
 
 def _problem(collection: Path, name: str = NAME) -> BenchmarkProblem:
@@ -90,60 +96,58 @@ def _llh(problem: BenchmarkProblem) -> float:
     )
 
 
-def test_a_problem_passes(tmp_path: Path, petab_evaluator: str) -> None:
+@BOTH_PATHS
+def test_a_problem_passes(tmp_path: Path, in_core: bool) -> None:
     """A problem whose simulations agree with the collection passes."""
-    result = _problem(tmp_path).run(evaluator=petab_evaluator)
+    result = _problem(tmp_path).run(in_core=in_core)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.name == NAME
     assert result.n_simulations == 20
     assert result.max_difference is not None
     assert result.max_difference < 1e-9
     assert set(result.timings) == (
-        {"read", "simulate"}
-        if petab_evaluator == "core"
-        else {"read", "initialize", "simulate", "llh"}
+        {"read", "simulate"} if in_core else {"read", "initialize", "simulate", "llh"}
     )
     assert result.llh is not None
     assert result.llh_reference is None
 
 
-def test_a_simulation_outside_of_the_tolerance(
-    tmp_path: Path, petab_evaluator: str
-) -> None:
+@BOTH_PATHS
+def test_a_simulation_outside_of_the_tolerance(tmp_path: Path, in_core: bool) -> None:
     """A simulation which differs is named with its observable and experiment."""
     problem = _problem(tmp_path)
     simulations = _simulations(problem)
     simulations.loc[12, "simulation"] += 1.0
     _write(problem, simulations)
-    result = problem.run(evaluator=petab_evaluator)
+    result = problem.run(in_core=in_core)
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "prey_o" in result.message
     assert "e2" in result.message
     assert result.max_difference == pytest.approx(1.0, rel=1e-6)
 
 
-def test_the_simulations_are_found_by_their_keys(
-    tmp_path: Path, petab_evaluator: str
-) -> None:
+@BOTH_PATHS
+def test_the_simulations_are_found_by_their_keys(tmp_path: Path, in_core: bool) -> None:
     """The table of the simulations may have another order and more rows."""
     problem = _problem(tmp_path)
     simulations = _simulations(problem)
     extra = simulations.iloc[[0]].assign(time=0.5)
     _write(problem, pd.concat([simulations.iloc[::-1], extra], ignore_index=True))
-    result = problem.run(evaluator=petab_evaluator)
+    result = problem.run(in_core=in_core)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
 
 
-def test_the_log_likelihood_of_amici(tmp_path: Path, petab_evaluator: str) -> None:
+@BOTH_PATHS
+def test_the_log_likelihood_of_amici(tmp_path: Path, in_core: bool) -> None:
     """The log-likelihood is compared with the reference of AMICI."""
     problem = _problem(tmp_path)
     llh = _llh(problem)
-    result = problem.run(llh_reference=llh, evaluator=petab_evaluator)
+    result = problem.run(llh_reference=llh, in_core=in_core)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.llh_reference == llh
 
-    result = problem.run(llh_reference=llh + 1.0, evaluator=petab_evaluator)
+    result = problem.run(llh_reference=llh + 1.0, in_core=in_core)
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "llh" in result.message
 
@@ -161,11 +165,12 @@ def test_a_problem_which_was_not_converted(tmp_path: Path) -> None:
     assert "the conversion failed" in result.message
 
 
-def test_a_problem_which_cannot_be_read(tmp_path: Path, petab_evaluator: str) -> None:
+@BOTH_PATHS
+def test_a_problem_which_cannot_be_read(tmp_path: Path, in_core: bool) -> None:
     """An error while the problem is read or simulated is the status `error`."""
     problem = _problem(tmp_path)
     (problem.v2_dir / "observables.tsv").write_text("nothing\n", encoding="utf-8")
-    result = problem.run(evaluator=petab_evaluator)
+    result = problem.run(in_core=in_core)
     assert result.status is BenchmarkStatus.ERROR
     assert result.message
 
@@ -386,3 +391,15 @@ def test_an_excluded_problem_is_not_listed(tmp_path: Path) -> None:
         "A_First",
         "Froehlich_CellSystems2018",
     ]
+
+
+def test_a_problem_of_the_gaps_of_the_core_runs_in_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A problem of `CORE_GAPS` is read with `PetabReader`, every other one in the core."""
+    problem = _problem(tmp_path)
+    assert set(problem.run().timings) == {"read", "simulate"}
+    monkeypatch.setitem(benchmark.CORE_GAPS, NAME, "a gap")
+    result = problem.run()
+    assert result.status is BenchmarkStatus.PASS, result.message
+    assert set(result.timings) == {"read", "initialize", "simulate", "llh"}

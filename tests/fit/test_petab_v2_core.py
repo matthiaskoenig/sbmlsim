@@ -1,9 +1,7 @@
 """A PEtab problem read, simulated and evaluated in sbmlsim-core.
 
 The values of the core are the ones of the python reader at tight tolerances
-of the integrator, where the two integrators agree; without the reader of
-PEtab in the installed sbmlsim-core the runners fall back to python and the
-functions of a file raise.
+of the integrator, where the two integrators agree.
 """
 
 from pathlib import Path
@@ -21,14 +19,7 @@ from sbmlsim.fit.petab_v2 import (
     log_prior,
     unnorm_log_posterior,
 )
-from sbmlsim.fit.petab_v2.core import (
-    CORE_PETAB_RELEASE,
-    CorePetabUnavailable,
-    Evaluator,
-    resolve_evaluator,
-)
 from sbmlsim.fit.petab_v2.reader import PetabReader
-from tests.engines import require_core_petab
 from tests.fit.test_petab_v2_reader import write_problem
 
 #: the integrator of a comparison of the core with python, where both agree
@@ -72,31 +63,8 @@ def _python(path: Path, values: dict[str, float] | None = None) -> dict[str, flo
     }
 
 
-def test_without_the_reader_of_the_core_python_evaluates(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An older sbmlsim-core runs the suites in python and refuses a file."""
-    monkeypatch.setattr(core, "_core_petab", lambda: None)
-    assert not core.has_core_petab()
-    assert resolve_evaluator() is Evaluator.PYTHON
-    assert resolve_evaluator("python") is Evaluator.PYTHON
-    with pytest.raises(CorePetabUnavailable, match=CORE_PETAB_RELEASE):
-        resolve_evaluator("core")
-    path = _problem(tmp_path)
-    with pytest.raises(CorePetabUnavailable, match="from_petab"):
-        log_likelihood(path)
-    with pytest.raises(CorePetabUnavailable):
-        core.evaluate(path)
-
-
-def test_an_evaluator_is_core_or_python() -> None:
-    with pytest.raises(ValueError, match="amici"):
-        resolve_evaluator("amici")
-
-
 def test_the_core_evaluates_a_problem_as_python(tmp_path: Path) -> None:
     """llh, chi2, the priors and the posterior of the core are the ones of python."""
-    require_core_petab()
     path = _problem(tmp_path)
     expected = _python(path)
 
@@ -119,7 +87,6 @@ def test_the_core_evaluates_a_problem_as_python(tmp_path: Path) -> None:
 
 def test_the_functions_of_a_file_evaluate_it_in_the_core(tmp_path: Path) -> None:
     """`log_likelihood` and its siblings take the YAML file of a problem."""
-    require_core_petab()
     path = _problem(tmp_path)
     evaluation = core.evaluate(path)
 
@@ -132,7 +99,6 @@ def test_the_functions_of_a_file_evaluate_it_in_the_core(tmp_path: Path) -> None
 
 def test_the_core_evaluates_at_the_parameters(tmp_path: Path) -> None:
     """A set gives the estimated parameters, the others keep their nominal value."""
-    require_core_petab()
     path = _problem(tmp_path)
     expected = _python(path, {"alpha": 1.5})
     pset = ParameterSet("x", {"alpha": 1.5}, {"alpha": "dimensionless"})
@@ -146,7 +112,6 @@ def test_the_core_evaluates_at_the_parameters(tmp_path: Path) -> None:
 
 
 def test_a_problem_is_read_once_for_many_points(tmp_path: Path) -> None:
-    require_core_petab()
     path = _problem(tmp_path)
     problem = core.read_problem(path, TIGHT)
 
@@ -158,7 +123,6 @@ def test_a_problem_is_read_once_for_many_points(tmp_path: Path) -> None:
 
 
 def test_a_parameter_the_problem_does_not_estimate_is_refused(tmp_path: Path) -> None:
-    require_core_petab()
     with pytest.raises(KeyError, match="gamma"):
         core.evaluate(_problem(tmp_path), {"gamma": 1.0})
 

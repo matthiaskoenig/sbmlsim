@@ -38,7 +38,6 @@ from sbmlsim.fit.petab_v2 import (
     log_likelihood,
     to_petab,
 )
-from sbmlsim.fit.petab_v2.core import has_core_petab
 from sbmlsim.fit.petab_v2.extension import extension_of
 from sbmlsim.fit.petab_v2.reader import from_petab
 
@@ -148,9 +147,7 @@ def main() -> None:
     llh = log_likelihood(problem)
     llh_petab = log_likelihood(petab_problem_read)
     # the problem on disk read, simulated and evaluated by sbmlsim-core
-    llh_core = (
-        f"{log_likelihood(yaml_file):.4f}" if has_core_petab() else "no reader of PEtab"
-    )
+    llh_core = log_likelihood(yaml_file)
     display.key_values(
         {
             "collections": (
@@ -171,7 +168,7 @@ def main() -> None:
             "cost": f"{cost:.6f} -> {cost_petab:.6f}",
             "difference": f"{abs(cost - cost_petab) / cost:.2e} (relative)",
             "log-likelihood": f"{llh:.4f} -> {llh_petab:.4f}",
-            "llh in the core": llh_core,
+            "llh in the core": f"{llh_core:.4f}",
         }
     )
     display.print_parameters(petab_problem_read.parameters)

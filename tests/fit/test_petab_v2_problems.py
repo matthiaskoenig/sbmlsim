@@ -25,7 +25,6 @@ from sbmlsim.fit.petab_v2 import (
 from sbmlsim.fit.petab_v2.extension import extension_of
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.readme import README_FILE
-from tests.engines import require_core_petab
 
 
 @pytest.fixture(scope="module")
@@ -218,7 +217,6 @@ def test_sbmlsim_core_evaluates_the_problems_as_they_read_back(
     validation data of the validation problem (sbmlsim-core#146), at
     tolerances of the integrator at which the two integrators agree.
     """
-    require_core_petab()
     yaml_file = petab_dir / role / "problem.yaml"
     read, settings = from_petab(yaml_file)
     tight = replace(settings, relative_tolerance=1e-10, absolute_tolerance=1e-12)

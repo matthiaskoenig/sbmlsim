@@ -6,8 +6,9 @@ and the conversion of the collection and some problems take minutes:
 `pytest -m petab_benchmark` runs them and `tox r -e benchmark` downloads the
 collection first. A problem is compared with
 `tests/data/benchmark_baseline.json`, which records the problems that do not
-pass, each with its reason, read in python and in sbmlsim-core, where the
-problems of `CORE_GAPS` do not pass.
+pass, each with its reason. A problem runs in sbmlsim-core, a problem of
+`CORE_GAPS` with `PetabReader`, and such a problem is checked not to pass in
+the core.
 
 The baseline fails in both directions. A problem which passed and now fails is
 a regression. A problem which is in the baseline and passes is a baseline
@@ -26,8 +27,6 @@ from sbmlsim.fit.petab_v2.benchmark import (
     BenchmarkCollection,
     BenchmarkResult,
 )
-from sbmlsim.fit.petab_v2.core import Evaluator
-from tests.engines import require_core_petab
 
 pytestmark = pytest.mark.petab_benchmark
 
@@ -83,36 +82,31 @@ def _check(result: BenchmarkResult, baseline: dict) -> None:
 
 @pytest.mark.parametrize("name", _problem_names())
 def test_problem(name: str, collection: BenchmarkCollection, baseline: dict) -> None:
-    """A problem has the outcome the baseline records, read in python."""
-    result = collection.problem(name).run(
-        llh_reference=collection.references().get(name),
-        timeout=BENCHMARK_TIMEOUT,
-        evaluator=Evaluator.PYTHON,
-    )
-    _check(result, baseline)
+    """A problem has the outcome the baseline records.
 
-
-@pytest.mark.parametrize("name", _problem_names())
-def test_problem_in_the_core(
-    name: str, collection: BenchmarkCollection, baseline: dict
-) -> None:
-    """A problem has the outcome of the baseline in sbmlsim-core, or is a gap of it.
-
-    The problems of `CORE_GAPS` pass in python and not in the core; one which
-    passes in the core is no gap any more.
+    It runs in sbmlsim-core, a problem of `CORE_GAPS` with `PetabReader`.
     """
-    require_core_petab()
+    result = collection.problem(name).run(
+        llh_reference=collection.references().get(name), timeout=BENCHMARK_TIMEOUT
+    )
+    _check(result, baseline)
+
+
+@pytest.mark.parametrize("name", sorted(CORE_GAPS))
+def test_a_gap_of_the_core_does_not_pass_in_the_core(
+    name: str, collection: BenchmarkCollection
+) -> None:
+    """A problem of `CORE_GAPS` which passes in the core is no gap any more."""
+    if name not in collection.problem_names():
+        pytest.skip(f"'{name}' is not a problem of the cached collection")
     result = collection.problem(name).run(
         llh_reference=collection.references().get(name),
         timeout=BENCHMARK_TIMEOUT,
-        evaluator=Evaluator.CORE,
+        in_core=True,
     )
-    if name in CORE_GAPS:
-        assert not result.passed, (
-            f"'{name}' passes in sbmlsim-core now, remove it from CORE_GAPS"
-        )
-        return
-    _check(result, baseline)
+    assert not result.passed, (
+        f"'{name}' passes in sbmlsim-core now, remove it from CORE_GAPS"
+    )
 
 
 def test_the_baseline_matches_the_collection(
