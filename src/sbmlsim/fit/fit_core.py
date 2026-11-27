@@ -54,7 +54,7 @@ values of the point after them (`OptimizationProblem.evaluated_plan` with its
 dimension without a time which sets the target of a parameter of the fit wins
 over the parameter in python, so the condition of the point pins the
 parameter at the value of the point (`pinned`, `_pins_of`, the field
-`PINNED_FIELD` of sbmlsim-core), which holds the target there and gives the
+`condition.pinned` of `fit/1`), which holds the target there and gives the
 parameter a column of zeros in the curves of the condition. A mapping of such a group is
 either a value per simulation, a timecourse or a reduction of one point,
 which is a curve of its condition, or values over a dimension of the scan
@@ -64,8 +64,8 @@ values of the dimension at the x of its data: a measurement at a point
 a curve of the condition of that point, one curve per run of measurements at
 one point (`_Part.point`), and a mapping with a measurement between two
 points is one curve over the points of the dimension around its data
-(`_over_points`, `_dimension_curve`, the field `DIMENSION_FIELD` of
-sbmlsim-core), whose residual is the line between what it reduces in the
+(`_over_points`, `_dimension_curve`, the field `curve.dimension` of
+`fit/1`), whose residual is the line between what it reduces in the
 conditions of the two points at the x of the measurement, `numpy.interp`
 operation for operation, and whose row of the jacobian is the same line
 between their derivatives. A group which keeps its output reduces the columns of every point on the plan
@@ -90,16 +90,11 @@ The cost of a condition per point is the request, which is built once per
 fit, and the plan the engine prepares per condition, which it would prepare
 for every row of a dimension as well.
 
-Both are fields of `fit/1` which bindings older than them do not refuse (a
-condition does not deny `pinned`, so such an engine would set the parameter
-over the value of the point) or refuse as any other error, so the bindings
-name the fields they read (`sbmlsim_core.FIT_FIELDS`, `reads_dimension`,
-`reads_pinned`) and what an older binding does not read is the gap `scan`
-(`_gaps_of_a_scan`). With any bindings the gap `scan` is a formula before the
-simulation which reads a pinned target (python reads the value of the point,
-a derived value of a condition the parameter), data between the points of a
-group which outputs the times of its data, which has no reduction a curve
-over a dimension reads, and a dimension which has a value twice.
+Both fields are read by sbmlsim-core from 0.35.0 on, the floor of sbmlsim
+(`sbmlsim_core.FIT_FIELDS` names them). What no condition or curve carries is
+the gap `scan` (`_gaps_of_a_scan`): a formula before the simulation which
+reads a pinned target (python reads the value of the point, a derived value
+of a condition the parameter).
 
 A value of that request is a number, so a value which an optimizer moves
 cannot be one: the number would hold it where the fit started. That is a
@@ -287,14 +282,6 @@ OBJECTIVE_VERSION: Final = "0.24.0"
 #: the release of sbmlsim-core whose identifiability reads `steps`, the first
 #: step of the walk of every parameter, see `reads_profile_steps`
 PROFILE_STEPS_VERSION: Final = "0.26.0"
-
-#: the field of `fit/1` of a curve over the points of a dimension of a scan,
-#: which interpolates between their conditions, see `reads_dimension`
-DIMENSION_FIELD: Final = "curve.dimension"
-
-#: the field of `fit/1` of the parameters whose targets a condition holds at a
-#: value of its own, see `reads_pinned`
-PINNED_FIELD: Final = "condition.pinned"
 
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
@@ -837,69 +824,6 @@ def reads_profile_steps(loaded: Any) -> bool:
         Whether the bindings read them.
     """
     return _reads(loaded, PROFILE_STEPS_VERSION)
-
-
-def reads_dimension(loaded: Any) -> bool:
-    """Whether the bindings read a curve over the points of a dimension of a scan.
-
-    A curve of `fit/1` interpolates between the conditions of the points of a
-    dimension (`dimension`, `_dimension_curve`) in the bindings which name
-    the field in `sbmlsim_core.FIT_FIELDS`. An older release requires the
-    `condition` of a curve and refuses such a request, and its `CurveRequest`
-    does not deny the field it does not know, so the gate keeps the data
-    between the points of a scan in python with a clear message.
-
-    The bindings name the fields they read, which is what the gate reads, as
-    `FIT_REDUCTIONS` named the reductions: a build of the sources answers what
-    it carries whatever its version says.
-
-    Args:
-        loaded: the loaded model, `None` for a model which is not loaded in
-            sbmlsim-core.
-
-    Returns:
-        Whether the bindings read it.
-    """
-    return _reads_field(loaded, DIMENSION_FIELD)
-
-
-def reads_pinned(loaded: Any) -> bool:
-    """Whether the bindings read the pins of a condition of a request.
-
-    A condition of `fit/1` holds the target of a parameter of the fit at a
-    value of its own (`pinned`) in the bindings which name the field in
-    `sbmlsim_core.FIT_FIELDS`: the point of a scan whose dimension sets that
-    target before the simulation, where python lets the dimension win.
-    `ConditionRequest` does not deny the field, so an older binding would set
-    the parameter over the value of the point and minimize another objective
-    without an error: the gate is what keeps such a fit in python.
-
-    Args:
-        loaded: the loaded model, `None` for a model which is not loaded in
-            sbmlsim-core.
-
-    Returns:
-        Whether the bindings read it.
-    """
-    return _reads_field(loaded, PINNED_FIELD)
-
-
-def _reads_field(loaded: Any, field: str) -> bool:
-    """Whether the bindings of a loaded model name a field of `fit/1` they read.
-
-    Args:
-        loaded: the loaded model, `None` for a model which is not loaded in
-            sbmlsim-core.
-        field: the field, e.g. `curve.dimension`.
-
-    Returns:
-        Whether `sbmlsim_core.FIT_FIELDS` names it.
-    """
-    if loaded is None:
-        return False
-    import sbmlsim_core
-
-    return field in getattr(sbmlsim_core, "FIT_FIELDS", ())
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -1958,7 +1882,7 @@ def _pins_of(problem: OptimizationProblem, group: int) -> list[tuple[int, np.nda
     the values of the parameters (`OptimizationProblem.evaluated_plan`), so
     the value of the point wins over a parameter of the fit which writes the
     same target: the condition of the point pins the parameter at the value
-    of the point (`pinned`, `reads_pinned`). A dimension with a time is a
+    of the point (`pinned`). A dimension with a time is a
     change after the parameter in both and pins nothing.
 
     Args:
@@ -2075,8 +1999,8 @@ def _dimension_curve(
 
     Python compares such data with `numpy.interp` of the values per
     simulation of the points of the dimension at the x of the data, and the
-    curve of the request (`dimension`, the field `DIMENSION_FIELD` of
-    sbmlsim-core) is the same interpolation between the conditions of the
+    curve of the request (`dimension`, the field `curve.dimension` of
+    `fit/1`) is the same interpolation between the conditions of the
     points around every measurement (`_over_points`): its residual is the line between what the
     curve reduces in the two conditions at the x of the measurement, operation
     for operation the arithmetic of `numpy.interp`, and its row of the
@@ -2346,7 +2270,7 @@ def _gaps_of_a_group(
     problem: OptimizationProblem, group: int, training: Sequence[int]
 ) -> list[Gap]:
     """Get the gaps of a simulation group of a problem and of its training data."""
-    gaps: list[Gap] = _gaps_of_a_scan(problem, group, training)
+    gaps: list[Gap] = _gaps_of_a_scan(problem, group)
     kept = problem._group_graphs[group] is not None
     if kept:
         gaps.extend(_gaps_of_a_kept_group(problem, group, training))
@@ -2366,58 +2290,35 @@ def _gaps_of_a_group(
     return gaps
 
 
-def _gaps_of_a_scan(
-    problem: OptimizationProblem, group: int, training: Sequence[int]
-) -> list[Gap]:
+def _gaps_of_a_scan(problem: OptimizationProblem, group: int) -> list[Gap]:
     """Get the gaps of a group whose simulation is a scan.
 
     A group of a scan is a condition per point (`_conditions_and_curves`).
-    What no condition of a request carries is the gap `scan`:
-
-    - a dimension which sets the target of a parameter of the fit before the
-      simulation, for bindings which do not read the pins of a condition
-      (`reads_pinned`): python applies the values of a point after the values
-      of the parameters, so the dimension wins and the parameter has no effect
-      in the group, which the condition of the point says with a pin of the
-      parameter at the value of the point (`_pins_of`), while an older engine
-      sets a parameter of the request on its target in every condition. A
-      formula of the plan which reads the target before the simulation is a
-      gap with any bindings: python evaluates it with the value of the point,
-      the derived value of a condition (`_derived_of`) with the value of the
-      parameter. A dimension with `at` is a change at its time, which the
-      engine applies after the parameter as python does, and which
-      `_gaps_of_the_values` reads;
-    - a mapping over a dimension whose data is between two points of the
-      scan, which python interpolates linearly between the values of the two
-      points (`_data_points`), for bindings which do not read a curve over a
-      dimension (`reads_dimension`), and with any bindings for a group which
-      outputs the times of its data, whose values per simulation are no
-      reduction a curve over a dimension reads, and for a dimension which has
-      a value twice (`_over_points`).
+    A dimension which sets the target of a parameter of the fit before the
+    simulation wins over the parameter in python, which applies the values of
+    a point after the values of the parameters, and the condition of the point
+    pins the parameter at the value of the point (`_pins_of`); a dimension
+    with `at` is a change at its time, which the engine applies after the
+    parameter as python does, and which `_gaps_of_the_values` reads. A mapping
+    over a dimension whose data is between two points of the scan, which
+    python interpolates linearly between the values of the two points
+    (`_data_points`), is a curve over the points of the dimension
+    (`_dimension_curve`). What no condition of a request carries is the gap
+    `scan`: a formula of the plan which reads such a pinned target before the
+    simulation, which python evaluates with the value of the point and the
+    derived value of a condition (`_derived_of`) with the value of the
+    parameter.
     """
     points = problem._group_points[group]
     if points is None:
         return []
     gaps: list[Gap] = []
-    loaded = _loaded_of(problem)
     targets = _parameter_targets(problem)
     for target in points.values:
         if target not in targets:
             continue
         pid = problem.parameters[targets[target]].pid
-        if not reads_pinned(loaded):
-            gaps.append(
-                Gap(
-                    "scan",
-                    f"the scan of the group {group} sets '{target}', the target "
-                    f"of the parameter '{pid}' of the fit, before the simulation: "
-                    f"the dimension wins over the parameter in python, and the "
-                    f"bindings of sbmlsim-core set a parameter of the request in "
-                    f"every condition; a build which reads '{PINNED_FIELD}' "
-                    f"pins it",
-                )
-            )
-        elif _reads_before_the_simulation(problem.plans[group], target):
+        if _reads_before_the_simulation(problem.plans[group], target):
             gaps.append(
                 Gap(
                     "scan",
@@ -2425,37 +2326,6 @@ def _gaps_of_a_scan(
                     f"of the parameter '{pid}' of the fit, and a formula before "
                     f"the simulation reads it: python reads the value of the "
                     f"point, a derived value of a condition the parameter",
-                )
-            )
-    from sbmlsim.fit.optimization import ObservationKind
-
-    kept = problem._group_graphs[group] is not None
-    for k in training:
-        if problem.observation_kinds[k] is not ObservationKind.DIMENSION:
-            continue
-        if _data_points(problem, k) is not None:
-            continue
-        key = problem.mapping_keys[k]
-        reason = None
-        if not reads_dimension(loaded):
-            reason = (
-                f"and the bindings of sbmlsim-core read no curve over a "
-                f"dimension; a build which reads '{DIMENSION_FIELD}' does"
-            )
-        elif not kept:
-            reason = (
-                "and the group outputs the times of its data, whose values are "
-                "no reduction a curve over a dimension reads"
-            )
-        elif not _over_points(problem, k):
-            reason = "and its dimension has a value twice"
-        if reason is not None:
-            gaps.append(
-                Gap(
-                    "scan",
-                    f"the data of the mapping '{key}' is between the points of "
-                    f"the scan of the group {group}, which python interpolates "
-                    f"between the values of two points, {reason}",
                 )
             )
     return gaps
@@ -3067,7 +2937,9 @@ def _over_points(problem: OptimizationProblem, mapping: int) -> tuple[int, ...]:
     at its value and at the last point. The points read are the points of
     the curve over the dimension (`_dimension_curve`): two neighbours of
     the dimension stay neighbours among them, which is where the engine finds
-    a measurement between the same two points.
+    a measurement between the same two points. The values of a dimension are
+    strictly monotonic, which the problem checks when it reads a mapping over
+    it, so they are strictly increasing in that order.
 
     Args:
         problem: the initialized problem.
@@ -3075,9 +2947,8 @@ def _over_points(problem: OptimizationProblem, mapping: int) -> tuple[int, ...]:
 
     Returns:
         The points, in the order of their values; empty for a mapping which
-        is no mapping over a dimension, one whose data is at its points
-        (`_data_points`), or one whose dimension has a value twice, which
-        `numpy.interp` reads in no order the engine has.
+        is no mapping over a dimension or one whose data is at its points
+        (`_data_points`).
     """
     from sbmlsim.fit.optimization import ObservationKind
 
@@ -3090,8 +2961,6 @@ def _over_points(problem: OptimizationProblem, mapping: int) -> tuple[int, ...]:
         return ()
     order = np.argsort(values, kind="stable")
     ordered = np.asarray(values, dtype=float)[order]
-    if np.any(np.diff(ordered) <= 0.0):
-        return ()
     x = np.asarray(problem.x_references[mapping], dtype=float)
     lower = np.clip(np.searchsorted(ordered, x, side="right") - 1, 0, len(ordered) - 1)
     read = set(lower.tolist())

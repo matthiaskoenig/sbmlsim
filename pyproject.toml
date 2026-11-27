@@ -118,8 +118,10 @@ dependencies = [
 	# pkpdutils (#625); 0.33.0 the error bars of two sides, contours, arrows,
 	# insets, frames, stacks, texts and legends of the chart builder (#120);
 	# 0.34.0 carries the chart builder itself, `sbmlsim_core.chart`, which
-	# `sbmlsim.plot.chart` re-exports
-	"sbmlsim-core>=0.34.0",
+	# `sbmlsim.plot.chart` re-exports; 0.35.0 the curves over the points of a
+	# dimension of a scan and the pinned values of a condition of a fit (#624)
+	# and the thinning of the chart builder in the extension
+	"sbmlsim-core>=0.35.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

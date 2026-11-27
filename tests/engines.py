@@ -53,25 +53,6 @@ def require(engine: Engine) -> None:
     pytest.importorskip(_MODULES[engine])
 
 
-def require_core_field(field: str) -> None:
-    """Skip a test of a fit of the engine which needs a field of `fit/1`.
-
-    The bindings name the additive fields of `fit/1` they read in
-    `sbmlsim_core.FIT_FIELDS` (`sbmlsim.fit.fit_core.reads_dimension`,
-    `reads_pinned`), and a problem which needs one keeps its gap on bindings
-    which do not, so a test of such a fit in the engine is skipped there.
-
-    Args:
-        field: the field, e.g. `curve.dimension`.
-    """
-    require_core_fit()
-    core = pytest.importorskip("sbmlsim_core")
-    if field not in getattr(core, "FIT_FIELDS", ()):
-        pytest.skip(
-            f"sbmlsim-core {core.__version__} does not read '{field}' of 'fit/1'"
-        )
-
-
 def require_core_fit() -> None:
     """Skip a test of a fit which runs in sbmlsim-core itself.
 
