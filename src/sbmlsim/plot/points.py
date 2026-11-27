@@ -211,19 +211,121 @@ def nan_quantile(values: np.ndarray, q: float) -> np.ndarray:
         The quantile of every position of the other axes, `NaN` where every
         value is `NaN`.
     """
+    (quantile,) = nan_quantiles(values, (q,))
+    return quantile
+
+
+def nan_quantiles(values: np.ndarray, qs: Sequence[float]) -> tuple[np.ndarray, ...]:
+    """Get quantiles along the last axis, ignoring NaN, the values sorted once.
+
+    Every quantile is the one of `nan_quantile`; the sort, most of its time,
+    is shared by the quantiles, e.g. the two of a band and its median.
+
+    Args:
+        values: the values, reduced along the last axis.
+        qs: the quantiles in `[0, 1]`.
+
+    Returns:
+        Every quantile, see `nan_quantile`.
+    """
     ordered = np.sort(np.asarray(values, dtype=float), axis=-1)
     n = np.isfinite(ordered).sum(axis=-1)
-    position = q * np.maximum(n - 1, 0)
-    lower = np.floor(position).astype(int)
-    upper = np.minimum(lower + 1, np.maximum(n - 1, 0))
-    low = np.take_along_axis(ordered, lower[..., np.newaxis], axis=-1)[..., 0]
-    high = np.take_along_axis(ordered, upper[..., np.newaxis], axis=-1)[..., 0]
-    result = low + (position - lower) * (high - low)
-    return np.where(n > 0, result, np.nan)
+    last = np.maximum(n - 1, 0)
+    quantiles = []
+    for q in qs:
+        position = q * last
+        lower = np.floor(position).astype(int)
+        upper = np.minimum(lower + 1, last)
+        low = np.take_along_axis(ordered, lower[..., np.newaxis], axis=-1)[..., 0]
+        high = np.take_along_axis(ordered, upper[..., np.newaxis], axis=-1)[..., 0]
+        result = low + (position - lower) * (high - low)
+        quantiles.append(np.where(n > 0, result, np.nan))
+    return tuple(quantiles)
+
+
+@dataclass(frozen=True, eq=False)
+class _Grid:
+    """The time points of a figure of the x data of a ragged result, see `Grids`.
+
+    Attributes:
+        xs: the x data, a row per simulation, C-contiguous.
+        n: the number of time points it was made for.
+        times: the time points.
+        rows: the positions of the steps every simulation keeps and their x
+            values, the state after a change at its time and no padding.
+    """
+
+    xs: np.ndarray
+    n: int
+    times: np.ndarray
+    rows: list[tuple[np.ndarray, np.ndarray]]
+
+    def is_of(self, xs: np.ndarray, n: int) -> bool:
+        """Get whether the grid is the one of x data, bit for bit."""
+        return (
+            self.n == n
+            and self.xs.shape == xs.shape
+            and np.array_equal(self.xs.view(np.uint64), xs.view(np.uint64))
+        )
+
+
+class Grids:
+    """The time points of a figure of the x data of bands, found by their values.
+
+    The bands of a figure over the draws mostly share their x, the time of a
+    task with a band per variable of it: the time points and the steps every
+    simulation keeps are found once per x, which was most of the time of the
+    bands (sbmlsim#664). An x is the one of a grid bit for bit, so a band gets
+    the time points of its own values. A figure keeps its grids, see
+    `onto_grid`.
+    """
+
+    def __init__(self) -> None:
+        """Start without grids."""
+        self._grids: list[_Grid] = []
+
+    def of(self, sid: str, xs: np.ndarray, n: int) -> _Grid:
+        """Get the grid of x data, a row per simulation, see `onto_grid`.
+
+        Raises:
+            ValueError: if x of a simulation does not increase.
+        """
+        xs = np.ascontiguousarray(xs, dtype=float)
+        for grid in self._grids:
+            if grid.is_of(xs, n):
+                return grid
+        # a copy: the values of the data may change after, the grid may not
+        grid = _grid(sid, xs.copy(), n)
+        self._grids.append(grid)
+        return grid
+
+
+def _grid(sid: str, xs: np.ndarray, n: int) -> _Grid:
+    """Get the time points of a figure of x data, a row per simulation, see `onto_grid`."""
+    rows = []
+    changes: set[float] = set()
+    for xk in xs:
+        positions = np.flatnonzero(np.isfinite(xk))
+        xp = xk[positions]
+        if np.any(np.diff(xp) < 0):
+            raise ValueError(
+                f"The band '{sid}' interpolates a ragged result onto the time "
+                f"points of a figure, its x values have to increase, e.g. the time."
+            )
+        # the state after a change at its time, the last of equal times
+        last = np.append(xp[1:] != xp[:-1], True) if xp.size else xp.astype(bool)
+        changes.update(xp[:-1][xp[1:] == xp[:-1]].tolist())
+        rows.append((positions[last], xp[last]))
+    times = plot_times(xs, n=n, keep=sorted(changes))
+    return _Grid(xs=xs, n=n, times=times, rows=rows)
 
 
 def onto_grid(
-    sid: str, x: xr.DataArray, y: xr.DataArray, n: int = PLOT_POINTS
+    sid: str,
+    x: xr.DataArray,
+    y: xr.DataArray,
+    n: int = PLOT_POINTS,
+    grids: Grids | None = None,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Interpolate the data of a band of a ragged result onto the time points of a figure.
 
@@ -241,6 +343,8 @@ def onto_grid(
         x: the x data, the time over `(*dims, _point)`.
         y: the y data over `(*dims, _point)`.
         n: the number of time points.
+        grids: the grids of the x data of the bands of a figure, which the
+            bands of the same x share; one of its own without.
 
     Returns:
         The time points as x over `time` and the y data over `(*dims, time)`.
@@ -248,37 +352,30 @@ def onto_grid(
     Raises:
         ValueError: if x of a simulation does not increase.
     """
-    x, y = xr.broadcast(x, y)
+    # x and y of a band of a task are broadcast already: the same dimensions
+    # with the same labels
+    if not _aligned([x, y]) or set(x.indexes) != set(y.indexes):
+        x, y = xr.broadcast(x, y)
     dims = [str(d) for d in y.dims if d != POINT]
-    xs = np.asarray(x.transpose(*dims, POINT).values, dtype=float)
-    ys = np.asarray(y.transpose(*dims, POINT).values, dtype=float)
+    # the values of the variables: a transpose of the arrays transposes their
+    # coordinates, e.g. the values of the parameters of every draw
+    xs = np.asarray(x.variable.transpose(*dims, POINT).values, dtype=float)
+    ys = np.asarray(y.variable.transpose(*dims, POINT).values, dtype=float)
     shape = xs.shape[:-1]
     xs = xs.reshape(-1, xs.shape[-1])
     ys = ys.reshape(-1, ys.shape[-1])
-    simulations = []
-    changes: set[float] = set()
-    for xk, yk in zip(xs, ys, strict=True):
-        finite = np.isfinite(xk)
-        xp, yp = xk[finite], yk[finite]
-        if np.any(np.diff(xp) < 0):
-            raise ValueError(
-                f"The band '{sid}' interpolates a ragged result onto the time "
-                f"points of a figure, its x values have to increase, e.g. the time."
-            )
-        # the state after a change at its time, the last of equal times
-        last = np.append(xp[1:] != xp[:-1], True) if xp.size else xp.astype(bool)
-        changes.update(xp[:-1][xp[1:] == xp[:-1]].tolist())
-        simulations.append((xp[last], yp[last]))
-    grid = plot_times(xs, n=n, keep=sorted(changes))
-    values = np.full((xs.shape[0], grid.size), np.nan)
-    for k, (xp, yp) in enumerate(simulations):
+    grid = (grids if grids is not None else Grids()).of(sid, xs, n)
+    values = np.full((xs.shape[0], grid.times.size), np.nan)
+    for k, (positions, xp) in enumerate(grid.rows):
         if xp.size:
-            values[k] = np.interp(grid, xp, yp, left=np.nan, right=np.nan)
+            values[k] = np.interp(
+                grid.times, xp, ys[k][positions], left=np.nan, right=np.nan
+            )
     coords = {d: y.coords[d] for d in dims if d in y.coords}
     return (
-        xr.DataArray(grid, dims=(TIME,)),
+        xr.DataArray(grid.times, dims=(TIME,)),
         xr.DataArray(
-            values.reshape(*shape, grid.size), dims=(*dims, TIME), coords=coords
+            values.reshape(*shape, grid.times.size), dims=(*dims, TIME), coords=coords
         ),
     )
 
@@ -290,6 +387,7 @@ def band_lines(
     quantiles: tuple[float, float],
     x: xr.DataArray,
     y: xr.DataArray,
+    grids: Grids | None = None,
 ) -> list[BandLine]:
     """Reduce the dimension `across` of the data of a band to quantiles and the median.
 
@@ -300,6 +398,7 @@ def band_lines(
         quantiles: the lower and the upper quantile, in `[0, 1]`.
         x: the x data.
         y: the y data.
+        grids: the grids of the x data of a ragged result, see `onto_grid`.
 
     Returns:
         One band per point of `over`.
@@ -310,7 +409,7 @@ def band_lines(
             see `onto_grid`.
     """
     if POINT in y.dims or POINT in x.dims:
-        x, y = onto_grid(sid, x, y)
+        x, y = onto_grid(sid, x, y, grids=grids)
     if across not in y.dims:
         raise ValueError(
             f"The band '{sid}' reduces the dimension '{across}', which its data has "
@@ -318,14 +417,12 @@ def band_lines(
         )
     # the quantiles over the draws, ignoring NaN; a point at which every draw
     # is NaN (all simulations failed) has no quantile and is NaN
-    low, median, high = (
-        xr.apply_ufunc(
-            nan_quantile,
-            y,
-            input_core_dims=[[across]],
-            kwargs={"q": q},
-        )
-        for q in (quantiles[0], 0.5, quantiles[1])
+    low, median, high = xr.apply_ufunc(
+        nan_quantiles,
+        y,
+        input_core_dims=[[across]],
+        output_core_dims=[[], [], []],
+        kwargs={"qs": (quantiles[0], 0.5, quantiles[1])},
     )
     lows = curve_lines(sid, over, x, low)
     medians = curve_lines(sid, over, x, median)

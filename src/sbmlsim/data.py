@@ -252,6 +252,30 @@ def _select(
         ValueError: if a dimension is not one of the source, or a label is not
             one of its dimension, see `check_sel`.
     """
+    by_label, by_position = _indexers(array, sel, data, source)
+    if by_label:
+        array = array.sel(by_label)
+    if by_position:
+        array = array.isel(by_position)
+    return array
+
+
+def _indexers(
+    array: xr.DataArray,
+    sel: Mapping[str, Any],
+    data: Data,
+    source: xr.Dataset | xr.DataArray,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Get the labels `sel` selects by label and the positions it selects, see `_select`.
+
+    Returns:
+        The labels to select with `sel` and the positions to select with
+        `isel`, by their dimensions.
+
+    Raises:
+        ValueError: if a dimension is not one of the source, or a label is not
+            one of its dimension, see `check_sel`.
+    """
     # the labels of the dimensions the selection names: every dimension of
     # the source has its name, the time of a long result thousands of labels,
     # which a selection of a scan point does not need (sbmlsim#664)
@@ -280,11 +304,7 @@ def _select(
                 by_position[dim] = position
             else:
                 (by_label if labelled else by_position)[dim] = value
-    if by_label:
-        array = array.sel(by_label)
-    if by_position:
-        array = array.isel(by_position)
-    return array
+    return by_label, by_position
 
 
 def _position(array: xr.DataArray, dim: str, label: Any) -> int | None:
@@ -565,18 +585,20 @@ class Data:
         of a dataset by the values of its columns. `unit` is set to the unit of
         the values.
 
-        With `arrays` the data of a task with `sel` is a selection of the
-        whole array of its task, which is read, renamed and converted once:
-        a figure over the draws of the fitted parameters draws a line per
-        draw of a curve (`sbmlsim.experiment.draws`), the data of each a
-        selection of one array, which was read and converted for every draw.
-        The values are the ones without `arrays`, a conversion is elementwise.
+        With `arrays` the data of a task is a selection of the whole array
+        of its task, which is read, renamed and converted once: a figure over
+        the draws of the fitted parameters draws a line per draw of a curve
+        (`sbmlsim.experiment.draws`), the data of each a selection of one
+        array, which was read and converted for every draw, and a band per
+        variable of a task, whose x is the time of the task. The values are
+        the ones without `arrays`, a conversion is elementwise; they are
+        shared by the data of an array and are not changed.
 
         Args:
             experiment: the experiment whose datasets and results are read.
             to_units: the unit to convert the values to, their own unit
                 without.
-            arrays: the whole arrays of the tasks of data with `sel`, in the
+            arrays: the whole arrays of the tasks of their data, in the
                 unit they are converted to, with the unit of the result, by
                 the task, the selection and the unit; filled as the data reads
                 them. The caller keeps it for data of the same results, e.g.
@@ -597,7 +619,7 @@ class Data:
             DimensionalityError: if the values cannot be converted to
                 `to_units`.
         """
-        if arrays is not None and self.sel and self.dtype == Data.Types.TASK:
+        if arrays is not None and self.dtype == Data.Types.TASK:
             return self._selected_task_array(experiment, to_units, arrays)
         if self.dtype == Data.Types.DATASET:
             array = self._dataset_array(experiment)
@@ -623,18 +645,12 @@ class Data:
         to_units: str | None,
         arrays: MutableMapping[Hashable, tuple[xr.DataArray, str | None]],
     ) -> xr.DataArray:
-        """Get the data of a task with `sel` from the whole array of the task.
+        """Get the data of a task from the whole array of the task.
 
         The selection is a view of the whole array, as the data of a task
         without a unit is a view of its result.
         """
-        key = (str(self.task_id), self.selection, to_units)
-        cached = arrays.get(key)
-        if cached is None:
-            whole = Data(self.selection, task=self.task_id)
-            cached = (whole.get_data(experiment, to_units), whole.unit)
-            arrays[key] = cached
-        values, unit = cached
+        values, unit = self._whole_task_array(experiment, to_units, arrays)
         source = experiment.results[str(self.task_id)].ds
         array = _select(values, self.sel, self, source)
         if array is values:
@@ -644,6 +660,71 @@ class Data:
         array.name = self.sid
         self.unit = unit
         return array
+
+    def selected_values(
+        self,
+        experiment: SimulationExperiment,
+        to_units: str | None,
+        arrays: MutableMapping[Hashable, tuple[xr.DataArray, str | None]],
+    ) -> tuple[np.ndarray, tuple[str, ...]] | None:
+        """Get the values of a task with `sel` of one point, indexed with numpy.
+
+        The values of `get_data` with `arrays`, without the labelled array
+        around them: the line of every draw of a figure over the draws
+        (`sbmlsim.experiment.draws`) selects one draw of the whole array of
+        its task, and `isel` selects every coordinate of the array with it,
+        e.g. the values of the fitted parameters in every draw, which was
+        most of the time of these lines (sbmlsim#664). `unit` is set as
+        `get_data` sets it.
+
+        Args:
+            experiment: the experiment whose results are read.
+            to_units: the unit to convert the values to, their own unit
+                without.
+            arrays: the whole arrays of the tasks, see `get_data`.
+
+        Returns:
+            The values, a view of the whole array, and their dimensions;
+            `None` for data which is no selection of one position along every
+            dimension it selects of a task, e.g. of a list of labels, which
+            `get_data` gives.
+
+        Raises:
+            ValueError: if `sel` names a dimension or a label which does not
+                exist, see `check_sel`.
+        """
+        if not self.sel or self.dtype != Data.Types.TASK:
+            return None
+        values, unit = self._whole_task_array(experiment, to_units, arrays)
+        source = experiment.results[str(self.task_id)].ds
+        by_label, by_position = _indexers(values, self.sel, self, source)
+        if by_label or not all(
+            isinstance(p, int | np.integer) and not isinstance(p, bool)
+            for p in by_position.values()
+        ):
+            return None
+        dims = [str(d) for d in values.dims]
+        index = tuple(by_position.get(d, slice(None)) for d in dims)
+        self.unit = unit
+        return (
+            np.asarray(values.values[index]),
+            tuple(d for d in dims if d not in by_position),
+        )
+
+    def _whole_task_array(
+        self,
+        experiment: SimulationExperiment,
+        to_units: str | None,
+        arrays: MutableMapping[Hashable, tuple[xr.DataArray, str | None]],
+    ) -> tuple[xr.DataArray, str | None]:
+        """Get the whole array of the task of the data and its unit, read once."""
+        key = (str(self.task_id), self.selection, to_units)
+        cached = arrays.get(key)
+        if cached is None:
+            whole = Data(self.selection, task=self.task_id)
+            cached = (whole.get_data(experiment, to_units), whole.unit)
+            arrays[key] = cached
+        return cached
 
     def _dataset_array(self, experiment: SimulationExperiment) -> xr.DataArray:
         """Get the column of the dataset over its rows, see `get_data`."""

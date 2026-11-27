@@ -14,8 +14,8 @@ from sbmlsim.engine import import_core
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Axis, Figure, FigureSettings, Plot
 from sbmlsim.plot.plotting import CurveType, ShadedArea, Style, YAxisPosition
-from sbmlsim.plot.points import nan_quantile
-from sbmlsim.plot.resolve import figure_chart
+from sbmlsim.plot.points import Grids, _grid, nan_quantile
+from sbmlsim.plot.resolve import _PlotBuilder, figure_chart
 from sbmlsim.simulator import Simulator
 from tests.plot.scan_experiment import ScanFigures
 
@@ -1016,3 +1016,49 @@ def test_unsupported_settings_warn(
     messages = [r.getMessage() for r in caplog.records]
     assert sum("fig_facecolor" in m for m in messages) == 1
     assert not any("legend_loc" in m for m in messages)
+
+
+def test_the_line_of_a_point_is_the_one_of_its_selection(
+    experiment: SimulationExperiment, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The line of every draw is indexed with numpy, as `isel` selects it.
+
+    The chart of the lines of the draws of a curve and of the simulations of a
+    ragged result is the one of the selections of their arrays; a band of the
+    time of the task shares the arrays and the grid of its x.
+    """
+
+    def draw(plot: Plot) -> None:
+        for k in range(20):
+            plot.curve(
+                x=Data("time", task="task_draws", sel={"draw": k}),
+                y=Data("[C]", task="task_draws", sel={"draw": k}),
+                alpha=0.3,
+            )
+        for dose in range(3):
+            plot.curve(
+                x=Data("time", task="task_ragged", sel={"dose": dose}),
+                y=Data("[C]", task="task_ragged", sel={"dose": dose}),
+            )
+        for name in ("C", "C again"):
+            plot.band(
+                Data("time", task="task_ragged"),
+                Data("[C]", task="task_ragged"),
+                across="dose",
+                name=name,
+            )
+
+    original = _PlotBuilder._selected_line
+    lines: list[Any] = []
+
+    def counted(builder: _PlotBuilder, curve: Any, axis: Any) -> Any:
+        lines.append(original(builder, curve, axis))
+        return lines[-1]
+
+    monkeypatch.setattr(_PlotBuilder, "_selected_line", counted)
+    fast = figure_chart(experiment, _figure(experiment, draw)).to_json()
+    assert len(lines) == 23 and all(line is not None for line in lines)
+    monkeypatch.setattr(_PlotBuilder, "_selected_line", lambda *_: None)
+    # every band finds its own grid
+    monkeypatch.setattr(Grids, "of", lambda _, sid, xs, n: _grid(sid, xs, n))
+    assert figure_chart(experiment, _figure(experiment, draw)).to_json() == fast
