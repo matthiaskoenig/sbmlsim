@@ -10,7 +10,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 
 import numpy as np
 from pint.errors import UndefinedUnitError
@@ -27,9 +27,7 @@ from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.memory import release_freed_memory
 from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.plot import Figure, FigureSettings
-from sbmlsim.plot.chart import Chart
 from sbmlsim.plot.points import point_linestyles
-from sbmlsim.plot.resolve import figure_chart
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.serialization import ObjectJSONEncoder
@@ -44,6 +42,11 @@ from sbmlsim.units import (
     unit_identifiers,
 )
 from sbmlsim.units import ureg as package_ureg
+
+if TYPE_CHECKING:
+    # the chart builder of sbmlsim-core, imported when a figure is drawn, so
+    # importing sbmlsim imports no bindings of sbmlsim-core
+    from sbmlsim.plot.chart import Chart
 
 logger = logging.getLogger(__name__)
 
@@ -1348,6 +1351,8 @@ class SimulationExperiment:
         Returns:
             The charts by the keys of their figures, without the failed ones.
         """
+        from sbmlsim.plot.resolve import figure_chart
+
         charts: dict[str, Chart] = {}
         for key, figure in self._figures.items():
             try:
@@ -1501,6 +1506,8 @@ class SimulationExperiment:
         """Write the figures of the hook, see `save_hook_figures`."""
         if not figures:
             return {}
+        from sbmlsim.plot.chart import Chart
+
         results_path.mkdir(parents=True, exist_ok=True)
         others = [
             key for key, figure in figures.items() if not isinstance(figure, Chart)
