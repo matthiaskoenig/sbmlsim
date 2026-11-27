@@ -10,6 +10,7 @@ the other kinds of a request in `tests/fit/test_fit_core.py`.
 """
 
 import dataclasses
+import functools
 from pathlib import Path
 from typing import ClassVar, override
 
@@ -26,6 +27,7 @@ from sbmlsim.fit import (
     FitMapping,
     FitMappingCollection,
     FitParameter,
+    FitSettings,
     fit_core,
 )
 from sbmlsim.fit.fit_core import fit_request, gaps_of
@@ -33,10 +35,13 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import RUN_IN_PYTHON, RUN_IN_THE_ENGINE, ObjectiveType
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.simulation import Dimension, Formula, Observable, Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from tests.fit.scalar_experiment import (
+    CMAX_UNIT,
     CONC,
     DOSES,
+    OBSERVABLES,
     TIME,
     TRUE_V,
     DoseStudy,
@@ -50,6 +55,7 @@ from tests.fit.test_scalar_mappings import (
     RateStudy,
     SelectedPointStudy,
 )
+from tests.simulator.models import sbml_pk
 
 #: the doses of a dimension with a time, a second dose at `LATE`
 LATE = 24.0
@@ -179,19 +185,82 @@ class RateAtStudy(RateStudy):
         return {"single": dosed(), "doses": Scan(dosed(), [rates])}
 
 
+def preinit_scan(volume: str) -> Scan:
+    """Get the scan of the elimination rate whose volume a formula sets first."""
+    rates = Dimension("rate", values={"ke": Q(RateStudy.RATES, "1/hr")})
+    preinit = Simulation(
+        end=48, steps=480, changes=dosed().changes, preinit_changes={"V": volume}
+    )
+    return Scan(preinit, [rates])
+
+
 class RatePreinitStudy(RateStudy):
-    """The scan of the elimination with a volume which a formula of the rate sets."""
+    """The scan of the elimination with a volume which a formula of the rate sets.
+
+    The formula is evaluated before the simulation, after the rate of the
+    point, which it reads.
+    """
+
+    #: the formula of the volume
+    VOLUME: ClassVar[str] = "100 * ke"
 
     @override
     def simulations(self) -> dict[str, Simulation | Scan]:
-        rates = Dimension("rate", values={"ke": Q(self.RATES, "1/hr")})
-        preinit = Simulation(
-            end=48,
-            steps=480,
-            changes=dosed().changes,
-            preinit_changes={"V": "100 * ke"},
-        )
-        return {"single": dosed(), "doses": Scan(preinit, [rates])}
+        return {"single": dosed(), "doses": preinit_scan(self.VOLUME)}
+
+
+class RateSumPreinitStudy(RatePreinitStudy):
+    """A volume of the rate of the point and of the absorption, a parameter of the fit."""
+
+    VOLUME: ClassVar[str] = "50 * ke + 5 * ka"
+
+
+class RateProductPreinitStudy(RatePreinitStudy):
+    """A volume of the product of the rate and the absorption.
+
+    No linear form over the parameters of the fit, but one over the
+    absorption at every point, where the rate is the number of the point.
+    """
+
+    VOLUME: ClassVar[str] = "100 * ke * ka"
+
+
+@functools.cache
+def _product_cmax() -> list[float]:
+    """Get the cmax of `RateProductPreinitStudy` at every rate, at the absorption 1/hr.
+
+    The integrator settings are the ones of a fit with the default settings,
+    so a fit of the absorption to these values has the residuals 0 at 1/hr.
+    """
+    settings = FitSettings()
+    simulator = Simulator(
+        absolute_tolerance=settings.absolute_tolerance,
+        relative_tolerance=settings.relative_tolerance,
+        variable_step_size=settings.variable_step_size,
+        initial_time_step=settings.initial_time_step,
+    )
+    res = simulator.run(
+        sbml_pk(),
+        preinit_scan(RateProductPreinitStudy.VOLUME),
+        list(OBSERVABLES.values()),
+        keep=["pk.cmax"],
+    )
+    return [float(value) for value in res["pk.cmax"].values]
+
+
+class RateProductFitStudy(RateProductPreinitStudy):
+    """The cmax of the product of the rate and the absorption at 1/hr.
+
+    The data the model has at the absorption 1/hr, so a fit of the absorption
+    ends at 1/hr with the residuals 0: the optimum of a least squares fit
+    does not depend on the precision of the jacobian an optimizer reads.
+    """
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame({"ke": self.RATES, "cmax": _product_cmax()})
+        units = {"ke": "1/hr", "cmax": CMAX_UNIT}
+        return {"tab_rates": DataSet.from_df(df, udict=units, ureg=self.ureg)}
 
 
 class TwiceStudy(BetweenStudy):
@@ -208,23 +277,27 @@ KE = FitParameter(
     pid="ke", lower_bound=0.01, upper_bound=1.0, start_value=0.3, unit="1/hr"
 )
 
+#: the absorption rate, a parameter of the fit no scan sets
+KA = FitParameter(
+    pid="ka", lower_bound=0.1, upper_bound=10.0, start_value=1.5, unit="1/hr"
+)
+
 
 def scan_problem(
     path: Path,
     experiment: type[SimulationExperiment],
     mappings: list[str],
-    parameter: FitParameter | None = None,
+    parameter: FitParameter | list[FitParameter] | None = None,
 ) -> OptimizationProblem:
     """Get the problem of mappings of a study of the scans over the doses."""
+    if parameter is None:
+        parameter = FitParameter(
+            pid="V", lower_bound=1.0, upper_bound=100.0, start_value=30.0, unit="l"
+        )
     problem = OptimizationProblem(
         "scans",
         [FitMappingCollection(experiment=experiment, mappings=mappings)],
-        [
-            parameter
-            or FitParameter(
-                pid="V", lower_bound=1.0, upper_bound=100.0, start_value=30.0, unit="l"
-            )
-        ],
+        parameter if isinstance(parameter, list) else [parameter],
         base_path=path,
         data_path=path,
         engine=Engine.CORE,
@@ -363,22 +436,134 @@ def test_the_curves_over_a_dimension_are_one_per_point(tmp_path: Path) -> None:
     )
 
 
-def test_a_formula_before_the_simulation_which_reads_a_pinned_target_is_a_gap(
+#: the studies of a formula before the simulation which reads a pinned target,
+#: and the constant and the factor of the absorption of the derived volume of
+#: the condition of every rate of the scan, none for a formula of the rate alone
+PREINIT_CASES: dict[
+    str,
+    tuple[type[RatePreinitStudy], list[FitParameter], list[tuple[float, float]] | None],
+] = {
+    # the volume of the rate alone is the number of the point
+    "pin": (RatePreinitStudy, [KE], None),
+    "pin_and_absorption": (RatePreinitStudy, [KE, KA], None),
+    # a linear form over the absorption whose constant is the term of the rate
+    "sum": (
+        RateSumPreinitStudy,
+        [KE, KA],
+        [(50.0 * rate, 5.0) for rate in RateStudy.RATES],
+    ),
+    # the product is a linear form over the absorption at every point, whose
+    # factor is the rate of the point
+    "product": (
+        RateProductPreinitStudy,
+        [KE, KA],
+        [(0.0, 100.0 * rate) for rate in RateStudy.RATES],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(PREINIT_CASES))
+def test_a_formula_before_the_simulation_reads_the_pinned_target_as_python(
+    tmp_path: Path, case: str
+) -> None:
+    """The formula of the volume reads the rate of the point, as in python.
+
+    Python evaluates the formula after the values of the point, so it reads
+    the value of the point and not the parameter of the fit: the condition of
+    a point carries the formula with the pin substituted, a number of the
+    request where it reads nothing else and a derived value of the other
+    parameters where it does.
+    """
+    experiment, parameters, derived = PREINIT_CASES[case]
+    problem = scan_problem(tmp_path, experiment, ["fm_rate"], parameters)
+
+    assert gaps_of(problem) == []
+
+    conditions = fit_request(problem)["conditions"]
+    assert [c["pinned"] for c in conditions] == [
+        [{"parameter": 0, "value": rate}] for rate in RateStudy.RATES
+    ]
+    if derived is None:
+        assert all("derived" not in c for c in conditions)
+    else:
+        assert [c["derived"] for c in conditions] == [
+            [
+                {
+                    "target": "V",
+                    "constant": pytest.approx(constant, rel=1e-15),
+                    "terms": [{"parameter": 1, "factor": pytest.approx(factor)}],
+                }
+            ]
+            for constant, factor in derived
+        ]
+    core = core_problem(problem)
+    for factor in (1.0, 1.3, 0.7):
+        x = problem.to_scale(problem.xmodel * factor)
+        expected = np.asarray(problem.residuals(x), dtype=float)
+
+        residuals = np.asarray(core.residuals(x), dtype=float)
+
+        np.testing.assert_allclose(residuals, expected, rtol=ULPS, atol=0.0)
+
+
+@pytest.mark.parametrize("case", ["sum", "product"])
+def test_the_jacobian_of_a_formula_of_a_pinned_target_is_its_derivative(
+    tmp_path: Path, case: str
+) -> None:
+    """The volume follows the absorption and not the rate, whose column is zero.
+
+    A condition with a derived value has no forward sensitivities in the
+    engine, which takes the forward differences of its residuals over its
+    `DIFF_STEP` of 1e-3 instead, so the column of the absorption is accurate
+    to about 1e-3 of its largest entry (the volume and the absorption itself
+    cancel in the cmax of the middle rate of `sum`) and is compared at its
+    scale. The rate moves no residual of a condition which pins it, so its
+    difference is exactly zero.
+    """
+    from sbmlsim.fit.fisher import jacobian
+
+    experiment, parameters, _ = PREINIT_CASES[case]
+    problem = scan_problem(tmp_path, experiment, ["fm_rate"], parameters)
+    x = problem.to_scale(problem.xmodel)
+
+    sensitivities = fit_core.residual_jacobian(problem, x, threads=2)
+
+    differences = jacobian(problem, x, step=1e-4)
+    assert sensitivities.shape == differences.shape == (len(RateStudy.RATES), 2)
+    np.testing.assert_allclose(
+        sensitivities, differences, rtol=0.0, atol=1e-3 * np.abs(differences).max()
+    )
+    assert np.all(sensitivities[:, 0] == 0.0)
+    assert np.all(sensitivities[:, 1] != 0.0)
+
+
+def test_a_fit_of_a_formula_of_a_pinned_target_finds_the_optimum_of_python(
     tmp_path: Path,
 ) -> None:
-    """Python reads the rate of the point, a derived value of a condition `ke`.
+    """The engine and python fit the absorption of the product to one optimum."""
+    results = {}
+    for engine_fit in (True, False):
+        (tmp_path / str(engine_fit)).mkdir()
+        problem = scan_problem(
+            tmp_path / str(engine_fit), RateProductFitStudy, ["fm_rate"], [KE, KA]
+        )
+        results[engine_fit] = run_optimization(
+            problem,
+            problem.settings_initialized,
+            size=1,
+            seed=1234,
+            show_progress=False,
+            engine_fit=engine_fit,
+        )
 
-    The volume is a formula of the rate before the simulation: python
-    evaluates it after the values of the point, while the condition would
-    carry it as a derived value of the parameter of the fit.
-    """
-    problem = scan_problem(tmp_path, RatePreinitStudy, ["fm_rate"], KE)
-
-    gaps = gaps_of(problem)
-
-    assert [gap.code for gap in gaps] == ["scan"]
-    assert "'ke'" in gaps[0].message
-    assert "a formula before the simulation reads it" in gaps[0].message
+    assert results[True].optimizer_of == RUN_IN_THE_ENGINE
+    assert results[False].optimizer_of == RUN_IN_PYTHON
+    engine, python = results[True].fits[0], results[False].fits[0]
+    np.testing.assert_allclose(engine.x, python.x, rtol=1e-6)
+    assert engine.cost == pytest.approx(python.cost, rel=1e-8, abs=1e-12)
+    # the absorption of the data; the rate moves no residual and stays at the
+    # start of the run, which is the same in both
+    assert engine.x[1] == pytest.approx(1.0, rel=1e-4)
 
 
 def test_a_dimension_with_a_value_twice_is_refused(tmp_path: Path) -> None:
