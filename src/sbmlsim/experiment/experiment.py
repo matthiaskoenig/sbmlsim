@@ -103,6 +103,26 @@ class SimulationExperiment:
     #: one of a base. Checked at `initialize`.
     figure_settings: ClassVar[Mapping[str, Any]] = MappingProxyType({})
 
+    @classmethod
+    def preload_in_forkserver(cls) -> None:
+        """Load what every worker which runs the experiment loads, once for all.
+
+        The forkserver of a pool calls it for every experiment class it
+        imported (the modules of `preload`, see `sbmlsim.parallel`), after
+        its imports, and the workers it forks inherit what it loaded, e.g. a
+        model compiled in a cache of the process, instead of loading it each.
+        Nothing else calls it, and under the start method `spawn` there is
+        no forkserver. It does nothing by default.
+
+        An override loads into a cache which the experiments read (a model
+        loaded in the forkserver is the one a worker would load, so the
+        results do not change), keys it by what decides its content (e.g.
+        the modification time of a file), starts no thread (a fork of a
+        process which runs threads may deadlock) and raises for nothing it
+        cannot load: the forkserver logs the error and goes on, and a worker
+        loads it itself.
+        """
+
     def __init__(
         self,
         sid: str | None = None,

@@ -59,6 +59,8 @@ from sbmlsim import cgroup
 if TYPE_CHECKING:
     from multiprocessing.sharedctypes import Synchronized
 
+    from sbmlsim.experiment import SimulationExperiment
+
 if sys.platform != "win32":
     from multiprocessing.context import (
         ForkContext,
@@ -95,6 +97,10 @@ WORKER_CACHE_SIZE: int = 16
 
 #: the modules the forkserver imports once for all workers
 PRELOAD: tuple[str, ...] = ("sbmlsim.simulator.executor",)
+
+#: the module the forkserver imports after the others, which preloads the
+#: experiment classes it imported, see `preload_experiments`
+PRELOAD_EXPERIMENTS: str = "sbmlsim._forkserver"
 
 #: what to do about workers which do not start
 GUARD_MESSAGE = (
@@ -425,14 +431,53 @@ def _context(preload: Sequence[str]) -> BaseContext:
 
     The forkserver imports the modules once and the workers inherit them; the
     main module is never preloaded, so a worker imports it and a script without
-    the guard is found, see the module. On POSIX the workers start with SIGINT
-    blocked, see `_SigintBlocked`.
+    the guard is found, see the module. The last module it imports preloads
+    the experiment classes of the others (`preload_experiments`). On POSIX the
+    workers start with SIGINT blocked, see `_SigintBlocked`.
     """
     context = process_context()
     method = context.get_start_method()
     if method == "forkserver":
-        context.set_forkserver_preload(sorted({*PRELOAD, *preload}))
+        context.set_forkserver_preload(
+            [*sorted({*PRELOAD, *preload} - {PRELOAD_EXPERIMENTS}), PRELOAD_EXPERIMENTS]
+        )
     return _WORKER_CONTEXTS.get(method, context)
+
+
+def preload_experiments() -> list[str]:
+    """Preload the experiment classes of the process, the forkserver after its imports.
+
+    Calls `preload_in_forkserver` of every subclass of `SimulationExperiment`
+    which the process imported, in the order of their names, so that the
+    workers the forkserver forks inherit what they load, e.g. the model which
+    pkpdsim equilibrates a condition on (1 to 2 s of every worker of a run
+    of the HCTZ model of pkdb_models). A process which imported no
+    experiment preloads nothing and imports none. An error of a class is
+    logged, the others are preloaded and a worker loads what failed itself;
+    the forkserver must not end, every pool of the process needs it.
+
+    Returns:
+        The names of the classes whose preload failed.
+    """
+    module = sys.modules.get("sbmlsim.experiment.experiment")
+    if module is None:
+        return []
+    classes: dict[str, type[SimulationExperiment]] = {}
+    pending: list[type[SimulationExperiment]] = [module.SimulationExperiment]
+    while pending:
+        for subclass in pending.pop().__subclasses__():
+            name = f"{subclass.__module__}.{subclass.__qualname__}"
+            if name not in classes:
+                classes[name] = subclass
+                pending.append(subclass)
+    failed = []
+    for name in sorted(classes):
+        try:
+            classes[name].preload_in_forkserver()
+        except Exception:
+            logger.warning("The preload of %s failed.", name, exc_info=True)
+            failed.append(name)
+    return failed
 
 
 def _alive() -> int:
