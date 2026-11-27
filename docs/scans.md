@@ -248,6 +248,8 @@ Since a time can appear twice, xarray methods which need unique times raise on `
 - A number is the size of a pool of worker processes.
 - `None`, the default, uses every CPU for a scan of 256 points or more (`sbmlsim.parallel.POOL_THRESHOLD`) and runs a smaller scan in the calling process.
 
+The engine core, the default engine, starts no processes: it runs the points of a scan as a batch on threads of the calling process, and `n_workers` is the number of its threads. `None` is every CPU for a scan of any size, since threads start in no measurable time, and `1` runs the batch on one thread.
+
 The result is the same for any number of workers. The pool is kept for the life of the process, so only the first pooled run pays for starting the workers, and each worker loads a model once. For a short script with one scan of a fast model, `n_workers=1` can be faster. A script that runs a pool needs its code under `if __name__ == "__main__":`, because the workers import the script again. The workers end with the process that started them, also when it crashes or is killed.
 
 By default the first failing point raises a `ScanError` with its labels and values. With `on_error="flag"` the run keeps going: a failed point has `NaN` values and the variable `status` is `1` for it.

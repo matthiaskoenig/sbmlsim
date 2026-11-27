@@ -2005,9 +2005,9 @@ class Project(BaseModel):
                 in a pool and the scans of each serially in its worker, which
                 is faster than scans in a pool for many experiments of small
                 scans. The engine core runs the points of a scan on threads,
-                not processes: without `scan_workers` a run of a number of
-                workers above one gives it every CPU of the quota, which a
-                process shares with the busy workers of the run
+                not processes: without `scan_workers` a run gives it every
+                CPU of the quota, which a process shares with the busy
+                workers of the run
                 (`sbmlsim.parallel.worker_cores`), so the last long
                 experiment of a run takes the cores the others left instead
                 of as many threads as the run has processes.
@@ -2446,11 +2446,15 @@ def _scan_workers(
     workers takes from every CPU of the quota as its share
     (`sbmlsim.simulator.worker.core_threads`): the processes of the run held
     the threads of every experiment to their number, also the last one, which
-    ran on few threads while the other workers were done.
+    ran on few threads while the other workers were done. A run of one
+    process, every experiment in the calling process, gives it every CPU as
+    well: one process is no reason to run a scan on one thread (a run of one
+    experiment of the HCTZ model over its draws simulated 14.3 s on one
+    thread), and `None` is every CPU for a scan of any size as well.
     """
     if scan_workers is not None:
         return scan_workers
-    if engine is Engine.CORE and n_workers is not None and n_workers > 1:
+    if engine is Engine.CORE and n_workers is not None:
         return cgroup.available_cpus()
     return n_workers
 

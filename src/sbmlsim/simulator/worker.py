@@ -212,33 +212,39 @@ class ModelSpec:
 def core_threads(n_workers: int | None, n_points: int) -> int:
     """Get the number of threads sbmlsim-core batches the chunks of a run with.
 
-    The threads of the batches of a run are counted like the processes of a
-    run of another engine, `parallel.resolve_workers`: a number is taken as
-    given, `None` is every CPU of the quota for a run of
-    `parallel.POOL_THRESHOLD` points or more, and a run of `n_workers=1` and a
-    smaller run use one thread. A run inside a worker of a pool, or of a
-    process which runs it beside a pool of its own (`parallel.beside`), takes
-    the share of its process of the CPUs (`parallel.worker_cores`, at most
-    one thread per point): threads are no processes which have to be
-    started, so a batch of a few points earns them, and the shares of the
-    processes of a busy pool add up to the CPUs. A worker which runs the long
-    experiment of a run is no longer held to one core (sbmlsim#664).
+    A number is taken as given and `1` runs a batch on one thread. `None` is
+    every CPU of the quota, at most one thread per point, for a run of any
+    size: threads are no processes which have to be started, so the
+    threshold of a pool (`parallel.POOL_THRESHOLD`) does not apply, and a
+    batch of a few points of a model of the library earns them (a scan of
+    100 points of the HCTZ model over its draws took 14.3 s on one thread).
+    A run inside a worker of a pool, or of a process which runs it beside a
+    pool of its own (`parallel.beside`), takes the share of its process of
+    the CPUs (`parallel.worker_cores`, at most one thread per point), so the
+    shares of the processes of a busy pool add up to the CPUs. A worker which
+    runs the long experiment of a run is no longer held to one core
+    (sbmlsim#664).
 
     Args:
-        n_workers: the workers of the run, see `parallel.resolve_workers`.
+        n_workers: the threads of the run, `None` for every CPU.
         n_points: the points of the run.
 
     Returns:
-        The number of threads of a batch, which `parallel.resolve_workers`
-        decides.
+        The number of threads of a batch, at least one.
+
+    Raises:
+        ValueError: if `n_workers` is less than 1.
     """
+    parallel.check_workers(n_workers)
     if parallel.shares_cpus():
         # a worker never takes more than its share, also when the run names
         # more threads: the shares of a busy pool add up to the CPUs
         share = parallel.worker_cores()
         wanted = share if n_workers is None else min(n_workers, share)
         return max(1, min(n_points, wanted))
-    return parallel.resolve_workers(n_workers, n_points)
+    if n_workers is not None:
+        return n_workers
+    return max(1, min(n_points, cgroup.available_cpus()))
 
 
 def point_plan(
