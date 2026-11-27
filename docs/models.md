@@ -81,6 +81,8 @@ print(res.q["x"].round(4))
 ```
 
 ```text title="Output"
+XPP decay.ode to SBML decay.xml
+valid ./decay.xml  0.001 s
 [10.0 0.8208 0.0674] dimensionless
 ```
 
