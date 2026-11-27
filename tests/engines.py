@@ -70,23 +70,6 @@ def require_core_fit() -> None:
         )
 
 
-def require_core_reductions() -> None:
-    """Skip a test of a fit of the engine whose curves are reductions.
-
-    The bindings read the `reduction` of a curve of `fit/1` from sbmlsim-core
-    0.32.0 on and name the kinds they fit (`sbmlsim_core.FIT_REDUCTIONS`), so
-    a test of a group which keeps the output of its simulation is skipped on
-    older bindings (`sbmlsim.fit.fit_core.reads_reductions`).
-    """
-    require_core_fit()
-    core = pytest.importorskip("sbmlsim_core")
-    if not hasattr(core, "FIT_REDUCTIONS"):
-        pytest.skip(
-            f"sbmlsim-core {core.__version__} does not fit the reductions of a "
-            f"curve, which 0.32.0 is the first to do"
-        )
-
-
 def model_class(engine: Engine) -> type[SBMLModel]:
     """Get the class of the models of an engine besides roadrunner."""
     if engine is Engine.COPASI:

@@ -42,8 +42,8 @@ the problem itself would run; the engine sets the parameters of the fit as
 the varying targets of that request, which take the place of their values at
 the start. A group whose data reads a value per simulation keeps the output
 of its simulation, which python reduces, and its curves are the reductions of
-the columns of its condition (`sbmlsim.fit.reductions`, sbmlsim-core
-`REDUCTIONS_VERSION`): the largest, the smallest or the mean value of a
+the columns of its condition (`sbmlsim.fit.reductions`, the `reduction` of a
+curve of sbmlsim-core 0.32.0, the floor of sbmlsim): the largest, the smallest or the mean value of a
 column, its value at a time and a parameter of the analysis of pkpdutils. A
 group whose simulation is a scan is no condition of a request (#624).
 
@@ -233,10 +233,6 @@ OBJECTIVE_VERSION: Final = "0.24.0"
 #: the release of sbmlsim-core whose identifiability reads `steps`, the first
 #: step of the walk of every parameter, see `reads_profile_steps`
 PROFILE_STEPS_VERSION: Final = "0.26.0"
-
-#: the release of sbmlsim-core whose curve reads `reduction`, a value of the
-#: whole column of its condition, see `reads_reductions`
-REDUCTIONS_VERSION: Final = "0.32.0"
 
 #: the model of the fit of a problem which has observables of its own, kept
 #: per problem with the entities it was built from, see `fit_model`; a weak
@@ -779,36 +775,6 @@ def reads_profile_steps(loaded: Any) -> bool:
         Whether the bindings read them.
     """
     return _reads(loaded, PROFILE_STEPS_VERSION)
-
-
-def reads_reductions(loaded: Any) -> bool:
-    """Whether the bindings read the reductions of a curve of a request.
-
-    A curve of `fit/1` reads a value of the whole column of its condition, a
-    reduction (`max`, `min`, `mean`, `at`) or a parameter of the
-    non-compartmental analysis (`pk`), from sbmlsim-core
-    `REDUCTIONS_VERSION` on (`sbmlsim.fit.reductions`). A curve of an older
-    binding does not deny the field and would read its column at the rows of
-    its times, i.e. minimize another objective without an error, so the gate
-    is what keeps such a fit in python.
-
-    The bindings name the kinds they fit (`sbmlsim_core.FIT_REDUCTIONS`), which
-    is what the gate reads, so a build of the sources answers what it carries
-    whatever its version says; every kind the request writes is one of them.
-
-    Args:
-        loaded: the loaded model, `None` for a model which is not loaded in
-            sbmlsim-core.
-
-    Returns:
-        Whether the bindings read them.
-    """
-    if loaded is None:
-        return False
-    import sbmlsim_core
-
-    kinds = getattr(sbmlsim_core, "FIT_REDUCTIONS", ())
-    return {"max", "min", "mean", "at", "pk"} <= set(kinds)
 
 
 def _loaded_of(problem: OptimizationProblem) -> Any:
@@ -2109,9 +2075,8 @@ def _gaps_of_a_kept_group(
     """Get the gap of a group which keeps the output of its simulation.
 
     Its training mappings are curves of reductions of the columns of its
-    condition (`sbmlsim.fit.reductions`) for bindings which read them; what
-    no such curve reads is the gap `observable`, and so is every such group
-    for older bindings. The columns the model of the fit carries for the
+    condition (`sbmlsim.fit.reductions`); what no such curve reads is the gap
+    `observable`. The columns the model of the fit carries for the
     curves are added to a model of their own here, so a formula the model
     cannot carry is a gap as well.
     """
@@ -2122,18 +2087,6 @@ def _gaps_of_a_kept_group(
     if problem._group_points[group] is not None:
         # the gap `scan` of the group says it, see #624
         return [Gap("observable", f"{message}, the points of a scan")]
-    if not reads_reductions(_loaded_of(problem)):
-        import sbmlsim_core
-
-        return [
-            Gap(
-                "observable",
-                f"{message}, a value per simulation, a reduction or a `PK` "
-                f"observable, which the bindings of sbmlsim-core "
-                f"{sbmlsim_core.__version__} do not read as a curve, and "
-                f"{REDUCTIONS_VERSION} is the first which does",
-            )
-        ]
     try:
         kept = kept_group(problem, group, list(training))
         models = _models_of(problem)
@@ -2407,7 +2360,7 @@ def _observable_entities(problem: OptimizationProblem, at: int = 0) -> Entities:
         ):
             continue
         training = _training_of(problem, mappings)
-        if not training or not reads_reductions(_loaded_of(problem)):
+        if not training:
             continue
         # the columns of the curves of a group which keeps its output: its
         # observables of the values at a time and the arguments of its

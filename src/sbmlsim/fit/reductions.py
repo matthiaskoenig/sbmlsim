@@ -4,8 +4,8 @@ A simulation group whose data reads a value per simulation, a reduction or a
 `PK` observable keeps the output of its simulation: the problem simulates the
 plan of the experiment as it is, e.g. the steps of the integrator, and
 evaluates the observables of the group on that output
-(`OptimizationProblem._group_graphs`). Since sbmlsim-core 0.32.0 a curve of a
-request of `fit/1` reads such a value as well, a `reduction` of a column of its
+(`OptimizationProblem._group_graphs`). A curve of a request of `fit/1` reads
+such a value as well (sbmlsim-core 0.32.0, the floor of sbmlsim), a `reduction` of a column of its
 condition (sbmlsim-core `Reduction`), so the condition of such a group is the
 request of the plan the problem simulates and every training mapping of it is
 one curve:

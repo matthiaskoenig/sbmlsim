@@ -76,7 +76,7 @@ from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.plan import PlaceKind
 from sbmlsim.task import Task
 from sbmlsim.units import UnitsInformation
-from tests.engines import require_core_fit, require_core_reductions
+from tests.engines import require_core_fit
 from tests.fit.test_data_at_change import (
     MODEL_FILE,
     TIMES,
@@ -2362,7 +2362,6 @@ def test_a_reduction_and_a_value_per_simulation_are_curves_of_the_engine(
     the times of the output (`time_shift`), and the analysis of a `PK`
     observable is the kernel of pkpdutils python runs as well.
     """
-    require_core_reductions()
     problem = on_core(
         observable_problem(tmp_path, mappings.split(","), experiment=ReductionStudy),
         linear_settings(),
@@ -2386,7 +2385,6 @@ def test_the_curve_of_a_reduction_carries_what_python_reduces_with(
     tmp_path: Path,
 ) -> None:
     """The factor of a declared unit, the time of `at`, the batch of a `PK`."""
-    require_core_reductions()
     problem = on_core(
         observable_problem(
             tmp_path, ["fm_grams_max", "fm_at", "fm_cmax"], experiment=ReductionStudy
@@ -2409,7 +2407,6 @@ def test_a_reduction_of_a_formula_is_a_column_of_the_model_of_the_fit(
     tmp_path: Path,
 ) -> None:
     """`max(2 * Aurine)` reduces a parameter of the model of the fit."""
-    require_core_reductions()
     problem = on_core(
         observable_problem(tmp_path, ["fm_twice_max"], experiment=ReductionStudy),
         linear_settings(),
@@ -2425,7 +2422,6 @@ def test_a_fit_of_reductions_in_the_engine_finds_the_optimum_of_python(
     tmp_path: Path,
 ) -> None:
     """The engine and python fit the same problem to the same optimum."""
-    require_core_reductions()
     results = {}
     for engine_fit in (True, False):
         (tmp_path / str(engine_fit)).mkdir()
@@ -2458,28 +2454,12 @@ def test_a_timecourse_which_reads_a_reduction_is_still_a_gap(
     tmp_path: Path, mapping: str
 ) -> None:
     """`urine_share` is `Aurine / max(Aurine)`, no reduction of a column."""
-    require_core_reductions()
     problem = observable_problem(tmp_path, [mapping])
     problem.initialize(linear_settings())
 
     gaps = gaps_of(problem)
 
     assert [gap.code for gap in gaps] == ["observable"]
-
-
-def test_bindings_without_reductions_keep_a_value_per_simulation_a_gap(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A curve of an older binding would read its column at rows, not reduce it."""
-    problem = observable_problem(tmp_path, ["fm_urine_max"])
-    problem.initialize(linear_settings())
-    monkeypatch.setattr(fit_core, "reads_reductions", lambda _: False)
-
-    gaps = gaps_of(problem)
-
-    assert "observable" in [gap.code for gap in gaps]
-    if problem.engine is Engine.CORE:
-        assert fit_core.REDUCTIONS_VERSION in gaps[0].message
 
 
 def test_the_row_map_of_a_likelihood_is_the_data_rows_of_every_mapping(
