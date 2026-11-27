@@ -176,6 +176,7 @@ nav = [
       { "petab_v2.extension" = "api/fit.petab_v2.extension.md" },
       { "petab_v2.symbols" = "api/fit.petab_v2.symbols.md" },
       { "petab_v2.gaps" = "api/fit.petab_v2.gaps.md" },
+      { "petab_v2.readme" = "api/fit.petab_v2.readme.md" },
       { "petab_v2.conversion" = "api/fit.petab_v2.conversion.md" },
       { "petab_v2.likelihood" = "api/fit.petab_v2.likelihood.md" },
       { "petab_v2.testsuite" = "api/fit.petab_v2.testsuite.md" },

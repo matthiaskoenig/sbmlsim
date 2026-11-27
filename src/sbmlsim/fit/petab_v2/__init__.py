@@ -12,7 +12,7 @@ so a problem which is written and read again is the fit it started from, and
 `sbmlsim.fit.petab_v2.gaps` reports what an export loses for other tools.
 """
 
-from sbmlsim.fit.petab_v2.export import PetabExporter, to_petab
+from sbmlsim.fit.petab_v2.export import PetabExporter, to_petab, to_petab_problems
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
     EXTENSION_VERSION,
@@ -51,5 +51,6 @@ __all__ = [
     "log_likelihood",
     "log_prior",
     "to_petab",
+    "to_petab_problems",
     "unnorm_log_posterior",
 ]
