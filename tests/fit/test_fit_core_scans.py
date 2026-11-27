@@ -512,13 +512,12 @@ def test_the_jacobian_of_a_formula_of_a_pinned_target_is_its_derivative(
 ) -> None:
     """The volume follows the absorption and not the rate, whose column is zero.
 
-    A condition with a derived value has no forward sensitivities in the
-    engine, which takes the forward differences of its residuals over its
-    `DIFF_STEP` of 1e-3 instead, so the column of the absorption is accurate
-    to about 1e-3 of its largest entry (the volume and the absorption itself
-    cancel in the cmax of the middle rate of `sum`) and is compared at its
-    scale. The rate moves no residual of a condition which pins it, so its
-    difference is exactly zero.
+    The column of the absorption is the forward sensitivities of the engine:
+    the sensitivity of the absorption itself and the one of the derived volume
+    times the factor of its term, the chain rule over the terms of the derived
+    value (sbmlsim-core#136), so it is the derivative of the residuals as the
+    column of a condition without a derived value is. The rate moves no
+    residual of a condition which pins it, so its column is exactly zero.
     """
     from sbmlsim.fit.fisher import jacobian
 
@@ -530,9 +529,7 @@ def test_the_jacobian_of_a_formula_of_a_pinned_target_is_its_derivative(
 
     differences = jacobian(problem, x, step=1e-4)
     assert sensitivities.shape == differences.shape == (len(RateStudy.RATES), 2)
-    np.testing.assert_allclose(
-        sensitivities, differences, rtol=0.0, atol=1e-3 * np.abs(differences).max()
-    )
+    np.testing.assert_allclose(sensitivities, differences, rtol=1e-3, atol=1e-6)
     assert np.all(sensitivities[:, 0] == 0.0)
     assert np.all(sensitivities[:, 1] != 0.0)
 
