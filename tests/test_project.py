@@ -137,6 +137,36 @@ def test_simulator_settings() -> None:
         SimulatorSettings(engine="none")
 
 
+@pytest.mark.parametrize(
+    ("engine", "n_workers", "scan_workers", "expected"),
+    [
+        # the engine core runs a scan on threads: every CPU, which a process
+        # of the run shares with the busy others, not the processes of the run
+        (Engine.CORE, 7, None, 20),
+        (Engine.CORE, None, None, None),
+        (Engine.CORE, 1, None, 1),
+        (Engine.CORE, 7, 3, 3),
+        # another engine runs a scan in processes
+        (Engine.ROADRUNNER, 7, None, 7),
+        (Engine.ROADRUNNER, 7, 1, 1),
+    ],
+)
+def test_the_simulator_of_a_run_of_experiments_has_the_workers_of_its_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    engine: Engine,
+    n_workers: int | None,
+    scan_workers: int | None,
+    expected: int | None,
+) -> None:
+    """The simulator of a run of 7 workers ran the engine core on 7 threads.
+
+    Also the last long experiment of the run, while the other workers were
+    done and 13 of 20 CPUs idled.
+    """
+    monkeypatch.setattr(project_module.cgroup, "available_cpus", lambda: 20)
+    assert project_module._scan_workers(engine, n_workers, scan_workers) == expected
+
+
 def test_the_callables_build_deterministic_objects(project: Project) -> None:
     for name in project.scans:
         first, second = project.scan(name).scan(), project.scan(name).scan()
