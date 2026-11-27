@@ -292,8 +292,7 @@ def test_command_of_report_has_input_placeholder(store: Path) -> None:
     env = {
         name: value
         for name, value in os.environ.items()
-        if name not in ("OMP_NUM_THREADS", "MPLBACKEND")
-        and not name.startswith("SIMRUN_")
+        if name != "OMP_NUM_THREADS" and not name.startswith("SIMRUN_")
     }
     env["PYTHONPATH"] = str(ROOT)
     result = subprocess.run(

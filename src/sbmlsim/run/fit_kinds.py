@@ -38,8 +38,12 @@ fit from one directory.
   `adopted` the report of the adopted fit of the subset, of every adopted fit
   for the subset `all`, from its record in the project into `<fit id>/`; a
   report has the context of the project (`sbmlsim.fit.cli.records_context`).
-- `petab` (`PetabSpec`) writes the problem as PEtab v2, `petab/problem.yaml`,
-  which starts from the best parameters of a fit when one is given.
+- `petab` (`PetabSpec`) writes the problem as PEtab v2 at the best parameters
+  of a fit when one is given: the training problem, `petab/training/`, and
+  the validation problem, `petab/validation/`, each a `problem.yaml` with its
+  tables and its `README.md`; without `split` the one problem of every kind,
+  `petab/problem.yaml`. The fit mappings PEtab cannot express, e.g. a PK
+  parameter of a simulation, are left out and named (`unsupported`).
 - `adopt` (`AdoptSpec`) adopts a finished fit of the input `fit`: its record
   into `fits/<fit id>` and `adopted.json`, as `fit` with `adopt` does.
 
@@ -424,10 +428,29 @@ class PetabSpec(FitProblemSpec):
         fit: the records of a fit, the problem starts from its best
             parameters; the start values of the problem without.
         required_extension: mark the extension `sbmlsim` as required.
+        split: write the training and the validation problem of the fit,
+            `petab/training` and `petab/validation`
+            (`sbmlsim.fit.petab_v2.to_petab_problems`): the problem a tool
+            fits and the problem it evaluates the fit with, the parameters
+            fixed at the values of the fit. `False` writes the one problem of
+            the training data, the validation data and the outliers,
+            `petab/problem.yaml`, whose extension says the kind of every
+            mapping, the exact round trip of the fit through `sbmlsim`.
+        unsupported: what the export does about a fit mapping PEtab v2 cannot
+            express (`sbmlsim.fit.petab_v2.gaps.MAPPING_GAPS`): `skip` (the
+            default) writes the problem without it and names it in the
+            extension and the README, `raise` fails the run. A run is the
+            analysis of a project, whose fits often compare PK parameters or
+            the points of a scan with data: the problem of the rest of the
+            data is still the problem other tools can fit, and the README says
+            what it lacks, whereas `to_petab` raises by default, so a caller of
+            the library does not lose data without asking for it.
     """
 
     fit: Path | None = None
     required_extension: bool = True
+    split: bool = True
+    unsupported: Literal["raise", "skip"] = "skip"
 
 
 # ----------------------------------------------------------------------------
@@ -1506,25 +1529,84 @@ def _run_adopt(spec: AdoptSpec, ctx: RunContext) -> dict[str, Any]:
 
 
 def _run_petab(spec: PetabSpec, ctx: RunContext) -> dict[str, Any]:
-    """Write the problem as PEtab v2, from the best parameters of a given fit."""
-    from sbmlsim.fit.petab_v2.export import to_petab
+    """Write the problem as PEtab v2, from the best parameters of a given fit.
+
+    The README of the problem names where its values come from: the best
+    parameters of the fit, or the start values of the fit problem, and the
+    adopted fits whose values it keeps fixed.
+    """
+    from sbmlsim.fit.cli import load_fit_records
+    from sbmlsim.fit.petab_v2.export import (
+        PROBLEM_DIRS,
+        YAML_FILE,
+        PetabExporter,
+        to_petab_problems,
+    )
+    from sbmlsim.fit.petab_v2.readme import README_FILE
+    from sbmlsim.fit.project_fits import recorded_fixed_fits
 
     if spec.fit is None:
         definition = _definition(spec)
         # the problem a fit of the subset optimizes, see `_fixed`
-        _, fixed = _adopted_values(spec, definition)
+        fixed_fits, fixed = _adopted_values(spec, definition)
         problem = definition.problem(opid=spec.subset, fixed_values=fixed)
         settings, parameter_set = definition.settings, None
+        origin = f"the start values of the fit problem `{spec.subset}`, no fit"
     else:
-        problem, settings, parameter_set = _stored_fit(spec, _records_dir(spec.fit))
-    path = to_petab(
-        problem,
-        ctx.out / PETAB_DIR,
-        settings=settings,
-        parameter_set=parameter_set,
-        required_extension=spec.required_extension,
-    )
-    return {"problem": Path(path).resolve().relative_to(ctx.out.resolve()).as_posix()}
+        directory = _records_dir(spec.fit)
+        problem, settings, parameter_set = _stored_fit(spec, directory)
+        fixed_fits = list(recorded_fixed_fits(load_fit_records(directory)))
+        origin = f"the best parameters of the fit `{problem.opid}`"
+    if fixed_fits:
+        origin += (
+            ", with the values of the adopted "
+            + ("fit " if len(fixed_fits) == 1 else "fits ")
+            + ", ".join(f"`{fit_id}`" for fit_id in fixed_fits)
+            + " fixed"
+        )
+    out = ctx.out.resolve()
+    if spec.split:
+        exporters = to_petab_problems(
+            problem,
+            ctx.out / PETAB_DIR,
+            settings=settings,
+            parameter_set=parameter_set,
+            required_extension=spec.required_extension,
+            unsupported=spec.unsupported,
+            origin=origin,
+        )
+        paths = {
+            role: ctx.out / PETAB_DIR / PROBLEM_DIRS[role] / YAML_FILE
+            for role in exporters
+        }
+    else:
+        exporter = PetabExporter(
+            problem,
+            settings=settings,
+            parameter_set=parameter_set,
+            required_extension=spec.required_extension,
+            unsupported=spec.unsupported,
+        )
+        exporters = {"fit": exporter}
+        paths = {"fit": exporter.write(ctx.out / PETAB_DIR, origin=origin)}
+    return {
+        "problems": {
+            role: path.resolve().relative_to(out).as_posix()
+            for role, path in paths.items()
+        },
+        "readmes": {
+            role: (path.parent / README_FILE).resolve().relative_to(out).as_posix()
+            for role, path in paths.items()
+        },
+        "gaps": {
+            role: [gap.id for gap in exporter.gaps]
+            for role, exporter in exporters.items()
+        },
+        "skipped": {
+            role: {gap: len(names) for gap, names in exporter.skipped.items()}
+            for role, exporter in exporters.items()
+        },
+    }
 
 
 #: the fit of a problem, split into blocks of repeats
@@ -1579,7 +1661,7 @@ PETAB: Kind[PetabSpec] = Kind(
     run=_run_petab,
     inputs=("fit",),
     uses_cores=False,
-    description="PEtab v2 problem of a fit",
+    description="PEtab v2 training and validation problem of a fit",
 )
 
 #: the adoption of a finished fit

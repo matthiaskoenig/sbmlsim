@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from collections.abc import Callable, Sequence
 
 from sbmlsim.engine import Engine
@@ -208,7 +207,6 @@ def verify(args: Sequence[str] | None = None) -> int:
         arguments, which argparse rejects) and 4 for a project which cannot be
         loaded (`ProjectNotLoaded`, as the kinds of the run layer).
     """
-    os.environ.setdefault("MPLBACKEND", "Agg")
     try:
         options = parser().parse_args(args)
     except SystemExit as exit_:

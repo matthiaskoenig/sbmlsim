@@ -81,7 +81,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `identifiability` | the profile likelihoods of the parameters of a fit | one per parameter | `fit` |
 | `fisher` | the Fisher information of a fit, with `posterior` the Laplace approximation of its posterior | whole | `fit` |
 | `report` | the report of a fit, with its profiles and Fisher information when the input has them | whole | `fit` |
-| `petab` | the fit problem as a PEtab v2 problem, starting from the best parameters of a fit if one is given | whole | `fit` |
+| `petab` | the training and the validation problem of a fit problem as PEtab v2, at the best parameters of a fit if one is given, with a README each | whole | `fit` |
 | `adopt` | the adoption of a finished fit: its record and the adopted fits of the project with it | whole | `fit` |
 | `scan` | a scan of the project | blocks of points | |
 | `sensitivity` | a scan with sensitivity indices, and the indices, or a sensitivity analysis of the project over the groups of its simulations | blocks of points, or one per analysis | |
@@ -161,6 +161,8 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all` (no fit subset of a project may be named `all`), into `<fit id>/`, without the input `fit` |
 | `adopt` | `force` | `false` | adopt a fit which the project has adopted already, replacing its record |
 | `petab` | `required_extension` | `true` | mark the extension `sbmlsim` as required |
+| `petab` | `split` | `true` | write the training and the validation problem of the fit, `petab/training` and `petab/validation`; `false` writes the one problem of every kind, `petab/problem.yaml`, see [PEtab](petab.md#the-training-and-the-validation-problem) |
+| `petab` | `unsupported` | `skip` | what the export does about a fit mapping PEtab cannot express, e.g. a PK parameter: `skip` writes the problem without it and names it in the README and the extension, `raise` fails the run, see [PEtab](petab.md#mappings-petab-cannot-express) |
 
 `adopt` adopts the fit of its input `fit`, the out of a fit or a records directory: the id of its result, which has the form of the id of a fit of a subset of the project, names the subset; it needs the profiles or the Fisher information of the fit and writes its record into `fits/<fit id>` and `adopted.json` with the fit adopted for its subset, as `fit` with `adopt` does.
 
@@ -230,7 +232,7 @@ The results of the kinds:
 | `fisher` | `fisher.json`, with `posterior` also `posterior.json`, and a copy of the records of the fit |
 | `report` | `report/`, with `adopted` a directory per adopted fit, `<fit id>/` |
 | `adopt` | `fits/<fit id>` (the record of the fit) and `adopted.json` |
-| `petab` | `petab/problem.yaml` and its tables |
+| `petab` | `petab/training/` and, for a fit with validation data, `petab/validation/`, each `problem.yaml` with its tables, its model and its `README.md`; without `split` the one problem in `petab/`. The summary has the problems and the READMEs by their role (`problems`, `readmes`), the gaps of every problem (`gaps`) and the number of the mappings it left out by their gap (`skipped`) |
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
 | `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`); of a sensitivity analysis over groups the files of its runner (see [Sensitivity analysis](sensitivity.md#sensitivity-analyses-of-a-project)): `parameters.tsv`, `parameters.tex` and a folder per analysis, `<analysis>/` or `<subfolder>/<analysis>/`, each written atomically by its unit with the hash of its plan in `.sensitivity-plan`, so a folder of another plan, e.g. of a smoke run, is computed again |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
@@ -393,7 +395,7 @@ python -m sbmlsim.run verify compare base.pkl new.pkl
 
 The number of processes of a run is the number of CPUs the process may use, bounded by the CPU quota of its cgroup, so a run in a container with a quota of 4 CPUs on a host of 64 starts 4 workers and not 64. With cgroup v2 the quota is the smallest one of the cgroup of the process and its parents (`cpu.max`), with cgroup v1 the one quota of the cgroup as the container sees it (`cpu.cfs_quota_us` over `cpu.cfs_period_us`), rounded down and at least 1; the pools of `sbmlsim` (`Simulator`, a fit, the experiments) bound their default size the same way.
 
-A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them, and draws its figures with the matplotlib backend `Agg` (`MPLBACKEND` unless set).
+A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them. Its figures are drawn by the renderer of sbmlsim-core and need no display.
 
 ## Profiling
 

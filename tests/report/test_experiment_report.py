@@ -428,14 +428,10 @@ def test_latex_report_uses_png(report_dir: Path) -> None:
 HOOK_EXPERIMENT = """
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
+from sbmlsim.plot import Chart
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
 from sbmlsim.task import Task
-
-
-class _Saved:
-    def savefig(self, path, **kwargs):
-        path.write_text("figure", encoding="utf-8")
 
 
 class Hooked(SimulationExperiment):
@@ -449,7 +445,9 @@ class Hooked(SimulationExperiment):
         return {"task": Task(model="m", simulation="sim")}
 
     def figures_mpl(self):
-        return {"custom": _Saved()}
+        chart = Chart(title="custom")
+        chart.plot().curve([0.0, 1.0], [0.0, 1.0], label="line")
+        return {"custom": chart}
 """
 
 
@@ -481,12 +479,8 @@ def test_a_png_only_figure_is_an_image(tmp_path: Path) -> None:
     assert "svg</a>" not in html
 
 
-def test_a_hook_figure_is_an_image_without_a_spec(tmp_path: Path) -> None:
-    """A figure of the hook has no spec: its SVG is an image and it has no spec link."""
+def test_a_chart_of_the_hook_is_inline_with_its_spec(tmp_path: Path) -> None:
+    """A chart of the hook is shown as the other figures, its SVG with its spec."""
     html = _hooked_page(tmp_path, ["svg", "png"])
-    block = re.search(r"<figure>(.*?)</figure>", html, re.DOTALL)
-    assert block
-    assert re.search(r'<img [^>]*src="Hooked_custom\.svg"', block.group(1))
-    assert "data-figure-spec" not in html
-    assert "spec</a>" not in html
+    assert 'data-figure-spec="custom"' in html
     assert 'href="Hooked_custom.png"' in html

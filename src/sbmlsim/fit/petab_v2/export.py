@@ -23,7 +23,7 @@ import dataclasses
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -47,17 +47,24 @@ from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     EXTENSION_ID,
+    PROBLEM_ROLES,
     SCIML_EXTENSION_ID,
+    ProblemRole,
     SbmlsimExtension,
 )
 from sbmlsim.fit.petab_v2.gaps import (
+    UNSUPPORTED_MODES,
     Gap,
     GapKind,
+    UnsupportedMode,
     gap_mappings,
     gaps_dict,
     gaps_of_problem,
+    mapping_name,
+    unsupported_mappings,
 )
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
+from sbmlsim.fit.petab_v2.readme import README_FILE, problem_readme
 from sbmlsim.fit.petab_v2.symbols import (
     condition_target,
     formula_of_selections,
@@ -196,6 +203,8 @@ class PetabExporter:
         kinds: set[MappingKind] | None = None,
         required_extension: bool = True,
         parameter_set: ParameterSet | None = None,
+        unsupported: UnsupportedMode = "raise",
+        role: ProblemRole = "fit",
     ):
         """Initialize the export of a problem.
 
@@ -226,13 +235,51 @@ class PetabExporter:
                 read back as the elements of the set and the parameters of the
                 start. The problem is not changed. An element of a network
                 which the problem freezes keeps its value.
+            unsupported: what the export does about a fit mapping which PEtab
+                cannot express (`sbmlsim.fit.petab_v2.gaps.MAPPING_GAPS`, e.g.
+                a PK parameter of a simulation or a task which is a scan):
+                `raise` (the default) refuses the problem in `check`, `skip`
+                writes the other mappings and names the left out ones by their
+                gap in `skipped`, in the extension and in the README. The
+                problem which is written is then the fit without them, i.e.
+                not the fit which was defined. The other unsupported gaps are
+                of the whole problem and raise in either mode.
+            role: what the written problem is of the fit, see
+                `sbmlsim.fit.petab_v2.extension.SbmlsimExtension.role`: `fit`
+                (the default) writes the mappings of `kinds`, `training` the
+                training data, the problem a tool fits, and `validation` the
+                validation data with the parameters of the fit not estimated
+                at their values, i.e. the start values or the parameter set,
+                the problem a tool evaluates the fit on. A validation problem
+                is written from the values of a fit, e.g. its best parameters.
 
         Raises:
             ValueError: if the problem is not initialized and no settings are
-                given, or if the parameter set has a value for an element of a
-                network which is no parameter of the fit.
+                given, if the parameter set has a value for an element of a
+                network which is no parameter of the fit, for an unknown mode
+                of `unsupported` or of `role`, for `kinds` with another role
+                than `fit` or if no mapping is left to write.
             KeyError: if the parameter set lacks a parameter of the problem.
         """
+        if unsupported not in UNSUPPORTED_MODES:
+            raise ValueError(
+                f"'{problem.opid}': `unsupported` is one of {UNSUPPORTED_MODES}, "
+                f"not '{unsupported}'."
+            )
+        if role not in PROBLEM_ROLES:
+            raise ValueError(
+                f"'{problem.opid}': `role` is one of {PROBLEM_ROLES}, not '{role}'."
+            )
+        if role != "fit" and kinds is not None:
+            raise ValueError(
+                f"'{problem.opid}': the problem of the role '{role}' has the data "
+                f"of its role, it takes no `kinds`."
+            )
+        if role == "training":
+            kinds = {MappingKind.TRAINING}
+        elif role == "validation":
+            kinds = {MappingKind.VALIDATION}
+        self.role: ProblemRole = role
         if not problem.is_initialized:
             if settings is None:
                 raise ValueError(
@@ -267,6 +314,34 @@ class PetabExporter:
                 f"'{sorted(kind.value for kind in self.kinds)}', there is nothing "
                 f"to export."
             )
+        self.unsupported: UnsupportedMode = unsupported
+        #: the fit mappings of the kinds which the export leaves out, by the
+        #: unsupported gap which keeps them out (`unsupported="skip"`), as
+        #: `<experiment>.<mapping>` in the order of the problem
+        self.skipped: dict[str, list[str]] = {}
+        if unsupported == "skip":
+            hits = unsupported_mappings(problem, self.indices)
+            left_out = {k for ks in hits.values() for k in ks}
+            self.skipped = {
+                gap: [mapping_name(problem, k) for k in ks] for gap, ks in hits.items()
+            }
+            self.indices = [k for k in self.indices if k not in left_out]
+            if not self.indices:
+                raise ValueError(
+                    f"'{problem.opid}': every fit mapping of the kinds "
+                    f"'{sorted(kind.value for kind in self.kinds)}' has a gap "
+                    f"PEtab v2 cannot express ({', '.join(self.skipped)}), there "
+                    f"is nothing to export."
+                )
+            for gap, names in self.skipped.items():
+                logger.warning(
+                    "'%s': %d fit mappings are left out of the PEtab problem, "
+                    "PEtab v2 cannot express them (%s): %s",
+                    problem.opid,
+                    len(names),
+                    gap,
+                    ", ".join(names),
+                )
         #: the gaps of the written mappings
         self.gaps: list[Gap] = gaps_of_problem(problem, self.indices)
 
@@ -442,6 +517,77 @@ class PetabExporter:
         self._check_condition_targets(petab_problem)
         self._add_extension(petab_problem)
         return petab_problem
+
+    def write(
+        self,
+        output_dir: Path,
+        origin: str | None = None,
+        readme: bool = True,
+        related: Mapping[str, str] | None = None,
+    ) -> Path:
+        """Build the problem and write it with its README, see `to_petab`.
+
+        Args:
+            output_dir: directory the problem is written to, created if it
+                does not exist.
+            origin: where the values of the parameters come from, in words,
+                for the README.
+            readme: write the `README.md` of the problem.
+            related: the other problems of the fit by their role, as paths
+                relative to the directory, which the README names.
+
+        Returns:
+            Path of the YAML file of the problem.
+
+        Raises:
+            ValueError: if the problem uses features PEtab v2 cannot express or
+                a file of the problem would be written outside the directory.
+        """
+        petab_problem = self.to_problem()
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # `to_files` writes every model from its libsbml document, a derived model
+        # as its source, see `_add_models`
+        _set_table_paths(petab_problem)
+        paths = [petab_problem.config.filepath]
+        paths.extend(getattr(model, "rel_path", None) for model in petab_problem.models)
+        for attribute in TABLE_FILES:
+            paths.extend(table.rel_path for table in getattr(petab_problem, attribute))
+        if self.sciml is not None:
+            config = self.sciml.config()
+            paths.extend(config.array_files)
+            paths.extend(config.hybridization_files)
+            paths.extend(
+                network.location for network in config.neural_networks.values()
+            )
+        root = output_dir.resolve()
+        for path in [*paths, README_FILE] if readme else paths:
+            if path is None:
+                continue
+            destination = output_dir / Path(str(path))
+            if not destination.resolve().is_relative_to(root):
+                raise ValueError(
+                    f"The export destination '{destination}' is outside the export "
+                    f"directory '{output_dir}', including through a symbolic link."
+                )
+        petab_problem.to_files(base_path=output_dir)
+        if self.sciml is not None:
+            self.sciml.write(output_dir)
+        yaml_file = output_dir / YAML_FILE
+        if readme:
+            files = [
+                Path(str(path)).as_posix()
+                for path in dict.fromkeys(paths)
+                if path is not None
+            ]
+            text = problem_readme(
+                self, petab_problem, files, origin=origin, related=related
+            )
+            (output_dir / README_FILE).write_text(text, encoding="utf-8")
+        logger.info("PEtab v2 problem written: %s", yaml_file.resolve().as_uri())
+        return yaml_file
 
     # --- MODELS ---
 
@@ -1041,7 +1187,7 @@ class PetabExporter:
     # --- PARAMETERS ---
 
     def _add_parameters(self, petab_problem: PetabProblem) -> None:
-        """Add the parameters which are estimated.
+        """Add the parameters of the fit, estimated, or fixed in a validation problem.
 
         The nominal value of a plain parameter is its value, i.e. its start
         value or the value of the parameter set of the export. The
@@ -1055,9 +1201,12 @@ class PetabExporter:
             if parameter.pid in elements:
                 # the rows of the networks describe the elements
                 continue
+            # a validation problem evaluates the fit at its values, a version
+            # included; a tool which does not estimate a version of a problem
+            # of the fit simulates the model as it is
             nominal_value = (
                 float(self.problem.xmodel[index])
-                if has_renamed_targets([parameter])
+                if has_renamed_targets([parameter]) and self.role != "validation"
                 else self.values[parameter.pid]
             )
             _table(petab_problem, "parameter_tables").parameters.append(
@@ -1066,7 +1215,7 @@ class PetabExporter:
                     lb=parameter.lower_bound,
                     ub=parameter.upper_bound,
                     nominal_value=nominal_value,
-                    estimate=True,
+                    estimate=self.role != "validation",
                     prior_distribution=None
                     if parameter.prior is None
                     else parameter.prior.distribution.value,
@@ -1220,6 +1369,8 @@ class PetabExporter:
             models=models,
             inputs=dict(self.sciml.fallbacks) if self.sciml is not None else {},
             gaps=gaps_dict(self.gaps),
+            role=self.role,
+            skipped={gap: list(names) for gap, names in self.skipped.items()},
             prior_correlation=(
                 None
                 if problem.prior_correlation is None
@@ -1260,8 +1411,17 @@ def to_petab(
     kinds: set[MappingKind] | None = None,
     required_extension: bool = True,
     parameter_set: ParameterSet | None = None,
+    unsupported: UnsupportedMode = "raise",
+    origin: str | None = None,
+    readme: bool = True,
 ) -> Path:
     """Write an optimization problem as a PEtab v2 problem.
+
+    Next to the YAML file and the tables the export writes a `README.md`,
+    which describes the problem in words: the values it starts from, the
+    data which is written and which is not, every gap of the problem with what
+    it means for another tool, the measurements at the time of a change and
+    how the problem is read back, see `sbmlsim.fit.petab_v2.readme`.
 
     Args:
         problem: problem to write, it is initialized if it is not.
@@ -1279,14 +1439,23 @@ def to_petab(
             result of a fit: the exported problem starts from them, see
             `PetabExporter`. The start values of the problem are written if
             there is none.
+        unsupported: what the export does about a fit mapping PEtab v2 cannot
+            express, e.g. a PK parameter of a simulation: `raise` (the
+            default) refuses the problem, `skip` writes the problem without
+            the mapping and names it in the extension and the README, see
+            `PetabExporter`.
+        origin: where the values of the parameters come from, in words, for
+            the README, e.g. `the best parameters of the fit PK_...`.
+        readme: write the `README.md` of the problem.
 
     Returns:
         Path of the YAML file of the problem.
 
     Raises:
-        ValueError: if the problem uses features PEtab v2 cannot express, or if
-            the parameter set has a value for an element of a network which is
-            no parameter of the fit.
+        ValueError: if the problem uses features PEtab v2 cannot express (of a
+            fit mapping only with `unsupported="raise"`), or if the parameter
+            set has a value for an element of a network which is no parameter
+            of the fit.
         KeyError: if the parameter set lacks a parameter of the problem.
     """
     exporter = PetabExporter(
@@ -1295,37 +1464,93 @@ def to_petab(
         kinds=kinds,
         required_extension=required_extension,
         parameter_set=parameter_set,
+        unsupported=unsupported,
     )
-    petab_problem = exporter.to_problem()
+    return exporter.write(output_dir, origin=origin, readme=readme)
 
+
+#: the directories of the problems of `to_petab_problems` by their role
+PROBLEM_DIRS: dict[str, str] = {"training": "training", "validation": "validation"}
+
+
+def to_petab_problems(
+    problem: OptimizationProblem,
+    output_dir: Path,
+    settings: FitSettings | None = None,
+    required_extension: bool = True,
+    parameter_set: ParameterSet | None = None,
+    unsupported: UnsupportedMode = "raise",
+    origin: str | None = None,
+) -> dict[str, PetabExporter]:
+    """Write a fit as its training and its validation problem of PEtab v2.
+
+    The training problem (`training/problem.yaml`) has the training data and
+    estimates the parameters of the fit, starting from their values; the
+    validation problem (`validation/problem.yaml`) has the validation data
+    and the parameters of the fit fixed at these values (`estimate=false`),
+    i.e. it evaluates the fit on data it was not fitted to, see
+    `PetabExporter` with `role`. The outliers are in neither, the excluded
+    data is no part of the fit. A fit without validation data has the
+    training problem only. Each problem has its README, which names the
+    other one. PEtab v2 has no collection of problems, so they are two
+    problems with their own files.
+
+    Args:
+        problem: problem to write, it is initialized if it is not.
+        output_dir: directory of the problems, created if it does not exist.
+        settings: settings of the fit, required if the problem is not
+            initialized.
+        required_extension: mark the `sbmlsim` extension as required.
+        parameter_set: values of the parameters, e.g. the best parameters of
+            a fit: the start of the training problem and the values of the
+            validation problem; the start values of the problem without.
+        unsupported: what the export does about a fit mapping PEtab v2 cannot
+            express, see `PetabExporter`.
+        origin: where the values of the parameters come from, in words, for
+            the READMEs.
+
+    Returns:
+        The export of every problem which is written by its role, `training`
+        and, with validation data, `validation`; the problem of a role is in
+        `output_dir / PROBLEM_DIRS[role] / YAML_FILE`.
+
+    Raises:
+        ValueError: if the problem uses features PEtab v2 cannot express, see
+            `to_petab`, or has no training data.
+    """
+    exporters = {
+        "training": PetabExporter(
+            problem,
+            settings=settings,
+            required_extension=required_extension,
+            parameter_set=parameter_set,
+            unsupported=unsupported,
+            role="training",
+        )
+    }
+    validation = problem.indices(MappingKind.VALIDATION)
+    left_out: set[int] = set()
+    if unsupported == "skip":
+        hits = unsupported_mappings(problem, validation)
+        left_out = {k for ks in hits.values() for k in ks}
+    if [k for k in validation if k not in left_out]:
+        exporters["validation"] = PetabExporter(
+            problem,
+            required_extension=required_extension,
+            parameter_set=parameter_set,
+            unsupported=unsupported,
+            role="validation",
+        )
+    elif validation:
+        logger.warning(
+            "'%s': PEtab v2 cannot express any validation data of the fit, "
+            "there is no validation problem.",
+            problem.opid,
+        )
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # `to_files` writes every model from its libsbml document, a derived model
-    # as its source, see `_add_models`
-    _set_table_paths(petab_problem)
-    paths = [petab_problem.config.filepath]
-    paths.extend(getattr(model, "rel_path", None) for model in petab_problem.models)
-    for attribute in TABLE_FILES:
-        paths.extend(table.rel_path for table in getattr(petab_problem, attribute))
-    if exporter.sciml is not None:
-        config = exporter.sciml.config()
-        paths.extend(config.array_files)
-        paths.extend(config.hybridization_files)
-        paths.extend(network.location for network in config.neural_networks.values())
-    root = output_dir.resolve()
-    for path in paths:
-        if path is None:
-            continue
-        destination = output_dir / Path(str(path))
-        if not destination.resolve().is_relative_to(root):
-            raise ValueError(
-                f"The export destination '{destination}' is outside the export "
-                f"directory '{output_dir}', including through a symbolic link."
-            )
-    petab_problem.to_files(base_path=output_dir)
-    if exporter.sciml is not None:
-        exporter.sciml.write(output_dir)
-    yaml_file = output_dir / YAML_FILE
-    logger.info("PEtab v2 problem written: %s", yaml_file.resolve().as_uri())
-    return yaml_file
+    for role, exporter in exporters.items():
+        related = {
+            other: f"../{PROBLEM_DIRS[other]}" for other in exporters if other != role
+        }
+        exporter.write(output_dir / PROBLEM_DIRS[role], origin=origin, related=related)
+    return exporters

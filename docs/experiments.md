@@ -200,7 +200,7 @@ A run can repeat the experiments over draws of the fitted parameters of the mode
 - a curve over another variable (e.g. an effect over a concentration) has no common x across the draws: it draws the simulation with the fitted values (`<simulation>_fitted`) over a thin line of every draw,
 - the curves of the data stay.
 
-A figure an experiment draws itself (`figures_mpl`) reads the draws from `self.uncertainty` and the dimension from `self.across()`, e.g. for `sbmlsim.result.scan.point_band`. The draws of the default variant run on every variant, so every variant must have the same fitted values and distributions: `sbmlsim.experiment.draws.check_fit_parameters(project)` lists the differences. In the run layer the draws are the field `uncertainty` of the kind [`simulate`](run.md#simulate-scan-sensitivity-and-uncertainty).
+A figure an experiment draws itself (a `Chart` of `figures_mpl`) reads the draws from `self.uncertainty` and the dimension from `self.across()`, e.g. for `sbmlsim.result.scan.point_band`. The draws of the default variant run on every variant, so every variant must have the same fitted values and distributions: `sbmlsim.experiment.draws.check_fit_parameters(project)` lists the differences. In the run layer the draws are the field `uncertainty` of the kind [`simulate`](run.md#simulate-scan-sensitivity-and-uncertainty).
 
 ## When something fails
 

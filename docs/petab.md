@@ -18,6 +18,8 @@ yaml_file = to_petab(problem, Path("results") / "petab", settings=settings)
 
 `problem` is an `OptimizationProblem` and `settings` its `FitSettings`, as in [Parameter fitting](fitting.md). By default the parameters are written with their start values. To write the result of a fit instead, pass `parameter_set=` with a `ParameterSet`. A problem read back from the files then starts from the fitted values. The problem you export is not changed.
 
+Next to `problem.yaml` the export writes a `README.md`, which describes this problem in words: the fit and the values it starts from (`origin=`, e.g. `"the best parameters of the fit PK_..."`), its settings and parameters, the files, the data which is written and the data which is not (the excluded data, the kinds which are not written and the mappings PEtab cannot express, each by name), every gap of the problem with what it means for a tool other than `sbmlsim`, the measurements at the time of a change and how the problem is read back. The README has no time and no path of the machine, so the same problem writes the same file; `readme=False` leaves it out.
+
 This is how the parts of a fit end up in PEtab:
 
 | `sbmlsim` | PEtab v2 |
@@ -33,6 +35,52 @@ This is how the parts of a fit end up in PEtab:
 | a `FitParameter` | an estimated parameter, with its bounds and start value |
 
 The training data, the validation data and the outliers are all written, and the kind of each mapping goes into the `sbmlsim` extension. Data marked `excluded` is left out.
+
+## The training and the validation problem
+
+A tool of PEtab fits every measurement of a problem, so a problem with the validation data and the outliers is not the fit for it. `to_petab_problems` writes a fit as two problems instead:
+
+```py
+from sbmlsim.fit.petab_v2 import to_petab_problems
+
+exporters = to_petab_problems(
+    problem, Path("results") / "petab", settings=settings, parameter_set=parameter_set
+)
+```
+
+| problem | directory | data | parameters |
+| --- | --- | --- | --- |
+| training | `training/problem.yaml` | the training data, which the fit optimizes | estimated, starting from the values of the fit |
+| validation | `validation/problem.yaml` | the validation data, which the fit does not optimize | not estimated (`estimate=false`), at the values of the fit |
+
+The outliers are in neither problem and the excluded data is no part of the fit; the README of each problem lists them by name and names the other problem. A fit without validation data has the training problem only. PEtab v2 has no collection of problems in one YAML file, which PEtab v1 had (`problems`), so the two are problems with their own files.
+
+The validation problem checks the fit on data it was not fitted to, so it estimates nothing: its nominal values are the values of the fit, which every PEtab tool simulates it with, e.g. for the log-likelihood of the validation data. A problem which estimated them would fit the validation data, i.e. be another training problem. The bounds are kept. The extension says what a problem is of its fit (`role`: `fit`, `training` or `validation`), and `sbmlsim` reads a validation problem as the parameters of the fit at these values with the validation data as the data of its objective, so the cost of the problem it reads is the cost of the validation data:
+
+```py
+import numpy as np
+
+problem, settings = from_petab(
+    Path("results") / "petab" / "validation" / "problem.yaml"
+)
+problem.initialize(settings)
+x = np.asarray(problem.x0, dtype=float)
+cost = problem.cost_least_square(problem.to_scale(x))
+```
+
+`PetabExporter(problem, role="training")` and `role="validation"` write one of them.
+
+The run layer writes the two problems with the kind `petab` (`petab/training` and `petab/validation`, see [Run](run.md)), and the command `run_petab` of pkpdsim writes them for every adopted fit of a model.
+
+## Mappings PEtab cannot express
+
+A fit mapping which compares a value per simulation, e.g. a PK parameter, or values over a dimension of a scan with data, a mapping whose task is a scan and a timecourse over something else than the time have no representation in PEtab (the gaps `scalar-observable`, `scan-task` and `x-observable`, `gaps.MAPPING_GAPS`). By default the export raises and names them, so a caller of the library does not lose data without asking for it. With `unsupported="skip"` it writes the problem of the other mappings and names the left out ones by their gap in the log, in `skipped` of the extension and in the README:
+
+```py
+to_petab(problem, Path("results") / "petab", unsupported="skip")
+```
+
+The problem which is written is then the fit without these mappings. The kind `petab` of the run layer skips by default (`unsupported: skip`): the analysis of a model should not fail because a mapping of its fit is a PK parameter. A gap of the whole problem, e.g. a change which PEtab cannot assign, raises in either mode.
 
 Selections need translating, because PEtab has none. In `sbmlsim`, `S1` is the amount of a species and `[S1]` its concentration. In PEtab math, the identifier of a species means its amount if `hasOnlySubstanceUnits=true` and its concentration otherwise. The exporter converts between the two, e.g. the concentration of an amount based species becomes `S1 / compartment`, and a formula value like `[S] + 5` is written as `S + 5`. A condition can only assign an identifier, so a change that sets the concentration of an amount based species (or the amount of a concentration based one) cannot be written and the export raises.
 
@@ -86,7 +134,7 @@ The full catalogue is `sbmlsim.fit.petab_v2.gaps`. Each gap has one of three kin
 
 - **extension**: PEtab has no place for it and the extension carries it, e.g. the units, the fit settings, the kind of every mapping, the output grid, the metadata of a curve and the integrator settings. This includes the scale the optimizer searches in: PEtab v2 removed the `parameterScale` column, so bounds and start values are written on the linear scale. Another example is `measurement-at-change`: by default `sbmlsim` compares a measurement at the time of a change with the state before the change, while other tools compare it with the state after. The export logs these measurements, and `gaps.measurements_at_changes` lists them per mapping.
 - **lossy**: the information is transformed. A fit of weighted least squares, the default of a fit defined in python, does not use the noise model and the priors of PEtab, and an estimated noise parameter does not change its cost; a fit of `ObjectiveType.LIKELIHOOD` or `POSTERIOR` minimizes them as PEtab defines them, see [The objective](fitting.md#the-objective). The weights of `sbmlsim` are not the standard deviation PEtab uses. The reader builds one simulation experiment for the whole problem, so a task selects the observables of the whole problem (gap `selections`), which changes the cost of the HCTZ example by `7e-6` after a round trip.
-- **unsupported**: the export raises and names the experiments and mappings. This covers an observable that is a python function, a mapping whose x is not the time, a mapping that compares values per simulation or over a scan dimension (`scalar-observable`), and a task that is a scan (`scan-task`).
+- **unsupported**: the export raises and names the experiments and mappings, or, for a gap of a mapping and with `unsupported="skip"`, leaves the mappings out, see [Mappings PEtab cannot express](#mappings-petab-cannot-express). This covers an observable that is a python function, a mapping whose x is not the time (`x-observable`), a mapping that compares values per simulation or over a scan dimension (`scalar-observable`), and a task that is a scan (`scan-task`).
 
 ## The log-likelihood
 

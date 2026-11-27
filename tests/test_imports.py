@@ -214,13 +214,13 @@ def test_the_settings_and_the_hook_of_a_release_import_the_standard_library(
 
 
 def test_a_release_imports_its_tools_when_it_runs() -> None:
-    """`sbmlsim.release` and its command line import jinja2 and git when they run."""
+    """Release modules load archive exporters only when a release runs."""
     code = (
         "import sys, sbmlsim.release, sbmlsim.release.settings, "
-        "sbmlsim.release.hooks, sbmlsim.release.cli; "
+        "sbmlsim.release.hooks, sbmlsim.release.cli, sbmlsim.release.archive; "
         "print(sorted(m for m in ('jinja2', 'sbmlsim.release.workflow',"
         " 'sbmlsim.credibility', 'sbmlsim.project', 'roadrunner', 'pymetadata.omex',"
-        " 'sbmlode') if m in sys.modules))"
+        " 'sbmlsim_core') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

@@ -334,8 +334,28 @@ def test_petab_writes_a_problem(fit_out: Path, tmp_path: Path) -> None:
         out,
         inputs={"fit": fit_out},
     )
-    assert (out / "petab" / "problem.yaml").exists()
-    assert summary["problem"] == "petab/problem.yaml"
+    # the training problem with its README; the subset IV has no validation
+    # data, so there is no validation problem
+    assert summary["problems"] == {"training": "petab/training/problem.yaml"}
+    assert summary["readmes"] == {"training": "petab/training/README.md"}
+    assert summary["skipped"] == {"training": {}}
+    assert not (out / "petab" / "validation").exists()
+    readme = (out / "petab" / "training" / "README.md").read_text(encoding="utf-8")
+    assert "| parameter values | the best parameters of the fit `IV" in readme
+
+
+def test_petab_without_split_writes_the_problem_of_every_kind(
+    fit_out: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    summary = run.execute(
+        "petab",
+        {"project": PROJECT, "subset": "IV", "split": False},
+        out,
+        inputs={"fit": fit_out},
+    )
+    assert summary["problems"] == {"fit": "petab/problem.yaml"}
+    assert (out / "petab" / "README.md").exists()
 
 
 def test_the_kinds_of_a_fit_are_registered() -> None:
@@ -350,7 +370,8 @@ def test_the_kinds_of_a_fit_are_registered() -> None:
 def test_petab_without_a_fit_starts_from_the_start_values(tmp_path: Path) -> None:
     out = tmp_path / "out"
     run.execute("petab", {"project": PROJECT, "subset": "IV"}, out)
-    assert (out / "petab" / "problem.yaml").exists()
+    readme = (out / "petab" / "training" / "README.md").read_text(encoding="utf-8")
+    assert "the start values of the fit problem `IV`, no fit" in readme
 
 
 def test_identifiability_defaults_are_the_profile_settings() -> None:
@@ -373,8 +394,7 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if name not in ("OMP_NUM_THREADS", "MPLBACKEND")
-        and not name.startswith("SIMRUN_")
+        if name != "OMP_NUM_THREADS" and not name.startswith("SIMRUN_")
     }
     env["PYTHONPATH"] = str(ROOT)
     return subprocess.run(

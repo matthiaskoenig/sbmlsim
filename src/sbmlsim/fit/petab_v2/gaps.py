@@ -17,7 +17,7 @@ import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from rich.table import Table
 
@@ -69,8 +69,10 @@ class GapKind(StrEnum):
     the problem which is read back is not the problem which was written."""
 
     UNSUPPORTED = "unsupported"
-    """The export raises, there is no representation which keeps the meaning of
-    the fit."""
+    """There is no representation which keeps the meaning of the fit: the
+    export raises, or, for a gap of a fit mapping (`MAPPING_GAPS`) and with
+    `unsupported="skip"`, leaves the mappings out and names them in the
+    extension and in the README of the problem."""
 
 
 @dataclass(frozen=True)
@@ -374,8 +376,8 @@ GAPS: tuple[Gap, ...] = (
         sbmlsim="the x of a fit mapping is any observable of the task",
         petab="a measurement is a value at a time",
         detail="a mapping whose x is not the time of the simulation, e.g. a dose "
-        "response over a concentration, has no PEtab representation and the "
-        "export raises",
+        "response over a concentration, has no PEtab representation: the export "
+        "raises, or leaves the mapping out with `unsupported='skip'`",
     ),
     Gap(
         id="scalar-observable",
@@ -383,14 +385,16 @@ GAPS: tuple[Gap, ...] = (
         sbmlsim="a fit mapping compares a value per simulation or values over a "
         "dimension of a scan with data",
         petab="a measurement is a value of an observable at a time of a condition",
-        detail="the export raises for such a mapping",
+        detail="the export raises for such a mapping, e.g. a PK parameter of a "
+        "simulation, or leaves it out with `unsupported='skip'`",
     ),
     Gap(
         id="scan-task",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="the task of a fit mapping is a scan",
         petab="a condition sets fixed values, an experiment has no dimensions",
-        detail="the export raises for such a mapping",
+        detail="the export raises for such a mapping, or leaves it out with "
+        "`unsupported='skip'`",
     ),
     Gap(
         id="selections",
@@ -443,6 +447,20 @@ GAPS: tuple[Gap, ...] = (
 #: the gaps by their id
 GAPS_BY_ID: dict[str, Gap] = {gap.id: gap for gap in GAPS}
 
+#: the unsupported gaps of a single fit mapping, which an export with
+#: `unsupported="skip"` leaves out instead of raising: a mapping whose x is
+#: not the time, a value per simulation or over a dimension of a scan, and a
+#: task which is a scan. The other unsupported gaps are of the problem, e.g. a
+#: change which PEtab cannot assign, and raise whatever the mode
+MAPPING_GAPS: tuple[str, ...] = ("x-observable", "scalar-observable", "scan-task")
+
+#: what an export does about a fit mapping of an unsupported gap: `raise`
+#: refuses the problem, `skip` writes the other mappings and names it
+UnsupportedMode = Literal["raise", "skip"]
+
+#: the modes of `UnsupportedMode`
+UNSUPPORTED_MODES: tuple[str, ...] = ("raise", "skip")
+
 
 def _has_a_simulation_of_several_kinds(
     problem: OptimizationProblem, exported: Sequence[int]
@@ -482,10 +500,15 @@ def _exported(
     return range(len(problem.mapping_keys)) if indices is None else indices
 
 
-def gap_mappings(
+def unsupported_mappings(
     problem: OptimizationProblem, indices: Sequence[int] | None = None
-) -> dict[str, list[str]]:
-    """Get the fit mappings which hit the gaps of scalar observables and scans.
+) -> dict[str, list[int]]:
+    """Get the fit mappings of the unsupported gaps of a single mapping.
+
+    The gaps are the ones of `MAPPING_GAPS`: a timecourse whose x is not the
+    time (`x-observable`), a value per simulation or values over a dimension
+    of a scan (`scalar-observable`) and a task which is a scan (`scan-task`).
+    A mapping can hit several of them.
 
     Args:
         problem: the initialized problem which is exported.
@@ -493,19 +516,47 @@ def gap_mappings(
             the kinds of `PetabExporter.kinds`; every mapping if `None`.
 
     Returns:
-        Gap id (`scalar-observable`, `scan-task`) -> the mappings which hit it
-        as `<experiment>.<mapping>`, in the order of the problem; a gap without
-        a mapping is not a key.
+        Gap id -> the indices of the mappings which hit it, in the order of
+        the problem; a gap without a mapping is not a key, the keys are in
+        the order of `MAPPING_GAPS`.
     """
-    found: dict[str, list[str]] = {}
+    found: dict[str, list[int]] = {}
     for k in _exported(problem, indices):
         kind = problem.observation_kinds[k]
-        name = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
+        if kind == "timecourse" and problem.xid_observable[k] != "time":
+            found.setdefault("x-observable", []).append(k)
         if kind != "timecourse":
-            found.setdefault("scalar-observable", []).append(name)
+            found.setdefault("scalar-observable", []).append(k)
         if problem.scans[k] is not None:
-            found.setdefault("scan-task", []).append(name)
-    return found
+            found.setdefault("scan-task", []).append(k)
+    return {gap: found[gap] for gap in MAPPING_GAPS if gap in found}
+
+
+def mapping_name(problem: OptimizationProblem, k: int) -> str:
+    """Get the name of a fit mapping in a message, `<experiment>.<mapping>`."""
+    return f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
+
+
+def gap_mappings(
+    problem: OptimizationProblem, indices: Sequence[int] | None = None
+) -> dict[str, list[str]]:
+    """Get the fit mappings which hit the unsupported gaps of a single mapping.
+
+    Args:
+        problem: the initialized problem which is exported.
+        indices: the indices of the mappings which are exported, e.g. those of
+            the kinds of `PetabExporter.kinds`; every mapping if `None`.
+
+    Returns:
+        Gap id (`x-observable`, `scalar-observable`, `scan-task`, see
+        `unsupported_mappings`) -> the mappings which hit it as
+        `<experiment>.<mapping>`, in the order of the problem; a gap without a
+        mapping is not a key.
+    """
+    return {
+        gap: [mapping_name(problem, k) for k in ks]
+        for gap, ks in unsupported_mappings(problem, indices).items()
+    }
 
 
 def gaps_of_problem(
@@ -644,8 +695,7 @@ def measurements_at_changes(
     for k in _exported(problem, indices):
         times = problem.times_before_changes(k)
         if times.size:
-            name = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
-            found[name] = [float(t) for t in times]
+            found[mapping_name(problem, k)] = [float(t) for t in times]
     return found
 
 

@@ -142,6 +142,7 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
+| [fit.petab_v2.readme](fit.petab_v2.readme.md) | the README of an exported problem: what it holds, what it leaves out and what PEtab does not express |
 | [fit.petab_v2.conversion](fit.petab_v2.conversion.md) | the conversion of a problem of PEtab v1 and its simulations to PEtab v2 |
 | [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, chi2 and the priors, the noise models of PEtab v2 |
 | [fit.petab_v2.testsuite](fit.petab_v2.testsuite.md) | the [PEtab Test Suite](../petab_testsuite.md): its cases of models and of math, and their comparison |

@@ -12,11 +12,9 @@ with its code. A command which runs under the profiler (`--profile`, see
 `sbmlsim.run.profiling`) records its exit code for the profiler, which exits
 with 0 whatever the command did: the code of the command line, the code of a
 `SystemExit`, `EXIT_INTERRUPTED` for Ctrl-C and 1 for any other error.
-`MPLBACKEND` is set to `Agg` unless set, so the figures a user hook draws
-with matplotlib (`figures_mpl()`) draw with `Agg` in the process and in the
-workers of its pools (#317); every figure of the package, the fit report and
-the sensitivity figures included, is drawn by the renderer of sbmlsim-core. The messages are
-logged on stderr, so stdout carries only the output of `plan` and `list`.
+Every figure, the fit report and the sensitivity figures included, is drawn
+by the renderer of sbmlsim-core, without a display. The messages are logged
+on stderr, so stdout carries only the output of `plan` and `list`.
 """
 
 import os
@@ -40,7 +38,6 @@ def _single_threaded() -> None:
     Returns only when every thread variable was set; otherwise the process is
     replaced, or on windows exits with the code of the new process.
     """
-    os.environ.setdefault("MPLBACKEND", "Agg")
     unset = [name for name in THREAD_VARIABLES if name not in os.environ]
     if not unset:
         return

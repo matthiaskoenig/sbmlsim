@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sbmlsim import cgroup
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.optimization import OptimizationProblem, PoolError
@@ -280,7 +281,7 @@ def test_the_trajectory_has_every_evaluation(
 
 
 @pytest.mark.skipif(
-    (os.process_cpu_count() or 1) < 3, reason="needs three cores for three workers"
+    cgroup.available_cpus() < 3, reason="needs three available CPUs for three workers"
 )
 def test_runs_one_after_another_with_a_population_on_workers(
     op_hctz_pk: OptimizationProblem,
@@ -353,6 +354,10 @@ def test_a_population_on_workers_keeps_the_timeout(
     assert not multiprocessing.active_children()
 
 
+@pytest.mark.skipif(
+    cgroup.available_cpus() < 3,
+    reason="needs three available CPUs for two sequential population runs",
+)
 def test_the_next_run_after_a_timeout_starts_new_workers(
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,

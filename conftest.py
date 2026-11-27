@@ -1,12 +1,7 @@
 """Test session configuration.
 
-Three things are set up for the whole test session:
+Two things are set up for the whole test session:
 
-- **matplotlib never opens a window.** sbmlsim draws with the renderer of
-  sbmlsim-core and imports no matplotlib, which only the tests of the
-  `figures_mpl()` hook and the benchmark script use. The `Agg` backend is
-  selected before pyplot is imported anywhere, so such a figure is rendered
-  into a buffer instead of into a window.
 - **the examples are importable.** They are not part of the package, they live
   in `examples/` at the root of the repository, see `examples/README.md`.
   pytest puts the directory of this file on `sys.path`, so that the tests can
@@ -16,10 +11,7 @@ Three things are set up for the whole test session:
   end-to-end runs do not pay for every push on every platform.
 """
 
-import matplotlib
 import pytest
-
-matplotlib.use("Agg", force=True)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

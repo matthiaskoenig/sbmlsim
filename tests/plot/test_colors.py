@@ -17,32 +17,33 @@ def test_colors_are_the_ones_of_sbmlsim_core() -> None:
     assert sbmlsim_colors.normalize_color("tab:red") == "#d62728"
 
 
+#: a colour, its alpha and the colour of the figure model: a name is read as
+#: `matplotlib.colors.to_hex(to_rgba(color, alpha), keep_alpha=True)` of
+#: matplotlib 3.11 reads it, a hex string keeps its digits and gets the alpha
+#: appended when it has none
 PARSED = [
-    ("k", 1.0),
-    ("r", 0.5),
-    ("0.4", 0.3),
-    ("tab:red", 1.0),
-    ("C3", 0.25),
-    ("xkcd:sky blue", 1.0),
-    ("dimgrey", 0.8),
-    ("none", 1.0),
-    ("#ff0000", 0.5),
-    ("#ff000080", 1.0),
-    ("#FF0000", 1.0),
+    ("k", 1.0, "#000000ff"),
+    ("r", 0.5, "#ff000080"),
+    ("0.4", 0.3, "#6666664c"),
+    ("tab:red", 1.0, "#d62728ff"),
+    ("C3", 0.25, "#d6272840"),
+    ("xkcd:sky blue", 1.0, "#75bbfdff"),
+    ("dimgrey", 0.8, "#696969cc"),
+    ("none", 1.0, "#00000000"),
+    ("#ff0000", 0.5, "#ff000080"),
+    ("#ff000080", 1.0, "#ff000080"),
+    ("#FF0000", 1.0, "#FF0000ff"),
 ]
 
 
-@pytest.mark.parametrize(("color", "alpha"), PARSED)
-def test_parse_color_equals_matplotlib(color: str, alpha: float) -> None:
-    colors = pytest.importorskip("matplotlib.colors")
+@pytest.mark.parametrize(("color", "alpha", "expected"), PARSED)
+def test_parse_color_reads_a_colour_as_matplotlib(
+    color: str, alpha: float, expected: str
+) -> None:
     from sbmlsim.plot.plotting import ColorType
 
     parsed = ColorType.parse_color(color, alpha)
     assert parsed is not None
-    if color.startswith("#"):
-        expected = color + f"{round(alpha * 255):02x}" if len(color) == 7 else color
-    else:
-        expected = colors.to_hex(colors.to_rgba(color, alpha), keep_alpha=True)
     assert parsed.color == expected
 
 

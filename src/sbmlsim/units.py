@@ -123,9 +123,6 @@ def _create_registry() -> UnitRegistry:
     registry.define("none = count")
     registry.define("item = count")
     registry.define("percent = 0.01*count")
-    # an axis of matplotlib which plots quantities (`ureg.setup_matplotlib(True)`
-    # of pint) is labelled with the short form of its unit, e.g. `ng/ml`
-    registry.mpl_formatter = "{:~P}"
     return registry
 
 

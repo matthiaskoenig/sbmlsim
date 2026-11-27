@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sbmlsim import cgroup
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
 from sbmlsim.fit.identifiability import (
@@ -228,7 +229,7 @@ def test_a_serial_fit_starts_no_workers(
 
 
 @pytest.mark.skipif(
-    (os.process_cpu_count() or 1) < 3, reason="needs three cores for three workers"
+    cgroup.available_cpus() < 3, reason="needs three available CPUs for three workers"
 )
 def test_runs_one_after_another_with_a_jacobian_on_workers(
     op_hctz_pk: OptimizationProblem,
@@ -402,6 +403,9 @@ def _fake_pool(*outcomes: Any, threads: int = 1) -> Any:
     )
 
 
+@pytest.mark.skipif(
+    cgroup.available_cpus() < 2, reason="needs two available CPUs for a threaded batch"
+)
 def test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit(
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
@@ -421,7 +425,8 @@ def test_a_jacobian_of_the_engine_core_on_threads_equals_the_serial_fit(
     # a point of its own would fail the fit, so the jacobians of the fit ran
     # in the batch and the equality below is the one of the batch
     monkeypatch.setattr(runner, "_worker_residuals", fail_always)
-    batched = _lsq(problem, fit_settings, n_cores=4)
+    # Two CPUs exercise the threaded batch without requesting unavailable cores.
+    batched = _lsq(problem, fit_settings, n_cores=2)
 
     _assert_same_fits(batched, serial)
     assert len(_processes(fit_token)) == 1

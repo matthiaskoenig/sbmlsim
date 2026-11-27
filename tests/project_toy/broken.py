@@ -6,9 +6,8 @@ project and the checks of its registry do not see them; `BROKEN` has them.
 
 from typing import override
 
-from matplotlib.figure import Figure as FigureMPL
-
 from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.plot import Chart
 from sbmlsim.simulation import Simulation
 from tests.project_toy.experiments import ToyDecay
 
@@ -17,7 +16,7 @@ class ToyFigureFails(ToyDecay):
     """The decay, whose own figures fail when they are drawn."""
 
     @override
-    def figures_mpl(self) -> dict[str, FigureMPL]:
+    def figures_mpl(self) -> dict[str, Chart]:
         """Fail when the figures are drawn."""
         raise RuntimeError("the figures of ToyFigureFails fail")
 

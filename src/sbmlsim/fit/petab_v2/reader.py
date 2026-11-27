@@ -677,7 +677,7 @@ class PetabReader:
         """
         changes: dict[str, Quantity] = {}
         for parameter in self.petab_problem.parameters:
-            if parameter.estimate or parameter.nominal_value is None:
+            if self._is_fit_parameter(parameter) or parameter.nominal_value is None:
                 continue
             if not isinstance(parameter.nominal_value, int | float):
                 # `array` values are not a change of the model
@@ -1546,12 +1546,44 @@ class PetabReader:
         """Check whether a parameter of the problem is a parameter of the fit.
 
         Every estimated parameter is a parameter of the fit, see
-        `fit_parameters`.
+        `fit_parameters`, and so is a parameter of the extension of a
+        validation problem, which the parameter table fixes at the values of
+        the fit, see `SbmlsimExtension.role`.
 
         Args:
             parameter: parameter of the parameter table.
         """
-        return bool(parameter.estimate)
+        if parameter.estimate:
+            return True
+        return (
+            self._is_validation
+            and self.extension is not None
+            and parameter.id in self.extension.parameters
+        )
+
+    @property
+    def _is_validation(self) -> bool:
+        """Check whether the problem is the validation problem of a fit."""
+        return self.extension is not None and self.extension.role == "validation"
+
+    def _kind_of(self, key: str) -> MappingKind:
+        """Get the kind of the fit mapping of an observable.
+
+        The kind is the one of the extension, training data without one. The
+        validation data of a validation problem is the data of its objective,
+        which the problem evaluates the fit on, so it is read as the training
+        data of the problem: its cost and its log-likelihood are the ones of
+        the validation data.
+
+        Args:
+            key: the key of the fit mapping, see `observable_info`.
+        """
+        kind = MappingKind(
+            self.observable_info(key).get("kind", MappingKind.TRAINING.value)
+        )
+        if self._is_validation and kind is MappingKind.VALIDATION:
+            return MappingKind.TRAINING
+        return kind
 
     def _selection_of(self, key: str) -> str:
         """Get the selection of roadrunner which observes an observable.
@@ -1641,9 +1673,13 @@ class PetabReader:
         see `_simulation_of_periods` and `_versions`.
 
         Returns:
-            The ids of the parameters of the problem with `estimate=True`.
+            The ids of the parameters of the problem with `estimate=True`,
+            and of the parameters of the fit of a validation problem, see
+            `_is_fit_parameter`.
         """
-        return {p.id for p in self.petab_problem.parameters if p.estimate}
+        return {
+            p.id for p in self.petab_problem.parameters if self._is_fit_parameter(p)
+        }
 
     def _versions(self) -> dict[str, tuple[str, set[str]]]:
         """Get the versioned parameters of the problem, from its conditions.
@@ -1728,6 +1764,10 @@ class PetabReader:
     def fit_parameters(self) -> list[FitParameter]:
         """Get the parameters which are estimated.
 
+        The parameters of the fit of a validation problem are not estimated in
+        its parameter table, they are the parameters of the fit at the values
+        the problem evaluates, see `_is_fit_parameter`.
+
         A parameter which a condition assigns to an entity of the model, see
         `_versions`, is a versioned parameter, built with the `target` it
         writes and the `mappings` selector of its keys. Every other parameter
@@ -1749,7 +1789,7 @@ class PetabReader:
         if self.sciml is not None:
             handled |= self.sciml.parameter_ids
         for parameter in self.petab_problem.parameters:
-            if not parameter.estimate or parameter.id in handled:
+            if not self._is_fit_parameter(parameter) or parameter.id in handled:
                 continue
             # a parameter which is not an entity of the model, e.g. of the
             # noise or of an observable, is a parameter of the model the fit
@@ -1905,26 +1945,12 @@ class PetabReader:
 
         collections: list[FitMappingCollection] = []
         for experiment_id, mappings in by_experiment.items():
-            kinds = {
-                MappingKind(
-                    self.observable_info(key).get("kind", MappingKind.TRAINING.value)
-                )
-                for key in mappings
-            }
+            kinds = {self._kind_of(key) for key in mappings}
             if len(kinds) > 1:
                 # an experiment whose observables are used differently is one
                 # collection per kind, the kind belongs to the selection
                 for kind in sorted(kinds):
-                    selected = [
-                        key
-                        for key in mappings
-                        if MappingKind(
-                            self.observable_info(key).get(
-                                "kind", MappingKind.TRAINING.value
-                            )
-                        )
-                        is kind
-                    ]
+                    selected = [key for key in mappings if self._kind_of(key) is kind]
                     collections.append(
                         self._collection(
                             experiment_class,

@@ -75,7 +75,7 @@ def _with_inline_figures(context: dict[str, Any], folder: Path) -> dict[str, Any
 
     Returns:
         A copy of the context whose figures have `svg` and `spec_text` where
-        the files exist; a figure without a spec (a hook figure) has none.
+        the files exist; a figure without both files has none.
         A page with an inline figure gets `figure_script`, the script of the
         figures in the directory of the report above the one of the
         experiment, see `write_figure_script`.

@@ -10,7 +10,7 @@ scan writes into the provenance of its result:
 - `lhs`: a Latin hypercube, with a correlation the rank reordering of Iman
   and Conover, which keeps one point per stratum;
 - `sobol`, `fast`, `morris`: the designs of SALib for the sensitivity
-  analyses.
+  analyses, drawn by sbmlsim-core (`sbmlsim_core.sensitivity`).
 
 A design draws points of the unit cube and maps them through the inverse CDF
 of the distribution of every target, see
@@ -47,12 +47,16 @@ MAX_REDRAWS = 100
 """How often the orders of the scores of a correlated hypercube are drawn again."""
 
 
+#: the seeds of a design are below it, the seeds of the generator of sbmlsim-core
+SEED_LIMIT = 2**64
+
+
 def _seed(seed: int | None) -> int:
     """Get the seed of a design; `None` draws one, which the record keeps.
 
     Raises:
         TypeError: if the seed is no integer.
-        ValueError: if the seed is negative.
+        ValueError: if the seed is negative or not below `SEED_LIMIT`.
     """
     if seed is None:
         return int(np.random.SeedSequence().generate_state(1)[0])
@@ -60,6 +64,8 @@ def _seed(seed: int | None) -> int:
         raise TypeError(f"The seed of a design is an integer, not {seed!r}.")
     if seed < 0:
         raise ValueError(f"The seed of a design is not negative, not {seed}.")
+    if seed >= SEED_LIMIT:
+        raise ValueError(f"The seed of a design is below 2**64, not {seed}.")
     return int(seed)
 
 
@@ -543,8 +549,8 @@ def unit_problem(d: int) -> dict[str, Any]:
         d: the number of targets.
 
     Returns:
-        The problem, `d` variables with the bounds `[0, 1]`; the analyses of
-        `sbmlsim.sensitivity` use it as well.
+        The problem, `d` variables with the bounds `[0, 1]`, for a comparison of a
+        design or an analysis with SALib.
     """
     return {
         "num_vars": d,
@@ -583,31 +589,26 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
             d,
             _correlation(options["correlation"], d),
         )
-    if design.method == "sobol":
-        from SALib.sample import sobol as sobol_sampler
+    if design.method in ("sobol", "fast", "morris"):
+        from sbmlsim.engine import import_core
 
-        return sobol_sampler.sample(
-            unit_problem(d),
-            options["n"],
-            calc_second_order=options["second_order"],
-            scramble=True,
-            seed=options["seed"],
-        )
-    if design.method == "fast":
-        from SALib.sample import fast_sampler
+        import_core()
+        from sbmlsim_core import sensitivity as core
 
-        return fast_sampler.sample(
-            unit_problem(d), options["n"], M=options["m"], seed=options["seed"]
-        )
-    if design.method == "morris":
-        from SALib.sample import morris as morris_sampler
-
+        if design.method == "sobol":
+            return core.saltelli(
+                d,
+                options["n"],
+                seed=options["seed"],
+                second_order=options["second_order"],
+            )
+        if design.method == "fast":
+            return core.fast_sample(
+                d, options["n"], m=options["m"], seed=options["seed"]
+            )
         levels = options["levels"]
-        grid = morris_sampler.sample(
-            unit_problem(d),
-            options["trajectories"],
-            num_levels=levels,
-            seed=options["seed"],
+        grid = core.morris_sample(
+            d, options["trajectories"], levels=levels, seed=options["seed"]
         )
         # the centre of the stratum of every level, so an unbounded marginal is finite
         return (grid * (levels - 1) + 0.5) / levels
@@ -617,7 +618,7 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
     )
 
 
-def _salib(
+def _global(
     method: str,
     distributions: Mapping[str, Distribution],
     options: dict[str, Any],
@@ -625,7 +626,7 @@ def _salib(
     simulation: Simulation | None,
     id: str,
 ) -> Dimension:
-    """Create a design of SALib: its unit cube mapped through the distributions."""
+    """Create a design of a global analysis: its unit cube mapped through the distributions."""
     refs = _resolve(distributions, model, simulation)
     record = _record(method, distributions, options, refs)
     u = unit_cube(record, len(distributions))
@@ -644,7 +645,9 @@ def sobol(
 ) -> Dimension:
     """Get the design of Saltelli for the Sobol indices.
 
-    `SALib.sample.sobol.sample` on the unit cube, scrambled, mapped through the
+    The matrix of Saltelli of `SALib.sample.sobol.sample` on the unit cube,
+    on the Sobol' sequence of scipy scrambled with the draws of the seed, drawn
+    by sbmlsim-core (`sbmlsim_core.sensitivity.saltelli`), mapped through the
     distributions: `n (d + 2)` points, `n (2 d + 2)` with second order. The
     targets are independent, a correlation is not taken.
 
@@ -669,7 +672,7 @@ def sobol(
     if n < 2 or n & (n - 1):
         raise ValueError(f"The n of a Sobol design is a power of two, not {n}.")
     options = {"n": n, "seed": _seed(seed), "second_order": bool(second_order)}
-    return _salib("sobol", distributions, options, model, simulation, id)
+    return _global("sobol", distributions, options, model, simulation, id)
 
 
 def fast(
@@ -684,14 +687,15 @@ def fast(
 ) -> Dimension:
     """Get the design of the extended FAST.
 
-    `SALib.sample.fast_sampler.sample` on the unit cube, mapped through the
-    distributions: `n d` points. The targets are independent, a correlation is
-    not taken.
+    The search curves of `SALib.sample.fast_sampler.sample` on the unit cube
+    with the phases of the seed, drawn by sbmlsim-core
+    (`sbmlsim_core.sensitivity.fast_sample`), mapped through the distributions:
+    `n d` points. The targets are independent, a correlation is not taken.
 
     Args:
         distributions: target -> its distribution.
         n: the number of points per target, more than `4 m^2`.
-        m: the interference factor of SALib.
+        m: the interference factor.
         seed: the seed, not negative; `None` draws one, which the record keeps.
         model: the model, which a relative distribution needs.
         simulation: the simulation whose pre-initialization gives the references.
@@ -712,7 +716,7 @@ def fast(
             f"The n of a FAST design is more than 4 m^2 = {4 * m * m}, not {n}."
         )
     options = {"n": n, "seed": _seed(seed), "m": m}
-    return _salib("fast", distributions, options, model, simulation, id)
+    return _global("fast", distributions, options, model, simulation, id)
 
 
 def morris(
@@ -727,8 +731,9 @@ def morris(
 ) -> Dimension:
     """Get the design of Morris for the elementary effects.
 
-    `SALib.sample.morris.sample` on the unit cube: `trajectories (d + 1)`
-    points. The level `k` of the grid of SALib (`0` to `1` in `levels - 1`
+    The trajectories of `SALib.sample.morris.sample` on the unit cube, drawn by
+    sbmlsim-core (`sbmlsim_core.sensitivity.morris_sample`): `trajectories
+    (d + 1)` points. The level `k` of the grid of SALib (`0` to `1` in `levels - 1`
     steps) is mapped to `(k + 0.5) / levels`, the centre of the stratum of
     that level, so an unbounded marginal stays finite. The targets are
     independent, a correlation is not taken.
@@ -755,4 +760,4 @@ def morris(
     if levels < 2:
         raise ValueError(f"The levels of a Morris design are at least 2, not {levels}.")
     options = {"trajectories": trajectories, "seed": _seed(seed), "levels": levels}
-    return _salib("morris", distributions, options, model, simulation, id)
+    return _global("morris", distributions, options, model, simulation, id)
