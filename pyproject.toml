@@ -123,7 +123,9 @@ dependencies = [
 	# problem of PEtab v2 (`sbmlsim_core.petab`, #711), the validation data of a
 	# validation problem included; 0.39.0 evaluates a problem of PEtab v2 in
 	# JavaScript too (`js/petab.mjs`)
-	"sbmlsim-core>=0.39.0",
+	# 0.40.0 reads the comp models, the operator-less applies and the single-time
+	# steady states of the PEtab benchmark collection (#717)
+	"sbmlsim-core>=0.40.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
