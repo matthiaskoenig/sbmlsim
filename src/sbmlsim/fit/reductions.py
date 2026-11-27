@@ -35,12 +35,19 @@ Every time of a reduction is the time of the output, the time of the plan
 shifted by its `time_shift`, which the curve carries: the engine simulates on
 the time of the plan.
 
-What stays a gap of a group which keeps its output: a scan (#624), a group
-with a timecourse on output times it added, a formula of a value per
-simulation which is more than one reduction (`Aurine / max(Aurine)`), a time of
-`at` which is no number, a `Custom` observable, the flags of a `PK`
-observable, a dose of a `PK` observable which the fit moves or which pkpdutils
-does not analyse in its kernel, an observable model of placeholders, a mapping
+A group of a scan is one condition per point of the scan (#624, see
+`sbmlsim.fit.fit_core`), so its curves are the ones of the point they read:
+`kept_group` builds them on the plan of that point, whose values, changes and
+doses are the ones python observes the point with. A value per simulation
+over a dimension of the scan is the curve of its reduction on the condition
+of every point its data is at.
+
+What stays a gap of a group which keeps its output: a group with a
+timecourse on output times it added, a formula of a value per simulation
+which is more than one reduction (`Aurine / max(Aurine)`), a time of `at`
+which is no number, a `Custom` observable, the flags of a `PK` observable, a
+dose of a `PK` observable which the fit moves or which pkpdutils does not
+analyse in its kernel, an observable model of placeholders, a timecourse
 over another x than the time, and the logarithmic or estimated noise of a
 likelihood, whose column is a value at a row.
 """
@@ -131,7 +138,7 @@ class KeptGroup:
 
 
 def kept_group(
-    problem: OptimizationProblem, group: int, training: list[int]
+    problem: OptimizationProblem, group: int, training: list[int], point: int = 0
 ) -> KeptGroup:
     """Get the columns and the curves of a group which keeps its output.
 
@@ -139,9 +146,12 @@ def kept_group(
         problem: the initialized problem.
         group: the simulation group, whose `_group_graphs` is set.
         training: the training mappings of the group.
+        point: the point of the scan of the group the curves read, in the
+            order of its points; 0 for a group of a simulation.
 
     Returns:
-        The columns of the model of the fit and the curves of the mappings.
+        The columns of the model of the fit and the curves of the mappings,
+        on the plan of the point.
 
     Raises:
         KeptGap: for a group or a mapping which no curve of the engine reads,
@@ -152,14 +162,12 @@ def kept_group(
     graph = problem._group_graphs[group]
     if graph is None:
         raise ValueError(f"the group {group} outputs the times of its data")
-    if problem._group_points[group] is not None:
-        raise KeptGap(f"the simulation of the group {group} is a scan")
     if problem._group_timecourse_graphs[group] is not None:
         raise KeptGap(
             f"the group {group} has a timecourse on output times it adds to the "
             f"times of its simulation"
         )
-    plan = problem.plans[group]
+    plan = point_plan_of(problem, group, point)
     nodes = {node.id: node for node in graph.nodes}
     formulas: dict[str, KeptFormula] = {}
 
@@ -220,10 +228,10 @@ def kept_group(
         if kind == "timecourse":
             if problem.xid_observable[k] != TIME:
                 raise KeptGap(f"the mapping '{key}' is over another x than the time")
-            curves[k] = _interpolated(problem, k, column_of(y), timed)
+            curves[k] = _interpolated(problem, k, column_of(y), timed, plan)
             continue
-        if kind != "scalar":
-            raise KeptGap(f"the mapping '{key}' is over a dimension of a scan")
+        # a value per simulation, and one over a dimension of a scan, which
+        # is the value per simulation of every point its data is at
         node = nodes.get(y)
         if isinstance(node, FormulaNode):
             size = len(problem.y_references[k])
@@ -311,16 +319,21 @@ def _reduced(
 
 
 def _interpolated(
-    problem: OptimizationProblem, k: int, column: str, timed: dict[str, float]
+    problem: OptimizationProblem,
+    k: int,
+    column: str,
+    timed: dict[str, float],
+    plan: Plan,
 ) -> KeptCurve:
     """Get the curve of a timecourse of a group which keeps its output.
 
     The times are the ones python interpolates at, the time of a change for a
     point which takes the state before it (`_x_at_data`), and the flag of a
     point which takes the state before a jump is the one of
-    `_before_change`.
+    `_before_change`. The tolerance and the changes are the ones of the plan
+    of the point the curve reads, `plan`, as python interpolates the output
+    of that point with them.
     """
-    plan = problem.plans[k_group_of(problem, k)]
     x_at_data = problem._x_at_data[k]
     times = np.asarray(
         problem.x_references[k] if x_at_data is None else x_at_data, dtype=float
@@ -342,13 +355,18 @@ def _interpolated(
     )
 
 
-def k_group_of(problem: OptimizationProblem, mapping: int) -> int:
-    """Get the simulation group of a fit mapping."""
-    return next(
-        group
-        for group, mappings in enumerate(problem.mapping_groups)
-        if mapping in mappings
-    )
+def point_plan_of(problem: OptimizationProblem, group: int, point: int = 0) -> Plan:
+    """Get the plan of a point of a group, without the values of the parameters.
+
+    The plan of the group with the values of the point applied, as
+    `OptimizationProblem.evaluated_plan` applies them; the plan of the group
+    itself for a group of a simulation.
+    """
+    plan = problem.plans[group]
+    points = problem._group_points[group]
+    if points is None:
+        return plan
+    return points.plan(plan, point)
 
 
 def pk_batch(node: PKNode, plan: Plan) -> dict[str, Any]:

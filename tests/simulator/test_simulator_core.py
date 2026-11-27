@@ -1194,16 +1194,40 @@ def test_the_key_of_a_core_model_covers_its_settings(
 def test_the_threads_of_a_batch_are_the_workers_of_the_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The threads of a batch are the processes a run of another engine would have.
+    """The threads of a batch are the `n_workers` of the simulator.
 
-    They are `parallel.resolve_workers` of the `n_workers` of the simulator
-    and of the points of the run: a number is taken as given, and inside a
-    worker, which starts no pool, a run is serial.
+    A number is taken as given, `None` is every CPU, at most one thread per
+    point, also for a run of fewer points than the threshold of a pool,
+    and inside a worker of a foreign pool a run is serial.
     """
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
     assert core_threads(1, n_points=1000) == 1
     assert core_threads(3, n_points=1) == 3
+    assert core_threads(None, n_points=1000) == 20
+    assert core_threads(None, n_points=100) == 20
+    assert core_threads(None, n_points=8) == 8
+    assert core_threads(None, n_points=1) == 1
+    with pytest.raises(ValueError, match="at least 1"):
+        core_threads(0, n_points=10)
     monkeypatch.setattr(parallel, "in_worker", lambda: True)
     assert core_threads(None, n_points=1000) == 1
+
+
+def test_a_small_scan_of_the_engine_core_runs_on_every_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scan below the threshold of a pool runs on threads, not on one.
+
+    The threshold is the point from which a pool of processes pays its start;
+    the threads of a batch start in no measurable time, so a scan of 100
+    points of the HCTZ model over its draws ran 14.3 s on one thread.
+    """
+    monkeypatch.setattr(parallel.cgroup, "available_cpus", lambda: 20)
+    simulator = Simulator(engine=Engine.CORE)
+    assert simulator.n_workers is None
+    assert simulator._workers(parallel.POOL_THRESHOLD - 1) == (1, 20)
+    assert simulator._workers(5) == (1, 5)
+    assert Simulator(engine=Engine.CORE, n_workers=1)._workers(100) == (1, 1)
 
 
 def test_an_algebraic_rule_is_solved_against_its_analytic_solution() -> None:
