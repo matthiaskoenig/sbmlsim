@@ -7,6 +7,7 @@ from types import ModuleType
 
 import pytest
 
+from sbmlsim.fit.petab_v2.core import Evaluator
 from sbmlsim.fit.petab_v2.testsuite import CaseResult, CaseStatus
 
 SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "petab_testsuite.py"
@@ -36,7 +37,8 @@ class FakeSuite:
     def __init__(self, results: list[CaseResult]) -> None:
         self.results = results
 
-    def run(self) -> list[CaseResult]:
+    def run(self, evaluator: Evaluator | None = None) -> list[CaseResult]:
+        self.evaluator = evaluator
         return self.results
 
 
@@ -90,3 +92,13 @@ def test_the_baseline_is_written(
             "math/002": {"status": "tolerance", "reason": script.MISSING_REASON}
         },
     }
+
+
+def test_the_evaluator_is_the_one_of_the_command_line(
+    script: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    suite = FakeSuite(RESULTS)
+    monkeypatch.setattr(script.PetabSuite, "load", lambda commit: suite)
+    monkeypatch.setattr(script, "BASELINE_PATH", tmp_path / "baseline.json")
+    assert script.main(["baseline", "--evaluator", "python"]) == 0
+    assert suite.evaluator is Evaluator.PYTHON

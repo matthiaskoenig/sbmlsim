@@ -90,52 +90,60 @@ def _llh(problem: BenchmarkProblem) -> float:
     )
 
 
-def test_a_problem_passes(tmp_path: Path) -> None:
+def test_a_problem_passes(tmp_path: Path, petab_evaluator: str) -> None:
     """A problem whose simulations agree with the collection passes."""
-    result = _problem(tmp_path).run()
+    result = _problem(tmp_path).run(evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.name == NAME
     assert result.n_simulations == 20
     assert result.max_difference is not None
     assert result.max_difference < 1e-9
-    assert set(result.timings) == {"read", "initialize", "simulate", "llh"}
+    assert set(result.timings) == (
+        {"read", "simulate"}
+        if petab_evaluator == "core"
+        else {"read", "initialize", "simulate", "llh"}
+    )
     assert result.llh is not None
     assert result.llh_reference is None
 
 
-def test_a_simulation_outside_of_the_tolerance(tmp_path: Path) -> None:
+def test_a_simulation_outside_of_the_tolerance(
+    tmp_path: Path, petab_evaluator: str
+) -> None:
     """A simulation which differs is named with its observable and experiment."""
     problem = _problem(tmp_path)
     simulations = _simulations(problem)
     simulations.loc[12, "simulation"] += 1.0
     _write(problem, simulations)
-    result = problem.run()
+    result = problem.run(evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "prey_o" in result.message
     assert "e2" in result.message
     assert result.max_difference == pytest.approx(1.0, rel=1e-6)
 
 
-def test_the_simulations_are_found_by_their_keys(tmp_path: Path) -> None:
+def test_the_simulations_are_found_by_their_keys(
+    tmp_path: Path, petab_evaluator: str
+) -> None:
     """The table of the simulations may have another order and more rows."""
     problem = _problem(tmp_path)
     simulations = _simulations(problem)
     extra = simulations.iloc[[0]].assign(time=0.5)
     _write(problem, pd.concat([simulations.iloc[::-1], extra], ignore_index=True))
-    result = problem.run()
+    result = problem.run(evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
 
 
-def test_the_log_likelihood_of_amici(tmp_path: Path) -> None:
+def test_the_log_likelihood_of_amici(tmp_path: Path, petab_evaluator: str) -> None:
     """The log-likelihood is compared with the reference of AMICI."""
     problem = _problem(tmp_path)
     llh = _llh(problem)
-    result = problem.run(llh_reference=llh)
+    result = problem.run(llh_reference=llh, evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.llh_reference == llh
 
-    result = problem.run(llh_reference=llh + 1.0)
+    result = problem.run(llh_reference=llh + 1.0, evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "llh" in result.message
 
@@ -153,11 +161,11 @@ def test_a_problem_which_was_not_converted(tmp_path: Path) -> None:
     assert "the conversion failed" in result.message
 
 
-def test_a_problem_which_cannot_be_read(tmp_path: Path) -> None:
+def test_a_problem_which_cannot_be_read(tmp_path: Path, petab_evaluator: str) -> None:
     """An error while the problem is read or simulated is the status `error`."""
     problem = _problem(tmp_path)
     (problem.v2_dir / "observables.tsv").write_text("nothing\n", encoding="utf-8")
-    result = problem.run()
+    result = problem.run(evaluator=petab_evaluator)
     assert result.status is BenchmarkStatus.ERROR
     assert result.message
 

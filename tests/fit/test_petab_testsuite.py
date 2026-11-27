@@ -118,9 +118,11 @@ def _check(result: CaseResult, baseline: dict) -> None:
 @pytest.mark.parametrize(
     ("group", "cid"), _case_ids(), ids=[f"{g}/{c}" for g, c in _case_ids()]
 )
-def test_case(group: str, cid: str, suite: PetabSuite, baseline: dict) -> None:
-    """A case of a model has the outcome the baseline records."""
-    _check(suite.run_case(cid, group), baseline)
+def test_case(
+    group: str, cid: str, suite: PetabSuite, baseline: dict, petab_evaluator: str
+) -> None:
+    """A case of a model has the outcome the baseline records, in python and the core."""
+    _check(suite.run_case(cid, group, petab_evaluator), baseline)
 
 
 @pytest.mark.parametrize("index", _math_ids())
