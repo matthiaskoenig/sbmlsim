@@ -35,7 +35,6 @@ import xarray as xr
 
 from sbmlsim.data import ROW
 from sbmlsim.engine import import_core
-from sbmlsim.plot.colors import normalize_color
 from sbmlsim.plot.padding import without_padding
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.result.timecourse import PLOT_POINTS, plot_times
@@ -554,6 +553,8 @@ def _labels(
 
 def _rgb(color: str) -> np.ndarray:
     """Parse a colour, see `sbmlsim.plot.colors`, as floats of 0 to 1."""
+    from sbmlsim.plot.colors import normalize_color
+
     hexed = normalize_color(color)
     if hexed is None:
         raise ValueError(f"the colour {color!r} is no colour")
