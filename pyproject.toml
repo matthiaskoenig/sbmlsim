@@ -115,8 +115,9 @@ dependencies = [
 	# and texts of the scan figures (sbmlsim-core#115), 0.31.1 the legend columns,
 	# monospace text and signs of units; 0.32.0 reads the reductions of a curve
 	# of `fit/1`, a value per simulation and a parameter of the analysis of
-	# pkpdutils (#625)
-	"sbmlsim-core>=0.32.0",
+	# pkpdutils (#625); 0.33.0 the error bars of two sides, contours, arrows,
+	# insets, frames, stacks, texts and legends of the chart builder (#120)
+	"sbmlsim-core>=0.33.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

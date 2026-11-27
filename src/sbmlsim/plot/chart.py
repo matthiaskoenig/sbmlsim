@@ -87,7 +87,13 @@ type FillStyle = Literal["full", "left", "right", "bottom", "top"]
 
 #: Where a colour bar goes: right of its panel, above the panels of its row or
 #: inside its panel.
-type Placement = Literal["right", "top", "inset"]
+type Placement = Literal["right", "top", "inset", "strip", "panel"]
+
+type Coordinates = Literal["data", "axes"]
+
+type Baseline = Literal["baseline", "center", "top", "bottom"]
+
+type Extend = Literal["neither", "min", "max", "both"]
 
 #: The markers of the renderer, the names of matplotlib's markers `o`, `s`,
 #: `^`, `D`, `+`, `x`, `v`, `<`, `>`, `*`, `X`, `P`, `p`, `h` and `d` (and
@@ -110,6 +116,11 @@ MARKERS: Final = (
     "pentagon",
     "hexagon",
     "thin_diamond",
+    "octagon",
+    "tri_down",
+    "tri_up",
+    "tri_left",
+    "tri_right",
 )
 
 
@@ -166,6 +177,9 @@ class ChartAxis:
         tick_labels: the labels of `ticks`, one per tick, a newline breaking
             a label into lines and `^{...}` a superscript; `None` for their
             numbers.
+        tick_label_color: the color of the tick labels: one for all, or one
+            per tick of `ticks` or per category (matplotlib's
+            `ticklabel.set_color`); `None` for the color of the renderer.
     """
 
     label: str | None = None
@@ -185,6 +199,7 @@ class ChartAxis:
     frame: tuple[float, float] | None = None
     ticks: Sequence[float] | None = None
     tick_labels: Sequence[str] | None = None
+    tick_label_color: str | Sequence[str] | None = None
 
     def __post_init__(self) -> None:
         """Keep the categories, the frame and the ticks as tuples.
@@ -214,6 +229,29 @@ class ChartAxis:
                     f"not {len(labels)}."
                 )
             object.__setattr__(self, "tick_labels", labels)
+        if self.tick_label_color is not None and not isinstance(
+            self.tick_label_color, str
+        ):
+            colors = tuple(_hex(c, "tick label") for c in self.tick_label_color)
+            n = len(self.ticks if self.ticks is not None else self.categories or ())
+            if len(colors) != n:
+                raise ValueError(
+                    f"An axis of {n} ticks or categories takes as many tick label "
+                    f"colors, not {len(colors)}."
+                )
+            object.__setattr__(self, "tick_label_color", colors)
+
+
+def _hex(color: str, what: str) -> str:
+    """Get a color as `#rrggbb`.
+
+    Raises:
+        ValueError: for a color which is none.
+    """
+    hexed, _ = color_alpha(str(color))
+    if hexed is None:
+        raise ValueError(f"The {what} color {color!r} is no color.")
+    return hexed
 
 
 @dataclass
@@ -301,6 +339,10 @@ class _AxisState:
             spec["ticks"] = list(a.ticks)
         if a.tick_labels is not None:
             spec["tick_labels"] = list(a.tick_labels)
+        if isinstance(a.tick_label_color, str):
+            spec["tick_label_color"] = _hex(a.tick_label_color, "tick label")
+        elif a.tick_label_color is not None:
+            spec["tick_label_color"] = list(a.tick_label_color)
         return spec
 
 
@@ -601,6 +643,12 @@ class ChartPlot:
         legend_loc: str | None = None,
         legend_title: str | None = None,
         legend_columns: int | None = None,
+        x2: ChartAxis | None = None,
+        frame: dict[str, Any] | None = None,
+        inset: dict[str, Any] | None = None,
+        legend_anchor: tuple[float, float] | None = None,
+        legends: Sequence[Mapping[str, Any]] | None = None,
+        legend_tuples: Sequence[str] | None = None,
     ) -> None:
         """Create a plot, see `Chart.plot`."""
         self.chart = chart
@@ -627,6 +675,16 @@ class ChartPlot:
         }
         if y2 is not None:
             self._axes["y2"] = _AxisState("y2", id, y2)
+        self.x2 = x2
+        if x2 is not None and x2.scale == "category":
+            raise ValueError("A top axis is linear or log, its labels its tick labels.")
+        self.frame = frame
+        self.inset = inset
+        self.legend_anchor = (
+            None if legend_anchor is None else [float(v) for v in legend_anchor]
+        )
+        self.legends = None if legends is None else [_plot_legend(lg) for lg in legends]
+        self.legend_tuples = None if legend_tuples is None else list(legend_tuples)
         self._elements: list[dict[str, Any]] = []
         # the thinned elements by the tolerance and the number of elements
         self._thinned: tuple[float, int, list[dict[str, Any]]] | None = None
@@ -712,6 +770,39 @@ class ChartPlot:
         """Get one finite value in the unit of an axis."""
         return _finite(self._on(axis, value), name)
 
+    def _placed(
+        self, axis: AxisName, values: Values, coordinates: Coordinates
+    ) -> np.ndarray:
+        """Get values in the unit of an axis, or fractions of the panel as they are."""
+        if coordinates == "axes":
+            return _magnitude(values).ravel()
+        return self._on(axis, values)
+
+    def _errors(self, axis: AxisName, err: Values) -> Any:
+        """Get errors for the spec: one per value, or the sides apart.
+
+        Errors of two sides are a mapping of `low` and `high` or a tuple
+        `(low, high)` (matplotlib's errors of the shape `(2, n)`), each side
+        not negative, a value which is not finite a side which is not drawn;
+        a list or an array is one error per value.
+        """
+        if isinstance(err, Mapping):
+            unknown = sorted(set(err) - {"low", "high"})
+            if unknown or "low" not in err or "high" not in err:
+                raise ValueError(
+                    "Errors of two sides are a mapping of 'low' and 'high', "
+                    f"not of {sorted(err)}."
+                )
+            low, high = err["low"], err["high"]
+        elif isinstance(err, tuple) and len(err) == 2:
+            low, high = err
+        else:
+            return _column(self._on(axis, err))
+        return {
+            "low": _numbers(self._on(axis, low)),
+            "high": _numbers(self._on(axis, high)),
+        }
+
     def _add(
         self,
         kind: str,
@@ -722,9 +813,15 @@ class ChartPlot:
         legend: str | None,
         id: str | None,
         axis: AxisName,
+        coordinates: Coordinates = "data",
+        clip: bool = True,
     ) -> str:
         """Add an element of a kind with its data and return its id."""
         self._state(axis)
+        if coordinates not in ("data", "axes"):
+            raise ValueError(
+                f"The coordinates of an element are 'data' or 'axes', not {coordinates!r}."
+            )
         element_id = self.chart._element_id(id)
         element: dict[str, Any] = {"id": element_id, "kind": kind}
         if label is not None:
@@ -733,6 +830,10 @@ class ChartPlot:
             element["legend"] = legend
         element["axis"] = axis
         element["style"] = style.spec()
+        if coordinates != "data":
+            element["coordinates"] = coordinates
+        if not clip:
+            element["clip"] = False
         element.update(data)
         self._elements.append(element)
         return element_id
@@ -761,14 +862,20 @@ class ChartPlot:
         color: str | None = None,
         opacity: float = 1.0,
         axis: Literal["y", "y2"] = "y",
+        coordinates: Coordinates = "data",
+        clip: bool = True,
     ) -> str:
         """Add a curve, a line and/or markers with error bars.
 
         Args:
             x: the x values.
             y: the y values.
-            xerr: the errors of x.
-            yerr: the errors of y.
+            xerr: the errors of x: one per value, or the errors below and
+                above every value apart, a mapping of `low` and `high` or a
+                tuple `(low, high)` (matplotlib's errors of the shape
+                `(2, n)`), a value which is not finite a side which is not
+                drawn (a one-sided error bar).
+            yerr: the errors of y, as `xerr`.
             error_cap: the length of the caps across the ends of the error
                 bars in pixels, matplotlib's `capsize`; 0 for none.
             error_width: the width of the lines of the error bars and their
@@ -780,8 +887,9 @@ class ChartPlot:
             marker: the type of the markers, one of `MARKERS`: `none`,
                 `circle`, `square`, `triangle`, `diamond`, `cross`, `plus`,
                 `x`, `triangle_down`, `triangle_left`, `triangle_right`,
-                `star`, `x_filled`, `plus_filled`, `pentagon`, `hexagon` or
-                `thin_diamond`.
+                `star`, `x_filled`, `plus_filled`, `pentagon`, `hexagon`,
+                `thin_diamond`, `octagon`, `tri_down`, `tri_up`, `tri_left` or
+                `tri_right`.
             size: the size of the markers in pixels.
             marker_fill: the fill color of the markers, the color by default.
             marker_edge: the edge color of the markers, the color by default.
@@ -799,18 +907,24 @@ class ChartPlot:
                 `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
+            coordinates: `data`, values of the axes, or `axes`, fractions of
+                the panel (matplotlib's `transform=ax.transAxes`), which put
+                nothing on the axes.
+            clip: whether the curve is clipped to the panel; `False` draws it
+                over the whole figure (matplotlib's `clip_on=False`), e.g. the
+                slashes of a broken axis.
 
         Returns:
             The id of the element.
         """
         data: dict[str, Any] = {
-            "x": _column(self._on("x", x)),
-            "y": _column(self._on(axis, y)),
+            "x": _column(self._placed("x", x, coordinates)),
+            "y": _column(self._placed(axis, y, coordinates)),
         }
         if xerr is not None:
-            data["xerr"] = _column(self._on("x", xerr))
+            data["xerr"] = self._errors("x", xerr)
         if yerr is not None:
-            data["yerr"] = _column(self._on(axis, yerr))
+            data["yerr"] = self._errors(axis, yerr)
         if cap := _error_cap(error_cap):
             data["error_cap"] = cap
         if (lines := _error_width(error_width)) is not None:
@@ -829,7 +943,15 @@ class ChartPlot:
             marker_fill_alt=marker_fill_alt,
         )
         return self._add(
-            "curve", data, style, label=label, legend=legend, id=id, axis=axis
+            "curve",
+            data,
+            style,
+            label=label,
+            legend=legend,
+            id=id,
+            axis=axis,
+            coordinates=coordinates,
+            clip=clip,
         )
 
     def band(
@@ -952,6 +1074,7 @@ class ChartPlot:
         error_width: float | None = None,
         horizontal: bool = False,
         bar_width: float | None = None,
+        base: Values | None = None,
         line: LineType | None = None,
         width: float | None = None,
         fill: str | None = None,
@@ -969,7 +1092,8 @@ class ChartPlot:
             x: the positions or the names of their categories, on the y axis
                 for horizontal bars.
             height: the heights, on the x axis for horizontal bars.
-            err: the errors of the heights.
+            err: the errors of the heights, one per bar or the sides apart,
+                see `curve`.
             error_cap: the length of the caps across the ends of the error
                 bars in pixels; 0 for none.
             error_width: the width of the lines of the error bars in pixels,
@@ -977,6 +1101,8 @@ class ChartPlot:
             horizontal: whether the bars are horizontal.
             bar_width: the width of a bar in units of the axis of the
                 positions, the default of the renderer for `None`.
+            base: where every bar starts, matplotlib's `bottom` (`left` of
+                horizontal bars), so bars stack; 0 for `None`.
             line: the type of the outline, in the color of the bars; a bar
                 has no outline without `line` and `width`.
             width: the width of the outline in pixels.
@@ -999,7 +1125,8 @@ class ChartPlot:
             "height": _numbers(self._on(heights, height)),
         }
         if err is not None:
-            data["err"] = _numbers(self._on(heights, err))
+            errors = self._errors(heights, err)
+            data["err"] = errors if isinstance(errors, dict) else _numbers(errors)
         if cap := _error_cap(error_cap):
             data["error_cap"] = cap
         if (lines := _error_width(error_width)) is not None:
@@ -1007,6 +1134,8 @@ class ChartPlot:
         data["horizontal"] = bool(horizontal)
         if bar_width is not None:
             data["width"] = float(bar_width)
+        if base is not None:
+            data["base"] = _numbers(self._on(heights, base))
         style = _Style(
             color=color,
             opacity=opacity,
@@ -1025,6 +1154,8 @@ class ChartPlot:
         stats: Sequence[Mapping[str, Any]],
         *,
         box_width: float | None = None,
+        median_color: str | None = None,
+        whisker_opacity: float | None = None,
         line: LineType = "solid",
         width: float = 2.0,
         fill: str | None = None,
@@ -1056,6 +1187,10 @@ class ChartPlot:
                 matplotlib's `widths`, a share of the slot of a category on a
                 category axis (two boxes side by side at ±0.2 of a category
                 with 0.35); `None` for half of the spacing of the positions.
+            median_color: the color of the median line (matplotlib's
+                `medianprops`), the color of the box for `None`.
+            whisker_opacity: the opacity of the whiskers and their caps, the
+                opacity of the box for `None`.
             line: the type of the outline of the boxes.
             width: the width of the outline in pixels.
             fill: the fill color, the color by default.
@@ -1106,6 +1241,10 @@ class ChartPlot:
                     f"The width of a box is a positive number, not {box_width!r}."
                 )
             data["width"] = value
+        if median_color is not None:
+            data["median_color"] = _hex(median_color, "median")
+        if whisker_opacity is not None:
+            data["whisker_opacity"] = float(whisker_opacity)
         style = _Style(
             color=color,
             opacity=opacity,
@@ -1192,6 +1331,9 @@ class ChartPlot:
         edges: Values,
         counts: Values,
         *,
+        base: Values | None = None,
+        line: LineType | None = None,
+        width: float | None = None,
         fill: str | None = None,
         fill_opacity: float | None = None,
         label: str | None = None,
@@ -1206,6 +1348,13 @@ class ChartPlot:
         Args:
             edges: the edges of the bins on the x axis, one more than counts.
             counts: the counts of the bins.
+            base: where the bar of every bin starts, matplotlib's `bottom`,
+                so histograms stack (`hist(stacked=True)`); 0 for `None`.
+            line: the type of the edges of the bars (matplotlib's
+                `edgecolor`), in the color of the histogram; the bars of
+                neighbouring bins are one outline without edges without `line`
+                and `width`.
+            width: the width of the edges in pixels.
             fill: the fill color, the color by default.
             fill_opacity: the opacity of the fill, 1 by default.
             label: the label in the legend.
@@ -1219,12 +1368,19 @@ class ChartPlot:
         Returns:
             The id of the element.
         """
-        data = {
+        data: dict[str, Any] = {
             "edges": _numbers(self._on("x", edges)),
             "counts": _numbers(self._on(axis, counts)),
         }
+        if base is not None:
+            data["base"] = _numbers(self._on(axis, base))
         style = _Style(
-            color=color, opacity=opacity, fill=fill, fill_opacity=fill_opacity
+            color=color,
+            opacity=opacity,
+            line=line,
+            width=width,
+            fill=fill,
+            fill_opacity=fill_opacity,
         )
         return self._add(
             "histogram", data, style, label=label, legend=legend, id=id, axis=axis
@@ -1244,6 +1400,7 @@ class ChartPlot:
         high: float | None = None,
         center: float | None = None,
         log: bool = False,
+        gamma: float | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
@@ -1282,6 +1439,7 @@ class ChartPlot:
                 finite value by default.
             center: the value at the middle of a diverging scale.
             log: whether the scale is logarithmic.
+            gamma: the exponent of a power scale, matplotlib's `PowerNorm`.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -1318,7 +1476,7 @@ class ChartPlot:
             data["y_edges"] = _numbers(self._on(axis, y_edges))
         if text is not None:
             data["text"] = [[str(t) for t in row] for row in text]
-        data["scale"] = _color_scale(scale, low, high, center, log, cells)
+        data["scale"] = _color_scale(scale, low, high, center, log, cells, gamma)
         return self._add(
             "heatmap",
             data,
@@ -1331,27 +1489,35 @@ class ChartPlot:
 
     def text(
         self,
-        x: Values,
-        y: Values,
+        x: Values | None,
+        y: Values | None,
         text: str,
         *,
         anchor: Literal["start", "middle", "end"] = "start",
         size: float | None = None,
         weight: Literal["normal", "bold"] = "normal",
         family: Literal["sans", "monospace"] = "sans",
+        rotation: float = 0.0,
+        baseline: Baseline | None = None,
+        box: Mapping[str, Any] | None = None,
+        loc: str | None = None,
         label: str | None = None,
         legend: str | None = None,
         id: str | None = None,
         color: str | None = None,
         opacity: float = 1.0,
         axis: Literal["y", "y2"] = "y",
+        coordinates: Coordinates = "data",
+        clip: bool = True,
     ) -> str:
-        """Add a text at a position.
+        """Add a text at a position or at a location of the panel.
 
         Args:
-            x: the x position, or the name of its category.
-            y: the y position.
-            text: the text, whose runs of spaces are kept.
+            x: the x position, or the name of its category; `None` with
+                `loc`.
+            y: the y position; `None` with `loc`.
+            text: the text, whose runs of spaces are kept, `_{...}` a
+                subscript and `^{...}` a superscript.
             anchor: the anchor of the text at the position, `start`,
                 `middle` or `end`.
             size: the font size, the `tick` size of the fonts of the chart
@@ -1361,6 +1527,18 @@ class ChartPlot:
                 0.6 of the size wide, so the columns of a table of lines
                 padded with spaces align (`sbmlsim_core.text_width(text,
                 size, family="monospace")` measures it).
+            rotation: the rotation in degrees counterclockwise, the anchors
+                aligning the box around the rotated text (matplotlib's
+                `rotation`).
+            baseline: the vertical anchor, `baseline`, `center`, `top` or
+                `bottom` (matplotlib's `va`); `None` centres the text.
+            box: a box behind the text, matplotlib's `bbox`: a mapping of
+                `fill` (white; `none`), `opacity`, `edge` (none), `edge_width`,
+                `padding` (pixels, 0.3 font sizes) and `style` (`square` or
+                `round`).
+            loc: a location of `LEGEND_LOCS` but `best` instead of a position,
+                matplotlib's `AnchoredText`: the text in a white box with a
+                black edge (or its `box`) in that corner of the panel.
             label: the label in the legend.
             legend: the legend group.
             id: the id, `e<n>` by default.
@@ -1368,20 +1546,35 @@ class ChartPlot:
                 `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
+            coordinates: `data` or `axes`, the position in fractions of the
+                panel, see `curve`.
+            clip: whether the text is clipped to the panel, see `curve`.
 
         Returns:
             The id of the element.
 
         Raises:
-            ValueError: for a position which is not finite and for an
-                unknown family.
+            ValueError: for a position which is not finite, for a position
+                with a location and none without, and for an unknown family.
         """
-        data: dict[str, Any] = {
-            "x": self._position("x", x, "x of a text"),
-            "y": self._position(axis, y, "y of a text"),
-            "text": str(text),
-            "anchor": anchor,
-        }
+        data: dict[str, Any] = {}
+        if loc is not None:
+            spot = legend_loc_spec(loc)
+            if spot == "best" or x is not None or y is not None:
+                raise ValueError(
+                    f"A text at the location {loc!r} has no position and a fixed "
+                    "location, not 'best'."
+                )
+        elif x is None or y is None:
+            raise ValueError("A text needs a position x and y, or a location.")
+        elif coordinates == "axes":
+            data["x"] = _finite(_magnitude(x), "x of a text")
+            data["y"] = _finite(_magnitude(y), "y of a text")
+        else:
+            data["x"] = self._position("x", x, "x of a text")
+            data["y"] = self._position(axis, y, "y of a text")
+        data["text"] = str(text)
+        data["anchor"] = anchor
         if size is not None:
             data["size"] = float(size)
         if weight != "normal":
@@ -1390,6 +1583,14 @@ class ChartPlot:
             raise ValueError(f"A text is 'sans' or 'monospace', not {family!r}.")
         if family != "sans":
             data["family"] = family
+        if rotation:
+            data["rotation"] = float(rotation)
+        if baseline is not None:
+            data["baseline"] = baseline
+        if box is not None:
+            data["box"] = _text_box(box)
+        if loc is not None:
+            data["loc"] = legend_loc_spec(loc)
         return self._add(
             "text",
             data,
@@ -1398,6 +1599,218 @@ class ChartPlot:
             legend=legend,
             id=id,
             axis=axis,
+            coordinates=coordinates,
+            clip=clip,
+        )
+
+    def arrow(
+        self,
+        x: Values,
+        y: Values,
+        x_from: Values,
+        y_from: Values,
+        *,
+        head: Literal["open", "filled", "none"] = "filled",
+        head_length: float | None = None,
+        head_width: float | None = None,
+        body: float | None = None,
+        shrink: float = 0.0,
+        text: str | None = None,
+        size: float | None = None,
+        weight: Literal["normal", "bold"] = "normal",
+        anchor: Literal["start", "middle", "end"] = "start",
+        baseline: Baseline | None = None,
+        line: LineType = "solid",
+        width: float = 2.0,
+        label: str | None = None,
+        legend: str | None = None,
+        id: str | None = None,
+        color: str | None = None,
+        opacity: float = 1.0,
+        axis: Literal["y", "y2"] = "y",
+        coordinates: Coordinates = "data",
+        clip: bool = True,
+    ) -> str:
+        """Add an arrow from a tail to a head with an optional text at its tail.
+
+        matplotlib's `annotate(text, xy=(x, y), xytext=(x_from, y_from),
+        arrowprops=...)`: an arrow of a line with an `open` (`->`), a
+        `filled` (`-|>`) or no head (`-`), or with a `body` a filled arrow of
+        that width (`arrowprops` of `width`, `headwidth` and `headlength`).
+
+        Args:
+            x: the x of the head.
+            y: the y of the head.
+            x_from: the x of the tail.
+            y_from: the y of the tail.
+            head: the head of an arrow of a line.
+            head_length: the length of the head in pixels, `None` for the
+                default of the renderer.
+            head_width: the width of the head across the arrow in pixels.
+            body: the width of the body of a filled arrow in pixels; `None`
+                for an arrow of a line.
+            shrink: the share of the length left out at each end,
+                matplotlib's `shrink`.
+            text: a text at the tail, the arrow starting at its edge.
+            size: the font size of the text.
+            weight: the font weight of the text.
+            anchor: the horizontal anchor of the text.
+            baseline: the vertical anchor of the text, its baseline for
+                `None`.
+            line: the type of the line of an arrow of a line.
+            width: the width of the line in pixels.
+            label: the label in the legend.
+            legend: the legend group.
+            id: the id, `e<n>` by default.
+            color: the color, the text color by default.
+            opacity: the opacity.
+            axis: the y axis, `y` or `y2`.
+            coordinates: `data` or `axes`, see `curve`.
+            clip: whether the arrow is clipped to the panel, see `curve`.
+
+        Returns:
+            The id of the element.
+        """
+
+        def at(name: AxisName, value: Values, what: str) -> float:
+            if coordinates == "axes":
+                return _finite(_magnitude(value), what)
+            return self._position(name, value, what)
+
+        data: dict[str, Any] = {
+            "x": at("x", x, "x of an arrow"),
+            "y": at(axis, y, "y of an arrow"),
+            "x_from": at("x", x_from, "x_from of an arrow"),
+            "y_from": at(axis, y_from, "y_from of an arrow"),
+        }
+        if head != "filled":
+            data["head"] = head
+        for key, value in (
+            ("head_length", head_length),
+            ("head_width", head_width),
+            ("body", body),
+            ("size", size),
+        ):
+            if value is not None:
+                data[key] = float(value)
+        if shrink:
+            data["shrink"] = float(shrink)
+        if text is not None:
+            data["text"] = str(text)
+        if weight != "normal":
+            data["weight"] = weight
+        if anchor != "start":
+            data["anchor"] = anchor
+        if baseline is not None:
+            data["baseline"] = baseline
+        style = _Style(color=color, opacity=opacity, line=line, width=width)
+        return self._add(
+            "arrow",
+            data,
+            style,
+            label=label,
+            legend=legend,
+            id=id,
+            axis=axis,
+            coordinates=coordinates,
+            clip=clip,
+        )
+
+    def contour(
+        self,
+        x: Values,
+        y: Values,
+        values: Values,
+        levels: Sequence[float],
+        *,
+        filled: bool = False,
+        scale: ColorMap | None = None,
+        low: float | None = None,
+        high: float | None = None,
+        center: float | None = None,
+        log: bool = False,
+        gamma: float | None = None,
+        labels: bool | Sequence[str] = False,
+        label_size: float | None = None,
+        line: LineType = "solid",
+        width: float = 1.5,
+        label: str | None = None,
+        legend: str | None = None,
+        id: str | None = None,
+        color: str | None = None,
+        opacity: float = 1.0,
+        axis: Literal["y", "y2"] = "y",
+    ) -> str:
+        """Add contours of a grid of values: lines at levels or filled bands.
+
+        matplotlib's `contour` with `clabel(inline=True)`, or with `filled`
+        its `contourf`; the axes stick to the ends of the grid.
+
+        Args:
+            x: the coordinates of the columns of the grid, strictly monotonic.
+            y: the coordinates of the rows of the grid, strictly monotonic.
+            values: the values, per row (the shape `(len(y), len(x))`), a
+                value which is not finite no value.
+            levels: the levels, strictly increasing (matplotlib's `levels`,
+                which `MaxNLocator` gives for a number).
+            filled: whether the bands between the levels are filled.
+            scale: the color map of the levels, a name or stops, see
+                `heatmap`; `None` draws the lines in the color of the element.
+            low: the value of the lower end of the scale, the first level for
+                `None` (matplotlib's norm of a `ContourSet`).
+            high: the value of the upper end, the last level for `None`.
+            center: the value at the middle of a diverging scale.
+            log: whether the scale is logarithmic.
+            gamma: the exponent of a power scale, matplotlib's `PowerNorm`.
+            labels: the labels of the lines inline, one per level (an empty
+                one for none), or `True` for the levels written `%g`.
+            label_size: the font size of the labels, the `tick` size for
+                `None`.
+            line: the type of the lines.
+            width: the width of the lines in pixels (matplotlib's 1.5).
+            label: the label in the legend.
+            legend: the legend group.
+            id: the id, `e<n>` by default.
+            color: the color of lines without a scale, the cycle by default.
+            opacity: the opacity.
+            axis: the y axis, `y` or `y2`.
+
+        Returns:
+            The id of the element.
+
+        Raises:
+            ValueError: for labels of filled bands.
+        """
+        levels_list = [float(v) for v in levels]
+        data: dict[str, Any] = {
+            "x": _numbers(self._on("x", x)),
+            "y": _numbers(self._on(axis, y)),
+            "values": [_numbers(_magnitude(row)) for row in _rows(values)],
+            "levels": levels_list,
+        }
+        if filled:
+            data["filled"] = True
+        if scale is not None:
+            data["scale"] = _color_scale(
+                scale,
+                min(levels_list) if low is None else low,
+                max(levels_list) if high is None else high,
+                center,
+                log,
+                [],
+                gamma,
+            )
+        if labels is True:
+            data["labels"] = [f"{v:g}" for v in levels_list]
+        elif labels is not False:
+            data["labels"] = [str(t) for t in labels]
+        if filled and "labels" in data:
+            raise ValueError("Filled bands of contours have no labels.")
+        if label_size is not None:
+            data["label_size"] = float(label_size)
+        style = _Style(color=color, opacity=opacity, line=line, width=width)
+        return self._add(
+            "contour", data, style, label=label, legend=legend, id=id, axis=axis
         )
 
     def rule(
@@ -1460,6 +1873,8 @@ class ChartPlot:
         color: str | None = None,
         opacity: float = 1.0,
         axis: Literal["y", "y2"] = "y",
+        coordinates: Coordinates = "data",
+        clip: bool = True,
     ) -> str:
         """Add filled polygons.
 
@@ -1480,6 +1895,9 @@ class ChartPlot:
                 `sbmlsim.plot.colors`), the cycle by default.
             opacity: the opacity.
             axis: the y axis, `y` or `y2`.
+            coordinates: `data` or `axes`, the points in fractions of the
+                panel, see `curve`.
+            clip: whether the polygons are clipped to the panel, see `curve`.
 
         Returns:
             The id of the element.
@@ -1491,8 +1909,8 @@ class ChartPlot:
                 [
                     [px, py]
                     for px, py in zip(
-                        _numbers(self._on("x", xs)),
-                        _numbers(self._on(axis, ys)),
+                        _numbers(self._placed("x", xs, coordinates)),
+                        _numbers(self._placed(axis, ys, coordinates)),
                         strict=True,
                     )
                 ]
@@ -1514,6 +1932,8 @@ class ChartPlot:
             legend=legend,
             id=id,
             axis=axis,
+            coordinates=coordinates,
+            clip=clip,
         )
 
     def colorbar(
@@ -1535,6 +1955,9 @@ class ChartPlot:
         loc: str | None = None,
         length: float | None = None,
         thickness: float | None = None,
+        extend: Extend = "neither",
+        rows: int | None = None,
+        gamma: float | None = None,
     ) -> None:
         """Add a color bar to the plot, a field of the plot and no element.
 
@@ -1572,8 +1995,11 @@ class ChartPlot:
                 black and 2 pixels wide, or a mapping of `value`, `color` and
                 `width`.
             placement: `right` of the panel (vertical), `top`, above the
-                panels of the row centred over them, or `inset`, inside the
-                panel at `loc` (both horizontal).
+                panels of the row centred over them, `inset`, inside the
+                panel at `loc` (both horizontal), `strip`, the colors along
+                the top of the panel without ticks and outline, or `panel`,
+                vertical in place of the panel, which draws nothing else (a
+                figure of a color bar alone).
             loc: the location of an inset bar, a location of `LEGEND_LOCS`
                 but `best`; `None` for the upper right.
             length: the length of the bar as a share of what it runs along,
@@ -1581,7 +2007,14 @@ class ChartPlot:
                 of the panels of the row (1, 0.4 for a bar of 40 % of it) or
                 the width of the panel of an inset (0.5); `None` for these.
             thickness: the thickness of the bar in pixels, `None` for the 12
-                pixels of the renderer.
+                pixels of the renderer (0.03 of the panel of a strip, the
+                width of the panel of a bar in it).
+            extend: the ends of the bar with a triangle, `neither`, `min`,
+                `max` or `both` (matplotlib's `extend`).
+            rows: the rows of the grid a bar right of its panel spans from the
+                row of its plot (matplotlib's `fig.colorbar(...,
+                ax=axes[:, -1])`); `None` for its row.
+            gamma: the exponent of a power scale, matplotlib's `PowerNorm`.
 
         Raises:
             ValueError: for a mark which is no number or mapping, for an
@@ -1589,7 +2022,7 @@ class ChartPlot:
                 or `best`, and for a length which is not above 0 and at most
                 1.
         """
-        color_scale = _color_scale(scale, low, high, center, log, [])
+        color_scale = _color_scale(scale, low, high, center, log, [], gamma)
         if start != 0.0:
             color_scale["start"] = float(start)
         if end != 1.0:
@@ -1605,9 +2038,10 @@ class ChartPlot:
             colorbar["categorical"] = True
         if marks is not None:
             colorbar["marks"] = [_mark(m) for m in marks]
-        if placement not in ("right", "top", "inset"):
+        if placement not in ("right", "top", "inset", "strip", "panel"):
             raise ValueError(
-                f"A color bar goes 'right', 'top' or 'inset', not {placement!r}."
+                "A color bar goes 'right', 'top', 'inset', 'strip' or 'panel', "
+                f"not {placement!r}."
             )
         if placement != "right":
             colorbar["placement"] = placement
@@ -1629,6 +2063,14 @@ class ChartPlot:
             colorbar["length"] = share
         if thickness is not None:
             colorbar["thickness"] = float(thickness)
+        if extend not in ("neither", "min", "max", "both"):
+            raise ValueError(
+                f"A color bar extends 'neither', 'min', 'max' or 'both', not {extend!r}."
+            )
+        if extend != "neither":
+            colorbar["extend"] = extend
+        if rows is not None:
+            colorbar["rows"] = int(rows)
         self._colorbars.append(colorbar)
 
     def spec(self) -> dict[str, Any]:
@@ -1646,6 +2088,12 @@ class ChartPlot:
         spec["y"] = self._axes["y"].spec()
         if "y2" in self._axes:
             spec["y2"] = self._axes["y2"].spec()
+        if self.x2 is not None:
+            spec["x2"] = _AxisState("x", self.id, self.x2).spec()
+        if self.frame is not None:
+            spec["frame"] = self.frame
+        if self.inset is not None:
+            spec["inset"] = self.inset
         spec["legend"] = self.legend
         if self.legend_loc is not None:
             spec["legend_loc"] = self.legend_loc
@@ -1653,6 +2101,12 @@ class ChartPlot:
             spec["legend_title"] = self.legend_title
         if self.legend_columns is not None:
             spec["legend_columns"] = self.legend_columns
+        if self.legend_anchor is not None:
+            spec["legend_anchor"] = self.legend_anchor
+        if self.legends is not None:
+            spec["legends"] = self.legends
+        if self.legend_tuples is not None:
+            spec["legend_tuples"] = self.legend_tuples
         if len(self._colorbars) == 1:
             spec["colorbar"] = self._colorbars[0]
         elif self._colorbars:
@@ -1768,6 +2222,58 @@ def _color_map(name: ColorMap) -> dict[str, Any]:
     return {"stops": stops}
 
 
+def _text_box(box: Mapping[str, Any]) -> dict[str, Any]:
+    """Get the box of a text for the spec.
+
+    Raises:
+        ValueError: for an unknown key and a color which is none.
+    """
+    keys = {"fill", "opacity", "edge", "edge_width", "padding", "style"}
+    unknown = sorted(set(box) - keys)
+    if unknown:
+        raise ValueError(f"A box of a text has the keys {sorted(keys)}, not {unknown}.")
+    spec: dict[str, Any] = {}
+    for key in ("fill", "edge"):
+        value = box.get(key)
+        if value is not None:
+            spec[key] = "none" if str(value) == "none" else _hex(value, f"box {key}")
+    for key in ("opacity", "edge_width", "padding"):
+        if box.get(key) is not None:
+            spec[key] = float(box[key])
+    if box.get("style") is not None:
+        spec["style"] = str(box["style"])
+    return spec
+
+
+def _plot_legend(legend: Mapping[str, Any]) -> dict[str, Any]:
+    """Get a further legend of a plot or a legend of the figure for the spec.
+
+    Raises:
+        ValueError: for an unknown key or a legend without groups.
+    """
+    keys = {"groups", "title", "loc", "anchor", "columns", "family", "position"}
+    unknown = sorted(set(legend) - keys)
+    if unknown or "groups" not in legend:
+        raise ValueError(
+            f"A legend has 'groups' and the keys {sorted(keys - {'groups'})}, "
+            f"not {sorted(legend)}."
+        )
+    spec: dict[str, Any] = {"groups": [str(g) for g in legend["groups"]]}
+    if legend.get("position") is not None:
+        spec["position"] = str(legend["position"])
+    if legend.get("title") is not None:
+        spec["title"] = str(legend["title"])
+    if legend.get("loc") is not None:
+        spec["loc"] = legend_loc_spec(legend["loc"])
+    if legend.get("anchor") is not None:
+        spec["anchor"] = [float(v) for v in legend["anchor"]]
+    if legend.get("columns") is not None:
+        spec["columns"] = _legend_columns(legend["columns"])
+    if legend.get("family") is not None:
+        spec["family"] = str(legend["family"])
+    return spec
+
+
 def _color_scale(
     name: ColorMap,
     low: float | None,
@@ -1775,6 +2281,7 @@ def _color_scale(
     center: float | None,
     log: bool,
     cells: Sequence[Sequence[float | None]],
+    gamma: float | None = None,
 ) -> dict[str, Any]:
     """Get a color scale, its ends by default the range of the finite values.
 
@@ -1793,12 +2300,15 @@ def _color_scale(
     if center is not None:
         scale["center"] = float(center)
     scale["log"] = bool(log)
+    if gamma is not None:
+        scale["gamma"] = float(gamma)
     return scale
 
 
 #: the fields of the fonts of a chart which are weights, the others sizes
 _FONT_WEIGHTS: Final = frozenset(
     {"title_weight", "label_weight", "tick_weight", "legend_weight"}
+    | {"plot_title_weight", "legend_family"}
 )
 
 
@@ -1879,6 +2389,8 @@ class Chart:
         legend_loc: str = "best",
         legend_columns: int | None = None,
         legend_title: str | None = None,
+        legends: Sequence[Mapping[str, Any]] | None = None,
+        row_titles: Sequence[str] | None = None,
         dpi: float | None = None,
         thinning: float | None = THIN_TOLERANCE,
     ) -> None:
@@ -1895,9 +2407,12 @@ class Chart:
             fonts: the font sizes in points by `title`, `label`, `tick`,
                 `tick_y` (the tick labels of the y axes and the color bars,
                 `tick` without), `legend` and `plot_title` (the titles of the
-                plots, `label` without), and the weights `normal` or
-                `bold` by `title_weight`, `label_weight`, `tick_weight` and
-                `legend_weight`; the defaults of the renderer for the others.
+                plots, `label` without), `colorbar_label` (the labels of the
+                color bars, `label` without), the weights `normal` or
+                `bold` by `title_weight`, `plot_title_weight` (the plot
+                titles, `title_weight` without), `label_weight`, `tick_weight`
+                and `legend_weight`, and `legend_family`, `sans` or `monospace`
+                (every legend); the defaults of the renderer for the others.
             legend_scope: `plot`, a legend per plot, or `row`, one per row.
             legend_position: `inside`, `outside`, right of the plot, or
                 `bottom`, one legend of the entries of all plots below the
@@ -1911,6 +2426,15 @@ class Chart:
                 `ncols`, filled top down and then left to right; `None` for
                 as many as fit into the width in one row.
             legend_title: the title of the legend `bottom`.
+            legends: legends of the figure of the groups they list, each a
+                mapping of `groups`, `position` (`right`, right of the grid at
+                its top, matplotlib's `"outside right upper"`, or `bottom`,
+                below the grid, `"outside lower center"`), and optional
+                `title`, `columns` and `family`; their groups leave the
+                legends of the plots.
+            row_titles: the titles of the rows of the grid, one per row (an
+                empty one for none), centred above the panels of each row
+                (matplotlib's `subfig.suptitle`).
             dpi: the resolution of its PNG, `DEFAULT_DPI` without; no part of
                 the spec.
             thinning: the tolerance the lines of its curves, bands and areas
@@ -1931,6 +2455,8 @@ class Chart:
         self.legend_loc = legend_loc_spec(legend_loc)
         self.legend_columns = _legend_columns(legend_columns)
         self.legend_title = legend_title
+        self.legends = None if legends is None else [_plot_legend(lg) for lg in legends]
+        self.row_titles = None if row_titles is None else [str(t) for t in row_titles]
         self.dpi = None if dpi is None else float(dpi)
         self.thinning = None if thinning is None else _thinning(thinning)
         self.plots: list[ChartPlot] = []
@@ -1956,8 +2482,15 @@ class Chart:
         legend_loc: str | None = None,
         legend_title: str | None = None,
         legend_columns: int | None = None,
+        x2: ChartAxis | None = None,
+        frame_color: str | None = None,
+        frame_width: float | None = None,
+        inset: tuple[ChartPlot, Sequence[float]] | None = None,
+        legend_anchor: tuple[float, float] | None = None,
+        legends: Sequence[Mapping[str, Any]] | None = None,
+        legend_tuples: Sequence[str] | None = None,
     ) -> ChartPlot:
-        """Add a plot at a cell of the grid.
+        """Add a plot at a cell of the grid, or as an inset of another plot.
 
         Args:
             row: the row of its top left cell, from 0.
@@ -2001,10 +2534,49 @@ class Chart:
                 matplotlib's `ncol`, filled top down and then left to right,
                 inside or outside; a legend of a row takes the first of its
                 plots; `None` for one.
+            x2: a second x axis on top of the panel with ticks and labels of
+                its own (matplotlib's `twiny`), its limits its `min` and `max`
+                or those of the x axis; no element is drawn against it.
+            frame_color: the color of a frame around all four sides of the
+                panel instead of the axis lines (matplotlib's spines); a
+                frame is drawn with `frame_color` or `frame_width`.
+            frame_width: the width of the frame in pixels, 1 without.
+            inset: the plot as an inset of a host plot added before it,
+                `(host, (x, y, width, height))` in fractions of the panel of
+                the host from its lower left corner (matplotlib's
+                `ax.inset_axes`); its row and column are those of the host.
+            legend_anchor: a point in fractions of the panel the legend of
+                the plot is anchored at by its `legend_loc` (matplotlib's
+                `bbox_to_anchor` with `loc`).
+            legends: further legends of the plot in its panel, each a mapping
+                of `groups` and optional `title`, `loc`, `anchor`, `columns`
+                and `family` (matplotlib's second legend of an axes); their
+                groups leave the legend of the plot.
+            legend_tuples: the legend groups whose swatch draws the markers
+                of all their elements side by side (matplotlib's
+                `HandlerTuple`).
 
         Returns:
             The plot, which its methods add elements to.
+
+        Raises:
+            ValueError: for an inset of a host of another chart.
         """
+        frame: dict[str, Any] | None = None
+        if frame_color is not None or frame_width is not None:
+            frame = {}
+            if frame_color is not None:
+                frame["color"] = _hex(frame_color, "frame")
+            if frame_width is not None:
+                frame["width"] = float(frame_width)
+        inset_spec: dict[str, Any] | None = None
+        if inset is not None:
+            host, rect = inset
+            if host not in self.plots:
+                raise ValueError("The host of an inset is a plot of the chart.")
+            x0, y0, w, h = (float(v) for v in rect)
+            inset_spec = {"plot": host.id, "x": x0, "y": y0, "width": w, "height": h}
+            row, column, row_span, column_span = host.row, host.column, 1, 1
         plot = ChartPlot(
             self,
             f"p{len(self.plots)}",
@@ -2024,6 +2596,12 @@ class Chart:
             legend_loc=legend_loc,
             legend_title=legend_title,
             legend_columns=legend_columns,
+            x2=x2,
+            frame=frame,
+            inset=inset_spec,
+            legend_anchor=legend_anchor,
+            legends=legends,
+            legend_tuples=legend_tuples,
         )
         self.plots.append(plot)
         return plot
@@ -2078,6 +2656,10 @@ class Chart:
             spec["legend"]["columns"] = self.legend_columns
         if self.legend_title is not None:
             spec["legend"]["title"] = self.legend_title
+        if self.legends is not None:
+            spec["legends"] = self.legends
+        if self.row_titles is not None:
+            spec["row_titles"] = self.row_titles
         spec["plots"] = [plot.spec() for plot in self.plots]
         return spec
 

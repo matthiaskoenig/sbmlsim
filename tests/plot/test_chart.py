@@ -874,7 +874,7 @@ def test_colorbar_marks_and_placements() -> None:
         Chart().plot().colorbar("viridis", 0, 1, placement="inset", loc="best")
     with pytest.raises(ValueError, match="share above 0"):
         Chart().plot().colorbar("viridis", 0, 1, length=1.5)
-    with pytest.raises(ValueError, match="'right', 'top' or 'inset'"):
+    with pytest.raises(ValueError, match="'inset', 'strip' or 'panel'"):
         Chart().plot().colorbar("viridis", 0, 1, placement="left")  # ty: ignore[invalid-argument-type]
     with pytest.raises(ValueError, match="mark of a color bar"):
         Chart().plot().colorbar("viridis", 0, 1, marks=[{"at": 1}])
@@ -892,6 +892,11 @@ def test_colorbar_marks_and_placements() -> None:
         "pentagon",
         "hexagon",
         "thin_diamond",
+        "octagon",
+        "tri_down",
+        "tri_up",
+        "tri_left",
+        "tri_right",
     ],
 )
 def test_markers_of_matplotlib(marker: str) -> None:
@@ -1001,3 +1006,196 @@ def test_legend_columns_and_monospace_text() -> None:
         Chart().plot(legend_columns=0)
     with pytest.raises(ValueError, match="'sans' or 'monospace'"):
         Chart().plot().text(0, 0, "x", family="serif")  # ty: ignore[invalid-argument-type]
+
+
+def test_errors_of_two_sides() -> None:
+    """Errors of two sides are a mapping or a tuple, a gap a side not drawn."""
+    chart = Chart()
+    plot = chart.plot(x=ChartAxis(scale="category", categories=["a", "b"]))
+    plot.curve([0, 1, 2], [1, 2, 3], yerr=([math.nan, 0.5, 0.0], [0.3, math.nan, 0.4]))
+    plot.curve([0, 1], [1, 2], xerr={"low": [0.1, 0.2], "high": [0.2, 0.1]})
+    plot.curve([0, 1], [1, 2], yerr=[0.1, 0.2])
+    plot.bar(["a", "b"], [1, 2], err=({"low": [0.1, 0.1], "high": [0.2, 0.2]}))
+    elements = chart.spec()["plots"][0]["elements"]
+    assert elements[0]["yerr"] == {"low": [None, 0.5, 0.0], "high": [0.3, None, 0.4]}
+    assert elements[1]["xerr"] == {"low": [0.1, 0.2], "high": [0.2, 0.1]}
+    assert elements[2]["yerr"] == [0.1, 0.2]
+    assert elements[3]["err"] == {"low": [0.1, 0.1], "high": [0.2, 0.2]}
+    chart.svg()
+    with pytest.raises(ValueError, match="'low' and 'high'"):
+        Chart().plot().curve([0], [1], yerr={"low": [1]})
+
+
+def test_contours_and_power_scales() -> None:
+    """Contour lines with their labels, filled bands, a power scale and its bar."""
+    x = np.linspace(-2, 2, 9)
+    y = np.linspace(-1, 1, 5)
+    values = np.exp(-np.add.outer(y**2, x**2))
+    chart = Chart(columns=2)
+    lines = chart.plot(0, 0)
+    lines.contour(x, y, values, [0.2, 0.5, 0.8], scale="viridis", labels=True)
+    bands = chart.plot(0, 1)
+    bands.contour(x, y, values, [0.0, 0.5, 1.0], filled=True, scale="rdbu_r", gamma=2)
+    bands.colorbar("rdbu_r", 0.0, 1.0, gamma=2, extend="both")
+    spec = chart.spec()
+    (contour,) = spec["plots"][0]["elements"]
+    assert contour["labels"] == ["0.2", "0.5", "0.8"]
+    assert contour["scale"]["low"] == 0.2
+    assert len(contour["values"]) == 5
+    assert len(contour["values"][0]) == 9
+    (filled,) = spec["plots"][1]["elements"]
+    assert filled["filled"] is True
+    assert filled["scale"]["gamma"] == 2.0
+    bar = spec["plots"][1]["colorbar"]
+    assert (bar["scale"]["gamma"], bar["extend"]) == (2.0, "both")
+    svg = chart.svg()
+    assert "sbmlsim-contour-label" in svg
+    assert "sbmlsim-contour-band" in svg
+    with pytest.raises(ValueError, match="no labels"):
+        Chart().plot().contour(x, y, values, [0, 1], filled=True, labels=True)
+
+
+def test_insets_frames_and_top_axes() -> None:
+    """An inset in its host, a frame, coloured tick labels and a top axis."""
+    chart = Chart()
+    host = chart.plot(
+        frame_color="tab:red",
+        frame_width=3,
+        x=ChartAxis(ticks=[0, 1], tick_label_color=["red", "blue"]),
+        x2=ChartAxis(ticks=[0.5], tick_labels=["middle"], label="class"),
+    )
+    host.curve([0, 1], [0, 1])
+    inset = chart.plot(inset=(host, (0.6, 0.6, 0.3, 0.3)), legend=False)
+    inset.curve([0, 1], [1, 0])
+    spec = chart.spec()
+    p, q = spec["plots"]
+    assert p["frame"] == {"color": "#d62728", "width": 3.0}
+    assert p["x"]["tick_label_color"] == ["#ff0000", "#0000ff"]
+    assert p["x2"]["tick_labels"] == ["middle"]
+    assert q["inset"] == {"plot": "p0", "x": 0.6, "y": 0.6, "width": 0.3, "height": 0.3}
+    assert (q["row"], q["column"]) == (0, 0)
+    geometry = import_core().figure_geometry(chart.to_json())
+    a, b = (plot["rect"] for plot in geometry["plots"])
+    assert b["x"] > a["x"] + 0.5 * a["width"]
+    svg = chart.svg()
+    assert "sbmlsim-frame" in svg
+    assert 'data-axis="x2"' in svg
+    with pytest.raises(ValueError, match="as many tick label colors"):
+        ChartAxis(ticks=[0, 1], tick_label_color=["red"])
+    with pytest.raises(ValueError, match="host of an inset"):
+        chart.plot(inset=(Chart().plot(), (0, 0, 1, 1)))
+
+
+def test_texts_arrows_and_unclipped_marks() -> None:
+    """Rotated, boxed and anchored texts, arrows and marks in fractions."""
+    chart = Chart()
+    plot = chart.plot(x=ChartAxis(min=0, max=4), y=ChartAxis(min=0, max=4))
+    plot.text(1, 1, "C_{max}", rotation=90, baseline="bottom", box={"fill": "wheat"})
+    plot.text(None, None, "anchored", loc="upper left")
+    plot.text(1.02, 0.5, "outside", coordinates="axes", clip=False)
+    plot.arrow(3, 3, 2, 1, text="note", head="open")
+    plot.arrow(3.5, 1.5, 2.8, 0.3, body=1, shrink=0.05)
+    plot.curve([-0.02, 0.02], [-0.02, 0.02], coordinates="axes", clip=False)
+    plot.polygon([[(0, 0), (0.1, 0), (0.1, 0.1)]], coordinates="axes")
+    elements = chart.spec()["plots"][0]["elements"]
+    rotated, anchored, outside, note, body, slash, polygon = elements
+    assert rotated["rotation"] == 90.0
+    assert rotated["baseline"] == "bottom"
+    assert rotated["box"] == {"fill": "#f5deb3"}
+    assert anchored["loc"] == "upper_left"
+    assert "x" not in anchored
+    assert (outside["coordinates"], outside["clip"]) == ("axes", False)
+    assert note["kind"] == "arrow"
+    assert (note["head"], note["text"]) == ("open", "note")
+    assert body["body"] == 1.0
+    assert slash["coordinates"] == "axes"
+    assert polygon["coordinates"] == "axes"
+    svg = chart.svg()
+    assert "sbmlsim-unclipped" in svg
+    assert "sbmlsim-arrow" in svg
+    with pytest.raises(ValueError, match="needs a position"):
+        Chart().plot().text(None, 1, "x")
+    with pytest.raises(ValueError, match="no position"):
+        Chart().plot().text(0, 0, "x", loc="upper left")
+
+
+def test_stacks_boxes_and_colour_bars() -> None:
+    """Bars and histograms with a base, box styles and the new colour bars."""
+    chart = Chart(rows=2, columns=2)
+    bars = chart.plot(0, 0, x=ChartAxis(scale="category", categories=["a", "b"]))
+    bars.bar(["a", "b"], [1, 2], base=[0.5, 1.0])
+    bars.box(
+        ["a"],
+        [{"low_whisker": 0, "q1": 1, "median": 2, "q3": 3, "high_whisker": 4}],
+        median_color="orange",
+        whisker_opacity=0.4,
+    )
+    bars.colorbar("viridis", 0, 1, rows=2)
+    hist = chart.plot(1, 0)
+    hist.histogram([0, 1, 2], [1, 2], base=[1, 1], line="solid", width=1)
+    hist.colorbar("viridis", 0, 1, placement="strip")
+    alone = chart.plot(0, 1, row_span=2, legend=False)
+    alone.colorbar("rdbu", -3, 5, placement="panel", label="score")
+    spec = chart.spec()
+    bar, box = spec["plots"][0]["elements"]
+    assert bar["base"] == [0.5, 1.0]
+    assert (box["median_color"], box["whisker_opacity"]) == ("#ffa500", 0.4)
+    assert spec["plots"][0]["colorbar"]["rows"] == 2
+    (histogram,) = spec["plots"][1]["elements"]
+    assert histogram["base"] == [1.0, 1.0]
+    assert histogram["style"]["line"] == {"type": "solid", "width": 1.0}
+    assert spec["plots"][1]["colorbar"]["placement"] == "strip"
+    assert spec["plots"][2]["colorbar"]["placement"] == "panel"
+    svg = chart.svg()
+    assert "sbmlsim-colorbar-panel" in svg
+    with pytest.raises(ValueError, match="'strip' or 'panel'"):
+        Chart().plot().colorbar("viridis", 0, 1, placement="left")  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError, match="extends"):
+        Chart().plot().colorbar("viridis", 0, 1, extend="up")  # ty: ignore[invalid-argument-type]
+
+
+def test_legends_of_plots_and_of_the_figure() -> None:
+    """Further legends, anchors, tuples, legends of the figure and row titles."""
+    chart = Chart(
+        rows=2,
+        fonts={"plot_title_weight": "normal", "colorbar_label": 10},
+        legends=[
+            {"groups": ["ind"], "position": "right", "family": "monospace"},
+            {"groups": ["s2"], "position": "bottom", "title": "studies"},
+        ],
+        row_titles=["healthy", "T2DM"],
+    )
+    plot = chart.plot(
+        0,
+        0,
+        legends=[{"groups": ["s1"], "title": "studies", "loc": "lower left"}],
+        legend_tuples=["ind"],
+        legend_anchor=(1.0, 0.5),
+        legend_loc="center left",
+    )
+    plot.curve([0, 1], [0, 1], label="simulation")
+    plot.curve([0, 1], [1, 0], label="individuals", legend="ind", marker="square")
+    plot.curve([0, 1], [1, 1], label="individuals", legend="ind", marker="triangle")
+    plot.curve([0, 1], [0.5, 0.5], label="Smith2001", legend="s1")
+    plot.curve([0, 1], [0.2, 0.2], label="Jones2010", legend="s2")
+    chart.plot(1, 0)
+    spec = chart.spec()
+    assert spec["fonts"] == {"plot_title_weight": "normal", "colorbar_label": 10.0}
+    assert spec["legends"][0] == {
+        "groups": ["ind"],
+        "position": "right",
+        "family": "monospace",
+    }
+    assert spec["row_titles"] == ["healthy", "T2DM"]
+    p = spec["plots"][0]
+    assert p["legends"] == [{"groups": ["s1"], "title": "studies", "loc": "lower_left"}]
+    assert p["legend_tuples"] == ["ind"]
+    assert p["legend_anchor"] == [1.0, 0.5]
+    geometry = import_core().figure_geometry(chart.to_json())
+    owners = {(e["owner"], e["legend"]) for e in geometry["legend_entries"]}
+    assert ("figure", "ind") in owners
+    assert ("p0", "s1") in owners
+    svg = chart.svg()
+    assert "sbmlsim-row-title" in svg
+    with pytest.raises(ValueError, match="'groups'"):
+        Chart(legends=[{"position": "right"}])
