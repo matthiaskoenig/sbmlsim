@@ -8,7 +8,6 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from sbmlsim.fit.petab_v2.benchmark import BenchmarkResult, BenchmarkStatus
-from sbmlsim.fit.petab_v2.core import Evaluator
 
 SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "petab_benchmark.py"
 
@@ -69,25 +68,7 @@ def test_run_fails_when_a_problem_differs_from_the_baseline(
     )
     collection = SimpleNamespace(commit="abc", path=tmp_path)
     monkeypatch.setattr(script.BenchmarkCollection, "load", lambda commit: collection)
-    monkeypatch.setattr(script, "run", lambda c, names, processes, evaluator: RESULTS)
+    monkeypatch.setattr(script, "run", lambda c, names, processes: RESULTS)
     monkeypatch.setattr(script, "BASELINE_PATH", path)
     assert script.main(["run", "--output", str(tmp_path / "out")]) == code
     assert (tmp_path / "out" / "benchmark.json").is_file()
-
-
-def test_the_benchmark_runs_in_python_by_default(
-    script: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The core runs the collection on request only, see `CORE_GAPS`."""
-    evaluators: list[Evaluator] = []
-
-    def run(c: object, names: object, processes: int, evaluator: Evaluator) -> list:
-        evaluators.append(evaluator)
-        return RESULTS
-
-    collection = SimpleNamespace(commit="abc", path=tmp_path)
-    monkeypatch.setattr(script.BenchmarkCollection, "load", lambda commit: collection)
-    monkeypatch.setattr(script, "run", run)
-    monkeypatch.setattr(script, "BASELINE_PATH", tmp_path / "baseline.json")
-    script.main(["baseline", "--output", str(tmp_path / "out")])
-    assert evaluators == [Evaluator.PYTHON]

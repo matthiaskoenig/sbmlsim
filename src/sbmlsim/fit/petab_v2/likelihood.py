@@ -539,8 +539,6 @@ def _evaluation_of_file(
     """Evaluate the problem of a file in sbmlsim-core.
 
     Raises:
-        CorePetabUnavailable: if the installed sbmlsim-core has no reader of
-            PEtab.
         ValueError: if evaluations are given, which are the ones of an
             optimization problem, or if a simulation failed.
     """
@@ -593,8 +591,6 @@ def log_likelihood(
             model of a mapping cannot be evaluated.
         KeyError: if the parameters lack a parameter of the fit, or name a
             parameter a problem of PEtab does not estimate.
-        CorePetabUnavailable: for a file, if the installed sbmlsim-core has
-            no reader of PEtab.
     """
     if _is_problem_file(problem):
         return _evaluation_of_file(problem, parameters, evaluations).llh
@@ -636,7 +632,6 @@ def chi2(
     Raises:
         ValueError: see `log_likelihood`.
         KeyError: see `log_likelihood`.
-        CorePetabUnavailable: see `log_likelihood`.
     """
     if _is_problem_file(problem):
         return _evaluation_of_file(problem, parameters, evaluations).chi2
@@ -726,7 +721,6 @@ def log_prior(
         ValueError: if the problem is not initialized, or if the parameters
             of a prior do not fit its distribution.
         KeyError: see `log_likelihood`.
-        CorePetabUnavailable: see `log_likelihood`.
     """
     if _is_problem_file(problem):
         return _evaluation_of_file(problem, parameters).log_priors
@@ -784,7 +778,6 @@ def unnorm_log_posterior(
     Raises:
         ValueError: see `log_likelihood` and `log_prior`.
         KeyError: see `log_likelihood`.
-        CorePetabUnavailable: see `log_likelihood`.
     """
     if _is_problem_file(problem):
         return _evaluation_of_file(

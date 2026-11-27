@@ -30,7 +30,6 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
-from tests.engines import require_core_petab
 from tests.progress.conftest import Recorder
 
 
@@ -232,14 +231,3 @@ def report_dir(
         mapping_figures=False,
     )
     return report.create(output_dir=tmp_path_factory.mktemp("report_dir"))
-
-
-@pytest.fixture(params=["python", "core"])
-def petab_evaluator(request: pytest.FixtureRequest) -> str:
-    """Get where the runners of the PEtab suites evaluate a problem, each of them.
-
-    The core is skipped where the installed sbmlsim-core does not read PEtab.
-    """
-    if request.param == "core":
-        require_core_petab()
-    return str(request.param)

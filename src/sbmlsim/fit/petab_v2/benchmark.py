@@ -8,9 +8,10 @@ the nominal parameters, `simulations.tsv`, and some also in
 its encoding in PEtab v2 where the collection has one, otherwise it is
 converted from PEtab v1 with `petab.v2.petab1to2`; its simulations are
 converted with it, see `sbmlsim.fit.petab_v2.conversion`. The problem is read
-with `PetabReader` (or in sbmlsim-core, `Evaluator.CORE`, where the problems
-of `CORE_GAPS` do not pass), simulated at the nominal values of its parameter
-table and compared with the simulations of the collection; where AMICI states the
+and simulated at the nominal values of its parameter table in sbmlsim-core
+(`sbmlsim.fit.petab_v2.core`), a problem of `CORE_GAPS`, which the core does
+not run as python does yet, with `PetabReader`, and compared with the
+simulations of the collection; where AMICI states the
 log-likelihood of the problem (`tests/benchmark_models/benchmark_models.yaml`
 of AMICI), it is compared too. The problems of `EXCLUDED_PROBLEMS` take too
 long and are left out.
@@ -58,7 +59,6 @@ from sbmlsim.fit.petab_v2.conversion import (
     convert_v1,
     measurement_table,
 )
-from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.testsuite import cache
@@ -91,15 +91,9 @@ EXCLUDED_PROBLEMS: dict[str, str] = {
     "the steady state)",
 }
 
-#: where a problem is read and simulated by default: python, `PetabReader`,
-#: until sbmlsim-core runs every problem as python does; `CORE_GAPS` are the
-#: problems where it does not (the outcome of a problem of the baseline is the
-#: same with both otherwise)
-DEFAULT_EVALUATOR = Evaluator.PYTHON
-
 #: the problems which pass in python and not in sbmlsim-core, with the reason
-#: (matthiaskoenig/sbmlsim-core#145); every other problem has the
-#: outcome of the baseline with either evaluator
+#: (matthiaskoenig/sbmlsim-core#145), which are read and simulated with
+#: `PetabReader` until the core runs them; every other problem runs in the core
 CORE_GAPS: dict[str, str] = {
     "Armistead_CellDeathDis2024": "the model requires the package comp, "
     "which the compiler of the core does not support (python flattens it)",
@@ -394,7 +388,7 @@ class BenchmarkProblem:
         llh_reference: float | None = None,
         settings: FitSettings | None = None,
         timeout: float | None = None,
-        evaluator: Evaluator | str | None = None,
+        in_core: bool | None = None,
     ) -> BenchmarkResult:
         """Read, simulate and compare the problem.
 
@@ -408,20 +402,15 @@ class BenchmarkProblem:
                 thread of a POSIX system, on Windows the problem runs without
                 one and a warning says so; a call into roadrunner or into
                 sbmlsim-core finishes before the problem stops.
-            evaluator: where the problem is read and simulated, see
-                `sbmlsim.fit.petab_v2.core.Evaluator`, `DEFAULT_EVALUATOR` by
-                default.
+            in_core: whether the problem is read and simulated in
+                sbmlsim-core or with `PetabReader`, by default in the core
+                unless it is a problem of `CORE_GAPS`.
 
         Returns:
             The outcome.
-
-        Raises:
-            CorePetabUnavailable: if the core is asked for and has no reader
-                of PEtab.
         """
-        resolved = resolve_evaluator(
-            DEFAULT_EVALUATOR if evaluator is None else evaluator
-        )
+        if in_core is None:
+            in_core = self.name not in CORE_GAPS
         if settings is None:
             settings = PROBLEM_SETTINGS.get(self.name, BENCHMARK_SETTINGS)
         if not self.v2_dir.is_dir():
@@ -452,7 +441,7 @@ class BenchmarkProblem:
             # run without its result and the handler installed
             if timeout is not None:
                 signal.setitimer(signal.ITIMER_REAL, timeout)
-            return self._run(llh_reference, settings, resolved, timings)
+            return self._run(llh_reference, settings, in_core, timings)
         except ProblemTimeout as err:
             return BenchmarkResult(
                 name=self.name,
@@ -480,12 +469,12 @@ class BenchmarkProblem:
         self,
         llh_reference: float | None,
         settings: FitSettings,
-        evaluator: Evaluator,
+        in_core: bool,
         timings: dict[str, float],
     ) -> BenchmarkResult:
         """Run the problem, see `run`, filling in the timings."""
         yaml_file = next(iter(sorted(self.v2_dir.glob("*.yaml"))))
-        if evaluator is Evaluator.CORE:
+        if in_core:
             llh, simulated = _core_simulations(yaml_file, settings, timings)
         else:
             llh, simulated = _python_simulations(
@@ -588,6 +577,8 @@ def _python_simulations(
     yaml_file: Path, name: str, settings: FitSettings, timings: dict[str, float]
 ) -> tuple[float, np.ndarray]:
     """Read and simulate a problem with `PetabReader`, at its nominal values.
+
+    The path of a problem of `CORE_GAPS`.
 
     Returns:
         The log-likelihood and the simulation of every measurement, in the
@@ -801,14 +792,12 @@ class BenchmarkCollection:
         self,
         names: Sequence[str] | None = None,
         progress: Callable[[BenchmarkResult], None] | None = None,
-        evaluator: Evaluator | str | None = None,
     ) -> list[BenchmarkResult]:
         """Run the problems of the collection.
 
         Args:
             names: the problems, all of them by default.
             progress: called with the result of every problem.
-            evaluator: see `BenchmarkProblem.run`.
 
         Returns:
             The results in the order of the names.
@@ -816,9 +805,7 @@ class BenchmarkCollection:
         references = self.references()
         results: list[BenchmarkResult] = []
         for name in names if names is not None else self.problem_names():
-            result = self.problem(name).run(
-                llh_reference=references.get(name), evaluator=evaluator
-            )
+            result = self.problem(name).run(llh_reference=references.get(name))
             if progress is not None:
                 progress(result)
             results.append(result)

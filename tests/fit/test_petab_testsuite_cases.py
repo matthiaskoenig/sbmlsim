@@ -82,9 +82,9 @@ def test_a_case_is_read(tmp_path: Path) -> None:
     assert case.solution["tol_llh"] == 1e-3
 
 
-def test_a_case_passes(tmp_path: Path, petab_evaluator: str) -> None:
+def test_a_case_passes(tmp_path: Path) -> None:
     """A case whose values agree with the solution passes."""
-    result = PetabCase.from_directory(_case(tmp_path)).run(petab_evaluator)
+    result = PetabCase.from_directory(_case(tmp_path)).run()
     assert result.status is CaseStatus.PASS, result.message
     assert result.key == f"{SBML}/9001"
     assert result.max_difference is not None
@@ -92,36 +92,32 @@ def test_a_case_passes(tmp_path: Path, petab_evaluator: str) -> None:
 
 
 @pytest.mark.parametrize("entry", ["llh", "chi2"])
-def test_a_value_outside_of_the_tolerance(
-    tmp_path: Path, entry: str, petab_evaluator: str
-) -> None:
+def test_a_value_outside_of_the_tolerance(tmp_path: Path, entry: str) -> None:
     """The message names the value which differs."""
     case_dir = _case(tmp_path)
     solution_file = case_dir / "_9001_solution.yaml"
     solution = yaml.safe_load(solution_file.read_text(encoding="utf-8"))
     solution[entry] += 1.0
     solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
-    result = PetabCase.from_directory(case_dir).run(petab_evaluator)
+    result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.TOLERANCE
     assert entry in result.message
     assert result.max_difference == pytest.approx(1.0, abs=1e-6)
 
 
-def test_a_simulation_outside_of_the_tolerance(
-    tmp_path: Path, petab_evaluator: str
-) -> None:
+def test_a_simulation_outside_of_the_tolerance(tmp_path: Path) -> None:
     """A simulation which differs is named with its observable and experiment."""
     case_dir = _case(tmp_path)
     simulations = pd.read_csv(case_dir / "_simulations.tsv", sep="\t")
     simulations.loc[3, "simulation"] += 0.5
     simulations.to_csv(case_dir / "_simulations.tsv", sep="\t", index=False)
-    result = PetabCase.from_directory(case_dir).run(petab_evaluator)
+    result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.TOLERANCE
     assert "prey_o" in result.message
     assert "e1" in result.message
 
 
-def test_the_priors_of_a_case(tmp_path: Path, petab_evaluator: str) -> None:
+def test_the_priors_of_a_case(tmp_path: Path) -> None:
     """The log prior of every parameter and the log posterior are compared."""
     case_dir = _case(tmp_path)
     parameters = pd.read_csv(case_dir / "parameters.tsv", sep="\t")
@@ -141,21 +137,21 @@ def test_the_priors_of_a_case(tmp_path: Path, petab_evaluator: str) -> None:
     )
     solution["tol_unnorm_log_posterior"] = 1e-3
     solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
-    result = PetabCase.from_directory(case_dir).run(petab_evaluator)
+    result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.PASS, result.message
 
     solution["log_prior"]["beta"] = 0.0
     solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
-    result = PetabCase.from_directory(case_dir).run(petab_evaluator)
+    result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.TOLERANCE
     assert "beta" in result.message
 
 
-def test_a_case_which_cannot_be_read(tmp_path: Path, petab_evaluator: str) -> None:
+def test_a_case_which_cannot_be_read(tmp_path: Path) -> None:
     """An error while the case is read or run is the status `error`."""
     case_dir = _case(tmp_path)
     (case_dir / "observables.tsv").write_text("nothing\n", encoding="utf-8")
-    result = PetabCase.from_directory(case_dir).run(petab_evaluator)
+    result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.ERROR
     assert result.message
 

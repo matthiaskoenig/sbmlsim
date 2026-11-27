@@ -15,12 +15,9 @@ is converted to PEtab v2 with its simulations once, see
 
 A case of a model is a directory named by its number with the problem
 `_<id>.yaml`, the solution `_<id>_solution.yaml` and the simulations it
-names. It is simulated at the nominal values of its parameter table and
-compared with the tolerances of its solution, evaluated by one of the two
-`Evaluator`s: in sbmlsim-core (`sbmlsim.fit.petab_v2.core`), the default
-where the installed sbmlsim-core reads PEtab, or in python, read with
-`PetabReader` into an optimization problem at
-`PetabReader.nominal_parameters`. Both pass the cases of the baseline. A math case compiles its expression with
+names. It is read, simulated at the nominal values of its parameter table and
+evaluated in sbmlsim-core (`sbmlsim.fit.petab_v2.core`) and compared with the
+tolerances of its solution. A math case compiles its expression with
 `sbmlsim.simulator.formula.compile_formula`, which is what the formulas of
 conditions, observables and noise are evaluated with. The cases of PySB
 models (`pysb`) are not run, `sbmlsim` simulates SBML.
@@ -49,14 +46,7 @@ from sbmlsim.atomic import atomic_directory
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2 import core
 from sbmlsim.fit.petab_v2.conversion import convert_v1
-from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
-from sbmlsim.fit.petab_v2.likelihood import (
-    chi2,
-    log_likelihood,
-    log_prior,
-    unnorm_log_posterior,
-)
-from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader
+from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.testsuite import cache
 from sbmlsim.testsuite.baseline import CaseOutcome
@@ -208,23 +198,14 @@ class PetabCase:
         """Get the key of the case in the baseline, e.g. `sbml/0001`."""
         return f"{self.group}/{self.cid}"
 
-    def run(self, evaluator: Evaluator | str | None = None) -> CaseResult:
+    def run(self) -> CaseResult:
         """Run the case.
-
-        Args:
-            evaluator: where the case is evaluated, see `Evaluator`; the core
-                where the installed sbmlsim-core reads PEtab, else python.
 
         Returns:
             The outcome, `error` when the case cannot be read or simulated.
-
-        Raises:
-            CorePetabUnavailable: if the core is asked for and has no reader
-                of PEtab.
         """
-        resolved = resolve_evaluator(evaluator)
         try:
-            differences = self._compare(resolved)
+            differences = self._compare()
         except Exception as err:  # every failure is the outcome of the case
             logger.debug("Case '%s' failed", self.key, exc_info=True)
             return CaseResult(
@@ -253,13 +234,7 @@ class PetabCase:
             max_difference=max_difference,
         )
 
-    def _values(self, evaluator: Evaluator) -> _CaseValues:
-        """Evaluate the case at the nominal values of its parameter table."""
-        if evaluator is Evaluator.CORE:
-            return _core_values(self.problem_file)
-        return _python_values(self.problem_file, opid=f"case_{self.cid}")
-
-    def _compare(self, evaluator: Evaluator) -> list[_Difference]:
+    def _compare(self) -> list[_Difference]:
         """Evaluate the case and compare it with its solution.
 
         Raises:
@@ -267,7 +242,7 @@ class PetabCase:
                 the problem or the other way round.
         """
         solution = self.solution
-        values = self._values(evaluator)
+        values = _core_values(self.problem_file)
 
         differences = [
             _difference("llh", values.llh, solution["llh"], solution["tol_llh"]),
@@ -365,33 +340,6 @@ class _CaseValues:
     log_priors: dict[str, float]
     unnorm_log_posterior: float
     simulations: list[tuple[str, str, np.ndarray]]
-
-
-def _python_values(problem_file: Path, opid: str) -> _CaseValues:
-    """Evaluate a case with `PetabReader` and the problem it reads."""
-    reader = PetabReader.from_yaml(problem_file)
-    problem = reader.to_optimization_problem(opid=opid)
-    problem.initialize(CASE_SETTINGS)
-    nominal = reader.nominal_parameters(problem)
-    # the problem is simulated once, every value is calculated from it
-    evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
-    simulations = []
-    for k, evaluation in evaluations.items():
-        experiment_id = problem.simulation_keys[k]
-        simulations.append(
-            (
-                reader.observable_id(problem.mapping_keys[k]),
-                "" if experiment_id == DEFAULT_EXPERIMENT else experiment_id,
-                np.asarray(evaluation.prediction, dtype=float),
-            )
-        )
-    return _CaseValues(
-        llh=log_likelihood(problem, nominal, evaluations),
-        chi2=chi2(problem, nominal, evaluations),
-        log_priors=log_prior(problem, nominal),
-        unnorm_log_posterior=unnorm_log_posterior(problem, nominal, evaluations),
-        simulations=simulations,
-    )
 
 
 def _core_values(problem_file: Path) -> _CaseValues:
@@ -654,47 +602,34 @@ class PetabSuite:
         for cid in self.case_ids(group):
             yield self.case(cid, group)
 
-    def run_case(
-        self, cid: str, group: str = SBML, evaluator: Evaluator | str | None = None
-    ) -> CaseResult:
-        """Run a case of a group of models, `error` for one which cannot be read.
-
-        Args:
-            cid: the number of the case.
-            group: the group of the case.
-            evaluator: see `PetabCase.run`.
-
-        Returns:
-            The outcome.
-        """
+    def run_case(self, cid: str, group: str = SBML) -> CaseResult:
+        """Run a case of a group of models, `error` for one which cannot be read."""
         try:
             case = self.case(cid, group)
         except ValueError as err:
             return CaseResult(
                 group=group, cid=cid, status=CaseStatus.ERROR, message=str(err)
             )
-        return case.run(evaluator)
+        return case.run()
 
     def math_cases(self) -> list[MathCase]:
         """Get the math cases, empty for a suite without them."""
         path = self.path / FORMAT_VERSION / MATH / MATH_FILE
         return math_cases(path) if path.is_file() else []
 
-    def run(self, evaluator: Evaluator | str | None = None) -> list[CaseResult]:
+    def run(self) -> list[CaseResult]:
         """Run the cases of the suite.
 
-        Args:
-            evaluator: where the cases of the models are evaluated, see
-                `PetabCase.run`; the math cases are compiled by
-                `compile_formula`, the parser of the formulas of a problem
-                which is read in python.
+        The cases of the models are evaluated in sbmlsim-core, the math cases
+        are compiled by `compile_formula`, the parser of the formulas of a
+        problem which `from_petab` reads.
 
         Returns:
             The results of the groups `sbml` and `v1/sbml` and of the math
             cases, in this order.
         """
         results = [
-            self.run_case(cid, group, evaluator)
+            self.run_case(cid, group)
             for group in (SBML, V1_SBML)
             for cid in self.case_ids(group)
         ]

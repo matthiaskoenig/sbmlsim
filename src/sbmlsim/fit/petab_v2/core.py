@@ -17,27 +17,23 @@ be a problem of PEtab at all.
 
 The core reads of the extension `sbmlsim` what changes the simulation of a
 measurement: `data_at_change`, the tolerances of the integrator and the kind
-of every observable, of which only the training data enter the likelihood. Its
+of every observable, of which only the training data enter the likelihood
+(and the validation data of the validation problem of a fit). Its
 objective, the weighted least squares of a fit of `sbmlsim`, is not the
 objective of PEtab and is not read.
 
-`sbmlsim_core.petab` is part of sbmlsim-core from the first release after
-0.37.0 (`CORE_PETAB_RELEASE`); with an older core `has_core_petab` is `False`,
-`resolve_evaluator` falls back to python and `evaluate` raises
-`CorePetabUnavailable`.
+The python reader of `from_petab` evaluates a problem of PEtab only in the
+runner of the benchmark collection, for the problems the core does not run as
+it does yet (`sbmlsim.fit.petab_v2.benchmark.CORE_GAPS`).
 """
 
 from __future__ import annotations
 
-import importlib
 import io
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
-from functools import cache
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -46,76 +42,6 @@ import pandas as pd
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.model.tolerances import AbsoluteTolerance
-
-#: the release of sbmlsim-core which carries `sbmlsim_core.petab`, the first
-#: after 0.37.0 (matthiaskoenig/sbmlsim-core#142)
-CORE_PETAB_RELEASE = "0.38.0"
-
-
-class Evaluator(StrEnum):
-    """Where a PEtab problem on disk is evaluated.
-
-    `core` reads and simulates it in sbmlsim-core, `python` reads it with
-    `PetabReader` into an `OptimizationProblem` and evaluates that, the path
-    of `sbmlsim` before sbmlsim-core read PEtab, which the runners of the
-    suites keep behind this switch until the floor of sbmlsim-core carries
-    `sbmlsim_core.petab`.
-    """
-
-    CORE = "core"
-    PYTHON = "python"
-
-
-class CorePetabUnavailable(ImportError):
-    """The installed sbmlsim-core has no reader of PEtab."""
-
-
-@cache
-def _core_petab() -> ModuleType | None:
-    """Get `sbmlsim_core.petab`, `None` for a core without it."""
-    try:
-        module = importlib.import_module("sbmlsim_core.petab")
-    except ImportError:
-        return None
-    return module if hasattr(module, "Problem") else None
-
-
-def has_core_petab() -> bool:
-    """Check whether the installed sbmlsim-core reads PEtab problems."""
-    return _core_petab() is not None
-
-
-def _unavailable() -> CorePetabUnavailable:
-    """Get the error of a core without `sbmlsim_core.petab`."""
-    return CorePetabUnavailable(
-        f"The installed sbmlsim-core has no reader of PEtab "
-        f"(`sbmlsim_core.petab`), which sbmlsim-core {CORE_PETAB_RELEASE} or "
-        f"newer has. Upgrade sbmlsim-core, or evaluate the problem in python "
-        f"with `from_petab` and the evaluator `python`."
-    )
-
-
-def resolve_evaluator(evaluator: Evaluator | str | None = None) -> Evaluator:
-    """Get the evaluator to run with.
-
-    Args:
-        evaluator: the evaluator, `None` for the core where the installed
-            sbmlsim-core has `sbmlsim_core.petab` and python otherwise.
-
-    Returns:
-        The evaluator.
-
-    Raises:
-        CorePetabUnavailable: if the core is asked for and has no reader of
-            PEtab.
-        ValueError: if the evaluator is neither `core` nor `python`.
-    """
-    if evaluator is None:
-        return Evaluator.CORE if has_core_petab() else Evaluator.PYTHON
-    resolved = Evaluator(evaluator)
-    if resolved is Evaluator.CORE and not has_core_petab():
-        raise _unavailable()
-    return resolved
 
 
 def read_problem(
@@ -141,13 +67,10 @@ def read_problem(
         The `sbmlsim_core.petab.Problem`.
 
     Raises:
-        CorePetabUnavailable: if the installed sbmlsim-core has no reader of
-            PEtab.
         ValueError: if the core cannot read the problem.
     """
-    petab = _core_petab()
-    if petab is None:
-        raise _unavailable()
+    from sbmlsim_core import petab
+
     options: dict[str, Any] = {"extension": extension}
     if settings is not None:
         options["relative_tolerance"] = float(settings.relative_tolerance)
@@ -233,8 +156,6 @@ def evaluate(
         The evaluation.
 
     Raises:
-        CorePetabUnavailable: if the installed sbmlsim-core has no reader of
-            PEtab.
         KeyError: if a parameter is no estimated parameter of the problem.
         ValueError: if the core cannot read the problem, or if settings are
             given with a problem which is read already.

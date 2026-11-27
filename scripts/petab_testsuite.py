@@ -15,11 +15,6 @@ uv run python scripts/petab_testsuite.py run
 # refresh the expected outcomes after a change which fixes or breaks cases
 uv run python scripts/petab_testsuite.py baseline
 ```
-
-`--evaluator core` evaluates the cases of the models in sbmlsim-core,
-`--evaluator python` with `PetabReader`; without it the core evaluates them
-where the installed sbmlsim-core reads PEtab. Both have the outcomes of the
-baseline.
 """
 
 from __future__ import annotations
@@ -32,7 +27,6 @@ from pathlib import Path
 
 from sbmlsim import log
 from sbmlsim.console import console
-from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
 from sbmlsim.fit.petab_v2.testsuite import (
     PETAB_SUITE_COMMIT,
     CaseResult,
@@ -46,13 +40,10 @@ from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
 BASELINE_PATH = Path(__file__).parent.parent / "tests" / "data" / "petab_baseline.json"
 
 
-def run(suite: PetabSuite, evaluator: Evaluator) -> list[CaseResult]:
+def run(suite: PetabSuite) -> list[CaseResult]:
     """Run the cases of the suite and report the outcome."""
-    console.print(
-        f"Running the PEtab test suite '{suite.commit}' from {suite.path} "
-        f"(evaluator '{evaluator.value}')"
-    )
-    results = suite.run(evaluator)
+    console.print(f"Running the PEtab test suite '{suite.commit}' from {suite.path}")
+    results = suite.run()
     counts = Counter(r.status for r in results)
     console.print(f"[bold]{counts[CaseStatus.PASS]}/{len(results)} cases pass[/bold]")
     for result in results:
@@ -94,11 +85,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["download", "run", "baseline"])
     parser.add_argument("--commit", default=PETAB_SUITE_COMMIT)
-    parser.add_argument(
-        "--evaluator",
-        choices=[e.value for e in Evaluator],
-        help="where the cases are evaluated, the core where it reads PEtab",
-    )
     args = parser.parse_args(argv)
 
     log.enable_rich_logging()
@@ -113,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             f"`baseline` first[/red]"
         )
         return 1
-    results = run(suite, resolve_evaluator(args.evaluator))
+    results = run(suite)
     if args.command == "baseline":
         write_baseline(results, suite, BASELINE_PATH)
         return 0
