@@ -3,7 +3,7 @@
 `write_archive` writes, for every given SBML model, its flat model (a model
 with submodels of the SBML package `comp` is flattened, `<stem>_flat.xml`),
 the ordinary differential equations of the flat model as markdown
-(`sbmlode.OdeSystem`, `<flat stem>.md`) and its antimony (`<flat stem>.ant`),
+(`sbmlsim_core.OdeSystem`, `<flat stem>.md`) and its antimony (`<flat stem>.ant`),
 the license texts of the models (CC BY-SA 4.0) and of the code (MIT, with the
 copyright) and the COMBINE archive (`pymetadata.omex`) with the README, the
 licenses, the models, the markdown, the antimony and further models and files.
@@ -141,11 +141,13 @@ def write_archive(
             the suffix of an extra file has no format.
     """
     from pymetadata.omex import EntryFormat, ManifestEntry, Omex
-    from sbmlode import OdeSystem
     from sbmlutils.comp import flatten_sbml
     from sbmlutils.io import sbml_to_antimony
 
+    from sbmlsim.engine import import_core
     from sbmlsim.licenses import License, write_license
+
+    core = import_core()
 
     def entry(
         location: str, fmt: EntryFormat | str, *, master: bool = False
@@ -225,7 +227,7 @@ def write_archive(
         if hierarchical and model.flat is None:
             flatten_sbml(model.path, flat)
         md_path = flat.with_suffix(".md")
-        OdeSystem.from_sbml(flat).write(md_path)
+        core.OdeSystem.from_sbml(flat).write(md_path)
         ant_path = flat.with_suffix(".ant")
         ant_path.write_text(sbml_to_antimony(flat), encoding="utf-8")
         master = k == 0

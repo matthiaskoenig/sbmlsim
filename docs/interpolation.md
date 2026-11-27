@@ -21,6 +21,10 @@ interpolation = Interpolation(data=data, method=INTERPOLATION_LINEAR)
 interpolation.write_sbml_to_file("interpolation.xml")
 ```
 
+```text title="Output"
+valid <SBMLDocument>  0.004 s
+```
+
 The first column is x, every other column is interpolated against it. x named `time` is the simulation time, any other name is the quantity of that id in the model the interpolation runs in. Each column becomes a parameter with an assignment rule which evaluates the interpolation, so simulating the model at time `t` gives the interpolated `y` and `z`. The model is SBML Level 3 Version 2, and every interpolated parameter has a port (and x too, when it is not the time), so the model can be used as a submodel. `write_sbml_to_string()` returns the SBML instead of writing a file.
 
 ## From a file
@@ -115,6 +119,11 @@ create_model(
 )
 ```
 
+```text title="Output"
+SBML written to uptake.xml  model 'uptake', 0.00 s
+valid ./uptake.xml  0.001 s
+```
+
 `drive` makes the measured plasma glucose drive it. A column drives the element of its own id:
 
 ```python
@@ -130,6 +139,10 @@ doc = interpolation.drive("uptake.xml", filepath=Path("uptake_driven.xml"))
 loaded = simulator.load(Path("uptake_driven.xml"))
 loaded.set_selections(["time", "[glc_ext]", "[glc]"])
 in_place = simulator.simulate(loaded, Simulation(end=120, steps=120))
+```
+
+```text title="Output"
+valid <SBMLDocument>  0.002 s
 ```
 
 The source is an SBML file, an SBML string or a `libsbml.SBMLDocument`, which is changed and returned; `filepath` writes the driven model in addition, its SBML Level and Version are kept. What `drive` does:
@@ -149,6 +162,10 @@ Interpolation(dose_response, method="linear").drive(
 )
 ```
 
+```text title="Output"
+valid <SBMLDocument>  0.002 s
+```
+
 ## Driving a model through comp
 
 `drive_comp` leaves the original untouched and writes a comp model which drives it:
@@ -166,6 +183,11 @@ loaded.set_selections(["time", "[glc_ext]", "[uptake__glc]"])
 composed = simulator.simulate(loaded, Simulation(end=120, steps=120))
 assert_allclose(composed["[glc_ext]"], in_place["[glc_ext]"])
 assert_allclose(composed["[uptake__glc]"], in_place["[glc]"], rtol=1e-5)
+```
+
+```text title="Output"
+valid <SBMLDocument>  0.004 s
+Flat SBML written to uptake_driven_flat.xml  0.001 s
 ```
 
 The comp document has the original as the submodel `uptake` of the top model `uptake_driven`, which holds the assignment rules. comp requires an element to be replaced by one of its own class (except a parameter, which anything with a value may replace), so every driven element gets a placeholder of its class in the top model, which replaces it in the original: a parameter for a parameter, a compartment for a compartment, and for a species a species in a compartment which reads the compartment of the original. x other than the time is a parameter of the top model which reads x of the original. A reference into the original goes through its port when it declares one for the element, else by the id.
@@ -195,6 +217,11 @@ create_model(
     filepath=Path("infusion.xml"),
     validation_options=ValidationOptions(units_consistency=False),
 )
+```
+
+```text title="Output"
+SBML written to infusion.xml  model 'infusion', 0.00 s
+valid ./infusion.xml  0.001 s
 ```
 
 See the [interpolation API reference](api/interpolation.md) for method signatures and arguments.
