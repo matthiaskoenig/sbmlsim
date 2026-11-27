@@ -27,8 +27,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 import numpy as np
 
 from sbmlsim.data import Data
-from sbmlsim.plot.chart import legend_loc_spec
-from sbmlsim.plot.colors import color_alpha
 from sbmlsim.units import short_unit
 
 if TYPE_CHECKING:
@@ -162,6 +160,8 @@ class ColorType:
         else:
             # the alpha replaces the one of the colour, as `to_rgba` of
             # matplotlib does; `none` is transparent black
+            from sbmlsim.plot.colors import color_alpha
+
             hexed, _ = color_alpha(color)
             if hexed is None:
                 hexed, alpha = "#000000", 0.0
@@ -2014,6 +2014,8 @@ class FigureSettings:
                 f"The legend_scope of a figure is one of {list(LEGEND_SCOPES)}, "
                 f"not {self.legend_scope!r}."
             )
+        from sbmlsim.plot.chart import legend_loc_spec
+
         legend_loc_spec(self.legend_loc)
 
     @classmethod
