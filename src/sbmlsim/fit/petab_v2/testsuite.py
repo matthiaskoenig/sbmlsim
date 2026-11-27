@@ -15,9 +15,12 @@ is converted to PEtab v2 with its simulations once, see
 
 A case of a model is a directory named by its number with the problem
 `_<id>.yaml`, the solution `_<id>_solution.yaml` and the simulations it
-names. It is read with `PetabReader`, simulated at the nominal values of its
-parameter table (`PetabReader.nominal_parameters`) and compared with the
-tolerances of its solution. A math case compiles its expression with
+names. It is simulated at the nominal values of its parameter table and
+compared with the tolerances of its solution, evaluated by one of the two
+`Evaluator`s: in sbmlsim-core (`sbmlsim.fit.petab_v2.core`), the default
+where the installed sbmlsim-core reads PEtab, or in python, read with
+`PetabReader` into an optimization problem at
+`PetabReader.nominal_parameters`. Both pass the cases of the baseline. A math case compiles its expression with
 `sbmlsim.simulator.formula.compile_formula`, which is what the formulas of
 conditions, observables and noise are evaluated with. The cases of PySB
 models (`pysb`) are not run, `sbmlsim` simulates SBML.
@@ -44,7 +47,9 @@ import yaml
 
 from sbmlsim.atomic import atomic_directory
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2 import core
 from sbmlsim.fit.petab_v2.conversion import convert_v1
+from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
 from sbmlsim.fit.petab_v2.likelihood import (
     chi2,
     log_likelihood,
@@ -203,14 +208,23 @@ class PetabCase:
         """Get the key of the case in the baseline, e.g. `sbml/0001`."""
         return f"{self.group}/{self.cid}"
 
-    def run(self) -> CaseResult:
+    def run(self, evaluator: Evaluator | str | None = None) -> CaseResult:
         """Run the case.
+
+        Args:
+            evaluator: where the case is evaluated, see `Evaluator`; the core
+                where the installed sbmlsim-core reads PEtab, else python.
 
         Returns:
             The outcome, `error` when the case cannot be read or simulated.
+
+        Raises:
+            CorePetabUnavailable: if the core is asked for and has no reader
+                of PEtab.
         """
+        resolved = resolve_evaluator(evaluator)
         try:
-            differences = self._compare()
+            differences = self._compare(resolved)
         except Exception as err:  # every failure is the outcome of the case
             logger.debug("Case '%s' failed", self.key, exc_info=True)
             return CaseResult(
@@ -239,38 +253,28 @@ class PetabCase:
             max_difference=max_difference,
         )
 
-    def _compare(self) -> list[_Difference]:
-        """Simulate the case and compare it with its solution.
+    def _values(self, evaluator: Evaluator) -> _CaseValues:
+        """Evaluate the case at the nominal values of its parameter table."""
+        if evaluator is Evaluator.CORE:
+            return _core_values(self.problem_file)
+        return _python_values(self.problem_file, opid=f"case_{self.cid}")
+
+    def _compare(self, evaluator: Evaluator) -> list[_Difference]:
+        """Evaluate the case and compare it with its solution.
 
         Raises:
             ValueError: if a simulation of the solution has no measurement of
                 the problem or the other way round.
         """
         solution = self.solution
-        reader = PetabReader.from_yaml(self.problem_file)
-        problem = reader.to_optimization_problem(opid=f"case_{self.cid}")
-        problem.initialize(CASE_SETTINGS)
-        nominal = reader.nominal_parameters(problem)
-        # the problem is simulated once, every value is calculated from it
-        evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
+        values = self._values(evaluator)
 
         differences = [
-            _difference(
-                "llh",
-                log_likelihood(problem, nominal, evaluations),
-                solution["llh"],
-                solution["tol_llh"],
-            ),
-            _difference(
-                "chi2",
-                chi2(problem, nominal, evaluations),
-                solution["chi2"],
-                solution["tol_chi2"],
-            ),
+            _difference("llh", values.llh, solution["llh"], solution["tol_llh"]),
+            _difference("chi2", values.chi2, solution["chi2"], solution["tol_chi2"]),
         ]
         if "log_prior" in solution:
-            priors = log_prior(problem, nominal)
-            missing = sorted(set(solution["log_prior"]) - set(priors))
+            missing = sorted(set(solution["log_prior"]) - set(values.log_priors))
             if missing:
                 raise ValueError(
                     f"The parameters {missing} of the log prior of the solution "
@@ -279,7 +283,7 @@ class PetabCase:
             differences.extend(
                 _difference(
                     f"log_prior {pid}",
-                    priors[pid],
+                    values.log_priors[pid],
                     expected,
                     solution["tol_log_prior"],
                 )
@@ -289,7 +293,7 @@ class PetabCase:
             differences.append(
                 _difference(
                     "unnorm_log_posterior",
-                    unnorm_log_posterior(problem, nominal, evaluations),
+                    values.unnorm_log_posterior,
                     solution["unnorm_log_posterior"],
                     solution["tol_unnorm_log_posterior"],
                 )
@@ -309,16 +313,14 @@ class PetabCase:
             else pd.Series([""] * len(expected))
         )
         compared = 0
-        for k, evaluation in evaluations.items():
-            prediction = evaluation.prediction
-            observable_id = reader.observable_id(problem.mapping_keys[k])
-            experiment_id = problem.simulation_keys[k]
+        for observable_id, experiment_id, prediction in values.simulations:
             selected = (expected["observableId"] == observable_id) & (
-                (experiments == experiment_id)
-                | ((experiments == "") & (experiment_id == DEFAULT_EXPERIMENT))
+                experiments == experiment_id
             )
             rows = expected[selected]
-            name = f"simulation {observable_id} in {experiment_id}"
+            name = (
+                f"simulation {observable_id} in {experiment_id or DEFAULT_EXPERIMENT}"
+            )
             if len(rows) != len(prediction):
                 raise ValueError(
                     f"The {name} has '{len(prediction)}' values, the solution "
@@ -342,6 +344,86 @@ class PetabCase:
                 f"simulations of the solution."
             )
         return differences
+
+
+@dataclass(frozen=True)
+class _CaseValues:
+    """The values of a case which are compared with its solution.
+
+    Attributes:
+        llh: the log-likelihood.
+        chi2: the chi2.
+        log_priors: the log prior of every estimated parameter.
+        unnorm_log_posterior: the unnormalized log posterior.
+        simulations: the observable, the experiment (empty for a measurement
+            without one) and the simulations of every curve, in the order of
+            its measurements.
+    """
+
+    llh: float
+    chi2: float
+    log_priors: dict[str, float]
+    unnorm_log_posterior: float
+    simulations: list[tuple[str, str, np.ndarray]]
+
+
+def _python_values(problem_file: Path, opid: str) -> _CaseValues:
+    """Evaluate a case with `PetabReader` and the problem it reads."""
+    reader = PetabReader.from_yaml(problem_file)
+    problem = reader.to_optimization_problem(opid=opid)
+    problem.initialize(CASE_SETTINGS)
+    nominal = reader.nominal_parameters(problem)
+    # the problem is simulated once, every value is calculated from it
+    evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
+    simulations = []
+    for k, evaluation in evaluations.items():
+        experiment_id = problem.simulation_keys[k]
+        simulations.append(
+            (
+                reader.observable_id(problem.mapping_keys[k]),
+                "" if experiment_id == DEFAULT_EXPERIMENT else experiment_id,
+                np.asarray(evaluation.prediction, dtype=float),
+            )
+        )
+    return _CaseValues(
+        llh=log_likelihood(problem, nominal, evaluations),
+        chi2=chi2(problem, nominal, evaluations),
+        log_priors=log_prior(problem, nominal),
+        unnorm_log_posterior=unnorm_log_posterior(problem, nominal, evaluations),
+        simulations=simulations,
+    )
+
+
+def _core_values(problem_file: Path) -> _CaseValues:
+    """Evaluate a case in sbmlsim-core, see `sbmlsim.fit.petab_v2.core`.
+
+    Raises:
+        ValueError: if a simulation failed.
+    """
+    evaluation = core.evaluate(problem_file, settings=CASE_SETTINGS)
+    if evaluation.failures:
+        raise ValueError("; ".join(evaluation.failures))
+    table = evaluation.simulations
+    # the measurements of a curve, in their order in the measurement table
+    curves: dict[tuple[str, str], list[float]] = {}
+    for observable_id, experiment_id, value in zip(
+        table["observableId"].astype(str),
+        table["experimentId"].astype(str),
+        table["simulation"].to_numpy(dtype=float),
+        strict=True,
+    ):
+        curves.setdefault((observable_id, experiment_id), []).append(float(value))
+    simulations = [
+        (observable_id, experiment_id, np.asarray(values, dtype=float))
+        for (observable_id, experiment_id), values in curves.items()
+    ]
+    return _CaseValues(
+        llh=evaluation.llh,
+        chi2=evaluation.chi2,
+        log_priors=evaluation.log_priors,
+        unnorm_log_posterior=evaluation.unnorm_log_posterior,
+        simulations=simulations,
+    )
 
 
 @dataclass(frozen=True)
@@ -572,30 +654,47 @@ class PetabSuite:
         for cid in self.case_ids(group):
             yield self.case(cid, group)
 
-    def run_case(self, cid: str, group: str = SBML) -> CaseResult:
-        """Run a case of a group of models, `error` for one which cannot be read."""
+    def run_case(
+        self, cid: str, group: str = SBML, evaluator: Evaluator | str | None = None
+    ) -> CaseResult:
+        """Run a case of a group of models, `error` for one which cannot be read.
+
+        Args:
+            cid: the number of the case.
+            group: the group of the case.
+            evaluator: see `PetabCase.run`.
+
+        Returns:
+            The outcome.
+        """
         try:
             case = self.case(cid, group)
         except ValueError as err:
             return CaseResult(
                 group=group, cid=cid, status=CaseStatus.ERROR, message=str(err)
             )
-        return case.run()
+        return case.run(evaluator)
 
     def math_cases(self) -> list[MathCase]:
         """Get the math cases, empty for a suite without them."""
         path = self.path / FORMAT_VERSION / MATH / MATH_FILE
         return math_cases(path) if path.is_file() else []
 
-    def run(self) -> list[CaseResult]:
+    def run(self, evaluator: Evaluator | str | None = None) -> list[CaseResult]:
         """Run the cases of the suite.
+
+        Args:
+            evaluator: where the cases of the models are evaluated, see
+                `PetabCase.run`; the math cases are compiled by
+                `compile_formula`, the parser of the formulas of a problem
+                which is read in python.
 
         Returns:
             The results of the groups `sbml` and `v1/sbml` and of the math
             cases, in this order.
         """
         results = [
-            self.run_case(cid, group)
+            self.run_case(cid, group, evaluator)
             for group in (SBML, V1_SBML)
             for cid in self.case_ids(group)
         ]

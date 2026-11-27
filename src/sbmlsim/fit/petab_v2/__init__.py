@@ -10,6 +10,10 @@ data, the settings of the fit or what a fit does with a subset of the data.
 What the tables do not hold goes into the `sbmlsim` extension of the problem,
 so a problem which is written and read again is the fit it started from, and
 `sbmlsim.fit.petab_v2.gaps` reports what an export loses for other tools.
+
+A problem on disk is read, simulated and evaluated by sbmlsim-core, see
+`sbmlsim.fit.petab_v2.core`: `log_likelihood` and its siblings take its YAML
+file, while `from_petab` builds the problem of `sbmlsim` from it.
 """
 
 from sbmlsim.fit.petab_v2.export import PetabExporter, to_petab, to_petab_problems

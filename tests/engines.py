@@ -110,3 +110,20 @@ def another_cache(monkeypatch: pytest.MonkeyPatch, path: Path) -> Path:
     monkeypatch.setenv(model_amici.CACHE_ENV, str(path))
     monkeypatch.setattr(model_amici, "_compile", refuse)
     return path
+
+
+def require_core_petab() -> None:
+    """Skip a test of a PEtab problem read and evaluated in sbmlsim-core.
+
+    The bindings read PEtab v2 (`sbmlsim_core.petab`) from the first release
+    after 0.37.0 on, `sbmlsim.fit.petab_v2.core.CORE_PETAB_RELEASE`: a test of
+    that path is skipped on older bindings.
+    """
+    from sbmlsim.fit.petab_v2.core import CORE_PETAB_RELEASE, has_core_petab
+
+    require(Engine.CORE)
+    if not has_core_petab():
+        pytest.skip(
+            f"the installed sbmlsim-core does not read PEtab, which "
+            f"{CORE_PETAB_RELEASE} is the first to do"
+        )

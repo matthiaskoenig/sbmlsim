@@ -6,7 +6,8 @@ and the conversion of the collection and some problems take minutes:
 `pytest -m petab_benchmark` runs them and `tox r -e benchmark` downloads the
 collection first. A problem is compared with
 `tests/data/benchmark_baseline.json`, which records the problems that do not
-pass, each with its reason.
+pass, each with its reason, read in python and in sbmlsim-core, where the
+problems of `CORE_GAPS` do not pass.
 
 The baseline fails in both directions. A problem which passed and now fails is
 a regression. A problem which is in the baseline and passes is a baseline
@@ -21,8 +22,12 @@ import pytest
 from sbmlsim.fit.petab_v2.benchmark import (
     BENCHMARK_COMMIT,
     BENCHMARK_TIMEOUT,
+    CORE_GAPS,
     BenchmarkCollection,
+    BenchmarkResult,
 )
+from sbmlsim.fit.petab_v2.core import Evaluator
+from tests.engines import require_core_petab
 
 pytestmark = pytest.mark.petab_benchmark
 
@@ -56,12 +61,8 @@ def collection() -> BenchmarkCollection:
     return cached
 
 
-@pytest.mark.parametrize("name", _problem_names())
-def test_problem(name: str, collection: BenchmarkCollection, baseline: dict) -> None:
-    """A problem has the outcome the baseline records."""
-    result = collection.problem(name).run(
-        llh_reference=collection.references().get(name), timeout=BENCHMARK_TIMEOUT
-    )
+def _check(result: BenchmarkResult, baseline: dict) -> None:
+    """Compare the outcome of a problem with the baseline."""
     expected = baseline["expected_failures"].get(result.key)
     if expected is None:
         assert result.passed, (
@@ -80,6 +81,40 @@ def test_problem(name: str, collection: BenchmarkCollection, baseline: dict) -> 
         )
 
 
+@pytest.mark.parametrize("name", _problem_names())
+def test_problem(name: str, collection: BenchmarkCollection, baseline: dict) -> None:
+    """A problem has the outcome the baseline records, read in python."""
+    result = collection.problem(name).run(
+        llh_reference=collection.references().get(name),
+        timeout=BENCHMARK_TIMEOUT,
+        evaluator=Evaluator.PYTHON,
+    )
+    _check(result, baseline)
+
+
+@pytest.mark.parametrize("name", _problem_names())
+def test_problem_in_the_core(
+    name: str, collection: BenchmarkCollection, baseline: dict
+) -> None:
+    """A problem has the outcome of the baseline in sbmlsim-core, or is a gap of it.
+
+    The problems of `CORE_GAPS` pass in python and not in the core; one which
+    passes in the core is no gap any more.
+    """
+    require_core_petab()
+    result = collection.problem(name).run(
+        llh_reference=collection.references().get(name),
+        timeout=BENCHMARK_TIMEOUT,
+        evaluator=Evaluator.CORE,
+    )
+    if name in CORE_GAPS:
+        assert not result.passed, (
+            f"'{name}' passes in sbmlsim-core now, remove it from CORE_GAPS"
+        )
+        return
+    _check(result, baseline)
+
+
 def test_the_baseline_matches_the_collection(
     collection: BenchmarkCollection, baseline: dict
 ) -> None:
@@ -88,3 +123,6 @@ def test_the_baseline_matches_the_collection(
     assert baseline["n_cases"] == len(_problem_names())
     for key, expected in baseline["expected_failures"].items():
         assert expected["reason"] != "reason missing", f"'{key}' has no reason"
+    # a gap of the core is a problem which passes in python
+    assert not set(CORE_GAPS) & set(baseline["expected_failures"])
+    assert set(CORE_GAPS) <= set(_problem_names())

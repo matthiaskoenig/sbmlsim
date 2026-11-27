@@ -425,6 +425,8 @@ def _reading(exporter: PetabExporter, gaps: Sequence[Gap]) -> list[str]:
         "x = np.asarray(problem.x0, dtype=float)",
         "cost = problem.cost_least_square(problem.to_scale(x))",
         "llh = log_likelihood(problem)  # the log-likelihood of PEtab",
+        "# the same problem read and evaluated in sbmlsim-core",
+        'llh_core = log_likelihood(Path("problem.yaml"))',
         "```",
         "",
         "It reads the tables and the extension `sbmlsim`, so the problem it "

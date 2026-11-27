@@ -8,8 +8,9 @@ the nominal parameters, `simulations.tsv`, and some also in
 its encoding in PEtab v2 where the collection has one, otherwise it is
 converted from PEtab v1 with `petab.v2.petab1to2`; its simulations are
 converted with it, see `sbmlsim.fit.petab_v2.conversion`. The problem is read
-with `PetabReader`, simulated at the nominal values of its parameter table
-and compared with the simulations of the collection; where AMICI states the
+with `PetabReader` (or in sbmlsim-core, `Evaluator.CORE`, where the problems
+of `CORE_GAPS` do not pass), simulated at the nominal values of its parameter
+table and compared with the simulations of the collection; where AMICI states the
 log-likelihood of the problem (`tests/benchmark_models/benchmark_models.yaml`
 of AMICI), it is compared too. The problems of `EXCLUDED_PROBLEMS` take too
 long and are left out.
@@ -50,12 +51,14 @@ import yaml
 from sbmlsim.atomic import atomic_directory
 from sbmlsim.comparison.diff import within_tolerance
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2 import core
 from sbmlsim.fit.petab_v2.conversion import (
     SIMULATIONS_FILE,
     convert_simulations,
     convert_v1,
     measurement_table,
 )
+from sbmlsim.fit.petab_v2.core import Evaluator, resolve_evaluator
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.testsuite import cache
@@ -86,6 +89,26 @@ EXCLUDED_PROBLEMS: dict[str, str] = {
     "Froehlich_CellSystems2018": "9169 experiments with a pre-equilibration "
     "each take longer than the 600 s a problem gets (28 s per experiment to "
     "the steady state)",
+}
+
+#: where a problem is read and simulated by default: python, `PetabReader`,
+#: until sbmlsim-core runs every problem as python does; `CORE_GAPS` are the
+#: problems where it does not (the outcome of a problem of the baseline is the
+#: same with both otherwise)
+DEFAULT_EVALUATOR = Evaluator.PYTHON
+
+#: the problems which pass in python and not in sbmlsim-core, with the reason
+#: (matthiaskoenig/sbmlsim-core#145); every other problem has the
+#: outcome of the baseline with either evaluator
+CORE_GAPS: dict[str, str] = {
+    "Armistead_CellDeathDis2024": "the model requires the package comp, "
+    "which the compiler of the core does not support (python flattens it)",
+    "Beer_MolBioSystems2014": "the model has an `<apply>` whose first child "
+    "is an `<apply>` and no operator, which libSBML reads and the compiler "
+    "of the core refuses (`unknown MathML function <apply>`)",
+    "Blasi_CellSystems2016": "every measurement is at `inf` and has no "
+    "experiment, the core gives the initial state instead of the steady "
+    "state (llh -inf, all 252 simulations differ)",
 }
 
 #: the log-likelihoods of AMICI at a commit
@@ -178,7 +201,9 @@ class BenchmarkResult:
             not calculated.
         llh_reference: the log-likelihood of AMICI it was compared with.
         timings: the seconds it took to `read`, `initialize`, `simulate` and
-            calculate the `llh`.
+            calculate the `llh` in python, and to `read` (and compile) and
+            `simulate` (the simulations and the log-likelihood) in
+            sbmlsim-core.
     """
 
     name: str
@@ -369,6 +394,7 @@ class BenchmarkProblem:
         llh_reference: float | None = None,
         settings: FitSettings | None = None,
         timeout: float | None = None,
+        evaluator: Evaluator | str | None = None,
     ) -> BenchmarkResult:
         """Read, simulate and compare the problem.
 
@@ -380,12 +406,22 @@ class BenchmarkProblem:
                 longer is an error. The time is measured with the timer
                 `ITIMER_REAL` of the process, so a time limit needs the main
                 thread of a POSIX system, on Windows the problem runs without
-                one and a warning says so; a call into roadrunner finishes
-                before the problem stops.
+                one and a warning says so; a call into roadrunner or into
+                sbmlsim-core finishes before the problem stops.
+            evaluator: where the problem is read and simulated, see
+                `sbmlsim.fit.petab_v2.core.Evaluator`, `DEFAULT_EVALUATOR` by
+                default.
 
         Returns:
             The outcome.
+
+        Raises:
+            CorePetabUnavailable: if the core is asked for and has no reader
+                of PEtab.
         """
+        resolved = resolve_evaluator(
+            DEFAULT_EVALUATOR if evaluator is None else evaluator
+        )
         if settings is None:
             settings = PROBLEM_SETTINGS.get(self.name, BENCHMARK_SETTINGS)
         if not self.v2_dir.is_dir():
@@ -416,7 +452,7 @@ class BenchmarkProblem:
             # run without its result and the handler installed
             if timeout is not None:
                 signal.setitimer(signal.ITIMER_REAL, timeout)
-            return self._run(llh_reference, settings, timings)
+            return self._run(llh_reference, settings, resolved, timings)
         except ProblemTimeout as err:
             return BenchmarkResult(
                 name=self.name,
@@ -444,38 +480,17 @@ class BenchmarkProblem:
         self,
         llh_reference: float | None,
         settings: FitSettings,
+        evaluator: Evaluator,
         timings: dict[str, float],
     ) -> BenchmarkResult:
         """Run the problem, see `run`, filling in the timings."""
-        start = time.perf_counter()
         yaml_file = next(iter(sorted(self.v2_dir.glob("*.yaml"))))
-        reader = PetabReader.from_yaml(yaml_file)
-        reader.derived_dir = Path(tempfile.mkdtemp(prefix=f"{self.name}_"))
-        problem = reader.to_optimization_problem(opid=self.name)
-        timings["read"] = time.perf_counter() - start
-
-        start = time.perf_counter()
-        problem.initialize(settings)
-        timings["initialize"] = time.perf_counter() - start
-
-        nominal = reader.nominal_parameters(problem)
-        start = time.perf_counter()
-        evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
-        predictions = {k: e.prediction for k, e in evaluations.items()}
-        timings["simulate"] = time.perf_counter() - start
-
-        start = time.perf_counter()
-        llh = log_likelihood(problem, nominal, evaluations=evaluations)
-        timings["llh"] = time.perf_counter() - start
-
-        index = {key: k for k, key in enumerate(problem.mapping_keys)}
-        simulated = np.array(
-            [
-                predictions[index[key]][position]
-                for key, position in reader.measurement_rows()
-            ],
-            dtype=float,
-        )
+        if evaluator is Evaluator.CORE:
+            llh, simulated = _core_simulations(yaml_file, settings, timings)
+        else:
+            llh, simulated = _python_simulations(
+                yaml_file, self.name, settings, timings
+            )
         failures, notes, max_difference, compared = self._compare(simulated)
 
         if llh_reference is not None and not within_tolerance(
@@ -567,6 +582,73 @@ class BenchmarkProblem:
         finite = difference[np.isfinite(difference)]
         max_difference = float(np.max(finite)) if finite.size else None
         return failures, notes, max_difference, len(rows)
+
+
+def _python_simulations(
+    yaml_file: Path, name: str, settings: FitSettings, timings: dict[str, float]
+) -> tuple[float, np.ndarray]:
+    """Read and simulate a problem with `PetabReader`, at its nominal values.
+
+    Returns:
+        The log-likelihood and the simulation of every measurement, in the
+        order of the measurement table.
+    """
+    start = time.perf_counter()
+    reader = PetabReader.from_yaml(yaml_file)
+    reader.derived_dir = Path(tempfile.mkdtemp(prefix=f"{name}_"))
+    problem = reader.to_optimization_problem(opid=name)
+    timings["read"] = time.perf_counter() - start
+
+    start = time.perf_counter()
+    problem.initialize(settings)
+    timings["initialize"] = time.perf_counter() - start
+
+    nominal = reader.nominal_parameters(problem)
+    start = time.perf_counter()
+    evaluations = problem.evaluations(nominal.x(problem.pids), problem.indices())
+    predictions = {k: e.prediction for k, e in evaluations.items()}
+    timings["simulate"] = time.perf_counter() - start
+
+    start = time.perf_counter()
+    llh = log_likelihood(problem, nominal, evaluations=evaluations)
+    timings["llh"] = time.perf_counter() - start
+
+    index = {key: k for k, key in enumerate(problem.mapping_keys)}
+    simulated = np.array(
+        [
+            predictions[index[key]][position]
+            for key, position in reader.measurement_rows()
+        ],
+        dtype=float,
+    )
+    return llh, simulated
+
+
+def _core_simulations(
+    yaml_file: Path, settings: FitSettings, timings: dict[str, float]
+) -> tuple[float, np.ndarray]:
+    """Read and simulate a problem in sbmlsim-core, at its nominal values.
+
+    The problem is read and compiled (`read`) and evaluated (`simulate`, the
+    simulations and the log-likelihood in one call of the core).
+
+    Returns:
+        The log-likelihood and the simulation of every measurement, in the
+        order of the measurement table.
+
+    Raises:
+        ValueError: if a simulation failed.
+    """
+    start = time.perf_counter()
+    problem = core.read_problem(yaml_file, settings)
+    timings["read"] = time.perf_counter() - start
+
+    start = time.perf_counter()
+    evaluation = core.evaluate(problem)
+    timings["simulate"] = time.perf_counter() - start
+    if evaluation.failures:
+        raise ValueError("; ".join(evaluation.failures))
+    return evaluation.llh, evaluation.simulations["simulation"].to_numpy(dtype=float)
 
 
 @dataclass(frozen=True)
@@ -719,12 +801,14 @@ class BenchmarkCollection:
         self,
         names: Sequence[str] | None = None,
         progress: Callable[[BenchmarkResult], None] | None = None,
+        evaluator: Evaluator | str | None = None,
     ) -> list[BenchmarkResult]:
         """Run the problems of the collection.
 
         Args:
             names: the problems, all of them by default.
             progress: called with the result of every problem.
+            evaluator: see `BenchmarkProblem.run`.
 
         Returns:
             The results in the order of the names.
@@ -732,7 +816,9 @@ class BenchmarkCollection:
         references = self.references()
         results: list[BenchmarkResult] = []
         for name in names if names is not None else self.problem_names():
-            result = self.problem(name).run(llh_reference=references.get(name))
+            result = self.problem(name).run(
+                llh_reference=references.get(name), evaluator=evaluator
+            )
             if progress is not None:
                 progress(result)
             results.append(result)

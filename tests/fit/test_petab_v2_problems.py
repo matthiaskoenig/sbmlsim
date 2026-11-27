@@ -1,6 +1,7 @@
 """The training and the validation problem of a fit and their READMEs."""
 
 import filecmp
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -13,9 +14,18 @@ from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameters import ParameterSet
-from sbmlsim.fit.petab_v2 import PetabExporter, from_petab, to_petab_problems
+from sbmlsim.fit.petab_v2 import (
+    PetabExporter,
+    chi2,
+    core,
+    from_petab,
+    log_likelihood,
+    to_petab_problems,
+)
 from sbmlsim.fit.petab_v2.extension import extension_of
+from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.readme import README_FILE
+from tests.engines import require_core_petab
 
 
 @pytest.fixture(scope="module")
@@ -195,3 +205,31 @@ def test_settings_are_the_ones_of_the_fit(petab_dir: Path) -> None:
     _, settings = from_petab(petab_dir / "validation" / "problem.yaml")
     assert settings == FIT_DEFINITIONS["PK"].settings
     assert isinstance(settings, FitSettings)
+
+
+@pytest.mark.parametrize("role", ["training", "validation"])
+def test_sbmlsim_core_evaluates_the_problems_as_they_read_back(
+    petab_dir: Path, role: str
+) -> None:
+    """The core reads the extension of both problems as `from_petab` does.
+
+    The log-likelihood and chi2 of the core are the ones of the problem read
+    back in python: of the training data of the training problem and of the
+    validation data of the validation problem (sbmlsim-core#146), at
+    tolerances of the integrator at which the two integrators agree.
+    """
+    require_core_petab()
+    yaml_file = petab_dir / role / "problem.yaml"
+    read, settings = from_petab(yaml_file)
+    tight = replace(settings, relative_tolerance=1e-10, absolute_tolerance=1e-12)
+    read.initialize(tight)
+    nominal = PetabReader.from_yaml(yaml_file).nominal_parameters(read)
+    evaluations = read.evaluations(nominal.x(read.pids), read.indices())
+
+    evaluation = core.evaluate(yaml_file, settings=tight)
+
+    assert evaluation.failures == []
+    assert evaluation.llh == pytest.approx(
+        log_likelihood(read, nominal, evaluations), rel=1e-9
+    )
+    assert evaluation.chi2 == pytest.approx(chi2(read, nominal, evaluations), rel=1e-9)

@@ -19,6 +19,14 @@ the noise formula gives its scale `s`, which are the definitions of PEtab v2:
 `log_prior` the log density of the prior of every parameter, which
 `unnorm_log_posterior` adds to the log-likelihood.
 
+The four functions take an `OptimizationProblem`, which is simulated and
+evaluated here on the engine of the problem, or the YAML file of a problem of
+PEtab, which is read, simulated and evaluated in sbmlsim-core, see
+`sbmlsim.fit.petab_v2.core`. The problem of a file is the problem PEtab
+defines, with what the extension `sbmlsim` says of its simulation, the one of
+`from_petab` is a problem of `sbmlsim`, which is evaluated as it is
+initialized.
+
 The functions of arrays (`log_density`, `normalized_residuals`,
 `noise_values`) know nothing of a problem, `log_likelihood`, `chi2` and
 `gradient` simulate one.
@@ -27,8 +35,9 @@ The functions of arrays (`log_density`, `normalized_residuals`,
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeIs
 
 import numpy as np
 import pandas as pd
@@ -42,6 +51,7 @@ from sbmlsim.units import UndefinedUnitError, ureg
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import MappingEvaluation, OptimizationProblem
+    from sbmlsim.fit.petab_v2.core import PetabEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -514,8 +524,41 @@ def _noise_terms(
     return terms
 
 
+def _is_problem_file(
+    problem: OptimizationProblem | str | os.PathLike[str],
+) -> TypeIs[str | os.PathLike[str]]:
+    """Check whether a problem is the YAML file of a problem of PEtab."""
+    return isinstance(problem, (str, os.PathLike))
+
+
+def _evaluation_of_file(
+    problem: str | os.PathLike[str],
+    parameters: ParameterSet | None,
+    evaluations: Mapping[int, MappingEvaluation] | None = None,
+) -> PetabEvaluation:
+    """Evaluate the problem of a file in sbmlsim-core.
+
+    Raises:
+        CorePetabUnavailable: if the installed sbmlsim-core has no reader of
+            PEtab.
+        ValueError: if evaluations are given, which are the ones of an
+            optimization problem, or if a simulation failed.
+    """
+    from sbmlsim.fit.petab_v2 import core
+
+    if evaluations is not None:
+        raise ValueError(
+            f"'{problem}': the evaluations of an optimization problem are no "
+            f"evaluations of a problem of PEtab, which sbmlsim-core simulates."
+        )
+    evaluation = core.evaluate(problem, parameters)
+    if evaluation.failures:
+        raise ValueError(f"'{problem}': " + "; ".join(evaluation.failures))
+    return evaluation
+
+
 def log_likelihood(
-    problem: OptimizationProblem,
+    problem: OptimizationProblem | str | os.PathLike[str],
     parameters: ParameterSet | None = None,
     evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
@@ -526,13 +569,20 @@ def log_likelihood(
     model of a fit mapping is `noise_model_of`. The settings of the fit, i.e.
     the residual, the weights and the loss function, do not enter.
 
+    The YAML file of a problem of PEtab is read, simulated and evaluated in
+    sbmlsim-core, see `sbmlsim.fit.petab_v2.core.evaluate`: at the nominal
+    values of its parameter table, or at the values of the estimated
+    parameters of `parameters` by their ids, in the units of the parameter
+    table, which the sets of a fit of the problem of `from_petab` are.
+
     Args:
-        problem: initialized optimization problem.
+        problem: initialized optimization problem, or the YAML file of a
+            problem of PEtab.
         parameters: parameters to evaluate the log-likelihood at, with the
             values of the parameters of the fit and, optionally, of parameters
             of the noise formulas. `nominal_parameters` by default.
         evaluations: `problem.evaluations` at the parameters, of the training
-            data at least, which saves the simulation.
+            data at least, which saves the simulation; not for a file.
 
     Returns:
         The log-likelihood.
@@ -541,8 +591,13 @@ def log_likelihood(
         ValueError: if the problem is not initialized, if its residuals are
             relative to the baseline, if a simulation failed or if the noise
             model of a mapping cannot be evaluated.
-        KeyError: if the parameters lack a parameter of the fit.
+        KeyError: if the parameters lack a parameter of the fit, or name a
+            parameter a problem of PEtab does not estimate.
+        CorePetabUnavailable: for a file, if the installed sbmlsim-core has
+            no reader of PEtab.
     """
+    if _is_problem_file(problem):
+        return _evaluation_of_file(problem, parameters, evaluations).llh
     _check_problem(problem)
     pset = parameters if parameters is not None else nominal_parameters(problem)
     total = 0.0
@@ -560,7 +615,7 @@ def log_likelihood(
 
 
 def chi2(
-    problem: OptimizationProblem,
+    problem: OptimizationProblem | str | os.PathLike[str],
     parameters: ParameterSet | None = None,
     evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
@@ -570,7 +625,8 @@ def chi2(
     data, which is the `chi2` of PEtab.
 
     Args:
-        problem: initialized optimization problem.
+        problem: initialized optimization problem, or the YAML file of a
+            problem of PEtab, see `log_likelihood`.
         parameters: parameters to evaluate chi2 at, see `log_likelihood`.
         evaluations: see `log_likelihood`.
 
@@ -579,8 +635,11 @@ def chi2(
 
     Raises:
         ValueError: see `log_likelihood`.
-        KeyError: if the parameters lack a parameter of the fit.
+        KeyError: see `log_likelihood`.
+        CorePetabUnavailable: see `log_likelihood`.
     """
+    if _is_problem_file(problem):
+        return _evaluation_of_file(problem, parameters, evaluations).chi2
     _check_problem(problem)
     pset = parameters if parameters is not None else nominal_parameters(problem)
     total = 0.0
@@ -642,7 +701,8 @@ def _is_unit_of_pint(unit: str) -> bool:
 
 
 def log_prior(
-    problem: OptimizationProblem, parameters: ParameterSet | None = None
+    problem: OptimizationProblem | str | os.PathLike[str],
+    parameters: ParameterSet | None = None,
 ) -> dict[str, float]:
     """Get the log density of the prior of every parameter of a problem.
 
@@ -653,7 +713,8 @@ def log_prior(
     Args:
         problem: optimization problem. An uninitialized problem takes the
             values in the units of its definition, see
-            `_bind_to_definition`.
+            `_bind_to_definition`. The YAML file of a problem of PEtab is
+            evaluated in sbmlsim-core, see `log_likelihood`.
         parameters: parameters to evaluate the priors at,
             `nominal_parameters` by default, which require an initialized
             problem.
@@ -664,8 +725,11 @@ def log_prior(
     Raises:
         ValueError: if the problem is not initialized, or if the parameters
             of a prior do not fit its distribution.
-        KeyError: if the parameters lack a parameter of the fit.
+        KeyError: see `log_likelihood`.
+        CorePetabUnavailable: see `log_likelihood`.
     """
+    if _is_problem_file(problem):
+        return _evaluation_of_file(problem, parameters).log_priors
     if parameters is None and not problem.is_initialized:
         raise ValueError(
             f"'{problem.opid}': the nominal parameters require the resolved "
@@ -698,7 +762,7 @@ def log_prior(
 
 
 def unnorm_log_posterior(
-    problem: OptimizationProblem,
+    problem: OptimizationProblem | str | os.PathLike[str],
     parameters: ParameterSet | None = None,
     evaluations: Mapping[int, MappingEvaluation] | None = None,
 ) -> float:
@@ -708,7 +772,8 @@ def unnorm_log_posterior(
     which is the `unnorm_log_posterior` of PEtab.
 
     Args:
-        problem: initialized optimization problem.
+        problem: initialized optimization problem, or the YAML file of a
+            problem of PEtab, see `log_likelihood`.
         parameters: parameters to evaluate it at, `nominal_parameters` by
             default.
         evaluations: see `log_likelihood`.
@@ -718,8 +783,13 @@ def unnorm_log_posterior(
 
     Raises:
         ValueError: see `log_likelihood` and `log_prior`.
-        KeyError: if the parameters lack a parameter of the fit.
+        KeyError: see `log_likelihood`.
+        CorePetabUnavailable: see `log_likelihood`.
     """
+    if _is_problem_file(problem):
+        return _evaluation_of_file(
+            problem, parameters, evaluations
+        ).unnorm_log_posterior
     pset = parameters if parameters is not None else nominal_parameters(problem)
     return log_likelihood(problem, pset, evaluations) + float(
         sum(log_prior(problem, pset).values())

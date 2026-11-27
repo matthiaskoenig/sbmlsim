@@ -205,6 +205,31 @@ The other functions:
 - `unnorm_log_posterior` is the log-likelihood plus the log priors.
 - `gradient` is the central finite difference of the log-likelihood on the linear scale, with the step `step * max(|x|, 1)`, as a `pandas.Series` indexed by parameter id. It uses three points by default and five with `order=4`, whose error falls faster with the step. It never simulates outside the bounds: next to a bound the difference is one sided, and a warning names the parameters where it had to fall back to fewer points. Initialize the problem with `variable_step_size=False` first, as above: with a variable step size the simulations differ by about `1e-6` between runs and the gradient is noise, which is logged as a warning.
 
+## A problem evaluated in sbmlsim-core
+
+sbmlsim-core reads a PEtab v2 problem in Rust (`sbmlsim_core.petab`): it parses the tables and their math, compiles the observables, the noise formulas and the conditions into the model, simulates every experiment as one simulation of the engine and evaluates the likelihood of PEtab. `log_likelihood`, `chi2`, `log_prior` and `unnorm_log_posterior` take the YAML file of a problem and evaluate it there; `sbmlsim.fit.petab_v2.core.evaluate` gives all of it at once:
+
+```py
+from pathlib import Path
+
+from sbmlsim.fit.petab_v2 import log_likelihood
+from sbmlsim.fit.petab_v2.core import evaluate
+
+yaml_file = Path("results") / "petab" / "problem.yaml"
+llh = log_likelihood(yaml_file)  # at the nominal values of the parameter table
+llh_fit = log_likelihood(yaml_file, parameters=opt_result.parameter_set())
+
+evaluation = evaluate(yaml_file)
+evaluation.llh, evaluation.chi2, evaluation.log_priors, evaluation.unnorm_log_posterior
+evaluation.simulations  # the simulation table, a row per measurement
+```
+
+The parameters are the estimated parameters of the parameter table by their ids, in its units, which the parameter sets of a fit of the problem of `from_petab` are; a parameter that is not given keeps its nominal value. The problem is the one PEtab defines, with what the extension `sbmlsim` says about its simulation: the state a measurement at a change reads (`data_at_change`), the tolerances of the integrator and the kind of every observable, so only the training data enter the likelihood, and the validation data of a validation problem. The weighted least squares of a fit of `sbmlsim` are not the objective of PEtab and are not read. `evaluate(yaml_file, settings=...)` simulates with the tolerances and `data_at_change` of other `FitSettings`, and `read_problem` reads a problem once for many points.
+
+The problem of `from_petab` stays a problem of `sbmlsim`, which is evaluated with `log_likelihood(problem)` on its engine and fitted with the objective of its settings, with the reports, profiles and the Fisher information of a fit. At the tolerances of the problem the two evaluations differ by the error of their integrators, at tight tolerances they agree: the log-likelihood of the HCTZ PK training and validation problems to `2e-11`, checked by `tests/fit/test_petab_v2_problems.py`.
+
+The reader of the core is part of sbmlsim-core from the release after 0.37.0 (`CORE_PETAB_RELEASE`). With an older sbmlsim-core a file raises `CorePetabUnavailable`, and the runners of the [PEtab Test Suite](petab_testsuite.md) and of the [PEtab Benchmark Problems](petab_benchmark.md) run in python (`Evaluator`, `resolve_evaluator`, `--evaluator` of their scripts).
+
 ## Extensions of other tools
 
 A problem can carry extensions of any tool in the `extensions` block of its YAML, each marked as `required` or not. The reader knows the `sbmlsim` extension and, with the `sciml` extra installed, the `sciml` extension of [PEtab SciML](petab_sciml.md). An extension that is not required is ignored, with a message in the log. For a problem that requires an unknown extension, `from_petab` raises a `ValueError` naming it. A problem that requires `sciml` without the extra raises an `ImportError` that tells you to `pip install sbmlsim[sciml]`.
