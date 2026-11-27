@@ -32,7 +32,7 @@ def line_values(sid: str, *arrays: xr.DataArray | None) -> tuple[Any, ...]:
     Returns:
         The values of every array along the one dimension which is left,
         `None` stays. The values are typed `Any`: they are handed to the
-        functions of matplotlib and plotly, which take any array.
+        chart builder, which takes any array.
 
     Raises:
         ValueError: if two arrays have different coordinates of a dimension,
@@ -73,8 +73,8 @@ def without_padding(x: Any, *others: Any) -> tuple[Any, ...]:
 
     Returns:
         The x values and the others without the padded points, `None` stays.
-        The values are typed `Any`: they are handed to the functions of
-        matplotlib and plotly, which take any array.
+        The values are typed `Any`: they are handed to the chart builder,
+        which takes any array.
     """
     if x is None:
         return (x, *others)

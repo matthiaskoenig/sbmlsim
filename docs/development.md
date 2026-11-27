@@ -133,7 +133,7 @@ pytest tests/simulation/test_simulation.py::test_timecourse  # a single test
 
 The tests run in parallel, `-n auto --dist worksteal` in the `addopts` of `pyproject.toml` gives pytest-xdist one worker per core, and a worker which is idle takes over the tests which wait at a busy one; `-n 0` on the command line runs everything in one process, which the debugger needs.
 
-The `conftest.py` at the root of the repository selects the non-interactive matplotlib backend for the session and puts the repository on `sys.path`, so that the tests can import the examples.
+The `conftest.py` at the root of the repository puts the repository on `sys.path`, so that the tests can import the examples, and adds `--skip-slow`.
 
 Some tests are skipped on purpose: the simulation experiment examples are marked with `pytest.mark.skip` while that part of the package is reworked. The skips are listed with `pytest -rs`.
 
@@ -217,7 +217,7 @@ uv run python scripts/docs_outputs.py              # every page with code
 uv run python scripts/docs_outputs.py tutorial.md  # one page
 ```
 
-A figure is shown when it is a `sbmlsim.plot.Chart` which a name of the block holds or which is the value of its last expression; a figure of matplotlib is not captured. The outputs and images are committed. `tests/docs/test_docs_code.py` runs the code of every page and fails when a page is out of step with it: a block which prints without an output, an output of a block which prints nothing, a missing image or a page with code which is not in `PAGES` of the script. It does not compare the text, whose last digits differ between platforms, so run the script after changing a page or what its code prints. The `documentation` workflow runs the script before it builds the site, so the published pages show the outputs of the code they were built from even when the committed ones fell behind, e.g. the version `installation.md` prints (#447), and a pull request checks that the script runs; a release writes them again, see [Release](#release). A page with code is added to `PAGES`; keep the code of a page fast, the tests run it on every platform.
+A figure is shown when it is a `sbmlsim.plot.Chart` which a name of the block holds or which is the value of its last expression; nothing else is captured. The outputs and images are committed. `tests/docs/test_docs_code.py` runs the code of every page and fails when a page is out of step with it: a block which prints without an output, an output of a block which prints nothing, a missing image or a page with code which is not in `PAGES` of the script. It does not compare the text, whose last digits differ between platforms, so run the script after changing a page or what its code prints. The `documentation` workflow runs the script before it builds the site, so the published pages show the outputs of the code they were built from even when the committed ones fell behind, e.g. the version `installation.md` prints (#447), and a pull request checks that the script runs; a release writes them again, see [Release](#release). A page with code is added to `PAGES`; keep the code of a page fast, the tests run it on every platform.
 
 ### Files for agents { #files-for-agents }
 

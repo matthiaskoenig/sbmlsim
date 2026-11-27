@@ -141,7 +141,6 @@ nav = [
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },
-      { "axes" = "api/plot.axes.md" },
       { "points" = "api/plot.points.md" },
     ] },
     { "sbmlsim.report" = [

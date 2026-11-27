@@ -21,9 +21,9 @@ runs it before it builds the site, so the published pages are never stale.
 
 A figure is a `sbmlsim.plot.Chart` which a name of the namespace holds, or
 which is the value of the last expression of a block, and which no block
-before showed; a chart is drawn by the renderer of sbmlsim-core. A figure of
-matplotlib is not captured. The working directory of the blocks is a temporary
-directory, so the files a page writes do not end up in the repository.
+before showed; a chart is drawn by the renderer of sbmlsim-core. The working
+directory of the blocks is a temporary directory, so the files a page writes
+do not end up in the repository.
 """
 
 from __future__ import annotations

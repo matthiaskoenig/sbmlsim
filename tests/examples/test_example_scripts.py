@@ -103,7 +103,6 @@ def run_example(
     env = dict(
         os.environ,
         PYTHONPATH=str(REPO_DIR),
-        MPLBACKEND="Agg",
         PYTHONUTF8="1",
         COLUMNS="400",
     )

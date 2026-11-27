@@ -171,7 +171,6 @@ def _child_environment(exit_code: Path) -> dict[str, str]:
     environment = {**os.environ, EXIT_CODE_FILE: str(exit_code)}
     for name in THREAD_VARIABLES:
         environment.setdefault(name, "1")
-    environment.setdefault("MPLBACKEND", "Agg")
     return environment
 
 

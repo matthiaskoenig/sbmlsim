@@ -6,7 +6,6 @@ import pickle
 from pathlib import Path
 from typing import Any, override
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
@@ -185,31 +184,14 @@ def test_a_report_without_failures_has_no_filter(tmp_path: Path) -> None:
     assert "badge failed" not in index
 
 
-def test_a_failing_experiment_releases_its_results_and_figures(
+def test_a_failing_experiment_releases_its_results(
     tmp_path: Path,
 ) -> None:
-    """A failing experiment holds no results and leaves no figure open."""
-    plt.close("all")
+    """A failing experiment holds no results."""
     runner = _runner(BrokenTask)
     (result,) = runner.run_experiments(output_path=tmp_path)
     assert result.failed
     assert result.experiment._results == {}
-    assert plt.get_fignums() == []
-
-
-def test_pyplot_figures_of_a_failing_figures_mpl_are_closed(tmp_path: Path) -> None:
-    """The pyplot figures created before the error of `figures_mpl` are closed."""
-
-    class PyplotThenError(_Base):
-        def figures_mpl(self) -> dict[str, Any]:
-            plt.figure()
-            raise RuntimeError("late")
-
-    plt.close("all")
-    runner = _runner(PyplotThenError)
-    (result,) = runner.run_experiments(output_path=tmp_path)
-    assert "figures_mpl()" in result.failed_figures
-    assert plt.get_fignums() == []
 
 
 def test_a_figure_failing_in_two_passes_is_recorded_once_with_both() -> None:

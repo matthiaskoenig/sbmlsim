@@ -16,7 +16,7 @@ class _Replaced(Exception):
 
 @pytest.fixture
 def unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in (*entry.THREAD_VARIABLES, "MPLBACKEND"):
+    for name in entry.THREAD_VARIABLES:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
         sys,
@@ -41,7 +41,6 @@ def test_posix_replaces_the_process_with_the_flags_of_python(
     assert calls == [(sys.executable, sys.orig_argv)]
     for name in entry.THREAD_VARIABLES:
         assert os.environ[name] == "1"
-    assert os.environ["MPLBACKEND"] == "Agg"
 
 
 def test_windows_exits_with_the_code_of_the_new_process(
@@ -68,7 +67,6 @@ def test_set_variables_are_kept_and_the_process_continues(
 ) -> None:
     for name in entry.THREAD_VARIABLES:
         monkeypatch.setenv(name, "3")
-    monkeypatch.setenv("MPLBACKEND", "svg")
 
     def execv(path: str, argv: list[str]) -> None:
         raise AssertionError("the process runs again once only")
@@ -76,7 +74,6 @@ def test_set_variables_are_kept_and_the_process_continues(
     monkeypatch.setattr(os, "execv", execv)
     entry._single_threaded()
     assert [os.environ[name] for name in entry.THREAD_VARIABLES] == ["3"] * 3
-    assert os.environ["MPLBACKEND"] == "svg"
 
 
 @pytest.mark.parametrize("code", [0, 4])

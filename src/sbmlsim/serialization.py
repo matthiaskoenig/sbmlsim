@@ -1,7 +1,6 @@
 """Helpers for JSON serialization of experiments."""
 
 import json
-import sys
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from enum import Enum
@@ -65,12 +64,6 @@ class ObjectJSONEncoder(JSONEncoder):
         if isinstance(o, Enum):
             # handle enums
             return o.name
-
-        figure = sys.modules.get("matplotlib.figure")
-        if figure is not None and isinstance(o, figure.Figure):
-            # no serialization of a figure of matplotlib, which only the code
-            # which drew it imports
-            return o.__class__.__name__
 
         if isinstance(o, ndarray):
             # handle numpy ndarrays

@@ -189,9 +189,6 @@ dev = [
 	"pytest-xdist>=3.8.0",
 	# the text of the PDF reports in the tests
 	"pypdf>=6.21.0",
-	# the figures of a `figures_mpl()` hook, which sbmlsim saves with `savefig`,
-	# in the tests of that hook only; the package never imports it
-	"matplotlib>=3.11.2",
 ]
 
 # the kinds of `python -m sbmlsim.run` as task types of simrun
@@ -239,12 +236,6 @@ verbosity_subtests = 0
 # appears and not when the feature is removed
 filterwarnings = [
     "error",
-    # matplotlib warns when the search of its `loc="best"` legend takes more
-    # than a second of wall clock (`Legend._find_best_position`), which on a
-    # loaded machine happens for a small figure as well, e.g. under the
-    # workers of pytest-xdist, so the warning is about the machine and not
-    # about the code under test
-    'ignore:Creating legend with loc="best" can be slow:UserWarning',
 ]
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
