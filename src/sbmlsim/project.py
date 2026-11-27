@@ -64,6 +64,7 @@ from pydantic import (
     model_validator,
 )
 
+from sbmlsim import cgroup
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import DEFAULT_ENGINE, Engine, JitOptimization
 from sbmlsim.figure_formats import figure_formats_of
@@ -2003,7 +2004,13 @@ class Project(BaseModel):
                 without; `n_workers=None, scan_workers=1` runs the experiments
                 in a pool and the scans of each serially in its worker, which
                 is faster than scans in a pool for many experiments of small
-                scans.
+                scans. The engine core runs the points of a scan on threads,
+                not processes: without `scan_workers` a run of a number of
+                workers above one gives it every CPU of the quota, which a
+                process shares with the busy workers of the run
+                (`sbmlsim.parallel.worker_cores`), so the last long
+                experiment of a run takes the cores the others left instead
+                of as many threads as the run has processes.
             simulator: the settings of the simulator, the ones of the project
                 without.
             figure_formats: the formats of the figures, the ones of the project
@@ -2065,7 +2072,7 @@ class Project(BaseModel):
             n_workers=n_workers,
             progress=progress,
             simulator=settings.simulator(
-                n_workers if scan_workers is None else scan_workers
+                _scan_workers(settings.engine, n_workers, scan_workers)
             ),
             figure_formats=list(formats),
             save_results=save_results,
@@ -2427,6 +2434,25 @@ def _link_or_copy(source: Path, target: Path) -> None:
     except OSError:
         # another filesystem, or one without hard links
         shutil.copy2(source, target)
+
+
+def _scan_workers(
+    engine: Engine, n_workers: int | None, scan_workers: int | None
+) -> int | None:
+    """Get the workers of the simulator of a run of experiments.
+
+    `scan_workers` as given, else `n_workers`, the processes of the run; the
+    engine core runs a scan on threads, which a process of a run of several
+    workers takes from every CPU of the quota as its share
+    (`sbmlsim.simulator.worker.core_threads`): the processes of the run held
+    the threads of every experiment to their number, also the last one, which
+    ran on few threads while the other workers were done.
+    """
+    if scan_workers is not None:
+        return scan_workers
+    if engine is Engine.CORE and n_workers is not None and n_workers > 1:
+        return cgroup.available_cpus()
+    return n_workers
 
 
 def collect_figure_files(output_path: Path, *, show: bool = True) -> Path:

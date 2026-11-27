@@ -714,6 +714,8 @@ def test_the_experiments_run_in_a_pool_with_serial_scans(
 def test_the_scans_take_the_workers_of_the_run_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from sbmlsim import cgroup
+    from sbmlsim.engine import Engine
     from sbmlsim.experiment import runner
 
     given: dict[str, Any] = {}
@@ -724,7 +726,13 @@ def test_the_scans_take_the_workers_of_the_run_by_default(
 
     monkeypatch.setattr(runner, "run_experiments", run_experiments)
     PROJECT.run_experiments(None, tmp_path, n_workers=3)
-    assert (given["n_workers"], given["simulator"].n_workers) == (3, 3)
+    # the engine core runs a scan on threads: every CPU, which a process of
+    # the run shares with the busy others
+    threads = PROJECT.simulator.engine is Engine.CORE
+    assert (given["n_workers"], given["simulator"].n_workers) == (
+        3,
+        cgroup.available_cpus() if threads else 3,
+    )
     PROJECT.run_experiments(None, tmp_path, n_workers=None, scan_workers=1)
     assert (given["n_workers"], given["simulator"].n_workers) == (None, 1)
 

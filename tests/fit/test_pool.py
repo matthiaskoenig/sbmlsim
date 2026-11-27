@@ -16,6 +16,7 @@ import pytest
 from sbmlsim import parallel
 from sbmlsim.engine import Engine
 from sbmlsim.fit import FitSettings, runner
+from sbmlsim.fit import pool as pool_module
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.pool import EvaluationPool, evaluates_on_threads, map_evaluations
 from sbmlsim.fit.runner import run_optimization
@@ -556,3 +557,43 @@ def test_an_evaluation_on_threads_is_one_of_the_engine_core(
     assert evaluates_on_threads(op_hctz_iv) is (op_hctz_iv.engine is Engine.CORE)
     op_hctz_iv.engine = Engine.ROADRUNNER
     assert not evaluates_on_threads(op_hctz_iv)
+
+
+def _module_level_evaluation(problem: Any, state: Any, task: int) -> int:
+    """An evaluation which a worker imports."""
+    return task
+
+
+def test_the_pools_of_evaluations_preload_the_modules_of_their_problems(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workers of a credibility assessment imported the model package each.
+
+    0.7 s of every worker of the HCTZ model of pkdb_models, which the
+    forkserver imports once for all of them, as for the workers of a fit.
+    """
+    calls: list[list[str]] = []
+    real = parallel.start_pool
+
+    def start_pool(
+        n_workers: int,
+        preload: Any = (),
+        initializer: Any = None,
+        initargs: Any = (),
+    ) -> Any:
+        calls.append(list(preload))
+        return real(1, initializer=initializer, initargs=initargs)
+
+    monkeypatch.setattr(parallel, "start_pool", start_pool)
+    modules = pool_module.problem_modules([op_hctz_pk])
+    assert "sbmlsim.fit.optimization" in modules
+    assert any(m.startswith("examples.hctz_fitting") for m in modules)
+    assert runner._preload(op_hctz_pk) == modules
+    with EvaluationPool({"pk": (op_hctz_pk, fit_settings)}, 2, warm=False):
+        pass
+    assert map_evaluations(
+        op_hctz_pk, fit_settings, _module_level_evaluation, [1, 2], 2
+    ) == [1, 2]
+    assert calls == [modules, modules]

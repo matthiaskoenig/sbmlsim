@@ -432,64 +432,72 @@ class Simulator:
         scan = Scan.of(scan)
         block = _block(points, scan.size)
         compiled = self._compile(model, scan, time, observables, keep)
-        workers, threads = self._workers(len(block))
-        # the chunks of the processes of the run, and of the batches of a run
-        # of sbmlsim-core, which is one python process: a chunk of it is
-        # one batch which the engine spreads over its threads itself, so the
-        # parallelism of such a run is inside its chunk and the chunk takes
-        # every point the cap of a batch allows, where the four chunks per
-        # process of a pool would hand the engine a quarter of the points at
-        # a time and run its threads that full (the eight points of the large
-        # model of `docs/benchmarks.md` on eight threads take 0.13 s in one
-        # batch against 0.27 s in four, and 64 points of HCTZ 12 ms in one
-        # batch, 13 ms in four and 31 ms in chunks of two, the same numbers
-        # bitwise in each case); a wide chunk of the engine buys that with the
-        # tables of its points, which `CORE_MAX_CHUNK` bounds, see
-        # `sbmlsim.simulator.worker`
-        batched = self.engine is Engine.CORE
-        most = CORE_MAX_CHUNK if batched else MAX_CHUNK
-        chunks = compiled.chunks(workers, on_error, block, most, batched=batched)
-        # the points which run at once, the processes or the threads
-        at_once = max(workers, threads)
-        show = at_once > 1 if progress is None else progress
-        assembly = _Assembly(compiled, block)
-        done = 0
-        with contextlib.ExitStack() as stack:
-            # `False` reports nothing, also to a reporter of the context, e.g.
-            # of a run of experiments without progress; a scan which is asked
-            # for its progress and has no reporter renders its own
-            if progress is False:
-                stack.enter_context(progress_reporter(None))
-            elif show and current_progress_reporter() is None:
-                stack.enter_context(progress_reporter(resolve_progress("auto")))
-            # a simulation is a scan of one point, which reports nothing
-            scanned = (
-                stack.enter_context(
-                    progress_activity("scan", total=len(block), workers=at_once)
-                )
-                if len(block) > 1
-                else None
-            )
-
-            def collect(result: ChunkResult, in_place: bool = False) -> None:
-                nonlocal done
-                assembly.add(result, in_place)
-                if scanned is not None:
-                    scanned.advance(len(result.indices))
-                done += len(result.indices)
-                emit(
-                    "scan.chunk",
-                    points=len(result.indices),
-                    done=done,
-                    total=len(block),
+        # a process of a pool counts itself among the ones which run threads
+        # while the engine core runs the batches of the scan, which share the
+        # CPUs the processes in python leave (`parallel.worker_cores`)
+        with (
+            parallel.threads()
+            if self.engine is Engine.CORE
+            else contextlib.nullcontext()
+        ):
+            workers, threads = self._workers(len(block))
+            # the chunks of the processes of the run, and of the batches of a run
+            # of sbmlsim-core, which is one python process: a chunk of it is
+            # one batch which the engine spreads over its threads itself, so the
+            # parallelism of such a run is inside its chunk and the chunk takes
+            # every point the cap of a batch allows, where the four chunks per
+            # process of a pool would hand the engine a quarter of the points at
+            # a time and run its threads that full (the eight points of the large
+            # model of `docs/benchmarks.md` on eight threads take 0.13 s in one
+            # batch against 0.27 s in four, and 64 points of HCTZ 12 ms in one
+            # batch, 13 ms in four and 31 ms in chunks of two, the same numbers
+            # bitwise in each case); a wide chunk of the engine buys that with the
+            # tables of its points, which `CORE_MAX_CHUNK` bounds, see
+            # `sbmlsim.simulator.worker`
+            batched = self.engine is Engine.CORE
+            most = CORE_MAX_CHUNK if batched else MAX_CHUNK
+            chunks = compiled.chunks(workers, on_error, block, most, batched=batched)
+            # the points which run at once, the processes or the threads
+            at_once = max(workers, threads)
+            show = at_once > 1 if progress is None else progress
+            assembly = _Assembly(compiled, block)
+            done = 0
+            with contextlib.ExitStack() as stack:
+                # `False` reports nothing, also to a reporter of the context, e.g.
+                # of a run of experiments without progress; a scan which is asked
+                # for its progress and has no reporter renders its own
+                if progress is False:
+                    stack.enter_context(progress_reporter(None))
+                elif show and current_progress_reporter() is None:
+                    stack.enter_context(progress_reporter(resolve_progress("auto")))
+                # a simulation is a scan of one point, which reports nothing
+                scanned = (
+                    stack.enter_context(
+                        progress_activity("scan", total=len(block), workers=at_once)
+                    )
+                    if len(block) > 1
+                    else None
                 )
 
-            if workers == 1:
-                self._run_serial(
-                    compiled, chunks, collect, threads, assembly.destination
-                )
-            else:
-                self._run_pool(compiled, chunks, workers, collect)
+                def collect(result: ChunkResult, in_place: bool = False) -> None:
+                    nonlocal done
+                    assembly.add(result, in_place)
+                    if scanned is not None:
+                        scanned.advance(len(result.indices))
+                    done += len(result.indices)
+                    emit(
+                        "scan.chunk",
+                        points=len(result.indices),
+                        done=done,
+                        total=len(block),
+                    )
+
+                if workers == 1:
+                    self._run_serial(
+                        compiled, chunks, collect, threads, assembly.destination
+                    )
+                else:
+                    self._run_pool(compiled, chunks, workers, collect)
         return compiled.assemble(
             assembly,
             on_error,
