@@ -13,11 +13,12 @@ from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, override
 
 import pytest
 
 from sbmlsim import cgroup, parallel
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.parallel import process_context
 
 REPO = Path(__file__).parents[1]
@@ -244,7 +245,111 @@ def test_the_forkserver_preloads_the_modules(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(context, "set_forkserver_preload", preloaded.append)
 
     assert parallel._context(["examples.demo.demo"]).get_start_method() == "forkserver"
-    assert preloaded == [sorted({*parallel.PRELOAD, "examples.demo.demo"})]
+    assert preloaded == [
+        [
+            *sorted({*parallel.PRELOAD, "examples.demo.demo"}),
+            parallel.PRELOAD_EXPERIMENTS,
+        ]
+    ]
+
+
+class _Preloaded(SimulationExperiment):
+    """An experiment which records its preload."""
+
+    calls: ClassVar[list[str]] = []
+
+    @classmethod
+    @override
+    def preload_in_forkserver(cls) -> None:
+        cls.calls.append(cls.__name__)
+
+
+class _PreloadedChild(_Preloaded):
+    """A subclass of an experiment which records its preload."""
+
+
+class _PreloadFails(SimulationExperiment):
+    """An experiment whose preload fails."""
+
+    @classmethod
+    @override
+    def preload_in_forkserver(cls) -> None:
+        raise RuntimeError("no model")
+
+
+def test_every_experiment_class_is_preloaded_and_a_failure_is_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(_Preloaded, "calls", [])
+
+    failed = parallel.preload_experiments()
+
+    assert failed == [f"{__name__}._PreloadFails"]
+    assert _Preloaded.calls == ["_Preloaded", "_PreloadedChild"]
+    assert f"The preload of {__name__}._PreloadFails failed." in caplog.text
+
+
+def test_a_process_without_experiments_preloads_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delitem(sys.modules, "sbmlsim.experiment.experiment")
+    monkeypatch.setattr(_Preloaded, "calls", [])
+
+    assert parallel.preload_experiments() == []
+    assert _Preloaded.calls == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
+def test_the_workers_inherit_what_the_forkserver_preloaded(tmp_path: Path) -> None:
+    """The forkserver preloads the experiment once, every worker has it."""
+    (tmp_path / "preloaded_experiment.py").write_text(
+        "import os\n"
+        "from sbmlsim.experiment import SimulationExperiment\n\n"
+        "LOADED_BY: list[int] = []\n\n"
+        "class Loading(SimulationExperiment):\n"
+        "    @classmethod\n"
+        "    def preload_in_forkserver(cls):\n"
+        "        LOADED_BY.append(os.getpid())\n\n"
+        "def loaded_by():\n"
+        "    return LOADED_BY, os.getpid()\n",
+        encoding="utf-8",
+    )
+    script = tmp_path / "run.py"
+    script.write_text(
+        "import json, multiprocessing, os, sys\n"
+        "from sbmlsim import parallel\n"
+        "import preloaded_experiment\n\n"
+        'if __name__ == "__main__":\n'
+        '    multiprocessing.set_start_method("forkserver")\n'
+        '    executor = parallel.start_pool(2, preload=["preloaded_experiment"])\n'
+        "    answers = [\n"
+        "        executor.submit(preloaded_experiment.loaded_by).result()\n"
+        "        for _ in range(4)\n"
+        "    ]\n"
+        "    parallel.stop(executor)\n"
+        "    json.dump(\n"
+        "        {'parent': os.getpid(), 'here': preloaded_experiment.LOADED_BY,\n"
+        "         'answers': answers}, sys.stdout\n"
+        "    )\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env={**os.environ, "PYTHONPATH": f"{tmp_path}{os.pathsep}{REPO / 'src'}"},
+    )
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+
+    # the parent never preloads, the forkserver once for all workers
+    assert out["here"] == []
+    forkservers = {pid for loaded, _ in out["answers"] for pid in loaded}
+    workers = {worker for _, worker in out["answers"]}
+    assert all(len(loaded) == 1 for loaded, _ in out["answers"])
+    assert len(forkservers) == 1
+    assert forkservers.isdisjoint({out["parent"], *workers})
 
 
 def test_another_start_method_is_used_as_it_is(monkeypatch: pytest.MonkeyPatch) -> None:
