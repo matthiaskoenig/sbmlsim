@@ -15,7 +15,10 @@ experiment, runs it serially (its scans included, a worker starts no pool) and
 writes its outputs; the parent keeps its own initialized experiments, which
 the report is created from, and logs the messages of the workers in the order
 of the experiments. A run is serial when an experiment cannot be sent to a
-worker, see `ExperimentRunner._serial_reason`.
+worker, see `ExperimentRunner._serial_reason`. `run_experiments` of the module
+starts the pool before the runner initializes the experiments, and every
+worker initializes an experiment of the run meanwhile, so it loads the models
+and its first experiment starts warm, see `_EarlyPool`.
 
 The pool of the experiments and the pool of the simulator do not compose, so
 the experiments of a run are spread over the two (`ExperimentRunner._workers`,
@@ -52,8 +55,9 @@ import logging
 import math
 import pickle
 import time
-from collections.abc import Callable, Iterable, Mapping
-from concurrent.futures import Future
+import warnings
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import Executor, Future
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.queues import Queue
 from pathlib import Path
@@ -273,6 +277,10 @@ class ExperimentRunner:
         # the seconds of the loading of the models and of the initialization
         # of every experiment, see `progress.Phase`
         self._timings: dict[str, dict[str, float]] = {}
+        # the pool which `run_experiments` of the module started before the
+        # experiments were initialized, which the next run takes, see
+        # `_EarlyPool`
+        self._early: _EarlyPool | None = None
 
         classes: list[type[SimulationExperiment]] = (
             list(experiment_classes)
@@ -542,6 +550,9 @@ class ExperimentRunner:
         jobs = self._jobs(output_path, formats, figure_formats, options)
         spread = self._workers(n_workers, jobs, options)
         workers = spread.workers
+        # the pool started while the experiments were initialized, if it is
+        # the pool this run needs, see `_EarlyPool`
+        early, self._early = self._early, None
         started = time.perf_counter()
         # the initialization of the experiments before this run, which the
         # timings of a serial run include, see `_run_timings`
@@ -558,10 +569,15 @@ class ExperimentRunner:
         listener: Listener | None = (
             display if display is not None else current_listener()
         )
+        if early is not None and not early.fits(workers, listener is not None):
+            early.pending.stop()
+            early = None
         # the workers of a run with a listener report what they do through a
         # queue, which a worker receives when it starts
         events: Queue[Event] | None = (
-            parallel.process_context().Queue()
+            early.events
+            if early is not None
+            else parallel.process_context().Queue()
             if listener is not None and workers > 1
             else None
         )
@@ -649,7 +665,9 @@ class ExperimentRunner:
                     if sid in spread.in_process and sid not in self.failed:
                         done[sid] = run_one(sid)
             executor = (
-                parallel.start_pool(
+                early.pending.take()
+                if early is not None
+                else parallel.start_pool(
                     workers,
                     preload=_modules(jobs.values()),
                     initializer=_set_events if events is not None else None,
@@ -865,44 +883,8 @@ class ExperimentRunner:
     def _serial_reason(
         self, jobs: dict[str, _Job], options: dict[str, Any]
     ) -> str | None:
-        """Get why the experiments cannot run in workers, `None` if they can.
-
-        A worker creates an experiment from its class, which pickle sends by
-        its module and name: a class defined in a function or at runtime, or
-        in the main module of an interactive session, which a worker cannot
-        import, is not found; nor is one of the main script which is defined
-        behind its guard `if __name__ == "__main__":`, which the worker does
-        not run, so an experiment of the main script runs here. The figures
-        shown and the results kept are in the worker, a worker has the unit
-        registry of the package, and it builds a `Simulator` of the engine and
-        the settings of the simulator of the runner, see `_Job`, which a
-        subclass of `Simulator` is not.
-        """
-        if parallel.in_worker():
-            return "a worker starts no pool"
-        if options["show_figures"]:
-            return "the figures are shown"
-        if options["keep_results"]:
-            return "the results of the experiments are kept"
-        if self.ureg is not package_ureg:
-            return "the runner has a unit registry of its own"
-        if self.simulator is not None and type(self.simulator) is not Simulator:
-            return (
-                f"the simulator is a '{type(self.simulator).__name__}', a worker "
-                f"builds a 'Simulator'"
-            )
-        for job in jobs.values():
-            cls = job.experiment_class
-            if cls.__module__ == "__main__":
-                return (
-                    f"'{cls.__name__}' is defined in the main script, define it "
-                    f"in a module to run it in a worker"
-                )
-            try:
-                pickle.dumps(job)
-            except Exception as err:
-                return f"'{cls.__name__}' cannot be sent to a worker: {err}"
-        return None
+        """Get why the experiments cannot run in workers, see `_serial_reason`."""
+        return _serial_reason(jobs.values(), options, self.ureg, self.simulator)
 
     @staticmethod
     def _outcome(future: Future[_Outcome] | None) -> _Outcome | None:
@@ -1251,6 +1233,183 @@ class _Collect(logging.Handler):
         self.records.append(record)
 
 
+def _serial_reason(
+    jobs: Iterable[_Job],
+    options: Mapping[str, Any],
+    ureg: UnitRegistry,
+    simulator: Simulator | None,
+) -> str | None:
+    """Get why the experiments cannot run in workers, `None` if they can.
+
+    A worker creates an experiment from its class, which pickle sends by
+    its module and name: a class defined in a function or at runtime, or
+    in the main module of an interactive session, which a worker cannot
+    import, is not found; nor is one of the main script which is defined
+    behind its guard `if __name__ == "__main__":`, which the worker does
+    not run, so an experiment of the main script runs here. The figures
+    shown and the results kept are in the worker, a worker has the unit
+    registry of the package, and it builds a `Simulator` of the engine and
+    the settings of the simulator of the runner, see `_Job`, which a
+    subclass of `Simulator` is not.
+
+    Args:
+        jobs: the experiments of the run.
+        options: the options of the run, `show_figures` and `keep_results`.
+        ureg: the unit registry of the runner.
+        simulator: the simulator of the runner.
+    """
+    if parallel.in_worker():
+        return "a worker starts no pool"
+    if options["show_figures"]:
+        return "the figures are shown"
+    if options["keep_results"]:
+        return "the results of the experiments are kept"
+    if ureg is not package_ureg:
+        return "the runner has a unit registry of its own"
+    if simulator is not None and type(simulator) is not Simulator:
+        return (
+            f"the simulator is a '{type(simulator).__name__}', a worker "
+            f"builds a 'Simulator'"
+        )
+    for job in jobs:
+        cls = job.experiment_class
+        if cls.__module__ == "__main__":
+            return (
+                f"'{cls.__name__}' is defined in the main script, define it "
+                f"in a module to run it in a worker"
+            )
+        try:
+            pickle.dumps(job)
+        except Exception as err:
+            return f"'{cls.__name__}' cannot be sent to a worker: {err}"
+    return None
+
+
+@dataclasses.dataclass
+class _EarlyPool:
+    """The pool of a run of experiments, started before they are initialized.
+
+    The runner initializes the experiments of a run in this process before
+    it runs them (about 4 s for the 28 experiments of the HCTZ model of
+    pkdb_models) and started its pool after it, whose start took 1.8 s (the
+    forkserver imports the modules of the experiments), after which every
+    worker loaded the models and initialized its first experiment again
+    before it simulated. `run_experiments` of the module starts the pool
+    before the runner initializes the experiments, from their classes
+    (`_start_early_pool`), and every worker initializes an experiment of the
+    run meanwhile (`_warm`), which loads the models into the cache of the
+    worker and fills the caches of the process, e.g. of a library the
+    experiments use, so its first experiment starts warm.
+
+    Attributes:
+        pending: the pool, which starts in a thread.
+        events: the queue the workers report to, which they received when
+            they started, `None` for a run without a listener.
+    """
+
+    pending: parallel.PendingPool
+    events: Queue[Event] | None
+
+    def fits(self, workers: int, listener: bool) -> bool:
+        """Check whether the pool is one a run of a number of workers takes.
+
+        A pool of more workers is taken, its other workers stay idle; the
+        workers report to a queue only when the run has a listener.
+        """
+        return (
+            workers > 1
+            and self.pending.n_workers >= workers
+            and (self.events is not None) == listener
+        )
+
+
+def _start_early_pool(
+    classes: Sequence[type[SimulationExperiment]],
+    simulator: Simulator,
+    settings: dict[str, Any],
+    n_workers: int | None,
+    progress: bool | None,
+    base_path: Path | None,
+    data_path: Path | Iterable[Path] | None,
+    jit_optimization: JitOptimization,
+) -> _EarlyPool | None:
+    """Start the pool of a run before the runner initializes the experiments.
+
+    The workers are the ones `ExperimentRunner._workers` gives the run
+    before it knows the experiments whose scans run in this process: at most
+    one per experiment, a worker per `EXPERIMENTS_PER_WORKER` experiments
+    and at most one per CPU for `n_workers=None`, so the run takes the pool
+    or one of fewer workers from it. No pool is started where the run would
+    start none or later: a run in a worker, of one worker or of an experiment
+    which cannot run in a worker (`_serial_reason`); a simulator which runs
+    its scans in a pool of processes before the pool of the experiments
+    starts (another engine than the engine core without `n_workers=1`,
+    #554); AMICI, whose workers load the modules the runner compiled; and
+    the start method `fork`, see `parallel.start_pool_soon`.
+
+    Returns:
+        The pool, `None` for a run which starts none now.
+    """
+    if not classes:
+        return None
+    count = len(set(classes))
+    workers = (
+        min(cgroup.available_cpus(), math.ceil(count / EXPERIMENTS_PER_WORKER))
+        if n_workers is None
+        else n_workers
+    )
+    workers = min(workers, count)
+    if workers <= 1 or simulator.engine is Engine.AMICI:
+        return None
+    if simulator.engine is not Engine.CORE and simulator.n_workers != 1:
+        return None
+    jobs = [
+        _Job(
+            experiment_class=cls,
+            settings=settings,
+            base_path=base_path,
+            data_path=data_path,
+            jit_optimization=jit_optimization,
+            on_error="log",
+            engine=simulator.engine,
+            amici_cache=None,
+            integrator_settings=dict(simulator.integrator_settings),
+            simulator_workers=simulator.n_workers,
+            output_path=Path(),
+            formats=[],
+            figure_formats=None,
+            options={},
+            levels=_logger_levels(),
+        )
+        for cls in dict.fromkeys(classes)
+    ]
+    options = {"show_figures": False, "keep_results": False}
+    if _serial_reason(jobs, options, package_ureg, simulator) is not None:
+        return None
+    listener = show_progress(progress) or current_listener() is not None
+    events: Queue[Event] | None = (
+        parallel.process_context().Queue() if listener else None
+    )
+
+    def warm(executor: Executor) -> None:
+        """Give every worker an experiment of the run to initialize."""
+        for k in range(workers):
+            executor.submit(_warm, jobs[k % len(jobs)])
+
+    pending = parallel.start_pool_soon(
+        workers,
+        preload=_modules(jobs),
+        initializer=_set_events if events is not None else None,
+        initargs=(events,) if events is not None else (),
+        then=warm,
+    )
+    if pending is None:
+        if events is not None:
+            events.close()
+        return None
+    return _EarlyPool(pending, events)
+
+
 def _cost(experiment: SimulationExperiment) -> int:
     """Estimate the cost of an experiment: its simulations and figures.
 
@@ -1303,18 +1462,7 @@ def _run_job(job: _Job) -> _Outcome:
     handler = _Collect()
     handlers = logging.root.handlers[:]
     logging.root.handlers[:] = [handler]
-    simulator: Simulator | None = None
-    if job.integrator_settings is not None:
-        # a worker runs the scans of its experiment itself, a pool of the
-        # simulator would be a pool in a worker; the engine core runs the
-        # points of a scan on threads in this process, its share of the CPUs
-        # (`parallel.worker_cores`). The simulator of COPASI or AMICI imports
-        # it through sbmlsim, see `sbmlsim.engine`
-        simulator = Simulator(
-            n_workers=job.simulator_workers if job.engine is Engine.CORE else 1,
-            engine=job.engine,
-        )
-        simulator.set_integrator_settings(**job.integrator_settings)
+    simulator = _simulator(job)
     try:
         with (
             parallel.working(),
@@ -1354,6 +1502,60 @@ def _run_job(job: _Job) -> _Outcome:
         records=handler.records,
         timings=result.timings,
     )
+
+
+def _simulator(job: _Job) -> Simulator | None:
+    """Get the simulator of an experiment in a worker, `None` without one.
+
+    A worker runs the scans of its experiment itself, a pool of the
+    simulator would be a pool in a worker; the engine core runs the points
+    of a scan on threads in this process, its share of the CPUs
+    (`parallel.worker_cores`). The simulator of COPASI or AMICI imports it
+    through sbmlsim, see `sbmlsim.engine`.
+    """
+    if job.integrator_settings is None:
+        return None
+    simulator = Simulator(
+        n_workers=job.simulator_workers if job.engine is Engine.CORE else 1,
+        engine=job.engine,
+    )
+    simulator.set_integrator_settings(**job.integrator_settings)
+    return simulator
+
+
+def _warm(job: _Job) -> None:
+    """Initialize an experiment in a worker while the parent initializes them.
+
+    The models are loaded into the cache of the models of the worker, which
+    `_run_job` takes them from, and the caches of the process are filled,
+    e.g. a library which the experiments use loads its models, so the first
+    experiment of the worker starts warm, see `_EarlyPool`. The experiment
+    is not run and not kept. Its messages and warnings are dropped, the
+    parent initializes it as well and reports them; an experiment which
+    fails is reported by the parent, see `ExperimentRunner.initialize`.
+    """
+    models: dict[ModelKey, SBMLModel] = parallel.worker_cache(
+        ("experiment models", job.engine, job.jit_optimization), dict
+    )
+    handlers = logging.root.handlers[:]
+    logging.root.handlers[:] = [logging.NullHandler()]
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            runner = ExperimentRunner(
+                [],
+                base_path=job.base_path,
+                data_path=job.data_path,
+                simulator=_simulator(job),
+                on_error="log",
+                jit_optimization=job.jit_optimization,
+            )
+            runner.models = models
+            runner.initialize([job.experiment_class], **job.settings)
+    except Exception:  # the parent reports the experiment
+        pass
+    finally:
+        logging.root.handlers[:] = handlers
 
 
 #: the queue of a worker to the display of the parent, see `_set_events`
@@ -1461,25 +1663,44 @@ def run_experiments(
     settings: dict[str, Any] = {}
     if uncertainty is not None:
         settings["uncertainty"] = uncertainty
-    runner = ExperimentRunner(
+    parallel.check_workers(n_workers)
+    # the workers start while the experiments are initialized, see
+    # `_EarlyPool`
+    early = _start_early_pool(
         experiments,
-        simulator=simulator,
-        data_path=data_path,
-        base_path=base_path,
-        jit_optimization=jit_optimization,
-        **settings,
+        simulator,
+        settings,
+        n_workers,
+        progress,
+        base_path,
+        data_path,
+        resolve_jit_optimization(jit_optimization),
     )
-    results = runner.run_experiments(
-        output_path=output_path,
-        show_figures=False,
-        save_results=save_results,
-        figure_formats=figure_formats,
-        reduced_selections=reduced_selections,
-        figure_settings=figure_settings,
-        n_workers=n_workers,
-        progress=progress,
-        png_dpi=png_dpi,
-    )
+    try:
+        runner = ExperimentRunner(
+            experiments,
+            simulator=simulator,
+            data_path=data_path,
+            base_path=base_path,
+            jit_optimization=jit_optimization,
+            **settings,
+        )
+        runner._early = early
+        results = runner.run_experiments(
+            output_path=output_path,
+            show_figures=False,
+            save_results=save_results,
+            figure_formats=figure_formats,
+            reduced_selections=reduced_selections,
+            figure_settings=figure_settings,
+            n_workers=n_workers,
+            progress=progress,
+            png_dpi=png_dpi,
+        )
+    finally:
+        # a pool which the run did not take, e.g. after an error
+        if early is not None:
+            early.pending.stop()
     report_results = ReportResults()
     for exp_result in results:
         report_results.add_experiment_result(exp_result=exp_result)

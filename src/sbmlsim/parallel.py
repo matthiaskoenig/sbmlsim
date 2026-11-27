@@ -8,6 +8,8 @@ Every pool of the package comes from here:
   start of the workers (the imports, roadrunner) is paid once per process and
   not once per run; `start_pool(n)` is a new pool which the caller stops, e.g.
   the pool of a fit, whose workers keep the initialized problem;
+  `start_pool_soon(n)` starts one in a thread while the caller goes on, e.g.
+  the pool of a run of experiments while they are initialized;
 - `resolve_workers` turns `n_workers` into the number of processes;
 - `worker_cache` keeps objects in a worker, e.g. the models of a scan or the
   initialized problem of a fit, and builds one only when its key is new;
@@ -580,6 +582,110 @@ def start_pool(
         stop(executor)
         raise
     return executor
+
+
+class PendingPool:
+    """A pool which starts in a thread of its own while its caller goes on.
+
+    The start of a pool waits for its workers: the forkserver imports the
+    modules of the workers (`preload`, about 2 s for the experiments of a
+    model of pkdb_models) and the first worker answers. A caller which has
+    other work before it needs the pool, e.g. a run of experiments which
+    initializes them, starts it with `start_pool_soon` and takes it with
+    `take` when it needs it, so the workers start meanwhile.
+
+    The thread only starts processes: under `fork` it would fork a process
+    which runs another thread, so `start_pool_soon` refuses that start
+    method. The caller stops a pool it did not take with `stop`.
+    """
+
+    def __init__(
+        self,
+        n_workers: int,
+        start: Callable[[], ProcessPoolExecutor],
+        then: Callable[[ProcessPoolExecutor], object] | None = None,
+    ) -> None:
+        """Start the pool in a thread.
+
+        Args:
+            n_workers: the number of worker processes.
+            start: starts the pool, e.g. `start_pool` with its arguments.
+            then: called with the pool in the thread once it started, e.g. to
+                submit the first tasks.
+        """
+        self.n_workers: int = n_workers
+        self._executor: ProcessPoolExecutor | None = None
+        self._error: BaseException | None = None
+
+        def run() -> None:
+            """Start the pool, keep it or the error of its start."""
+            try:
+                self._executor = start()
+                if then is not None:
+                    then(self._executor)
+            except BaseException as err:  # the caller raises it
+                self._error = err
+
+        self._thread = threading.Thread(target=run, name="sbmlsim-pool-start")
+        self._thread.start()
+
+    def take(self) -> ProcessPoolExecutor:
+        """Wait for the pool to start and take it: the caller stops it from now on.
+
+        Raises:
+            RuntimeError: if the workers do not start (see `start_pool`), or
+                the pool was taken or stopped already.
+        """
+        self._thread.join()
+        executor, self._executor = self._executor, None
+        if self._error is not None:
+            if executor is not None:
+                stop(executor)
+            raise self._error
+        if executor is None:
+            raise RuntimeError("The pool was taken or stopped already.")
+        return executor
+
+    def stop(self) -> None:
+        """Wait for the start of the pool and stop it, see `stop`."""
+        self._thread.join()
+        if self._executor is not None:
+            stop(self._executor)
+            self._executor = None
+
+
+def start_pool_soon(
+    n_workers: int,
+    preload: Sequence[str] = (),
+    initializer: Callable[..., object] | None = None,
+    initargs: tuple[Any, ...] = (),
+    then: Callable[[ProcessPoolExecutor], object] | None = None,
+) -> PendingPool | None:
+    """Start a pool in the background, see `PendingPool` and `start_pool`.
+
+    Args:
+        n_workers: the number of worker processes.
+        preload: modules the forkserver imports once for all workers.
+        initializer: a module level function every worker calls when it
+            starts.
+        initargs: the arguments of the initializer.
+        then: called with the pool once it started, in the thread which
+            started it, e.g. to submit the first tasks.
+
+    Returns:
+        The pool which starts, `None` in a worker or under the start method
+        `fork`, which does not fork a process which runs threads: the caller
+        starts its pool with `start_pool` when it needs it.
+    """
+    if in_worker() or process_context().get_start_method() == "fork":
+        return None
+    return PendingPool(
+        n_workers,
+        lambda: start_pool(
+            n_workers, preload=preload, initializer=initializer, initargs=initargs
+        ),
+        then=then,
+    )
 
 
 def _dead(executor: ProcessPoolExecutor) -> bool:

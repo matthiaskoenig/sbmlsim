@@ -584,3 +584,64 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
     # a pool started by fork needs no tracker
     assert len(pids) >= (2 if method == "fork" else 3)
     assert left == [], output
+
+
+def _square(x: int) -> int:
+    return x * x
+
+
+def test_a_pool_started_soon_is_taken_once_it_started() -> None:
+    """The caller goes on while the workers start and takes the pool after.
+
+    The tasks submitted when it started, e.g. the warm-up of a run of
+    experiments, run before the ones of the caller.
+    """
+    submitted: list[Future[int]] = []
+    pending = parallel.start_pool_soon(
+        2, then=lambda executor: submitted.append(executor.submit(_square, 3))
+    )
+    assert pending is not None
+    assert pending.n_workers == 2
+    executor = pending.take()
+    try:
+        assert submitted[0].result(timeout=60) == 9
+        assert list(executor.map(_square, [1, 2])) == [1, 4]
+        assert executor in parallel._COUNTERS
+        with pytest.raises(RuntimeError, match="taken or stopped"):
+            pending.take()
+        # a pool which was taken is the caller's to stop
+        pending.stop()
+        assert executor.submit(_square, 4).result(timeout=60) == 16
+    finally:
+        parallel.stop(executor)
+
+
+def test_a_pool_started_soon_which_is_not_taken_is_stopped() -> None:
+    pending = parallel.start_pool_soon(2)
+    assert pending is not None
+    pending.stop()
+    with pytest.raises(RuntimeError, match="taken or stopped"):
+        pending.take()
+
+
+def test_the_error_of_a_pool_started_soon_is_raised_when_it_is_taken() -> None:
+    def broken() -> ProcessPoolExecutor:
+        raise RuntimeError("The workers died while they started.")
+
+    pending = parallel.PendingPool(2, broken)
+    with pytest.raises(RuntimeError, match="died while they started"):
+        pending.take()
+    pending.stop()
+
+
+def test_no_pool_is_started_soon_in_a_worker_or_under_fork(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A thread which starts processes must not run while the process forks."""
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    assert parallel.start_pool_soon(2) is None
+    monkeypatch.setattr(parallel, "in_worker", lambda: False)
+    if "fork" in multiprocessing.get_all_start_methods():
+        context = multiprocessing.get_context("fork")
+        monkeypatch.setattr(parallel, "process_context", lambda: context)
+        assert parallel.start_pool_soon(2) is None
