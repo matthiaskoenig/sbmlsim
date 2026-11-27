@@ -54,7 +54,7 @@ from pint.errors import PintError
 
 from sbmlsim.plot.chart import Chart, ChartAxis
 from sbmlsim.plot.colors import color_alpha, normalize_color
-from sbmlsim.plot.padding import line_values
+from sbmlsim.plot.padding import line_values, without_padding
 from sbmlsim.plot.plotting import (
     AbstractCurve,
     Axis,
@@ -72,6 +72,7 @@ from sbmlsim.plot.plotting import (
 )
 from sbmlsim.plot.points import (
     BandLine,
+    Grids,
     Line,
     PointStyle,
     band_label,
@@ -216,6 +217,9 @@ def figure_chart(
     # the whole arrays of the tasks, which the data of many selections of one
     # array share, e.g. the lines of the draws of a curve
     arrays: dict[Hashable, tuple[xr.DataArray, str | None]] = {}
+    # the time points of the bands of a ragged result, which the bands of
+    # the variables of one task share
+    grids = Grids()
     for subplot in figure.subplots:
         plot = subplot.plot
         if subplot.row is None or subplot.col is None:
@@ -223,7 +227,7 @@ def figure_chart(
                 f"The plot '{plot.sid}' has no row and column in the figure "
                 f"'{figure.sid}'."
             )
-        builder = _PlotBuilder(experiment, plot.sid or "", groups, arrays)
+        builder = _PlotBuilder(experiment, plot.sid or "", groups, arrays, grids)
         y2 = builder.resolve(plot.xaxis, plot.yaxis, plot.yaxis_right, plot)
         chart_plot = chart.plot(
             subplot.row - 1,
@@ -477,6 +481,8 @@ class _PlotBuilder:
         groups: the legend groups of the chart.
         arrays: the whole arrays of the tasks of the figure, which the data of
             a selection is selected from, see `Data.get_data`.
+        grids: the time points of the bands of a ragged result of the
+            figure, see `onto_grid`.
         units: the unit of every axis.
         marks: the elements, in the order they are drawn.
         names: the axes which get names of categories.
@@ -492,6 +498,7 @@ class _PlotBuilder:
     arrays: dict[Hashable, tuple[xr.DataArray, str | None]] = field(
         default_factory=dict
     )
+    grids: Grids = field(default_factory=Grids)
     units: dict[str, _Unit] = field(default_factory=dict)
     marks: list[_Mark] = field(default_factory=list)
     names: set[str] = field(default_factory=set)
@@ -694,11 +701,15 @@ class _PlotBuilder:
                 f"are not drawn, draw bars side by side ({CurveType.BAR.name}) or "
                 f"points ({CurveType.POINTS.name})."
             )
-        x = self._data(curve, curve.x, "x")
-        y = self._data(curve, curve.y, axis)
-        xerr = self._data(curve, curve.xerr, "x")
-        yerr = self._data(curve, curve.yerr, axis)
-        lines = curve_lines(sid, curve.over, x, y, xerr, yerr)
+        line = self._selected_line(curve, axis)
+        if line is not None:
+            lines = [line]
+        else:
+            x = self._data(curve, curve.x, "x")
+            y = self._data(curve, curve.y, axis)
+            xerr = self._data(curve, curve.xerr, "x")
+            yerr = self._data(curve, curve.yerr, axis)
+            lines = curve_lines(sid, curve.over, x, y, xerr, yerr)
         if curve.type in BAR_TYPES:
             (line,) = lines
             self._bar(curve, line, axis, BAR_TYPES[curve.type])
@@ -720,6 +731,37 @@ class _PlotBuilder:
             )
             return
         self._points(curve, lines, style, axis)
+
+    def _selected_line(self, curve: Curve, axis: AxisKey) -> Line | None:
+        """Get the line of a curve of one point of a task, indexed with numpy.
+
+        The line of `curve_lines` of a curve without `over` and errors whose
+        x and y select one point of the whole arrays of one task, e.g. the
+        line of a draw of a figure over the draws: the values are indexed in
+        the arrays of the figure, without an array of their coordinates
+        (`Data.selected_values`). The other curves are `None`.
+        """
+        if curve.over or curve.xerr is not None or curve.yerr is not None:
+            return None
+        task = curve.x.task_id
+        if task is None or task != curve.y.task_id:
+            return None
+        x = curve.x.selected_values(
+            self.experiment, self.units["x"].convert, self.arrays
+        )
+        y = curve.y.selected_values(
+            self.experiment, self.units[axis].convert, self.arrays
+        )
+        if x is None or y is None:
+            return None
+        (xs, xdims), (ys, ydims) = x, y
+        # the dimensions of one task have the coordinates of its result, the
+        # arrays are aligned; a curve of more than one dimension is the error
+        # of `curve_lines`
+        if xdims != ydims or xs.shape != ys.shape or len(xdims) > 1:
+            return None
+        lx, ly = without_padding(xs, ys)
+        return Line(point=(), index=(), x=lx, y=ly)
 
     def _bar(self, curve: Curve, line: Line, axis: AxisKey, horizontal: bool) -> None:
         """Add a bar element, the positions on the y axis for horizontal bars."""
@@ -844,7 +886,7 @@ class _PlotBuilder:
         x = self._data(band, band.x, "x")
         y = self._data(band, band.y, axis)
         bands: list[BandLine] = band_lines(
-            sid, band.over, band.across, band.quantiles, x, y
+            sid, band.over, band.across, band.quantiles, x, y, grids=self.grids
         )
         color = normalize_color(band.color) if band.color else None
         styles: PointStyle | None = None

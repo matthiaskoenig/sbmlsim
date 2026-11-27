@@ -479,7 +479,10 @@ def plot_times(
         raise ValueError(f"A figure needs at least 2 time points, not {n}.")
     pooled = np.sort(np.asarray(times, dtype=float).ravel())
     pooled = pooled[np.isfinite(pooled)]
-    distinct = np.unique(pooled)
+    # the distinct times of the sorted ones, which `np.unique` would sort again
+    distinct = (
+        pooled[np.append(True, pooled[1:] != pooled[:-1])] if pooled.size else pooled
+    )
     if distinct.size <= n:
         return distinct
     first, last = distinct[0], distinct[-1]

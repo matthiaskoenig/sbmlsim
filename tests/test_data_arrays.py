@@ -195,7 +195,7 @@ def test_a_function_of_a_scan_and_a_reference_has_the_time_last(
 @pytest.mark.parametrize(
     ("index", "to_units"), [("[Y]", None), ("time", None), ("time", "second")]
 )
-@pytest.mark.parametrize("sel", [{"d": "mid"}, {"d": "hi"}, {"d": ["lo", "hi"]}])
+@pytest.mark.parametrize("sel", [{}, {"d": "mid"}, {"d": "hi"}, {"d": ["lo", "hi"]}])
 def test_a_selection_of_the_whole_array_is_the_data_of_the_selection(
     experiment: SimulationExperiment,
     task: str,
@@ -207,7 +207,8 @@ def test_a_selection_of_the_whole_array_is_the_data_of_the_selection(
 
     Every line read, renamed and converted the whole array of its task, which
     was most of the time of the figures of an uncertainty run (sbmlsim#664);
-    the selection of the array gives the same data, its unit included.
+    the selection of the array gives the same data, its unit included. The
+    bands of a task share its time, the data without a selection.
     """
     arrays: dict = {}
     for _ in range(2):
@@ -221,6 +222,45 @@ def test_a_selection_of_the_whole_array_is_the_data_of_the_selection(
     # the whole array keeps its name, also when a selection is all of it
     ((whole, _),) = arrays.values()
     assert whole.name == Data(index, task=task).sid
+
+
+@pytest.mark.parametrize("task", ["grid", "ragged"])
+@pytest.mark.parametrize(("index", "to_units"), [("[Y]", None), ("time", "second")])
+@pytest.mark.parametrize("sel", [{"d": "mid"}, {"d": "hi"}])
+def test_the_values_of_a_point_are_the_ones_of_its_data(
+    experiment: SimulationExperiment,
+    task: str,
+    index: str,
+    to_units: str | None,
+    sel: dict,
+) -> None:
+    """The line of a draw indexes the whole array with numpy, without `isel`."""
+    arrays: dict = {}
+    data = Data(index, task=task, sel=sel)
+    selected = data.selected_values(experiment, to_units, arrays)
+    assert selected is not None
+    values, dims = selected
+    expected = Data(index, task=task, sel=sel)
+    array = expected.get_data(experiment, to_units)
+    np.testing.assert_array_equal(values, array.values)
+    assert dims == array.dims
+    assert data.unit == expected.unit
+    # the whole array is read once, for the data of every point
+    assert list(arrays) == [(task, index, to_units)]
+
+
+def test_the_values_of_more_than_a_point_are_the_ones_of_get_data(
+    experiment: SimulationExperiment,
+) -> None:
+    """A selection of more than one point, or no task, has no values of a point."""
+    for data in (
+        Data("[Y]", task="grid", sel={"d": ["lo", "hi"]}),
+        Data("[Y]", task="grid"),
+        Data("X", dataset="ds"),
+    ):
+        assert data.selected_values(experiment, None, {}) is None
+    with pytest.raises(ValueError, match="selects the dimension 'e'"):
+        Data("[Y]", task="grid", sel={"e": 0}).selected_values(experiment, None, {})
 
 
 def test_a_label_is_selected_by_its_position(experiment: SimulationExperiment) -> None:

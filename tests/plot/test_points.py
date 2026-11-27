@@ -10,6 +10,7 @@ from sbmlsim import Q
 from sbmlsim.engine import import_core
 from sbmlsim.plot.points import (
     LINE_STYLES,
+    Grids,
     Line,
     band_label,
     band_lines,
@@ -17,6 +18,7 @@ from sbmlsim.plot.points import (
     curve_lines,
     format_value,
     nan_quantile,
+    nan_quantiles,
     onto_grid,
     point_colors,
     point_labels,
@@ -414,6 +416,64 @@ def test_nan_quantile_is_the_one_of_numpy(q: float) -> None:
         warnings.simplefilter("ignore", RuntimeWarning)
         expected = np.nanquantile(values, q, axis=-1)
     np.testing.assert_allclose(nan_quantile(values, q), expected, equal_nan=True)
+
+
+def test_the_quantiles_sorted_once_are_the_ones_of_nan_quantile() -> None:
+    """The quantiles of a band and its median share the sort, value for value."""
+    rng = np.random.default_rng(3)
+    values = rng.normal(size=(6, 4, 25))
+    values[values > 1.2] = np.nan
+    values[2, 1, :] = np.nan
+    qs = (0.05, 0.5, 0.95)
+    for quantile, q in zip(nan_quantiles(values, qs), qs, strict=True):
+        np.testing.assert_array_equal(quantile, nan_quantile(values, q))
+
+
+def _many_steps(seed: int, draws: int = 20) -> tuple[xr.DataArray, xr.DataArray]:
+    rng = np.random.default_rng(seed)
+    times = [np.sort(rng.uniform(0, 10, 2000)) for _ in range(draws)]
+    times = [np.concatenate([[0.0], t, [5.0, 5.0], [10.0]]) for t in times]
+    times = [np.sort(t) for t in times]
+    return _ragged([list(t) for t in times], [list(np.exp(-t)) for t in times])
+
+
+def test_the_bands_of_one_x_share_its_grid() -> None:
+    """The bands of the variables of one task find the time points once.
+
+    A band with the grids of a figure is the one without, bit for bit; an x
+    of other values gets a grid of its own.
+    """
+    t, y = _many_steps(4)
+    grids = Grids()
+    x, values = onto_grid("b", t, y, grids=grids)
+    alone_x, alone = onto_grid("b", t, y)
+    xr.testing.assert_identical(x, alone_x)
+    xr.testing.assert_identical(values, alone)
+    # a band of another variable of the same x takes its grid
+    found = grids.of("b", np.asarray(t.values), 500)
+    assert grids.of("b", np.asarray(t.values).copy(), 500) is found
+    x2, values2 = onto_grid("b", t, 2.0 * y, grids=grids)
+    xr.testing.assert_identical(x2, alone_x)
+    np.testing.assert_array_equal(values2.values, onto_grid("b", t, 2.0 * y)[1].values)
+    # an x of other values, or another number of time points, is another grid
+    other, _ = _many_steps(5)
+    assert grids.of("b", np.asarray(other.values), 500) is not found
+    assert grids.of("b", np.asarray(t.values), 300) is not found
+    # the grid keeps its x, which the data may change after
+    changed = np.asarray(t.values).copy()
+    grid = Grids().of("b", changed, 500)
+    changed[0, 1] = 0.5
+    assert grid.xs[0, 1] != 0.5
+
+
+def test_a_band_of_x_without_the_draws_is_broadcast() -> None:
+    """The time of a ragged result over the draws, x of one simulation for all."""
+    t, y = _ragged(
+        [[0.0, 1.0, 2.0], [0.0, 1.0, 2.0]], [[0.0, 2.0, 4.0], [0.0, 3.0, 6.0]]
+    )
+    x, values = onto_grid("b", t.isel(draw=0, drop=True), y, grids=Grids())
+    np.testing.assert_array_equal(x.values, [0.0, 1.0, 2.0])
+    np.testing.assert_array_equal(values.values, y.values)
 
 
 def test_a_band_of_many_steps_has_the_time_points_of_a_figure() -> None:

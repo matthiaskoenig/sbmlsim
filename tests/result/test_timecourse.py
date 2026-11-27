@@ -99,6 +99,25 @@ def test_the_time_points_of_a_figure_follow_the_steps() -> None:
     assert np.max(np.diff(grid)) <= 100 / (200 // 4 - 1) + 1e-9
 
 
+@pytest.mark.parametrize("n", [5, 50, 500])
+def test_the_time_points_of_a_figure_are_the_ones_of_np_unique(n: int) -> None:
+    """The distinct times of the sorted times are the ones `np.unique` sorts again."""
+    rng = np.random.default_rng(2)
+    times = np.round(rng.uniform(0, 10, (30, 40)), 1)
+    times[3, 20:] = np.nan
+    pooled = np.sort(times.ravel())
+    pooled = pooled[np.isfinite(pooled)]
+    distinct = np.unique(pooled)
+    if distinct.size <= n:
+        expected = distinct
+    else:
+        dense = np.quantile(pooled, np.linspace(0.0, 1.0, n - max(n // 4, 2)))
+        uniform = np.linspace(distinct[0], distinct[-1], max(n // 4, 2))
+        expected = np.unique(np.concatenate([dense, uniform, [5.0]]))
+    np.testing.assert_array_equal(plot_times(times, n=n, keep=[5.0]), expected)
+    assert plot_times(np.full((2, 3), np.nan)).size == 0
+
+
 def test_a_figure_needs_two_time_points() -> None:
     with pytest.raises(ValueError, match="at least 2"):
         plot_times(np.arange(10.0), n=1)
