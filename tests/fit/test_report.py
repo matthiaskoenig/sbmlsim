@@ -31,6 +31,7 @@ from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import RUN_IN_THE_ENGINE
 from sbmlsim.fit.report import (
     MAX_GROUP_ROWS,
     ROW_HEIGHT,
@@ -43,6 +44,7 @@ from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.plot import Chart, ChartAxis
 from sbmlsim.plot.colors import normalize_color
+from tests.fit.test_fit_core import on_core
 
 
 def _plots(chart: Chart) -> list[dict[str, Any]]:
@@ -137,6 +139,35 @@ def test_report_from_optimization_result(
 
     # a single set is not compared against another one
     assert not (results_dir / "plots" / "cost_scatter.svg").exists()
+
+
+def test_a_fit_of_the_engine_has_no_figure_of_traces(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The engine answers with the cost of a run, not of its steps.
+
+    A fit in sbmlsim-core has no traces, so its report has no figure of
+    them, rather than empty axes; the waterfall plot of its runs stays.
+    """
+    problem = on_core(op_hctz_iv, fit_settings)
+    opt_result = run_optimization(
+        problem, fit_settings, size=2, seed=1234, show_progress=False
+    )
+    assert opt_result.optimizer_of == RUN_IN_THE_ENGINE
+    assert not any(opt_result.trajectories)
+
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=opt_result, mapping_figures=False
+    )
+    results_dir = report.create(output_dir=tmp_path, name="fit")
+
+    assert not (results_dir / "plots" / "traces.svg").exists()
+    assert (results_dir / "plots" / "waterfall.svg").exists()
+    document = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "plots/traces" not in document
+    # the methods assess the convergence by the final costs alone
+    assert "traces of their cost" not in document
+    assert "waterfall plot of their final costs" in document
 
 
 def test_report_from_optimization_result_with_model(
@@ -869,7 +900,8 @@ def test_html_report_without_optimization(
         mapping_figures=False,
     )
     html = _html_of(report.create(output_dir=tmp_path, name="model"))
-    assert "traces" not in html
+    # the paths of the problem are in the page, so the figure is looked for
+    assert "plots/traces" not in html
     assert "optimization_result.json" not in html
     # the sections which do not depend on a fit are there
     assert 'id="overview"' in html

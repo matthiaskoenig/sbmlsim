@@ -932,7 +932,9 @@ def _runs(problem: OptimizationProblem, result: OptimizationResult) -> list[Para
         blocks.append(_start_values(problem, provenance))
     else:
         blocks.append(_differential_evolution(kwargs, n, provenance))
-    if n > 1:
+    # a fit in the engine has the cost of its runs, not of their steps
+    traced = any(result.trajectories)
+    if n > 1 and traced:
         blocks.append(
             p(
                 "The convergence of the runs was assessed from the traces of their "
@@ -940,13 +942,23 @@ def _runs(problem: OptimizationProblem, result: OptimizationResult) -> list[Para
                 "parameter set with the lowest cost was used."
             )
         )
-    else:
+    elif n > 1:
+        blocks.append(
+            p(
+                "The convergence of the runs was assessed from the waterfall plot "
+                "of their final costs, and the parameter set with the lowest cost "
+                "was used."
+            )
+        )
+    elif traced:
         blocks.append(
             p(
                 "The convergence of the run was assessed from the trace of its "
                 "cost, and its parameter set was used."
             )
         )
+    else:
+        blocks.append(p("The parameter set of the run was used."))
     return blocks
 
 

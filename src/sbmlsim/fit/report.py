@@ -9,7 +9,8 @@ results of two fits against each other.
 
 The plots which describe an optimization run rather than a parameter set, i.e.,
 the traces of the optimizers and the waterfall plot, are only created when the
-`OptimizationResult` of the run is passed as well.
+`OptimizationResult` of the run is passed as well. A fit in sbmlsim-core has
+the cost of every run but not of its steps, so its report has no traces.
 
 `FitReport.create` writes the report into a folder: the tables, the figures,
 the text report and `index.html`, a page of two tabs. The tab "Report" is the
@@ -2267,7 +2268,9 @@ class FitReport:
         """
         self._png_dpi = float(png_dpi)
         if self.opt_result:
-            self.plot_traces(path=plots_dir / f"traces.{self.image_format}")
+            # a fit in the engine has the cost of its runs, not of their steps
+            if any(self.opt_result.trajectories):
+                self.plot_traces(path=plots_dir / f"traces.{self.image_format}")
             if self.opt_result.size > 1:
                 self.plot_waterfall(path=plots_dir / f"waterfall.{self.image_format}")
 
