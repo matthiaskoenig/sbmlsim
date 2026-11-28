@@ -135,8 +135,12 @@ def fit_parameters(
         )
     names = _targets(fisher.pids, fisher.targets or None, targets)
     seed = _seed(seed)
+    # the directions are the eigenvectors of numpy (sbmlsim-core gives no
+    # eigenvectors), the number of constrained ones the rank of the information,
+    # i.e. of its stored or computed decomposition, so that the draws agree
+    # with the record; eigh orders the eigenvalues ascending
     eigenvalues, eigenvectors = np.linalg.eigh(fisher.matrix)
-    constrained = eigenvalues > eigenvalues.max() * fisher.rank_tolerance
+    constrained = np.arange(fisher.k) >= fisher.k - fisher.rank
     if not constrained.any():
         raise ValueError(
             f"The Fisher information of '{fisher.opid}' constrains no direction "

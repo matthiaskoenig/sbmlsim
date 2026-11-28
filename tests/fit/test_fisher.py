@@ -17,10 +17,10 @@ from sbmlsim.fit.fisher import (
     DEFAULT_STEP,
     SENSITIVITIES,
     FisherInformation,
+    decomposition,
     default_step,
     evaluator,
     fisher_information,
-    fisher_statistics,
     jacobian,
 )
 from sbmlsim.fit.metrics import aic, bic, bic_from_mse
@@ -61,7 +61,7 @@ def test_fisher_reports_reuse_decompositions_and_track_matrix_changes(
     )
     # one decomposition gives the eigenvalues and the pseudo-inverse
     with patch(
-        "sbmlsim.fit.fisher.fisher_statistics", wraps=fisher_statistics
+        "sbmlsim.fit.fisher.decomposition", wraps=decomposition
     ) as decompositions:
         _ = information.summary_df
         _ = information.correlation
@@ -71,15 +71,16 @@ def test_fisher_reports_reuse_decompositions_and_track_matrix_changes(
             information.covariance, information.sigma2 * np.diag([0.5, 1.0])
         )
         assert decompositions.call_count == 2
+        # the decomposition does not depend on the rank tolerance
         information.rank_tolerance = 0.75
         assert not information.is_identifiable
         _ = information.covariance
-        assert decompositions.call_count == 3
+        assert decompositions.call_count == 2
         information.cost = 2.0
         np.testing.assert_allclose(
             information.covariance, information.sigma2 * np.diag([0.5, 1.0])
         )
-        assert decompositions.call_count == 3
+        assert decompositions.call_count == 2
 
 
 def test_bic_penalizes_more_than_aic() -> None:
@@ -493,15 +494,86 @@ def test_a_record_of_the_decomposition_does_not_decompose_again() -> None:
     """
     stored = json.loads(json.dumps(_information(_sloppy_matrix()).to_dict()))
     back = FisherInformation.from_dict(stored)
-    with (
-        patch("numpy.linalg.eigvalsh", wraps=np.linalg.eigvalsh) as eigenvalues,
-        patch("numpy.linalg.pinv", wraps=np.linalg.pinv) as inverse,
-    ):
+    with patch(
+        "sbmlsim.fit.fisher.decomposition", wraps=decomposition
+    ) as decompositions:
         _ = back.summary_df
         _ = back.correlation
         _ = back.standard_errors
         _ = back.rank
-        assert eigenvalues.call_count == inverse.call_count == 0
+        _ = back.statistics
+        # the decomposition does not depend on the rank tolerance, so a
+        # record keeps its own when the tolerance changes
+        back.rank_tolerance = 0.5
+        _ = back.rank
+        assert decompositions.call_count == 0
+    assert back.inverse is not None
+    assert back.spectrum is not None
+
+
+def test_a_record_of_lapack_gives_the_numbers_it_was_written_with() -> None:
+    """A record of a release before sbmlsim-core stores the decomposition of LAPACK.
+
+    Its numbers differ from the ones sbmlsim-core computes for the same matrix
+    in their last digits, and the record gives its own.
+    """
+    matrix = _sloppy_matrix()
+    stored = _information(matrix).to_dict()
+    inverse = np.linalg.pinv(matrix, hermitian=True)
+    spectrum = np.linalg.eigvalsh(matrix)[::-1]
+    stored["inverse"] = inverse.tolist()
+    stored["spectrum"] = spectrum.tolist()
+    back = FisherInformation.from_dict(json.loads(json.dumps(stored)))
+
+    sigma2 = 2.0 * back.cost / (back.n - back.k)
+    np.testing.assert_array_equal(back.covariance, sigma2 * inverse)
+    np.testing.assert_array_equal(
+        back.standard_errors, np.sqrt(np.diag(sigma2 * inverse))
+    )
+    np.testing.assert_array_equal(back.eigenvalues, spectrum)
+    assert back.condition_number == spectrum[0] / spectrum[-1]
+    assert back.statistics["rank"] == back.rank
+
+
+@pytest.mark.parametrize(
+    "matrix",
+    [
+        np.diag([1.0, 0.5]),
+        np.array([[1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 2.0]]),
+        np.zeros((2, 2)),
+        _sloppy_matrix(),
+    ],
+    ids=["diagonal", "deficient", "zero", "sloppy"],
+)
+@pytest.mark.parametrize(
+    "objective", [ObjectiveType.LEAST_SQUARES, ObjectiveType.LIKELIHOOD]
+)
+@pytest.mark.parametrize("n", [10, 2])
+def test_the_statistics_are_the_ones_of_sbmlsim_core(
+    matrix: np.ndarray, objective: ObjectiveType, n: int
+) -> None:
+    """The statistics of the decomposition are the ones the crate computes of the matrix."""
+    from sbmlsim_core import stats
+
+    k = len(matrix)
+    information = FisherInformation(
+        "op",
+        "set",
+        [f"p{i}" for i in range(k)],
+        np.ones(k),
+        ParameterScaleType.LOG10,
+        matrix,
+        cost=1.5,
+        n=n,
+        objective=objective,
+    )
+    statistics: dict[str, Any] = dict(information.statistics)
+    expected = stats.fisher_statistics(
+        matrix, 1.5, n, likelihood=objective is not ObjectiveType.LEAST_SQUARES
+    )
+    assert set(statistics) == set(expected)
+    for key, value in expected.items():
+        np.testing.assert_array_equal(statistics[key], value, err_msg=key)
 
 
 def test_a_record_written_before_the_decomposition_computes_it() -> None:
@@ -523,6 +595,16 @@ def test_a_matrix_changed_after_the_fact_drops_the_stored_decomposition() -> Non
     np.testing.assert_allclose(back.covariance, back.sigma2 * np.diag([1.0, 0.25]))
     back.matrix = np.diag([4.0, 16.0])
     np.testing.assert_allclose(back.covariance, back.sigma2 * np.diag([0.25, 0.0625]))
+    assert back.inverse is None
+    assert back.spectrum is None
+
+
+def test_a_matrix_changed_before_the_first_read_drops_the_decomposition() -> None:
+    """The decomposition is the one of the matrix the information was created with."""
+    stored = json.loads(json.dumps(_information(np.diag([1.0, 4.0])).to_dict()))
+    back = FisherInformation.from_dict(stored)
+    back.matrix[1, 1] = 16.0
+    np.testing.assert_allclose(back.covariance, back.sigma2 * np.diag([1.0, 0.0625]))
     assert back.inverse is None
     assert back.spectrum is None
 

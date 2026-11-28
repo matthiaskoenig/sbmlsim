@@ -99,7 +99,7 @@ DEFAULT_RANK_TOLERANCE = 1e-8
 
 
 class FisherStatistics(TypedDict):
-    """The statistics of a Fisher information, see `fisher_statistics`.
+    """The statistics of a Fisher information, see `FisherInformation.statistics`.
 
     Attributes:
         sigma2: the variance of the residuals, `2 cost / (n - k)`, `nan`
@@ -125,31 +125,24 @@ class FisherStatistics(TypedDict):
     correlation: np.ndarray
 
 
-def fisher_statistics(
-    matrix: np.ndarray,
-    cost: float,
-    n: int,
-    *,
-    likelihood: bool = False,
-    rank_tolerance: float = DEFAULT_RANK_TOLERANCE,
-) -> FisherStatistics:
-    """Get the statistics of a Fisher information, computed by sbmlsim-core.
+def decomposition(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Get the eigenvalues and the pseudo-inverse of a Fisher information.
 
     One eigendecomposition of `sbmlsim_core.stats` (the cyclic Jacobi method)
     gives the eigenvalues and the pseudo-inverse of numpy (the eigenvalues cut
-    at `1e-15` of the largest one), with the same bits on every machine.
+    at `1e-15` of the largest one), with the same bits on every machine. They
+    are the decomposition a record stores, and every statistic of
+    `FisherInformation` follows from them, the ones of a record which stores
+    them as well, see `FisherInformation.statistics`. The crate gives them
+    only with its statistics (`fisher_statistics`, of a likelihood, whose
+    covariance is the pseudo-inverse); the others are of the order of the
+    matrix and are dropped, the eigendecomposition is the cost.
 
     Args:
         matrix: the Fisher information `J' J`, square, finite and symmetric.
-        cost: the cost of the data.
-        n: the number of data points.
-        likelihood: whether the fit is one of the likelihood, whose residuals
-            are in units of the noise.
-        rank_tolerance: eigenvalues below this fraction of the largest one
-            are a direction the data does not constrain.
 
     Returns:
-        The statistics.
+        The eigenvalues, largest first, and the pseudo-inverse.
 
     Raises:
         ValueError: for a matrix which is not a square, finite and symmetric
@@ -158,23 +151,21 @@ def fisher_statistics(
     import_core()
     from sbmlsim_core import stats
 
-    d = stats.fisher_statistics(
-        matrix, cost, n, likelihood=likelihood, rank_tolerance=rank_tolerance
-    )
-    return FisherStatistics(
-        sigma2=float(d["sigma2"]),
-        spectrum=np.asarray(d["spectrum"], dtype=float),
-        rank=int(d["rank"]),
-        condition=float(d["condition"]),
-        covariance=np.asarray(d["covariance"], dtype=float),
-        standard_errors=np.asarray(d["standard_errors"], dtype=float),
-        correlation=np.asarray(d["correlation"], dtype=float),
+    # sigma2 of a likelihood is 1 whatever the cost and the number of points
+    d = stats.fisher_statistics(matrix, 0.0, 0, likelihood=True)
+    return (
+        np.asarray(d["spectrum"], dtype=float),
+        np.asarray(d["covariance"], dtype=float),
     )
 
 
 @dataclass
 class FisherInformation:
     """The Fisher information of a parameter set on a problem.
+
+    Its statistics, see `statistics`, follow from the decomposition of the
+    matrix, its eigenvalues and its pseudo-inverse, which a record stores and
+    sbmlsim-core computes for a matrix without one (`decomposition`).
 
     Attributes:
         opid: id of the optimization problem.
@@ -216,7 +207,7 @@ class FisherInformation:
             which differ in their last digits on another machine and a model
             whose factory writes them into its SBML did not rebuild byte for
             byte (#523). sbmlsim-core computes them with the same bits on
-            every machine, see `fisher_statistics`. A record written before
+            every machine, see `decomposition`. A record written before
             they were stored has none and computes them, and a matrix which is
             changed after the information was created drops them.
         spectrum: the eigenvalues of `matrix`, largest first, `None` to
@@ -247,58 +238,58 @@ class FisherInformation:
     #: the warning of a rank deficient information is logged for the first of
     #: them and not once per reader
     _warned: bool = field(default=False, init=False, repr=False, compare=False)
-    _matrix_fingerprint: tuple[tuple[int, ...], str, float, bytes] | None = field(
+    #: the rank tolerance the warning was decided at, a change asks again
+    _warned_tolerance: float | None = field(
         default=None, init=False, repr=False, compare=False
     )
-    _cached_eigenvalues: np.ndarray | None = field(
+    _matrix_fingerprint: tuple[tuple[int, ...], str, bytes] | None = field(
         default=None, init=False, repr=False, compare=False
     )
-    _cached_inverse: np.ndarray | None = field(
+    _cached_decomposition: tuple[np.ndarray, np.ndarray] | None = field(
         default=None, init=False, repr=False, compare=False
     )
 
-    def _refresh_matrix_cache(self) -> None:
-        """Reuse matrix decompositions while retaining the mutable matrix API."""
+    def _fingerprint(self) -> tuple[tuple[int, ...], str, bytes]:
+        """Get the fingerprint of the matrix, which detects a change of it."""
         # Hashing avoids retaining a second full matrix just to detect public
         # in-place edits. Non-contiguous inputs need only a temporary copy.
-        fingerprint = (
+        return (
             self.matrix.shape,
             self.matrix.dtype.str,
-            self.rank_tolerance,
             hashlib.sha256(memoryview(np.ascontiguousarray(self.matrix))).digest(),
         )
+
+    def _refresh_matrix_cache(self) -> None:
+        """Reuse the decomposition while retaining the mutable matrix API.
+
+        The decomposition is the one of the matrix, whatever the rank
+        tolerance, so only a change of the matrix computes it again or drops
+        the stored one; a change of the tolerance asks again for the warning
+        of a rank deficient information.
+        """
+        fingerprint = self._fingerprint()
         if fingerprint != self._matrix_fingerprint:
-            # the stored decomposition belongs to the matrix it was computed
-            # from, so a matrix which is changed afterwards drops it; the
-            # first call is the one of the matrix it was created with
-            if self._matrix_fingerprint is not None:
-                self.inverse = None
-                self.spectrum = None
+            # the stored decomposition belongs to the matrix the information
+            # was created with, so a matrix which is changed afterwards drops it
+            self.inverse = None
+            self.spectrum = None
             self._matrix_fingerprint = fingerprint
-            self._cached_eigenvalues = None
-            self._cached_inverse = None
+            self._cached_decomposition = None
+            self._warned = False
+        if self.rank_tolerance != self._warned_tolerance:
+            self._warned_tolerance = self.rank_tolerance
             self._warned = False
 
     def _decomposition(self) -> tuple[np.ndarray, np.ndarray]:
         """Get the eigenvalues and the pseudo-inverse of the matrix, computed once.
 
-        Both come from one decomposition, `fisher_statistics` of a likelihood,
-        whose covariance is the pseudo-inverse.
-
         Returns:
-            The eigenvalues, largest first, and the pseudo-inverse.
+            The eigenvalues, largest first, and the pseudo-inverse, see
+            `decomposition`.
         """
-        if self._cached_eigenvalues is None or self._cached_inverse is None:
-            statistics = fisher_statistics(
-                self.matrix,
-                cost=self.cost,
-                n=self.n,
-                likelihood=True,
-                rank_tolerance=self.rank_tolerance,
-            )
-            self._cached_eigenvalues = statistics["spectrum"]
-            self._cached_inverse = statistics["covariance"]
-        return self._cached_eigenvalues, self._cached_inverse
+        if self._cached_decomposition is None:
+            self._cached_decomposition = decomposition(self.matrix)
+        return self._cached_decomposition
 
     def _inverse(self) -> np.ndarray:
         """Get the pseudo-inverse of the matrix, the stored one when there is one.
@@ -355,6 +346,9 @@ class FisherInformation:
                 f"information require one per parameter, '{(k,)}', but have "
                 f"the shape '{np.shape(self.spectrum)}'."
             )
+        # the matrix the stored decomposition belongs to, so that a change of
+        # it before the first read drops the decomposition as well
+        self._matrix_fingerprint = self._fingerprint()
 
     @property
     def k(self) -> int:
@@ -455,7 +449,8 @@ class FisherInformation:
         deficient, i.e. for a problem which is locally not identifiable. The
         covariance of such a problem is not a covariance, its entries of the
         unconstrained directions are arbitrary; `is_identifiable` says whether
-        it can be read. The warning about it is logged once per information.
+        it can be read. The warning about it is logged once per information and
+        rank tolerance.
         """
         self._refresh_matrix_cache()
         if not self.is_identifiable and not self._warned:
@@ -490,6 +485,24 @@ class FisherInformation:
         with np.errstate(divide="ignore", invalid="ignore"):
             corr = cov / np.outer(sd, sd)
         return pd.DataFrame(corr, index=self.pids, columns=self.pids)
+
+    @property
+    def statistics(self) -> FisherStatistics:
+        """Get the statistics of the information.
+
+        They follow from its decomposition, the stored one of a record or the
+        one of sbmlsim-core, see `decomposition`, so a record gives the numbers
+        it was written with.
+        """
+        return FisherStatistics(
+            sigma2=self.sigma2,
+            spectrum=self.eigenvalues,
+            rank=self.rank,
+            condition=self.condition_number,
+            covariance=self.covariance,
+            standard_errors=self.standard_errors,
+            correlation=self.correlation.to_numpy(),
+        )
 
     def confidence_intervals(self) -> tuple[np.ndarray, np.ndarray]:
         """Get the confidence interval of every parameter.
