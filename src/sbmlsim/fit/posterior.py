@@ -264,12 +264,13 @@ class ParameterPosterior:
         Raises:
             ValueError: for two parameters of one target.
         """
+        # the bindings are imported by `import_core`, on a thread which lives
+        # as long as the process
+        import_core()
         from sbmlsim_core import stats
 
         from sbmlsim.simulation.sampling.distributions import LogNormal, Normal
         from sbmlsim.units import ureg
-
-        import_core()
 
         distributions: dict[str, Distribution] = {}
         for name, scale, value, sd, unit in zip(
@@ -288,9 +289,14 @@ class ParameterPosterior:
                 distributions[name] = Normal(mean=quantity(value), sd=quantity(sd))
             else:
                 sigma = stats.log_sd(scale, float(sd))
-                distributions[name] = LogNormal(
-                    median=quantity(value), cv=stats.lognormal_cv(sigma)
-                )
+                cv = stats.lognormal_cv(sigma)
+                if not math.isfinite(cv):
+                    raise OverflowError(
+                        f"'{self.opid}': the log-normal of '{name}' has the "
+                        f"standard deviation {sigma} of its logarithm, whose "
+                        f"coefficient of variation is not a finite number."
+                    )
+                distributions[name] = LogNormal(median=quantity(value), cv=cv)
         return distributions
 
     def normal_correlation(
@@ -305,11 +311,11 @@ class ParameterPosterior:
             The correlation, which with the marginals of `distributions` is
             the posterior, see `sbmlsim.uncertainty.Covariance`.
         """
+        import_core()
         from sbmlsim_core import stats
 
         from sbmlsim.uncertainty.covariance import Covariance
 
-        import_core()
         matrix = stats.normal_correlation(self.correlation_matrix)
         return Covariance(self._names(targets), matrix, kind="correlation")
 
@@ -566,6 +572,11 @@ def posterior_laplace(
             problem.opid,
             with_priors,
             objective.value,
+        )
+    if not np.all(np.isfinite(precision)):
+        raise ValueError(
+            f"'{problem.opid}': the precision of the posterior is not finite, "
+            f"the posterior is not defined."
         )
     import_core()
     from sbmlsim_core import stats

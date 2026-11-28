@@ -184,7 +184,10 @@ def copula(u: np.ndarray, r: np.ndarray) -> np.ndarray:
     `Φ(Φ⁻¹(u) L^T)` with a factor `L` of the correlation, `L L^T = r` (the
     Cholesky factor, of the eigendecomposition for a correlation which is only
     positive semi-definite), the points clipped to `EPS` from the ends of the
-    unit interval; `copula` of `sbmlsim_core.stats`.
+    unit interval; `copula` of `sbmlsim_core.stats`. The factor of a
+    correlation which is only positive semi-definite is the one of the
+    eigendecomposition of sbmlsim-core, so its points differ from the ones
+    numpy's factor gave up to sbmlsim 0.54.0, in the same distribution.
 
     Args:
         u: the points of the unit cube, a row per point.
