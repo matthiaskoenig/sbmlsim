@@ -3224,7 +3224,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.10" },
     { name = "salib", marker = "extra == 'dev'", specifier = ">=1.6.0" },
     { name = "sbmlmath", specifier = ">=0.4.1,<0.5" },
-    { name = "sbmlsim-core", specifier = ">=0.40.0" },
+    { name = "sbmlsim-core", specifier = ">=0.42.0" },
     { name = "sbmlutils", specifier = ">=0.19.0" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.3.2" },
@@ -3247,17 +3247,17 @@ provides-extras = ["amici", "copasi", "dev", "sciml", "simrun", "web"]
 
 [[package]]
 name = "sbmlsim-core"
-version = "0.40.0"
+version = "0.42.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/1a/719b58d5d2b784e2af84883f7c3cf0bedef38924f647b9e63371d8e0b2f8/sbmlsim_core-0.40.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:62b996c654db5b82e4fdca76bb51549df85ad6ff21eb019960bfd5466ac18a2d", size = 15507307, upload-time = "2026-11-27T22:34:31.138Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/fe/904314cea381b66c62177c1badd39b4469b0fb21adedfb69fe3ede101a3a/sbmlsim_core-0.40.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:47d034f4285147d183ab937e945bd8380588272ce08b57d7686a6fdfd1c2a337", size = 14536571, upload-time = "2026-11-27T22:34:34.19Z" },
-    { url = "https://files.pythonhosted.org/packages/97/ab/4eec077875a0c369d21bcf7376450b7be097e890b880d47c2167521ef34c/sbmlsim_core-0.40.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:0683c966a2d6299091bc236bd3c34f60c0684e5aeef668580f2c1737f516e51f", size = 13570935, upload-time = "2026-11-27T22:34:37.032Z" },
-    { url = "https://files.pythonhosted.org/packages/59/d5/e27ecf96534dbf757c67b55696667b76735b55d5d8b9c849450de1ccf1a2/sbmlsim_core-0.40.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:222592e623a671c28aead3a9c84a7a2adb8b010ddd9afabb8bd3091609dd0066", size = 14881296, upload-time = "2026-11-27T22:34:40.036Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/87/ac5547f9c53d5a1655ae7a21e4bb095446aac20536557f4ec82afc44a171/sbmlsim_core-0.40.0-cp312-abi3-win_amd64.whl", hash = "sha256:1b4cf2aabf04f8d20067be2f1aaa8db2195c950fcd83a29d0432330801cb4d5c", size = 14752674, upload-time = "2026-11-27T22:34:43.068Z" },
+    { url = "https://files.pythonhosted.org/packages/91/11/f5bbe48554e1429ba838dcd90ac98e922f143f5f7ea7daca1e9610fc9f82/sbmlsim_core-0.42.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:558dbb1ea551d4aa76d058998c85bdde4e0b507c6402fec37e68ad6ec58d30eb", size = 15696280, upload-time = "2026-11-28T09:30:38.98Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/75/e2feacabaa6987a62ebb87f967ab53558fc2fda86521e59f28990f36c084/sbmlsim_core-0.42.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:4cc1e665d05987346c0aacd762f94a3c55f8639653916151a2d4b45f6b4198d8", size = 14721460, upload-time = "2026-11-28T09:30:42.128Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/89/20cc5495c25e8a3005d617844e42dbbcf960b28d3db493db5683eacec55d/sbmlsim_core-0.42.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:4fe36c97f4e87d4568213c06c2298ac542a9a50cf1bc8e647cdb02e5fce0fb74", size = 13741474, upload-time = "2026-11-28T09:30:45.179Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/a6/b107ee521b22d68675c839bd72417b0b78a30059c8ac7ac0919795585555/sbmlsim_core-0.42.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:f3042fc72eaa79932244e4c8be7bccf133377461eaea98e0ca97574ca3363660", size = 15065609, upload-time = "2026-11-28T09:30:48.657Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/60/4b8f0fba23fe916c8696f5eaa47dd8ee7a58fbd0f6b9574b7941328d469a/sbmlsim_core-0.42.0-cp312-abi3-win_amd64.whl", hash = "sha256:2f091ddea62756081a9d943510302effc407ed10f43573ad8dc453c185ac7781", size = 14943889, upload-time = "2026-11-28T09:30:51.872Z" },
 ]
 
 [[package]]

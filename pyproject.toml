@@ -125,7 +125,10 @@ dependencies = [
 	# JavaScript too (`js/petab.mjs`)
 	# 0.40.0 reads the comp models, the operator-less applies and the single-time
 	# steady states of the PEtab benchmark collection (#717)
-	"sbmlsim-core>=0.40.0",
+	# 0.42.0 the statistics of the analyses (`sbmlsim_core.stats`): the kernels
+	# of the fit, the Fisher information, the posterior, the uncertainty and
+	# the variability, and the draws on the streams of sbmlsim-core
+	"sbmlsim-core>=0.42.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
