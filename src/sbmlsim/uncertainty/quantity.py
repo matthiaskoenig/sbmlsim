@@ -42,8 +42,9 @@ from typing import Any, Literal
 
 import numpy as np
 from pint.errors import DimensionalityError
-from scipy import integrate, stats
+from scipy import integrate
 
+from sbmlsim.engine import import_core
 from sbmlsim.simulation.definition import _decode, _encode
 from sbmlsim.simulation.sampling.distributions import (
     Distribution,
@@ -316,26 +317,28 @@ class Uncertain:
         lo, hi = _in_unit(low, unit, "lower bound"), _in_unit(high, unit, "upper bound")
         if not hi > lo:
             raise ValueError(f"The interval [{low}, {high}] is empty.")
-        z = float(stats.norm.ppf(0.5 + level / 2.0))
         chosen = ("log-normal" if lo > 0.0 else "normal") if shape == "auto" else shape
+        if chosen == "log-normal" and not lo > 0.0:
+            raise ValueError(
+                f"The log-normal interval [{low}, {high}] must be positive."
+            )
+        import_core()
+        from sbmlsim_core import stats
+
+        location, spread = stats.interval_parameters(
+            lo, hi, level, lognormal=chosen == "log-normal"
+        )
         if chosen == "log-normal":
-            if not lo > 0.0:
-                raise ValueError(
-                    f"The log-normal interval [{low}, {high}] must be positive."
-                )
-            mu = 0.5 * (math.log(lo) + math.log(hi))
-            sigma = (math.log(hi) - math.log(lo)) / (2.0 * z)
-            median = math.exp(mu)
+            # the median and the coefficient of variation
             distribution: Distribution = LogNormal(
-                median=_with_unit(median, unit), cv=math.sqrt(math.expm1(sigma**2))
+                median=_with_unit(location, unit), cv=spread
             )
-            nominal = median
         else:
-            nominal = 0.5 * (lo + hi)
+            # the mean and the standard deviation
             distribution = Normal(
-                mean=_with_unit(nominal, unit),
-                sd=_with_unit((hi - lo) / (2.0 * z), unit),
+                mean=_with_unit(location, unit), sd=_with_unit(spread, unit)
             )
+        nominal = location
         return cls._of(_with_unit(nominal, unit), distribution, chosen, kind, name)
 
     @classmethod

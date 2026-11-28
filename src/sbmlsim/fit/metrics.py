@@ -52,6 +52,7 @@ Note the sign: the residuals of `OptimizationProblem.residuals` are
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import InitVar, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -60,6 +61,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
+from sbmlsim.engine import import_core
 from sbmlsim.fit.evaluation import criteria_metrics
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind, MappingMetaData
 from sbmlsim.fit.parameters import ParameterSet
@@ -164,7 +166,10 @@ def sse(residuals: ArrayLike) -> float:
     Returns:
         Sum of the squared residuals.
     """
-    return float(np.sum(np.square(_as_array(residuals))))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.sse(residuals)
 
 
 def mse(residuals: ArrayLike) -> float:
@@ -179,10 +184,10 @@ def mse(residuals: ArrayLike) -> float:
     Raises:
         ValueError: if no residuals are given.
     """
-    res = _as_array(residuals)
-    if res.size == 0:
-        raise ValueError("MSE requires at least one residual.")
-    return float(np.mean(np.square(res)))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.mse(residuals)
 
 
 def rmse(residuals: ArrayLike) -> float:
@@ -209,9 +214,10 @@ def rmse_from_mse(mse: float) -> float:
     Raises:
         ValueError: if the mean squared error is negative.
     """
-    if mse < 0.0:
-        raise ValueError(f"RMSE requires a non-negative MSE, but '{mse}' given.")
-    return float(np.sqrt(mse))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.rmse_from_mse(mse)
 
 
 def aic(residuals: ArrayLike, k: int) -> float:
@@ -249,13 +255,10 @@ def aic_from_mse(mse: float, n: int, k: int) -> float:
         ValueError: if the mean squared error is negative or the number of data
             points is not positive.
     """
-    if mse < 0.0:
-        raise ValueError(f"AIC requires a non-negative MSE, but '{mse}' given.")
-    if n <= 0:
-        raise ValueError(f"AIC requires a positive number of points, but '{n}' given.")
-    if mse == 0.0:
-        return float("-inf")
-    return float(n * np.log(mse) + 2 * k)
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.aic_from_mse(mse, n, k)
 
 
 def bic(residuals: ArrayLike, k: int) -> float:
@@ -296,13 +299,10 @@ def bic_from_mse(mse: float, n: int, k: int) -> float:
         ValueError: if the mean squared error is negative or the number of data
             points is not positive.
     """
-    if mse < 0.0:
-        raise ValueError(f"BIC requires a non-negative MSE, but '{mse}' given.")
-    if n <= 0:
-        raise ValueError(f"BIC requires a positive number of points, but '{n}' given.")
-    if mse == 0.0:
-        return float("-inf")
-    return float(n * np.log(mse) + k * np.log(n))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.bic_from_mse(mse, n, k)
 
 
 def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
@@ -328,20 +328,14 @@ def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
     Raises:
         ValueError: if the data and the prediction have different lengths.
     """
+    import_core()
+    from sbmlsim_core import stats
+
+    r2 = stats.r_squared(y_observed, y_predicted)
     y_obs = _as_array(y_observed)
-    y_pred = _as_array(y_predicted)
-    if y_obs.size != y_pred.size:
-        raise ValueError(
-            f"R² requires as many predictions as data points, but got "
-            f"'{y_pred.size}' for '{y_obs.size}'."
-        )
-    if y_obs.size < 2:
-        return float("nan")
-    sst = float(np.sum(np.square(y_obs - np.mean(y_obs))))
-    if sst == 0.0:
+    if math.isnan(r2) and y_obs.size >= 2 and np.all(y_obs == y_obs[0]):
         logger.warning("R² is undefined for data without variance.")
-        return float("nan")
-    return 1.0 - sse(y_obs - y_pred) / sst
+    return r2
 
 
 def fold_counts(
@@ -367,20 +361,11 @@ def fold_counts(
         ValueError: if the data and the prediction have different lengths or
             the fold factor is not larger than 1.
     """
-    if not fold > 1.0:
-        raise ValueError(f"The fold factor must be larger than 1, but '{fold}' given.")
-    y_obs = _as_array(y_observed)
-    y_pred = _as_array(y_predicted)
-    if y_obs.size != y_pred.size:
-        raise ValueError(
-            f"The fold criterion requires as many predictions as data points, "
-            f"but got '{y_pred.size}' for '{y_obs.size}'."
-        )
-    mask = np.isfinite(y_obs) & np.isfinite(y_pred) & (y_obs > 0) & (y_pred > 0)
-    y_obs, y_pred = y_obs[mask], y_pred[mask]
-    # the bounds as products, so that twofold is exact in floating point
-    inside = (y_pred >= y_obs / fold) & (y_pred <= y_obs * fold)
-    return int(np.sum(inside)), int(np.sum(mask))
+    import_core()
+    from sbmlsim_core import stats
+
+    # the bounds are products, so that twofold is exact in floating point
+    return stats.fold_counts(y_observed, y_predicted, fold)
 
 
 def within_fold(

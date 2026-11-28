@@ -64,7 +64,6 @@ import copy
 import hashlib
 import json
 import logging
-import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,7 +76,7 @@ import xarray as xr
 
 from sbmlsim import parallel
 from sbmlsim.atomic import atomic_path
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, import_core
 from sbmlsim.events import emit
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.netcdf import json_attributes
@@ -503,22 +502,12 @@ def _precise(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
 
     Returns:
         Whether they are and the largest half width relative to the standard
-        deviation.
+        deviation; not precise with fewer than 8 draws which are not `NaN`.
     """
-    finite = values[~np.isnan(values)]
-    if finite.size < 8:
-        return False, math.inf
-    sd, sd_error, _ = sd_se(finite)
-    if sd == 0.0:
-        return True, 0.0
-    widths = [1.96 * mean_se(finite)[1], 1.96 * sd_error]
-    for q in (0.05, 0.95):
-        _estimate, low, high, _n = quantile_ci(finite, q)
-        widths.append(
-            0.5 * (high - low) if np.isfinite(low) and np.isfinite(high) else math.inf
-        )
-    largest = max(widths) / sd
-    return largest <= rel_tol, float(largest)
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.precise(values, rel_tol)
 
 
 def _merged_attrs(dss: Sequence[xr.Dataset], n: int) -> dict[str, Any]:

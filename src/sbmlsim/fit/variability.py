@@ -50,17 +50,16 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
+from sbmlsim.engine import import_core
 from sbmlsim.fit.pool import chunks, map_evaluations
 from sbmlsim.simulation.sampling.distributions import (
-    EPS,
     Distribution,
     LogNormal,
     Normal,
 )
 from sbmlsim.uncertainty.covariance import Covariance
-from sbmlsim.uncertainty.draws import _factor, normal_score_correlation, unit_points
+from sbmlsim.uncertainty.draws import copula, normal_score_correlation, unit_points
 from sbmlsim.uncertainty.sources import Variable
 
 if TYPE_CHECKING:
@@ -190,10 +189,9 @@ class Variability:
             return np.ones((n, 0))
         variables = self._variables()
         r = normal_score_correlation(variables, self.covariance)
-        u = unit_points(len(variables), n, design=design, seed=seed, start=start)
-        if not np.allclose(r, np.eye(len(variables))):
-            z = stats.norm.ppf(np.clip(u, EPS, 1.0 - EPS)) @ _factor(r).T
-            u = stats.norm.cdf(z)
+        u = copula(
+            unit_points(len(variables), n, design=design, seed=seed, start=start), r
+        )
         return np.column_stack(
             [
                 np.asarray(distribution.ppf(u[:, k], 1.0), dtype=float)
@@ -450,14 +448,29 @@ def _subjects_of(
     ]
 
 
+def _group_seed(seed: int, mapping: int, size: int, subject: int) -> int:
+    """Get the seed of the groups of a mapping, a size and the subjects of a vector.
+
+    Every call of `_group_means` draws from a stream of its own, so the seed
+    of the check is spread over the mappings, the sizes of the groups and the
+    subjects of the parameter vectors (and studies) by numpy's `SeedSequence`,
+    which gives distinct and independent streams for distinct keys.
+    """
+    sequence = np.random.SeedSequence((seed, mapping, size, subject))
+    return int(sequence.generate_state(1, dtype=np.uint64)[0])
+
+
 def _group_means(
     values: np.ndarray,
     size: int,
     groups: int,
     statistic: Statistic,
-    rng: np.random.Generator,
+    seed: int,
 ) -> np.ndarray:
     """Get the statistic of virtual groups of subjects.
+
+    The subjects of a group are drawn with replacement from the stream
+    xoshiro256++ of sbmlsim-core (`group_means` of `sbmlsim_core.stats`).
 
     Args:
         values: the predictions of the subjects, one row per subject and one
@@ -465,19 +478,18 @@ def _group_means(
         size: the subjects of a group.
         groups: the number of groups.
         statistic: `mean` or `gmean`.
-        rng: the generator of the groups.
+        seed: the seed of the groups, see `_group_seed`.
 
     Returns:
-        One row per group and one column per data point.
+        One row per group and one column per data point, the subjects
+        themselves for groups of one.
     """
-    if size == 1:
-        return values
-    members = rng.integers(0, values.shape[0], size=(groups, size))
-    chosen = values[members]
-    if statistic == "gmean":
-        with np.errstate(divide="ignore", invalid="ignore"):
-            return np.exp(np.mean(np.log(chosen), axis=1))
-    return np.mean(chosen, axis=1)
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.group_means(
+        values, size, groups, geometric=statistic == "gmean", seed=seed
+    )
 
 
 @dataclass(frozen=True)
@@ -658,7 +670,9 @@ def predictive_check(
             parts.setdefault(u, []).append(part)
     subjects = tuple(_concatenated(parts[u]) for u in range(len(units)))
     typical = problem.predictions(vectors[0], chosen)
-    rng = np.random.default_rng(seed)
+    import_core()
+    from sbmlsim_core import stats
+
     columns = [quantile_column(q) for q in qs]
     rows: list[dict[str, object]] = []
     for k in chosen:
@@ -682,22 +696,24 @@ def predictive_check(
         for size in np.unique(sizes):
             points = np.flatnonzero(sizes == size)
             pooled: list[np.ndarray] = []
-            for subject in subjects:
+            for u, subject in enumerate(subjects):
                 values = subject.predictions[k][:, points]
                 values = values[np.all(np.isfinite(values), axis=1)]
                 if len(values):
                     pooled.append(
-                        _group_means(values, int(size), groups, group_statistic, rng)
+                        _group_means(
+                            values,
+                            int(size),
+                            groups,
+                            group_statistic,
+                            _group_seed(seed, k, int(size), u),
+                        )
                     )
             if not pooled:
                 continue
             distribution = np.concatenate(pooled, axis=0)
-            for j, point in enumerate(points):
-                column = distribution[:, j]
-                column = column[np.isfinite(column)]
-                n_values[point] = column.size
-                if column.size:
-                    bands[point] = np.quantile(column, qs)
+            n_values[points] = np.sum(np.isfinite(distribution), axis=0)
+            bands[points] = stats.bands(distribution, qs)
         x = problem.x_references[k]
         x_values = np.full(dv.size, np.nan) if x is None else np.asarray(x, dtype=float)
         for j in range(dv.size):

@@ -42,14 +42,12 @@ import hashlib
 import logging
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
-from scipy.stats import t as student_t
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, import_core
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
@@ -95,8 +93,83 @@ def default_step(relative_tolerance: float) -> float:
 
 
 #: eigenvalues below this fraction of the largest one are a direction the data
-#: does not constrain, i.e. the matrix is numerically rank deficient
+#: does not constrain, i.e. the matrix is numerically rank deficient,
+#: `DEFAULT_RANK_TOLERANCE` of `sbmlsim_core.stats`
 DEFAULT_RANK_TOLERANCE = 1e-8
+
+
+class FisherStatistics(TypedDict):
+    """The statistics of a Fisher information, see `fisher_statistics`.
+
+    Attributes:
+        sigma2: the variance of the residuals, `2 cost / (n - k)`, `nan`
+            without degrees of freedom, 1 for a likelihood.
+        spectrum: the eigenvalues, largest first.
+        rank: the number of eigenvalues above the rank tolerance times the
+            largest one.
+        condition: the ratio of the largest to the smallest eigenvalue, `inf`
+            of a smallest one which is not positive.
+        covariance: `sigma2` times the pseudo-inverse of the information.
+        standard_errors: the standard error of every parameter, `nan` of a
+            variance which is not positive (zero allowed of an identifiable
+            information).
+        correlation: the correlation of the parameters.
+    """
+
+    sigma2: float
+    spectrum: np.ndarray
+    rank: int
+    condition: float
+    covariance: np.ndarray
+    standard_errors: np.ndarray
+    correlation: np.ndarray
+
+
+def fisher_statistics(
+    matrix: np.ndarray,
+    cost: float,
+    n: int,
+    *,
+    likelihood: bool = False,
+    rank_tolerance: float = DEFAULT_RANK_TOLERANCE,
+) -> FisherStatistics:
+    """Get the statistics of a Fisher information, computed by sbmlsim-core.
+
+    One eigendecomposition of `sbmlsim_core.stats` (the cyclic Jacobi method)
+    gives the eigenvalues and the pseudo-inverse of numpy (the eigenvalues cut
+    at `1e-15` of the largest one), with the same bits on every machine.
+
+    Args:
+        matrix: the Fisher information `J' J`, square, finite and symmetric.
+        cost: the cost of the data.
+        n: the number of data points.
+        likelihood: whether the fit is one of the likelihood, whose residuals
+            are in units of the noise.
+        rank_tolerance: eigenvalues below this fraction of the largest one
+            are a direction the data does not constrain.
+
+    Returns:
+        The statistics.
+
+    Raises:
+        ValueError: for a matrix which is not a square, finite and symmetric
+            matrix of at least one parameter.
+    """
+    import_core()
+    from sbmlsim_core import stats
+
+    d = stats.fisher_statistics(
+        matrix, cost, n, likelihood=likelihood, rank_tolerance=rank_tolerance
+    )
+    return FisherStatistics(
+        sigma2=float(d["sigma2"]),
+        spectrum=np.asarray(d["spectrum"], dtype=float),
+        rank=int(d["rank"]),
+        condition=float(d["condition"]),
+        covariance=np.asarray(d["covariance"], dtype=float),
+        standard_errors=np.asarray(d["standard_errors"], dtype=float),
+        correlation=np.asarray(d["correlation"], dtype=float),
+    )
 
 
 @dataclass
@@ -136,13 +209,16 @@ class FisherInformation:
         objective: what the fit minimized; a fit of the likelihood has the
             noise in its residuals, see `scaled`.
         inverse: the pseudo-inverse of `matrix`, `None` to compute it. It is
-            stored with the information and read back, because the SVD of
-            LAPACK depends on the kernels of the CPU, so the same matrix gives
-            standard errors which differ in their last digits on another
-            machine and a model whose factory writes them into its SBML does
-            not rebuild byte for byte (#523). A record written before they
-            were stored has none and computes them as before, and a matrix
-            which is changed after the information was created drops them.
+            stored with the information and read back, so a record gives the
+            standard errors it was written with: a record of a release before
+            sbmlsim-core computed them took the SVD of LAPACK, which depends
+            on the kernels of the CPU, so the same matrix gave standard errors
+            which differ in their last digits on another machine and a model
+            whose factory writes them into its SBML did not rebuild byte for
+            byte (#523). sbmlsim-core computes them with the same bits on
+            every machine, see `fisher_statistics`. A record written before
+            they were stored has none and computes them, and a matrix which is
+            changed after the information was created drops them.
         spectrum: the eigenvalues of `matrix`, largest first, `None` to
             compute them; stored with the information for the same reason, so
             the rank of a record is the rank on every machine.
@@ -203,6 +279,27 @@ class FisherInformation:
             self._cached_inverse = None
             self._warned = False
 
+    def _decomposition(self) -> tuple[np.ndarray, np.ndarray]:
+        """Get the eigenvalues and the pseudo-inverse of the matrix, computed once.
+
+        Both come from one decomposition, `fisher_statistics` of a likelihood,
+        whose covariance is the pseudo-inverse.
+
+        Returns:
+            The eigenvalues, largest first, and the pseudo-inverse.
+        """
+        if self._cached_eigenvalues is None or self._cached_inverse is None:
+            statistics = fisher_statistics(
+                self.matrix,
+                cost=self.cost,
+                n=self.n,
+                likelihood=True,
+                rank_tolerance=self.rank_tolerance,
+            )
+            self._cached_eigenvalues = statistics["spectrum"]
+            self._cached_inverse = statistics["covariance"]
+        return self._cached_eigenvalues, self._cached_inverse
+
     def _inverse(self) -> np.ndarray:
         """Get the pseudo-inverse of the matrix, the stored one when there is one.
 
@@ -212,9 +309,7 @@ class FisherInformation:
         self._refresh_matrix_cache()
         if self.inverse is not None:
             return np.asarray(self.inverse, dtype=float)
-        if self._cached_inverse is None:
-            self._cached_inverse = np.linalg.pinv(self.matrix)
-        return self._cached_inverse
+        return self._decomposition()[1]
 
     def _spectrum(self) -> np.ndarray:
         """Get the eigenvalues of the matrix, largest first, the stored ones when there are.
@@ -225,9 +320,7 @@ class FisherInformation:
         self._refresh_matrix_cache()
         if self.spectrum is not None:
             return np.asarray(self.spectrum, dtype=float)
-        if self._cached_eigenvalues is None:
-            self._cached_eigenvalues = np.sort(np.linalg.eigvalsh(self.matrix))[::-1]
-        return self._cached_eigenvalues
+        return self._decomposition()[0]
 
     def __post_init__(self) -> None:
         """Check the scales of the parameters and the stored decomposition.
@@ -409,22 +502,24 @@ class FisherInformation:
         symmetric around the value.
 
         Returns:
-            The lower and the upper bound in the units of the model.
+            The lower and the upper bound in the units of the model, `nan`
+            for a fit of least squares without degrees of freedom; the
+            interval of a direction the data does not constrain is unbounded
+            on a logarithmic scale.
         """
-        if self.scaled:
-            dof = self.n - self.k
-            if dof <= 0:
-                nan = np.full(self.k, np.nan)
-                return nan, nan
-            quantile = float(student_t.ppf(0.5 + self.alpha / 2.0, dof))
-        else:
-            quantile = float(norm.ppf(0.5 + self.alpha / 2.0))
-        scaled = self.to_scale(self.values)
-        delta = quantile * self.standard_errors
-        # the error of a direction the data does not constrain is huge, its
-        # interval on a logarithmic scale is unbounded
-        with np.errstate(over="ignore"):
-            return self.from_scale(scaled - delta), self.from_scale(scaled + delta)
+        if self.scaled and self.n - self.k <= 0:
+            nan = np.full(self.k, np.nan)
+            return nan, nan
+        import_core()
+        from sbmlsim_core import stats
+
+        return stats.fisher_intervals(
+            self.values,
+            self.standard_errors,
+            self.parameter_scales,
+            level=self.alpha,
+            dof=self.n - self.k if self.scaled else None,
+        )
 
     @property
     def has_mixed_scales(self) -> bool:
@@ -443,17 +538,12 @@ class FisherInformation:
         parameter (the error of a logarithm divided by the logarithm of the
         value did, and was near infinite for a value near 1).
         """
-        errors = self.standard_errors
-        relative = np.full(self.k, np.nan)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            for i, scale in enumerate(self.parameter_scales):
-                if scale is ParameterScaleType.LOG10:
-                    relative[i] = np.log(10) * errors[i]
-                elif scale is ParameterScaleType.LOG:
-                    relative[i] = errors[i]
-                else:
-                    relative[i] = np.abs(errors[i] / self.values[i])
-        return relative
+        import_core()
+        from sbmlsim_core import stats
+
+        return stats.fisher_relative_errors(
+            self.values, self.standard_errors, self.parameter_scales
+        )
 
     @property
     def summary_df(self) -> pd.DataFrame:
@@ -855,7 +945,10 @@ def fisher_information(
         engine=engine_jacobian,
         n_cores=n_cores,
     )
-    matrix = jac.T @ jac
+    import_core()
+    from sbmlsim_core import stats
+
+    matrix = stats.gram(jac)
 
     return FisherInformation(
         opid=problem.opid,

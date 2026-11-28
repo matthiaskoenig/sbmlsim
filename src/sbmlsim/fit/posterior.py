@@ -63,9 +63,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
 
 from sbmlsim.atomic import write_text_atomic
+from sbmlsim.engine import import_core
 from sbmlsim.fit.fisher import (
     DEFAULT_RANK_TOLERANCE,
     FisherInformation,
@@ -93,11 +93,6 @@ PRIOR_STEP = 1e-4
 #: a parameter within this fraction of the width of its bounds, in the space
 #: of the optimizer, from a bound is at the bound
 BOUND_TOLERANCE = 1e-3
-
-
-def _log_sd(scale: ParameterScaleType, sd: float) -> float:
-    """Get the standard deviation of the natural logarithm of an SD on a log scale."""
-    return sd * math.log(10.0) if scale is ParameterScaleType.LOG10 else sd
 
 
 @dataclass
@@ -220,18 +215,13 @@ class ParameterPosterior:
             The lower and the upper ends in the units of the model, the
             quantiles of the normal in the space of every parameter.
         """
-        z = float(norm.ppf(0.5 + level / 2.0))
-        mean, delta = self.mean, z * self.standard_deviations
-        with np.errstate(over="ignore"):
-            lower = [
-                s.from_scale(m - d)
-                for s, m, d in zip(self.scales, mean, delta, strict=True)
-            ]
-            upper = [
-                s.from_scale(m + d)
-                for s, m, d in zip(self.scales, mean, delta, strict=True)
-            ]
-        return np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
+        import_core()
+        from sbmlsim_core import stats
+
+        # the intervals of the normal distribution, as of a likelihood
+        return stats.fisher_intervals(
+            self.values, self.standard_deviations, self.scales, level=level
+        )
 
     @property
     def summary_df(self) -> pd.DataFrame:
@@ -274,6 +264,11 @@ class ParameterPosterior:
         Raises:
             ValueError: for two parameters of one target.
         """
+        # the bindings are imported by `import_core`, on a thread which lives
+        # as long as the process
+        import_core()
+        from sbmlsim_core import stats
+
         from sbmlsim.simulation.sampling.distributions import LogNormal, Normal
         from sbmlsim.units import ureg
 
@@ -293,10 +288,15 @@ class ParameterPosterior:
             if scale is ParameterScaleType.LINEAR:
                 distributions[name] = Normal(mean=quantity(value), sd=quantity(sd))
             else:
-                sigma = _log_sd(scale, float(sd))
-                distributions[name] = LogNormal(
-                    median=quantity(value), cv=math.sqrt(math.expm1(sigma**2))
-                )
+                sigma = stats.log_sd(scale, float(sd))
+                cv = stats.lognormal_cv(sigma)
+                if not math.isfinite(cv):
+                    raise OverflowError(
+                        f"'{self.opid}': the log-normal of '{name}' has the "
+                        f"standard deviation {sigma} of its logarithm, whose "
+                        f"coefficient of variation is not a finite number."
+                    )
+                distributions[name] = LogNormal(median=quantity(value), cv=cv)
         return distributions
 
     def normal_correlation(
@@ -311,11 +311,12 @@ class ParameterPosterior:
             The correlation, which with the marginals of `distributions` is
             the posterior, see `sbmlsim.uncertainty.Covariance`.
         """
+        import_core()
+        from sbmlsim_core import stats
+
         from sbmlsim.uncertainty.covariance import Covariance
 
-        matrix = self.correlation_matrix
-        matrix = (matrix + matrix.T) / 2.0
-        np.fill_diagonal(matrix, 1.0)
+        matrix = stats.normal_correlation(self.correlation_matrix)
         return Covariance(self._names(targets), matrix, kind="correlation")
 
     def rank_correlation(self) -> np.ndarray:
@@ -329,11 +330,10 @@ class ParameterPosterior:
         Returns:
             The matrix in the order of the parameters.
         """
-        rank = (
-            6.0 / np.pi * np.arcsin(np.clip(self.correlation_matrix, -1.0, 1.0) / 2.0)
-        )
-        np.fill_diagonal(rank, 1.0)
-        return (rank + rank.T) / 2.0
+        import_core()
+        from sbmlsim_core import stats
+
+        return stats.rank_correlation(self.correlation_matrix)
 
     def uncertainty_model(
         self, targets: Mapping[str, str] | None = None, **kwargs: Any
@@ -573,33 +573,23 @@ def posterior_laplace(
             with_priors,
             objective.value,
         )
-    precision = (precision + precision.T) / 2.0
-    eigenvalues, eigenvectors = np.linalg.eigh(precision)
-    largest = float(eigenvalues.max())
-    weak = (
-        eigenvalues <= largest * rank_tolerance
-        if largest > 0.0
-        else np.ones(eigenvalues.size, dtype=bool)
-    )
-    if weak.any():
-        directions = [
-            [
-                problem.pids[i]
-                for i in np.argsort(-np.abs(eigenvectors[:, d]))
-                if abs(eigenvectors[i, d]) > 0.1
-            ]
-            for d in np.flatnonzero(weak)
-        ]
+    if not np.all(np.isfinite(precision)):
         raise ValueError(
-            f"'{problem.opid}': the data and the priors do not constrain "
-            f"{len(directions)} direction(s) of the parameters, of {directions}; "
-            f"the posterior is the uniform prior of the bounds there, which the "
-            f"Laplace approximation cannot describe. Give these parameters "
-            f"priors and fit the objective 'posterior', or see the profile "
-            f"likelihood."
+            f"'{problem.opid}': the precision of the posterior is not finite, "
+            f"the posterior is not defined."
         )
-    covariance = (eigenvectors / eigenvalues) @ eigenvectors.T
-    covariance = (covariance + covariance.T) / 2.0
+    import_core()
+    from sbmlsim_core import stats
+
+    # the inverse of the symmetric part of the precision, which raises for a
+    # direction the data and the priors do not constrain (the uniform prior of
+    # the bounds there, which the Laplace approximation cannot describe)
+    covariance = stats.posterior_laplace(
+        precision,
+        pids=list(problem.pids),
+        opid=problem.opid,
+        rank_tolerance=rank_tolerance,
+    )
 
     problems: list[str] = []
     sd = np.sqrt(np.diag(covariance))

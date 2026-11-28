@@ -85,8 +85,8 @@ import pandas as pd
 import xarray as xr
 from numpy.typing import ArrayLike
 from pint.errors import DimensionalityError
-from scipy import special
 
+from sbmlsim.engine import import_core
 from sbmlsim.units import Quantity, short_unit
 
 #: the references of a probability statement
@@ -96,7 +96,8 @@ REFERENCES: tuple[str, ...] = (
     "Howard SR et al. (2021). Ann Stat 49:1055-1080.",
 )
 
-#: the parameters of the Jeffreys mixture of the confidence sequence
+#: the parameters of the Jeffreys mixture of the confidence sequence, the
+#: constants are the ones of `sbmlsim_core.stats`, which computes the sequence
 MIXTURE: tuple[float, float] = (0.5, 0.5)
 
 #: the margin of a threshold by default, a difference of probability which does not matter
@@ -109,79 +110,6 @@ MAX_NEEDED: int = 2**26
 BISECTIONS: int = 52
 
 Decision = Literal["accepted", "rejected", "equivalent", "undecided", "estimate"]
-
-
-class _Prefixes:
-    """The counts of the first `m` draws, for every `m`, and their mixtures."""
-
-    def __init__(self, k: np.ndarray, m: np.ndarray) -> None:
-        """Keep the counts `k_m` of the numbers of draws `m`."""
-        a, b = MIXTURE
-        self.k = k
-        self.m = m
-        self.rest = m - k
-        # the part of log M_m(p) which does not depend on p
-        self.base = special.betaln(a + k, b + m - k) - special.betaln(a, b)
-        self.mle = k / m
-
-    @classmethod
-    def of(cls, satisfied: ArrayLike) -> _Prefixes:
-        """Get the prefixes of the draws, whether every draw satisfies H in order."""
-        x = np.asarray(satisfied, dtype=bool).ravel()
-        return cls(np.cumsum(x, dtype=float), np.arange(1, x.size + 1, dtype=float))
-
-    def head(self, n: int) -> _Prefixes:
-        """Get the prefixes of the first `n` draws."""
-        return _Prefixes(self.k[:n], self.m[:n])
-
-    def log_mixture(self, p: float) -> np.ndarray:
-        """Get `log M_m(p)` of every prefix, for `0 < p < 1`."""
-        return self.base - self.k * math.log(p) - self.rest * math.log1p(-p)
-
-    def p_values(self, p0: float, side: Literal["greater", "less"]) -> np.ndarray:
-        """Get the anytime-valid p-values of `P > p0` or `P < p0` after every prefix.
-
-        The running minimum of `1 / M_m(p0)` over the prefixes whose estimate
-        is on the side of the alternative, see the module.
-        """
-        certain, impossible = (p0 <= 0.0, p0 >= 1.0)
-        if side == "less":
-            certain, impossible = impossible, certain
-        if certain:
-            return np.zeros_like(self.m)
-        if impossible:
-            return np.ones_like(self.m)
-        on_side = self.mle > p0 if side == "greater" else self.mle < p0
-        log_m = self.log_mixture(p0)
-        with np.errstate(over="ignore"):
-            p = np.where(on_side, np.exp(-log_m), 1.0)
-        return np.minimum.accumulate(np.clip(p, 0.0, 1.0))
-
-    def outside(self, p: float, level: float, below: bool) -> bool:
-        """Check whether a prefix excludes `p` below (or above) its estimate."""
-        if not 0.0 < p < 1.0:
-            return False
-        side = self.mle > p if below else self.mle < p
-        return bool(np.any(side & (self.log_mixture(p) >= level)))
-
-    def bounds(self, alpha: float) -> tuple[float, float]:
-        """Get the intersection of the confidence sets of every prefix.
-
-        The largest lower and the smallest upper bound, each by a bisection
-        on the bound itself: a probability is below the largest lower bound
-        when one prefix excludes it from below.
-        """
-        level = math.log(1.0 / alpha)
-        lo, hi = 0.0, 1.0
-        for _ in range(BISECTIONS):
-            mid = (lo + hi) / 2.0
-            lo, hi = (mid, hi) if self.outside(mid, level, below=True) else (lo, mid)
-        low = lo
-        lo, hi = 0.0, 1.0
-        for _ in range(BISECTIONS):
-            mid = (lo + hi) / 2.0
-            lo, hi = (lo, mid) if self.outside(mid, level, below=False) else (mid, hi)
-        return low, hi
 
 
 def confidence_sequence(
@@ -199,86 +127,10 @@ def confidence_sequence(
         The lower and the upper end, the intersection of the confidence sets
         of every number of draws; `(0, 1)` without draws.
     """
-    return _sequence(_Prefixes.of(satisfied), 1.0 - level)
+    import_core()
+    from sbmlsim_core import stats
 
-
-def _sequence(prefixes: _Prefixes, alpha: float) -> tuple[float, float]:
-    """Get the confidence sequence of the prefixes, see `confidence_sequence`."""
-    n = prefixes.m.size
-    if n == 0:
-        return 0.0, 1.0
-    low, high = prefixes.bounds(alpha)
-    if low <= high:
-        return low, high
-    # the sets of two prefixes exclude each other: the last intersection which
-    # is not empty, of the most draws whose sets intersect
-    good, bad = 1, n
-    while bad - good > 1:
-        middle = (good + bad) // 2
-        low, high = prefixes.head(middle).bounds(alpha)
-        good, bad = (middle, bad) if low <= high else (good, middle)
-    return prefixes.head(good).bounds(alpha)
-
-
-def _first(shown: np.ndarray) -> int | None:
-    """Get the index of the first number of draws at which something is shown."""
-    indices = np.flatnonzero(shown)
-    return int(indices[0]) if indices.size else None
-
-
-def _p_values(
-    prefixes: _Prefixes, p0: float, margin: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Get the p-values of `P >= p0`, `P < p0` and of the equivalence with `p0`.
-
-    After every number of draws; the equivalence is shown by both one-sided
-    tests of the ends of the margin (Schuirmann 1987).
-    """
-    equivalent = np.maximum(
-        prefixes.p_values(p0 - margin, "greater"),
-        prefixes.p_values(p0 + margin, "less"),
-    )
-    return prefixes.p_values(p0, "greater"), prefixes.p_values(p0, "less"), equivalent
-
-
-def _decide(
-    p_greater: np.ndarray,
-    p_less: np.ndarray,
-    p_equivalent: np.ndarray,
-    m: np.ndarray,
-    alpha: float,
-) -> tuple[Decision, int | None]:
-    """Decide a statement of its p-values after every number of draws.
-
-    Returns:
-        The decision and the number of draws at which it was first shown:
-        the direction shown first, else the equivalence, else undecided.
-    """
-    greater, less = _first(p_greater <= alpha), _first(p_less <= alpha)
-    if greater is not None and (less is None or greater <= less):
-        return "accepted", int(m[greater])
-    if less is not None:
-        return "rejected", int(m[less])
-    equivalent = _first(p_equivalent <= alpha)
-    if equivalent is not None:
-        return "equivalent", int(m[equivalent])
-    return "undecided", None
-
-
-def _needed(
-    estimate: float, n: int, p0: float, margin: float, alpha: float
-) -> int | None:
-    """Get the draws which decide a statement at its estimate, `None` beyond `MAX_NEEDED`."""
-    m = n
-    while m < MAX_NEEDED:
-        m *= 2
-        prefix = _Prefixes(
-            np.array([round(estimate * m)], dtype=float), np.array([m], dtype=float)
-        )
-        decision, _ = _decide(*_p_values(prefix, p0, margin), prefix.m, alpha)
-        if decision != "undecided":
-            return m
-    return None
+    return stats.confidence_sequence(satisfied, level)
 
 
 @dataclass(frozen=True)
@@ -380,11 +232,13 @@ def _statement(
     level: float,
 ) -> TestResult:
     """Get the statement of the draws which satisfy a hypothesis, see the module."""
-    prefixes = _Prefixes.of(satisfied)
+    import_core()
+    from sbmlsim_core import stats
+
     n = int(satisfied.size)
     k = int(np.count_nonzero(satisfied))
     alpha = 1.0 - level
-    low, high = _sequence(prefixes, alpha)
+    low, high = stats.confidence_sequence(satisfied, level)
     if threshold is None:
         return TestResult(
             hypothesis,
@@ -401,8 +255,12 @@ def _statement(
         )
     if margin is None:
         margin = MARGIN
-    p_greater, p_less, p_equivalent = _p_values(prefixes, threshold, margin)
-    decision, n_decided = _decide(p_greater, p_less, p_equivalent, prefixes.m, alpha)
+    # the p-values after every number of draws; the equivalence is shown by
+    # both one-sided tests of the ends of the margin (Schuirmann 1987)
+    p_greater = stats.p_values(satisfied, threshold, "greater")
+    p_less = stats.p_values(satisfied, threshold, "less")
+    p_equivalent = stats.p_values(satisfied, threshold, "equivalent", margin)
+    decision, n_decided = stats.decision(p_greater, p_less, p_equivalent, alpha)
     return TestResult(
         hypothesis,
         k / n,
@@ -414,7 +272,7 @@ def _statement(
         threshold,
         decision,
         n_needed=(
-            _needed(k / n, n, threshold, margin, alpha)
+            stats.needed(k / n, n, threshold, margin, alpha)
             if decision == "undecided"
             else None
         ),
@@ -627,9 +485,12 @@ def family_level(
     level: float, m: int, adjust: Literal["bonferroni", "none"] = "bonferroni"
 ) -> float:
     """Get the level of a statement with a threshold in a report of `m` of them."""
-    if adjust == "none" or m <= 1:
+    if adjust == "none":
         return level
-    return 1.0 - (1.0 - level) / m
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.family_level(level, m)
 
 
 @dataclass

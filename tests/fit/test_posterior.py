@@ -7,6 +7,7 @@ the Gauss-Newton curvature is exact and the Laplace approximation is the
 conjugate normal posterior, known in closed form.
 """
 
+import dataclasses
 import math
 import pickle
 from pathlib import Path
@@ -324,6 +325,17 @@ def test_an_unconstrained_direction_raises(tmp_path: Path) -> None:
         posterior_laplace(problem, settings, _pset(problem, [1.2, 2.0]))
 
 
+def test_a_precision_which_is_not_finite_raises(tmp_path: Path) -> None:
+    problem, settings = _problem(
+        tmp_path, [_parameter("p1")], ["y"], objective=ObjectiveType.LIKELIHOOD
+    )
+    pset = _pset(problem, [1.2])
+    fisher = fisher_information(problem, settings, pset)
+    fisher.matrix = np.full_like(fisher.matrix, np.nan)
+    with pytest.raises(ValueError, match="precision of the posterior is not finite"):
+        posterior_laplace(problem, settings, pset, fisher=fisher)
+
+
 def test_a_parameter_at_a_bound_is_reported(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -354,6 +366,16 @@ def test_a_posterior_is_stored_as_json(
     np.testing.assert_array_equal(restored.covariance, posterior.covariance)
     assert restored.scales == posterior.scales
     assert restored.to_dict() == posterior.to_dict()
+
+
+def test_a_log_normal_without_a_finite_cv_raises(
+    posterior: ParameterPosterior,
+) -> None:
+    """A standard deviation of `log10(p1)` of 20 is no coefficient of variation."""
+    covariance = np.diag([400.0, posterior.covariance[1, 1]])
+    wide = dataclasses.replace(posterior, covariance=covariance)
+    with pytest.raises(OverflowError, match="not a finite number"):
+        wide.distributions()
 
 
 def test_the_draws_of_a_posterior_are_its_normal(posterior: ParameterPosterior) -> None:

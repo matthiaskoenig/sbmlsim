@@ -20,6 +20,7 @@ from sbmlsim.fit.fisher import (
     default_step,
     evaluator,
     fisher_information,
+    fisher_statistics,
     jacobian,
 )
 from sbmlsim.fit.metrics import aic, bic, bic_from_mse
@@ -58,27 +59,27 @@ def test_fisher_reports_reuse_decompositions_and_track_matrix_changes(
         cost=1.0,
         n=10,
     )
-    with (
-        patch("numpy.linalg.eigvalsh", wraps=np.linalg.eigvalsh) as eigenvalues,
-        patch("numpy.linalg.pinv", wraps=np.linalg.pinv) as inverse,
-    ):
+    # one decomposition gives the eigenvalues and the pseudo-inverse
+    with patch(
+        "sbmlsim.fit.fisher.fisher_statistics", wraps=fisher_statistics
+    ) as decompositions:
         _ = information.summary_df
         _ = information.correlation
-        assert eigenvalues.call_count == inverse.call_count == 1
+        assert decompositions.call_count == 1
         information.matrix[0, 0] = 2.0
         np.testing.assert_allclose(
             information.covariance, information.sigma2 * np.diag([0.5, 1.0])
         )
-        assert eigenvalues.call_count == inverse.call_count == 2
+        assert decompositions.call_count == 2
         information.rank_tolerance = 0.75
         assert not information.is_identifiable
         _ = information.covariance
-        assert eigenvalues.call_count == inverse.call_count == 3
+        assert decompositions.call_count == 3
         information.cost = 2.0
         np.testing.assert_allclose(
             information.covariance, information.sigma2 * np.diag([0.5, 1.0])
         )
-        assert eigenvalues.call_count == inverse.call_count == 3
+        assert decompositions.call_count == 3
 
 
 def test_bic_penalizes_more_than_aic() -> None:

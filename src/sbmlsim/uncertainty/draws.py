@@ -1,11 +1,14 @@
 """Correlated draws of the variables of an uncertainty analysis.
 
 The points of the unit cube are quasi-random (scrambled Sobol points, the
-default, Owen 1998; Joe & Kuo 2008), a Latin hypercube or random. Their normal
-scores `z = Φ⁻¹(u)` are correlated with the Cholesky factor of the
-correlation of the normal scores, `z L^T`, mapped back to the unit interval,
-`Φ(z)`, and through the inverse distribution function of every marginal (a
-Gaussian copula, Nelsen 2006). For normal marginals this is the multivariate
+default, Joe & Kuo 2008), a Latin hypercube or random, on the streams of
+sbmlsim-core (`sbmlsim_core.stats`: its Sobol' sequence, scrambled by a
+random linear matrix and a digital shift, and xoshiro256++), so one seed
+gives the same points on every platform. Their normal scores `z = Φ⁻¹(u)`
+are correlated with the Cholesky factor of the correlation of the normal
+scores, `z L^T`, mapped back to the unit interval, `Φ(z)`, and through the
+inverse distribution function of every marginal (a Gaussian copula, Nelsen
+2006). For normal marginals this is the multivariate
 normal of the covariance, for log-normal marginals the multivariate normal of
 their logarithms; for other marginals the correlation is the one of the
 normal scores, about the same rank correlation.
@@ -24,8 +27,7 @@ analysis (`normal_score_correlation`):
 The variances of a covariance must be the variances of the marginals (a
 relative tolerance of 1e-6), which the marginals define.
 
-Owen AB (1998). Scrambling Sobol' and Niederreiter-Xing points. J Complexity
-14:466-489. Joe S, Kuo FY (2008). Constructing Sobol sequences with better
+Joe S, Kuo FY (2008). Constructing Sobol sequences with better
 two-dimensional projections. SIAM J Sci Comput 30:2635-2654. Nelsen RB
 (2006). An Introduction to Copulas, 2nd ed. Springer.
 """
@@ -33,16 +35,14 @@ two-dimensional projections. SIAM J Sci Comput 30:2635-2654. Nelsen RB
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Sequence
 from typing import Any, Literal
 
 import numpy as np
-from scipy import stats
-from scipy.stats import qmc
 
+from sbmlsim.engine import import_core
 from sbmlsim.simulation.definition import Simulation
-from sbmlsim.simulation.sampling.distributions import EPS, LogNormal, Normal
+from sbmlsim.simulation.sampling.distributions import LogNormal, Normal
 from sbmlsim.simulation.sampling.references import references
 from sbmlsim.uncertainty.covariance import Covariance
 from sbmlsim.uncertainty.sources import Variable
@@ -110,6 +110,9 @@ def normal_score_correlation(
             variable in two covariances, variances which disagree with the
             marginals, or a correlation which is not positive semi-definite.
     """
+    import_core()
+    from sbmlsim_core import stats
+
     index = {variable.key: k for k, variable in enumerate(variables)}
     r = np.eye(len(variables))
     covered: set[str] = set()
@@ -164,27 +167,43 @@ def normal_score_correlation(
                     f"marginal (the standard deviation of the distribution); the "
                     f"marginals define the variances."
                 )
-        for a, (_, mean_a, sd_a) in enumerate(moments):
-            for b, (_, mean_b, sd_b) in enumerate(moments):
-                if a == b:
-                    continue
-                if family == "normal" or cov.scale == "log":
-                    rho = m[a, b] / (sd_a * sd_b)
-                else:
-                    rho = math.log1p(m[a, b] / (mean_a * mean_b)) / (sd_a * sd_b)
-                r[rows[a], rows[b]] = rho
+        for a, moments_a in enumerate(moments):
+            for b, moments_b in enumerate(moments):
+                if a != b:
+                    r[rows[a], rows[b]] = stats.normal_score_rho(
+                        float(m[a, b]), moments_a, moments_b, scale=cov.scale
+                    )
     # validated as a correlation, which names the conflicting pair
     Covariance([v.key for v in variables], (r + r.T) / 2.0, kind="correlation")
     return (r + r.T) / 2.0
 
 
-def _factor(r: np.ndarray) -> np.ndarray:
-    """Get a factor `L` of a positive semi-definite correlation, `L L^T = r`."""
-    try:
-        return np.linalg.cholesky(r)
-    except np.linalg.LinAlgError:
-        values, vectors = np.linalg.eigh(r)
-        return vectors * np.sqrt(np.clip(values, 0.0, None))
+def copula(u: np.ndarray, r: np.ndarray) -> np.ndarray:
+    """Get the points of the Gaussian copula of a correlation of the normal scores.
+
+    `Φ(Φ⁻¹(u) L^T)` with a factor `L` of the correlation, `L L^T = r` (the
+    Cholesky factor, of the eigendecomposition for a correlation which is only
+    positive semi-definite), the points clipped to `EPS` from the ends of the
+    unit interval; `copula` of `sbmlsim_core.stats`. The factor of a
+    correlation which is only positive semi-definite is the one of the
+    eigendecomposition of sbmlsim-core, so its points differ from the ones
+    numpy's factor gave up to sbmlsim 0.54.0, in the same distribution.
+
+    Args:
+        u: the points of the unit cube, a row per point.
+        r: the correlation of the normal scores, a row and column per column
+            of the points.
+
+    Returns:
+        The points of the copula, the points themselves for a correlation
+        which is the identity.
+    """
+    if np.allclose(r, np.eye(len(r))):
+        return u
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.copula(u, r)
 
 
 def unit_points(
@@ -202,6 +221,14 @@ def unit_points(
     Latin hypercube has no continuation, a hypercube of more points is
     another one.
 
+    The points are the ones of `unit_points` of `sbmlsim_core.stats`: the
+    Sobol' sequence of sbmlsim-core (the direction numbers of Joe and Kuo,
+    scrambled by a random lower triangular matrix and a digital shift) and
+    xoshiro256++ for the hypercube and the random points, the same bits on
+    every platform. A seed gives other points than in the releases of
+    sbmlsim which drew them with scipy (`qmc.Sobol`, `qmc.LatinHypercube`)
+    and numpy (PCG64).
+
     Args:
         d: the number of dimensions.
         n: the number of points.
@@ -215,28 +242,10 @@ def unit_points(
     Raises:
         ValueError: for another design, or a Latin hypercube after `start`.
     """
-    if design == "sobol":
-        sampler = qmc.Sobol(d, scramble=True, seed=seed)
-        with warnings.catch_warnings():
-            # the balance of the points is the propagation's, which draws
-            # powers of two
-            warnings.filterwarnings("ignore", message=".*balance properties.*")
-            if start:
-                sampler.fast_forward(start)
-            return sampler.random(n)
-    if design == "lhs":
-        if start:
-            raise ValueError(
-                "A Latin hypercube has no continuation, its points of more draws "
-                "are another hypercube: give the number of draws, or use 'sobol' "
-                "or 'random' for more draws."
-            )
-        return qmc.LatinHypercube(d, seed=np.random.default_rng(seed)).random(n)
-    if design == "random":
-        # a double of the generator is one step of its bit generator
-        bits = np.random.PCG64(seed).advance(start * d)
-        return np.random.Generator(bits).random((n, d))
-    raise ValueError(f"The design {design!r} is none of 'sobol', 'lhs' and 'random'.")
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.unit_points(d, n, design=design, seed=seed, start=start)
 
 
 def draw(
@@ -277,10 +286,7 @@ def draw(
     if not variables:
         return {}
     r = normal_score_correlation(variables, covariance)
-    u = unit_points(len(variables), n, design=design, seed=seed, start=start)
-    if not np.allclose(r, np.eye(len(variables))):
-        z = stats.norm.ppf(np.clip(u, EPS, 1.0 - EPS)) @ _factor(r).T
-        u = stats.norm.cdf(z)
+    u = copula(unit_points(len(variables), n, design=design, seed=seed, start=start), r)
     marginals = [variable.marginal(scenario) for variable in variables]
     relative = [v for v, d in zip(variables, marginals, strict=True) if d.is_relative]
     refs: dict[str, Any] = {}

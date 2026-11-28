@@ -128,11 +128,11 @@ print(res.contributions("pk.auc_last", scenario="control").round(2))
 
 ```text title="Output"
     scenario     mean  mean_se      sd    q0.05    q0.95
-0    control   7728.0    134.0  3037.0   3886.0  13356.0
-1  inhibitor  23471.0    374.0  8459.0  12127.0  39570.0
+0    control   7725.0    132.0  2981.0   3912.0  13748.0
+1  inhibitor  23470.0    370.0  8366.0  12227.0  39951.0
          variable  index  correlated
-0  LI__MIDOH_Vmax   0.75        True
-1              BW   0.45        True
+0  LI__MIDOH_Vmax   0.77        True
+1              BW   0.46        True
 2      PODOSE_mid   0.00       False
 ```
 
@@ -156,7 +156,8 @@ fig = plot_bands(bands, "mid", time_unit="hr", name="midazolam")
 
 How the draws are made:
 
-- The draws are quasi-random (scrambled Sobol points, Owen 1998; Joe and Kuo 2008), one dimension of a scan, so the model is compiled once and many draws run in parallel worker processes.
+- The draws are quasi-random (scrambled Sobol points, Joe and Kuo 2008), one dimension of a scan, so the model is compiled once and many draws run in parallel worker processes.
+- The points are drawn by sbmlsim-core (`sbmlsim_core.stats`): its Sobol' sequence, scrambled by a random lower triangular matrix and a digital shift, and xoshiro256++ for a Latin hypercube and random points, so a seed gives the same draws on every platform. Up to sbmlsim 0.54.0 the points came from scipy (`qmc.Sobol`, `qmc.LatinHypercube`) and numpy (PCG64): a seed gives other draws than in those releases, so a result stored with a seed by one of them reproduces only with it. The copula of a correlation which is only positive semi-definite takes the factor of the eigendecomposition of sbmlsim-core, so its draws change as well, in the same distribution. The statistics of given draws do not depend on the streams.
 - All scenarios use the same draws (common random numbers, Glasserman 2003), so a ratio between two scenarios is paired: it compares them at the same draw. When one target has different distributions in different scenarios, e.g. a dose of 100 mg in one and 200 mg in another, it is drawn at the same quantile in each.
 - A parameter of the `UncertaintyModel` is drawn in every scenario, so no scenario may set it; that raises. Set another target instead, as the inhibitor sets the activity `LI__MIDOH_f` rather than the uncertain `LI__MIDOH_Vmax`.
 - Without `n`, the number of draws doubles until the half widths of the 95 % intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are below `rel_tol` (0.1) times their SD, the adaptive procedure of GUM Supplement 1 (JCGM 101:2008).
@@ -205,8 +206,8 @@ print(res.probability(ratio, greater=2.0, at_least=0.5).decision)
 ```text title="Output"
                                        hypothesis  estimate    low   high  decision
 0  P(pk.auc_last:inhibitor/control > 1.25) >= 0.9     1.000  0.986  1.000  accepted
-1               pk.auc_last:inhibitor/control > 3     0.836  0.773  0.887  estimate
-2           P(pk.cmax:control < 40 ng/ml) >= 0.95     0.990  0.964  0.999  accepted
+1               pk.auc_last:inhibitor/control > 3     0.838  0.776  0.890  estimate
+2           P(pk.cmax:control < 40 ng/ml) >= 0.95     0.988  0.961  0.998  accepted
 accepted
 ```
 
@@ -363,7 +364,7 @@ The experiments of a project run over the draws of the fitted parameters with `P
 
 - JCGM 101:2008. Evaluation of measurement data, Supplement 1 to the GUM: propagation of distributions using a Monte Carlo method.
 - Limpert E, Stahel WA, Abbt M (2001). Log-normal distributions across the sciences: keys and clues. BioScience 51:341-352.
-- Owen AB (1998). Scrambling Sobol' and Niederreiter-Xing points. J Complexity 14:466-489. Joe S, Kuo FY (2008). Constructing Sobol sequences with better two-dimensional projections. SIAM J Sci Comput 30:2635-2654.
+- Joe S, Kuo FY (2008). Constructing Sobol sequences with better two-dimensional projections. SIAM J Sci Comput 30:2635-2654.
 - Nelsen RB (2006). An Introduction to Copulas, 2nd ed. Springer. Higham NJ (2002). Computing the nearest correlation matrix: a problem from finance. IMA J Numer Anal 22:329-343.
 - Glasserman P (2003). Monte Carlo Methods in Financial Engineering. Springer.
 - Hahn GJ, Meeker WQ (1991). Statistical Intervals: A Guide for Practitioners. Wiley.

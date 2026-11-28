@@ -39,9 +39,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
-import scipy.stats
 from numpy.typing import ArrayLike
 
+from sbmlsim.engine import import_core
 from sbmlsim.fit.objects import EVALUATED_KINDS
 
 if TYPE_CHECKING:
@@ -79,21 +79,6 @@ class Criterion(Protocol):
         ...
 
 
-def _ratio_mask(points: pd.DataFrame) -> np.ndarray:
-    """Get the mask of the points with a ratio, a positive and finite value and prediction."""
-    dv = np.asarray(points["DV"], dtype=float)
-    ipred = np.asarray(points["IPRED"], dtype=float)
-    return np.isfinite(dv) & np.isfinite(ipred) & (dv > 0) & (ipred > 0)
-
-
-def _sd_mask(points: pd.DataFrame) -> np.ndarray:
-    """Get the mask of the points with a standard deviation, a finite value and prediction."""
-    dv = np.asarray(points["DV"], dtype=float)
-    ipred = np.asarray(points["IPRED"], dtype=float)
-    sd = np.asarray(points["DV_SD"], dtype=float)
-    return np.isfinite(sd) & (sd > 0) & np.isfinite(ipred) & np.isfinite(dv)
-
-
 @dataclass(frozen=True)
 class Fold:
     """The prediction is within a fold factor of the data, `y/fold <= f <= y*fold`.
@@ -123,12 +108,14 @@ class Fold:
     def accepted(self, points: pd.DataFrame) -> pd.Series:
         """Get whether the prediction of every point is within the fold factor.
 
-        The bounds are products, so that twofold is exact in floating point.
+        The bounds are products, so that twofold is exact in floating point;
+        a point without a ratio, a positive and finite value and prediction,
+        is not applicable.
         """
-        dv = np.asarray(points["DV"], dtype=float)
-        ipred = np.asarray(points["IPRED"], dtype=float)
-        inside = (ipred >= dv / self.fold) & (ipred <= dv * self.fold)
-        values = np.where(_ratio_mask(points), inside.astype(float), np.nan)
+        import_core()
+        from sbmlsim_core import stats
+
+        values = stats.fold_accepted(points["DV"], points["IPRED"], self.fold)
         return pd.Series(values, index=points.index, dtype=float)
 
 
@@ -148,14 +135,17 @@ class Uncertainty:
         return f"within_{self.k:g}sd"
 
     def accepted(self, points: pd.DataFrame) -> pd.Series:
-        """Get whether the prediction of every point is within `k` standard deviations."""
-        dv = np.asarray(points["DV"], dtype=float)
-        ipred = np.asarray(points["IPRED"], dtype=float)
-        sd = np.asarray(points["DV_SD"], dtype=float)
-        applicable = _sd_mask(points)
-        with np.errstate(invalid="ignore"):
-            inside = np.abs(dv - ipred) <= self.k * sd
-        values = np.where(applicable, inside.astype(float), np.nan)
+        """Get whether the prediction of every point is within `k` standard deviations.
+
+        A point without a positive and finite standard deviation, or with a
+        value or prediction which is not finite, is not applicable.
+        """
+        import_core()
+        from sbmlsim_core import stats
+
+        values = stats.sd_accepted(
+            points["DV"], points["IPRED"], points["DV_SD"], self.k
+        )
         return pd.Series(values, index=points.index, dtype=float)
 
 
@@ -169,14 +159,6 @@ DEFAULT_CRITERIA: tuple[Criterion, ...] = (
 )
 
 
-def _log_ratios(points: pd.DataFrame) -> np.ndarray:
-    """Get `log10(f/y)` of the points with a ratio."""
-    mask = _ratio_mask(points)
-    dv = np.asarray(points["DV"], dtype=float)[mask]
-    ipred = np.asarray(points["IPRED"], dtype=float)[mask]
-    return np.log10(ipred / dv)
-
-
 def gmfe(points: pd.DataFrame) -> float:
     """Get the geometric mean fold error `10**mean(|log10(f/y)|)`.
 
@@ -186,8 +168,10 @@ def gmfe(points: pd.DataFrame) -> float:
     Returns:
         The fold error of the points with a ratio, `nan` without one.
     """
-    ratios = _log_ratios(points)
-    return float(10 ** np.mean(np.abs(ratios))) if ratios.size else float("nan")
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.gmfe(points["DV"], points["IPRED"])
 
 
 def afe(points: pd.DataFrame) -> float:
@@ -199,8 +183,10 @@ def afe(points: pd.DataFrame) -> float:
     Returns:
         The fold error of the points with a ratio, `nan` without one.
     """
-    ratios = _log_ratios(points)
-    return float(10 ** np.mean(ratios)) if ratios.size else float("nan")
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.afe(points["DV"], points["IPRED"])
 
 
 def criteria_metrics(
@@ -243,12 +229,10 @@ def guest_limits(observed: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
         The lower and the upper limit of the predicted ratio of every
         observed ratio.
     """
-    ratio = np.asarray(observed, dtype=float)
-    inverted = ratio < 1.0
-    r = np.where(inverted, 1.0 / ratio, ratio)
-    limit = (1.0 + 2.0 * (r - 1.0)) / r
-    low, high = r / limit, r * limit
-    return np.where(inverted, 1.0 / high, low), np.where(inverted, 1.0 / low, high)
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.guest_limits(observed)
 
 
 def within_guest(observed: ArrayLike, predicted: ArrayLike) -> float:
@@ -267,26 +251,11 @@ def within_guest(observed: ArrayLike, predicted: ArrayLike) -> float:
         ValueError: if an observed ratio is not positive and finite, or the
             lengths of the ratios differ.
     """
-    observed = np.asarray(observed, dtype=float)
-    predicted = np.asarray(predicted, dtype=float)
-    if observed.shape != predicted.shape:
-        raise ValueError(
-            f"The observed and the predicted ratios have different lengths, "
-            f"{observed.size} and {predicted.size}."
-        )
-    if not np.all(np.isfinite(observed) & (observed > 0)):
-        raise ValueError(
-            f"The observed ratios must be positive and finite: {observed.tolist()}."
-        )
-    finite = np.isfinite(predicted)
-    observed, predicted = observed[finite], predicted[finite]
-    if predicted.size == 0:
-        return float("nan")
-    low, high = guest_limits(observed)
-    # a tolerance of a few units in the last place, so that a limit is in
-    rtol = 1e-12
-    inside = (predicted >= low * (1 - rtol)) & (predicted <= high * (1 + rtol))
-    return 100.0 * float(np.mean(inside))
+    import_core()
+    from sbmlsim_core import stats
+
+    # a limit is in within a tolerance of a few units in the last place, 1e-12
+    return stats.within_guest(observed, predicted)
 
 
 #: the fit mapping of an experiment and a mapping key, see `Grouping.groups`
@@ -449,10 +418,10 @@ def _rms(values: pd.Series) -> float:
     As `sbmlsim.fit.metrics.rmse`: a residual which is not finite, e.g. of a
     failed simulation, makes the metric undefined.
     """
-    array = np.asarray(values, dtype=float)
-    if array.size == 0 or not np.all(np.isfinite(array)):
-        return float("nan")
-    return float(np.sqrt(np.mean(array**2)))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.nrmse(values)
 
 
 def group_metrics(
@@ -475,20 +444,26 @@ def group_metrics(
         metrics of `criteria_metrics`. There is no RMSE, a group mixes the
         units of its observables; the NRMSE is scale free.
     """
+    import_core()
+    from sbmlsim_core import stats
+
     rows: list[dict[str, Any]] = []
     for label, of_group in grouping.groups(points, fit_mappings):
         for kind in EVALUATED_KINDS:
             of_kind = of_group[of_group.kind == kind.value]
             if of_kind.empty:
                 continue
+            _, n_ratio = stats.fold_counts(of_kind.DV, of_kind.IPRED)
+            # the points the SD criteria apply to, whatever their k
+            within_sd = stats.sd_accepted(of_kind.DV, of_kind.IPRED, of_kind.DV_SD)
             rows.append(
                 {
                     "grouping": grouping.name,
                     "group": label,
                     "kind": kind.value,
                     "n": len(of_kind),
-                    "n_ratio": int(np.sum(_ratio_mask(of_kind))),
-                    "n_sd": int(np.sum(_sd_mask(of_kind))),
+                    "n_ratio": n_ratio,
+                    "n_sd": int(np.sum(np.isfinite(within_sd))),
                     "NRMSE": _rms(of_kind.NRES),
                     **criteria_metrics(of_kind),
                 }
@@ -499,7 +474,7 @@ def group_metrics(
 
 
 #: the points with a ratio a subset needs for its own limits of agreement, see
-#: `subset_agreement`
+#: `subset_agreement`, `MIN_POINTS_SUBSET_AGREEMENT` of `sbmlsim_core.stats`
 MIN_POINTS_SUBSET_AGREEMENT = 10
 
 
@@ -526,15 +501,7 @@ def subset_agreement(
         intervals of the bias and of a limit, in decades; `None` for fewer
         than `MIN_POINTS_SUBSET_AGREEMENT` points with a ratio.
     """
-    ratios = _log_ratios(points)
-    n = ratios.size
-    if n < MIN_POINTS_SUBSET_AGREEMENT:
-        return None
-    sd = float(np.std(ratios, ddof=1))
-    t = float(scipy.stats.t.ppf(0.975, n - 1))
-    return (
-        float(np.mean(ratios)),
-        1.96 * sd,
-        t * sd / np.sqrt(n),
-        t * np.sqrt(3.0 * sd**2 / n),
-    )
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.subset_agreement(points["DV"], points["IPRED"])
