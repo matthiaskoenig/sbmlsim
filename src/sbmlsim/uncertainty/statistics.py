@@ -14,7 +14,8 @@ infinite, their standard deviation `NaN`).
   draws below the quantile (Hahn & Meeker 1991)
 
 For quasi-random draws these errors are conservative: their convergence is
-faster than that of random draws, which the errors assume.
+faster than that of random draws, which the errors assume. The statistics are
+computed by sbmlsim-core (`sbmlsim_core.stats`).
 
 Hahn GJ, Meeker WQ (1991). Statistical Intervals: A Guide for Practitioners.
 Wiley.
@@ -22,17 +23,9 @@ Wiley.
 
 from __future__ import annotations
 
-import math
-
-import numpy as np
 from numpy.typing import ArrayLike
-from scipy import stats
 
-
-def _valid(x: ArrayLike) -> np.ndarray:
-    """Get the values of an array which are not `NaN`, flattened."""
-    values = np.asarray(x, dtype=float).ravel()
-    return values[~np.isnan(values)]
+from sbmlsim.engine import import_core
 
 
 def mean_se(x: ArrayLike) -> tuple[float, float, int]:
@@ -45,14 +38,10 @@ def mean_se(x: ArrayLike) -> tuple[float, float, int]:
         The mean, its standard error and the number of draws which are not
         `NaN`; `nan` without draws (the error without two of them).
     """
-    values = _valid(x)
-    n = values.size
-    if n == 0:
-        return math.nan, math.nan, 0
-    if n < 2 or not np.all(np.isfinite(values)):
-        # the standard deviation of infinite draws is NaN
-        return float(np.mean(values)), math.nan, n
-    return float(np.mean(values)), float(np.std(values, ddof=1) / math.sqrt(n)), n
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.mean_se(x)
 
 
 def sd_se(x: ArrayLike) -> tuple[float, float, int]:
@@ -65,18 +54,10 @@ def sd_se(x: ArrayLike) -> tuple[float, float, int]:
         The standard deviation, its standard error by the delta method and
         the number of draws which are not `NaN`; `nan` without two draws.
     """
-    values = _valid(x)
-    n = values.size
-    if n < 2:
-        return math.nan, math.nan, n
-    if not np.all(np.isfinite(values)):
-        return math.nan, math.nan, n
-    sd = float(np.std(values, ddof=1))
-    if sd == 0.0:
-        return 0.0, 0.0, n
-    m4 = float(np.mean((values - values.mean()) ** 4))
-    se = math.sqrt(max(m4 - sd**4, 0.0) / n) / (2.0 * sd)
-    return sd, se, n
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.sd_se(x)
 
 
 def quantile_ci(
@@ -100,17 +81,10 @@ def quantile_ci(
         number of draws which are not `NaN`; an end beyond the draws is `nan`,
         e.g. the upper end of the 99 % quantile of 10 draws.
     """
-    values = np.sort(_valid(x))
-    n = values.size
-    if n == 0:
-        return math.nan, math.nan, math.nan, 0
-    estimate = float(np.quantile(values, q))
-    alpha = 1.0 - level
-    low_rank = int(stats.binom.ppf(alpha / 2.0, n, q))
-    high_rank = int(stats.binom.ppf(1.0 - alpha / 2.0, n, q)) + 1
-    low = float(values[low_rank - 1]) if low_rank >= 1 else math.nan
-    high = float(values[high_rank - 1]) if high_rank <= n else math.nan
-    return estimate, low, high, n
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.quantile_ci(x, q, level)
 
 
 def first_order_given_data(
@@ -140,19 +114,7 @@ def first_order_given_data(
         The index, between 0 and 1; `nan` with fewer than 8 finite pairs or
         an output without variance.
     """
-    xs, ys = np.asarray(x, dtype=float).ravel(), np.asarray(y, dtype=float).ravel()
-    finite = np.isfinite(xs) & np.isfinite(ys)
-    xs, ys = xs[finite], ys[finite]
-    n = xs.size
-    if n < 8:
-        return math.nan
-    variance = float(np.var(ys))
-    if variance == 0.0:
-        return math.nan
-    bins = n_bins if n_bins is not None else max(2, int(math.sqrt(n)) // 2)
-    order = np.argsort(xs, kind="stable")
-    groups = np.array_split(ys[order], bins)
-    mean = float(np.mean(ys))
-    between = sum(g.size * (float(np.mean(g)) - mean) ** 2 for g in groups) / n
-    index = between / variance - (bins - 1) / n
-    return float(min(max(index, 0.0), 1.0))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.first_order_given_data(x, y, n_bins)

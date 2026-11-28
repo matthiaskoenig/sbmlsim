@@ -31,10 +31,13 @@ from typing import Any, Literal
 import numpy as np
 from numpy.typing import ArrayLike
 
+from sbmlsim.engine import import_core
+
 logger = logging.getLogger(__name__)
 
 #: the relative tolerance of the smallest eigenvalue of a positive
-#: semi-definite matrix, relative to the largest one
+#: semi-definite matrix, relative to the largest one, `PSD_RTOL` of
+#: `sbmlsim_core.stats`
 PSD_RTOL: float = 1e-10
 
 
@@ -63,28 +66,10 @@ def nearest_correlation(
     Returns:
         The nearest correlation matrix.
     """
-    y = np.array(matrix, dtype=float)
-    correction = np.zeros_like(y)
-    x = y
-    for _ in range(max_iterations):
-        r = y - correction
-        values, vectors = np.linalg.eigh((r + r.T) / 2.0)
-        x = (vectors * np.clip(values, 0.0, None)) @ vectors.T
-        correction = x - r
-        y_new = x.copy()
-        np.fill_diagonal(y_new, 1.0)
-        if np.linalg.norm(y_new - y) <= tol * max(np.linalg.norm(y), 1.0):
-            y = y_new
-            break
-        y = y_new
-    # the last projection onto the positive semi-definite matrices with the
-    # unit diagonal restored, so the result is both within the rounding
-    values, vectors = np.linalg.eigh((y + y.T) / 2.0)
-    y = (vectors * np.clip(values, 0.0, None)) @ vectors.T
-    d = np.sqrt(np.clip(np.diag(y), 1e-300, None))
-    y = y / np.outer(d, d)
-    np.fill_diagonal(y, 1.0)
-    return (y + y.T) / 2.0
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.nearest_correlation(matrix, max_iterations, tol)
 
 
 @dataclass(frozen=True, eq=False)
@@ -191,52 +176,12 @@ class Covariance:
         Raises:
             ValueError: if it is not valid.
         """
-        m, n = len(self.targets), self.matrix
-        if len(set(self.targets)) != m:
-            twice = sorted({t for t in self.targets if self.targets.count(t) > 1})
-            raise ValueError(f"The targets {twice} are given twice.")
-        if n.ndim != 2 or n.shape != (m, m):
-            raise ValueError(
-                f"The matrix of {list(self.targets)} must be square of size {m}, "
-                f"not of the shape {n.shape}."
-            )
-        if not np.all(np.isfinite(n)):
-            raise ValueError(f"The matrix of {list(self.targets)} is not finite.")
-        scale = max(float(np.max(np.abs(n))), 1e-300)
-        if not np.allclose(n, n.T, rtol=0.0, atol=1e-12 * scale):
-            raise ValueError(f"The matrix of {list(self.targets)} is not symmetric.")
-        if self.kind == "correlation":
-            if not np.allclose(np.diag(n), 1.0, rtol=0.0, atol=1e-12):
-                raise ValueError(
-                    f"The diagonal of the correlation of {list(self.targets)} "
-                    "must be 1."
-                )
-            if np.any(np.abs(n) > 1.0 + 1e-12):
-                raise ValueError(
-                    f"The correlation of {list(self.targets)} has a coefficient "
-                    "with |rho| > 1."
-                )
-        else:
-            if np.any(np.diag(n) <= 0.0):
-                raise ValueError(
-                    f"The covariance of {list(self.targets)} must have a positive "
-                    "variance of every target."
-                )
-            if self.units is not None and len(self.units) != m:
-                raise ValueError(
-                    f"The covariance of {list(self.targets)} needs one unit per target."
-                )
-        if not _is_psd(n):
-            smallest = float(np.linalg.eigvalsh(n).min())
-            corr = self.correlation_matrix()
-            off = np.abs(corr - np.eye(m))
-            i, j = np.unravel_index(int(np.argmax(off)), off.shape)
-            raise ValueError(
-                f"The {self.kind} of {list(self.targets)} is not positive "
-                f"semi-definite: its smallest eigenvalue is {smallest:.3g}; the "
-                f"largest correlation is {corr[i, j]:.3g} of "
-                f"('{self.targets[i]}', '{self.targets[j]}')."
-            )
+        import_core()
+        from sbmlsim_core import stats
+
+        stats.validate_covariance(
+            self.targets, self.matrix, kind=self.kind, units=self.units
+        )
 
     def sds(self) -> np.ndarray | None:
         """Get the standard deviations of a covariance, `None` for a correlation."""
@@ -291,5 +236,7 @@ class Covariance:
 
 def _is_psd(matrix: np.ndarray) -> bool:
     """Check whether a symmetric matrix is positive semi-definite."""
-    values = np.linalg.eigvalsh(matrix)
-    return bool(values.min() >= -PSD_RTOL * max(float(values.max()), 1e-300))
+    import_core()
+    from sbmlsim_core import stats
+
+    return stats.is_psd(matrix, PSD_RTOL)

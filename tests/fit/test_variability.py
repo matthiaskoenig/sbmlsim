@@ -22,6 +22,8 @@ from sbmlsim.fit.pool import EvaluationPool, chunks
 from sbmlsim.fit.variability import (
     Variability,
     _concatenated,
+    _group_means,
+    _group_seed,
     _pieces,
     _subject_range,
     predictive_check,
@@ -287,6 +289,33 @@ def test_the_predictive_check_of_groups(problem: OptimizationProblem) -> None:
     assert (nested.points["q95"] - nested.points["q5"]).iloc[-1] > (
         outside.points["q95"] - outside.points["q5"]
     ).iloc[-1]
+
+
+def test_the_groups_of_every_mapping_size_and_subjects_are_a_stream_of_their_own() -> (
+    None
+):
+    """The python drew every group from one generator; sbmlsim-core seeds every call.
+
+    Every call of `_group_means` draws from the stream of its seed, so the seed
+    of the check is spread over the mappings, the sizes and the subjects of the
+    vectors: equal predictions of two vectors give other groups.
+    """
+    keys = [(5, k, size, u) for k in range(3) for size in (2, 6) for u in range(4)]
+    seeds = [_group_seed(*key) for key in keys]
+    assert len(set(seeds)) == len(keys)
+    assert seeds == [_group_seed(*key) for key in keys]
+    values = np.random.default_rng(1).lognormal(size=(64, 3))
+    first = _group_means(values, 6, 500, "mean", _group_seed(5, 0, 6, 0))
+    again = _group_means(values, 6, 500, "mean", _group_seed(5, 0, 6, 0))
+    other = _group_means(values, 6, 500, "mean", _group_seed(5, 0, 6, 1))
+    np.testing.assert_array_equal(first, again)
+    assert not np.array_equal(first, other)
+    # the mean of groups of six is the mean of the subjects, with a sixth of
+    # their variance
+    np.testing.assert_allclose(first.mean(axis=0), values.mean(axis=0), rtol=0.05)
+    np.testing.assert_allclose(first.var(axis=0), values.var(axis=0) / 6.0, rtol=0.25)
+    # groups of one are the subjects themselves
+    np.testing.assert_array_equal(_group_means(values, 1, 500, "mean", 1), values)
 
 
 def test_the_predictive_check_of_individuals(tmp_path: Path) -> None:
